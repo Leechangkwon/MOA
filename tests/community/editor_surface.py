@@ -1,9 +1,11 @@
 """Readonly synthetic document surface regression: real PHP/JS renderers, CSS, strict CSP."""
-import json, os, subprocess, hashlib
+import json, os, re, subprocess, hashlib
 from pathlib import Path
 from urllib.parse import urlsplit
 from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[2]
+VERSION=re.search(r'editor-schema.js\?v=([a-f0-9]+)',(ROOT/'public/assets/community/editor.js').read_text()).group(1)
+PM_VERSION=re.search(r'prosemirror-state.js\?v=([a-f0-9]+)',(ROOT/'public/assets/community/editor.js').read_text()).group(1)
 OUT=Path(os.environ.get('EDITOR_SURFACE_RESULTS','/tmp/editor-surface-checks'));OUT.mkdir(parents=True,exist_ok=True)
 SAMPLE=Path(os.environ.get('EDITOR_SURFACE_SAMPLE',str(ROOT/'tests/community/fixtures/editor_surface.json')))
 doc=json.loads(SAMPLE.read_text());original=json.dumps(doc,sort_keys=True,ensure_ascii=False);checks=[]
@@ -30,10 +32,11 @@ with sync_playwright()as pw:
   if path.startswith('/tbox/assets/'):
    f=ROOT/'public/assets'/path.removeprefix('/tbox/assets/');r.fulfill(body=f.read_bytes(),content_type='text/javascript'if f.suffix=='.js'else'text/css');return
   r.abort()
+ page.add_init_script('window.ASSET_VERSION='+json.dumps(VERSION)+';window.PM_VERSION='+json.dumps(PM_VERSION))
  page.route('**/*',route);page.goto('https://surface.example/',wait_until='networkidle')
- page.evaluate('''async(d)=>{const r=await import('/tbox/assets/community/doc-render.js');const e=await import('/tbox/assets/community/editor-schema.js');window.surfaceRenderer=r;window.surfaceSchema=e;window.sourceDoc=structuredClone(d);window.beforeDoc=JSON.stringify(d);const js=r.renderDoc(d,{}).firstChild;window.parity={text:js.textContent===document.querySelector('#page-doc>.doc').textContent,tags:[...js.querySelectorAll('*')].map(n=>[n.tagName,n.className,n.getAttribute('rowspan'),n.getAttribute('colspan')])};window.ssrTags=[...document.querySelectorAll('#page-doc>.doc *')].map(n=>[n.tagName,n.className,n.getAttribute('rowspan'),n.getAttribute('colspan')]);window.beforeDom=document.querySelector('#page-doc').innerHTML;}''',doc)
+ page.evaluate('''async(d)=>{const r=await import('/tbox/assets/community/doc-render.js?v='+ASSET_VERSION);const e=await import('/tbox/assets/community/editor-schema.js?v='+ASSET_VERSION);window.surfaceRenderer=r;window.surfaceSchema=e;window.sourceDoc=structuredClone(d);window.beforeDoc=JSON.stringify(d);const js=r.renderDoc(d,{}).firstChild;window.parity={text:js.textContent===document.querySelector('#page-doc>.doc').textContent,tags:[...js.querySelectorAll('*')].map(n=>[n.tagName,n.className,n.getAttribute('rowspan'),n.getAttribute('colspan')])};window.ssrTags=[...document.querySelectorAll('#page-doc>.doc *')].map(n=>[n.tagName,n.className,n.getAttribute('rowspan'),n.getAttribute('colspan')]);window.beforeDom=document.querySelector('#page-doc').innerHTML;}''',doc)
  check(page.evaluate('parity.text&&JSON.stringify(parity.tags)===JSON.stringify(ssrTags)'),'actual PHP/JS render parity of anonymized structure and marks')
- check(page.evaluate('''()=>{try{surfaceSchema.fromDoc(sourceDoc,{});return false;}catch(e){return e.message.includes('꾸밈')&&JSON.stringify(sourceDoc)===beforeDoc;}}'''),'rich tables remain protected and JSON unchanged')
+ check(page.evaluate('''()=>{const back=surfaceSchema.toDoc(surfaceSchema.fromDoc(sourceDoc,{}));return JSON.stringify(back.blocks.filter(b=>b.type==='table'))===JSON.stringify(sourceDoc.blocks.filter(b=>b.type==='table'))&&JSON.stringify(sourceDoc)===beforeDoc;}'''),'rich tables roundtrip losslessly and JSON unchanged')
  for design in ['moa','astra','aurora','bloom','nova','claude']:
   for theme in ['light','dark']:
    for width in [360,390,412,820,1280]:
@@ -47,7 +50,7 @@ with sync_playwright()as pw:
     if design in ['moa','aurora']and width in [390,1280]:page.locator('#page-doc').screenshot(path=str(OUT/(tag+'-read.png')))
  # Supported editor content remains on the existing schema and paper dimensions.
  supported={'schema':1,'blocks':[{'id':'00000000-0000-4000-8000-000000000100','type':'paragraph','text':[{'t':'합성 굵은 문장','m':{'bold':True}}]},{'id':'00000000-0000-4000-8000-000000000101','type':'callout','icon':'💡','color':'blue_bg','text':[{'t':'합성 편집 색상','m':{}}]}]}
- check(page.evaluate("async(d)=>{const {EditorState}=await import('/tbox/assets/community/vendor/pm/prosemirror-state.js');const {EditorView}=await import('/tbox/assets/community/vendor/pm/prosemirror-view.js');const node=surfaceSchema.schema.nodeFromJSON(surfaceSchema.fromDoc(d,{}));const back=surfaceSchema.toDoc(node.toJSON());const host=document.createElement('div');host.className='doc editor';document.querySelector('#probe').append(host);const view=new EditorView(host,{state:EditorState.create({schema:surfaceSchema.schema,doc:node})});const callout=host.querySelector('.doc-callout');const sw=document.createElement('span');sw.className='nt-blue-bg';host.append(sw);const color=getComputedStyle(callout).backgroundColor===getComputedStyle(sw).backgroundColor;view.dispatch(view.state.tr.insertText(' 추가',2));const changed=surfaceSchema.toDoc(view.state.doc.toJSON());const ok=back.blocks[0].text[0].m.bold===true&&back.blocks[1].color==='blue_bg'&&changed.blocks[1].color==='blue_bg'&&changed.blocks[0].text.some(t=>t.m.bold)&&color;view.destroy();host.remove();return ok;}",supported),'supported real ProseMirror bold/background roundtrip and partial transaction preserved')
+ check(page.evaluate("async(d)=>{const {EditorState}=await import('/tbox/assets/community/vendor/pm/prosemirror-state.js?v='+PM_VERSION);const {EditorView}=await import('/tbox/assets/community/vendor/pm/prosemirror-view.js?v='+PM_VERSION);const node=surfaceSchema.schema.nodeFromJSON(surfaceSchema.fromDoc(d,{}));const back=surfaceSchema.toDoc(node.toJSON());const host=document.createElement('div');host.className='doc editor';document.querySelector('#probe').append(host);const view=new EditorView(host,{state:EditorState.create({schema:surfaceSchema.schema,doc:node})});const callout=host.querySelector('.doc-callout');const sw=document.createElement('span');sw.className='nt-blue-bg';host.append(sw);const color=getComputedStyle(callout).backgroundColor===getComputedStyle(sw).backgroundColor;view.dispatch(view.state.tr.insertText(' 추가',2));const changed=surfaceSchema.toDoc(view.state.doc.toJSON());const ok=back.blocks[0].text[0].m.bold===true&&back.blocks[1].color==='blue_bg'&&changed.blocks[1].color==='blue_bg'&&changed.blocks[0].text.some(t=>t.m.bold)&&color;view.destroy();host.remove();return ok;}",supported),'supported real ProseMirror bold/background roundtrip and partial transaction preserved')
  for design in ['moa','astra','aurora','bloom','nova','claude']:
   for theme in ['light','dark']:
    page.evaluate('(v)=>{document.documentElement.dataset.design=v[0];document.documentElement.dataset.theme=v[1];document.documentElement.dataset.contrast="high"}',[design,theme]);page.wait_for_timeout(80)

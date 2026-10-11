@@ -1139,3 +1139,8 @@ page_shares 확장: share_user_id NULL 허용 + share_group_id NULL → share_gr
 | 모음 | 남의 모음 403 · 볼 수 없게 된 페이지가 모음 응답에 0 |
 | 권한 그룹 | 구성원 제거 즉시 403 · Manager 가 남의 팀원 추가 403 · 그룹 이름이 비구성원에게 0 |
 | 메신저·외부 동기화 | 허용 목록 밖 호스트 거부(Fetch.php 로그) · 나가는 본문에 페이지 본문 0 · 인증 키 원문이 화면·DB·감사에 0 · 끌어온 행 고치기 400 |
+
+
+### 2026-10-11 표 원본 보존 편집
+
+꾸민 표의 문서 편집 차단을 해소한다. 기존 저장 스키마/검증기는 유지하고, PM table atom 속성에 검증된 원본 block JSON 복사본을 보존한다. 셀 편집은 선택 셀 한 개의 기존 ProseMirror schema/parser를 재사용하고 수정된 rich text만 적용한다. 표의 행/셀 색·열폭·합침·마크·ID를 평문으로 다시 만들지 않는다. 기존 일반 표 attrs는 호환한다. 취소/무수정은 원본을 보존하며, 부모 문서에는 적용 때 한 transaction으로 반영해 undo/기존 저장 경합을 유지한다. 다른 atom의 손실 보호는 그대로다. docs/community-rich-table-directive.md.

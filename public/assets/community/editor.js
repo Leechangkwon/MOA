@@ -1,4 +1,5 @@
-import { hydrateDashboard } from './dashboard.js?v=2f3e656e2297';
+import { createTableEditor } from './table-editor.js?v=c481218d6d2c';
+import { hydrateDashboard } from './dashboard.js?v=c481218d6d2c';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -41,22 +42,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=2f3e656e2297';
-import { renderDoc, embedHost } from './doc-render.js?v=2f3e656e2297';
-import { createDatabaseView } from './database.js?v=2f3e656e2297';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=2f3e656e2297';
-import { bindEmbedAdmin } from './embeds.js?v=2f3e656e2297';
-import { bindPopular } from './popular.js?v=2f3e656e2297';
-import { bindPalettes } from './palettes.js?v=2f3e656e2297';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=2f3e656e2297';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=2f3e656e2297';
-import { drawTrust, bindProcedures } from './procedures.js?v=2f3e656e2297';
-import { createPageExport } from './export.js?v=2f3e656e2297';
-import { createDrafts } from './drafts.js?v=2f3e656e2297';
-import { drawPageAi, bindAiCenter } from './ai.js?v=2f3e656e2297';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=2f3e656e2297';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=c481218d6d2c';
+import { renderDoc, embedHost } from './doc-render.js?v=c481218d6d2c';
+import { createDatabaseView } from './database.js?v=c481218d6d2c';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=c481218d6d2c';
+import { bindEmbedAdmin } from './embeds.js?v=c481218d6d2c';
+import { bindPopular } from './popular.js?v=c481218d6d2c';
+import { bindPalettes } from './palettes.js?v=c481218d6d2c';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=c481218d6d2c';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=c481218d6d2c';
+import { drawTrust, bindProcedures } from './procedures.js?v=c481218d6d2c';
+import { createPageExport } from './export.js?v=c481218d6d2c';
+import { createDrafts } from './drafts.js?v=c481218d6d2c';
+import { drawPageAi, bindAiCenter } from './ai.js?v=c481218d6d2c';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=c481218d6d2c';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=2f3e656e2297';
+import { createWork } from './work.js?v=c481218d6d2c';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -3687,104 +3688,12 @@ function createAtomDialog(getView, hooks) {
   let type = null;
   let pos = null;
   let cur = {};
-  let rows = [['']];
-  let spans = {};          // 6-C 합친 칸 {'행,열': [세로, 가로]}
-  let picked = null;       // 6-C 고른 칸 [행, 열]
   let searchTimer = null;
   let searchSerial = 0;
-
-  /* ── 표 칸 격자 — 진짜 <table> 안의 입력 칸(열 수가 바뀌어도 인라인 style 없음) ── */
-  function readGrid() {
-    const out = [];
-    for (const tr of grid.querySelectorAll('tr')) {
-      out.push([...tr.querySelectorAll('input')].map((inp) => inp.value));
-    }
-    if (out.length > 0) { rows = out; }
-  }
-  /** 6-C — 합친 칸이 덮는 자리('행,열') */
-  function coveredSet() {
-    const out = new Set();
-    for (const key of Object.keys(spans)) {
-      const [r0, c0] = key.split(',').map(Number);
-      const [rs, cs] = spans[key];
-      for (let y = r0; y < r0 + rs; y++) { for (let x = c0; x < c0 + cs; x++) { if (y !== r0 || x !== c0) { out.add(y + ',' + x); } } }
-    }
-    return out;
-  }
-  function drawGrid() {
-    clear(grid);
-    // 표 모양이 바뀌어 표 밖으로 나가는 합침은 버린다
-    for (const key of Object.keys(spans)) {
-      const [r0, c0] = key.split(',').map(Number);
-      if (r0 + spans[key][0] > rows.length || c0 + spans[key][1] > (rows[0] || []).length) { delete spans[key]; }
-    }
-    const covered = coveredSet();
-    for (let r = 0; r < rows.length; r++) {
-      const tr = document.createElement('tr');
-      for (let c = 0; c < rows[r].length; c++) {
-        const td = document.createElement('td');
-        td.className = 'doc-table__cell' + (picked && picked[0] === r && picked[1] === c ? ' is-picked' : '');
-        const inp = document.createElement('input');
-        inp.type = 'text';
-        inp.className = 'input';
-        inp.maxLength = 2000;
-        inp.autocomplete = 'off';
-        inp.spellcheck = false;
-        inp.setAttribute('data-r', String(r));
-        inp.setAttribute('data-c', String(c));
-        const sp = spans[r + ',' + c];
-        if (covered.has(r + ',' + c)) {
-          // 덮인 칸 — 비우고 막는다(합친 칸의 일부)
-          inp.value = '';
-          rows[r][c] = '';
-          inp.disabled = true;
-          inp.placeholder = '(합침)';
-        } else {
-          inp.value = rows[r][c];
-        }
-        inp.setAttribute('aria-label', String(r + 1) + '행 ' + String(c + 1) + '열' + (sp ? ' — 합친 칸 ' + sp[0] + '×' + sp[1] : ''));
-        inp.addEventListener('focus', () => { picked = [r, c]; for (const x of grid.querySelectorAll('.is-picked')) { x.classList.remove('is-picked'); } td.classList.add('is-picked'); });
-        td.appendChild(inp);
-        tr.appendChild(td);
-      }
-      grid.appendChild(tr);
-    }
-  }
-  function reshape(fn) { readGrid(); fn(); drawGrid(); }
-  /* 6-C 칸 합치기 — 고른 칸부터 가로·세로 몇 칸. 덮일 칸에 글자가 있거나 다른 합침과 겹치면 합치지 않는다 */
-  $('atom-merge').addEventListener('click', () => {
-    readGrid();
-    if (!picked) { setText(msgEl, '합칠 첫 칸을 먼저 누르세요.'); return; }
-    const [r0, c0] = picked;
-    const cs = Math.max(1, Math.min(20, parseInt($('atom-merge-cols').value, 10) || 1));
-    const rs = Math.max(1, Math.min(20, parseInt($('atom-merge-rows').value, 10) || 1));
-    if (r0 + rs > rows.length || c0 + cs > rows[0].length) { setText(msgEl, '표 밖으로 나갑니다.'); return; }
-    // 이미 합친 칸의 크기를 바꿀 때는 자기 합침을 빼고 센다(독립 검토 6-C L5)
-    const own = spans[r0 + ',' + c0];
-    delete spans[r0 + ',' + c0];
-    const covered = coveredSet();
-    if (own) { spans[r0 + ',' + c0] = own; }
-    for (let y = r0; y < r0 + rs; y++) {
-      for (let x = c0; x < c0 + cs; x++) {
-        if (y === r0 && x === c0) { continue; }
-        if (covered.has(y + ',' + x) || spans[y + ',' + x] || String(rows[y][x]).trim() !== '') {
-          setText(msgEl, '합칠 칸이 비어 있어야 합니다(다른 합침과도 겹치면 안 됩니다).');
-          return;
-        }
-      }
-    }
-    if (covered.has(r0 + ',' + c0)) { setText(msgEl, '이미 합쳐진 칸 안입니다.'); return; }
-    setText(msgEl, '');
-    if (rs === 1 && cs === 1) { delete spans[r0 + ',' + c0]; } else { spans[r0 + ',' + c0] = [rs, cs]; }
-    drawGrid();
-  });
-  $('atom-unmerge').addEventListener('click', () => {
-    if (!picked) { setText(msgEl, '풀 칸을 먼저 누르세요.'); return; }
-    readGrid();
-    delete spans[picked[0] + ',' + picked[1]];
-    setText(msgEl, '');
-    drawGrid();
-  });
+  const tableEditor = createTableEditor({pane:panes.table,grid,note:text=>setText(msgEl,text),context:()=>hooks.context ? hooks.context() : {}});
+  $('atom-merge').addEventListener('click',()=>tableEditor.merge(Math.max(1,Math.min(20,parseInt($('atom-merge-rows').value,10)||1)),Math.max(1,Math.min(20,parseInt($('atom-merge-cols').value,10)||1))));
+  $('atom-unmerge').addEventListener('click',()=>tableEditor.unmerge());
+  dialog.addEventListener('close',()=>tableEditor.close());
 
   /* 6-C 단 나누기 — 단 수에 따라 셋째 칸을 보이고 감춘다 */
   const colsN = $('atom-columns-n');
@@ -3794,16 +3703,9 @@ function createAtomDialog(getView, hooks) {
     setText(msgEl, colsN.value === '2' && $('atom-col-2').value.trim() !== '' ? '2단으로 줄이면 셋째 단의 글은 저장되지 않습니다.' : '');
   };
   colsN.addEventListener('change', syncCols);
-  $('atom-row-add').addEventListener('click', () => reshape(() => {
-    if (rows.length < TABLE_MAX_ROWS) { rows.push(rows[0].map(() => '')); }
-  }));
-  $('atom-row-del').addEventListener('click', () => reshape(() => { if (rows.length > 1) { rows.pop(); } }));
-  $('atom-col-add').addEventListener('click', () => reshape(() => {
-    if (rows[0].length < TABLE_MAX_COLS) { for (const r of rows) { r.push(''); } }
-  }));
-  $('atom-col-del').addEventListener('click', () => reshape(() => {
-    if (rows[0].length > 1) { for (const r of rows) { r.pop(); } }
-  }));
+  for (const [id,kind] of [['atom-row-add','row_add'],['atom-row-del','row_del'],['atom-col-add','col_add'],['atom-col-del','col_del']]) {
+    $(id).addEventListener('click',()=>tableEditor.changeShape(kind));
+  }
 
   /* ── 페이지 찾기 (커뮤니티 검색 — 볼 수 있는 페이지만) ── */
   function drawChosen() {
@@ -3928,12 +3830,9 @@ function createAtomDialog(getView, hooks) {
       toggleSummary.value = cur.summary || '';
       toggleBody.value = (Array.isArray(cur.kids) ? cur.kids : []).map((k) => (k && k.text) || '').join('\n');
     } else if (type === 'table') {
-      rows = Array.isArray(cur.rows) && cur.rows.length > 0 ? cur.rows.map((r) => r.slice()) : [['', ''], ['', '']];
       hRow.checked = attrs ? cur.header_row === true : true;
       hCol.checked = cur.header_col === true;
-      spans = cur.spans && typeof cur.spans === 'object' ? JSON.parse(JSON.stringify(cur.spans)) : {};
-      picked = null;
-      drawGrid();
+      tableEditor.open({...cur,id:cur.id || uuid4(),header_row:hRow.checked,header_col:hCol.checked});
     } else if (type === 'columns') {
       const cols = Array.isArray(cur.cols) && cur.cols.length >= 2 ? cur.cols : [{ kids: [] }, { kids: [] }];
       colsN.value = cols.length === 3 ? '3' : '2';
@@ -3980,8 +3879,7 @@ function createAtomDialog(getView, hooks) {
       return { id: id, summary: toggleSummary.value, kids: lines.map((t, i) => ({ id: old[i] && old[i].id ? old[i].id : null, text: t })) };
     }
     if (type === 'table') {
-      readGrid();
-      return { id: id, header_row: hRow.checked, header_col: hCol.checked, rows: rows.map((r) => r.slice()), spans: JSON.parse(JSON.stringify(spans)) };
+      return tableEditor.collect(hRow.checked,hCol.checked);
     }
     if (type === 'columns') {
       const n = colsN.value === '3' ? 3 : 2;
@@ -4026,6 +3924,7 @@ function createAtomDialog(getView, hooks) {
   function commit() {
     const view = getView();
     if (!view || !type) { dialog.close(); return; }
+    if (tableEditor.composing()) { return; }
     const attrs = collect();
     if (!attrs) { return; }
     const node = schema.nodes[type].create(attrs);
@@ -4053,7 +3952,7 @@ function createAtomDialog(getView, hooks) {
   dialog.addEventListener('keydown', (event) => {
     const t = event.target;
     // 칸 수 입력(number)에서 Enter 는 창을 확정하지 않는다(독립 검토 6-C L4)
-    if (event.key !== 'Enter' || !t || t.tagName !== 'INPUT' || t.type === 'search' || t.type === 'checkbox' || t.type === 'number') { return; }
+    if (event.isComposing || event.keyCode === 229 || event.key !== 'Enter' || !t || t.tagName !== 'INPUT' || t.type === 'search' || t.type === 'checkbox' || t.type === 'number') { return; }
     event.preventDefault();
     commit();
   });
@@ -6625,6 +6524,7 @@ function initPage() {
      지도는 다음 `load()` 에서 서버 것으로 바뀐다(서버가 **보는 사람 권한으로** 다시 거른다). */
   const atomDialog = createAtomDialog(() => view, {
     selfId: () => pageId,
+    context: () => ({mention_labels:state.mentionLabels}),
     rememberLink: (id, entry) => { state.linkTitles[id] = entry; },
     rememberFile: (id, entry) => { state.fileTitles[id] = entry; }
   });

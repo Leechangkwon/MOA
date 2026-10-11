@@ -1069,3 +1069,12 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ④ 다음 조치: 암호화3종 전체복호화·원본975 SHA·설정85·14기존표/6제품표 baseline 완료. 후보 고정/모의/드리프트 뒤 운영 읽기와 원래 행·파일·ownerACL 보존 확인. docs/work-items/community-editor-surface.md.
 
 운영 최종: v2.57.1 `3b9611168e38` / 2026-10-11T21:46:40+09:00. 고정 후보 `3ea11741296a`의 13파일 모의 적용·서버/원격 드리프트 통과, 코드 FF/patch 릴리스와 PHP-FPM reload 완료. 실제 지목한 글 HTTPS62/0·CSS2 정확 바이트·JS/5xx0·브라우저 쓰기0. PC/모바일 Aurora/Moa 및 Claude에서 본문 바탕과 지정 강조색·표 스크롤 정상, 원문 제목/본문/서식/버전1 동일. 기존14표·제품6표 모든 원래행(기존 QA 취향 포함, 제외0)·1042파일행·975원본 SHA·ownerACL·85설정 보존. 암호화3종 checksum/전체복호화 완료, worker cursor1은 운영 상태로 제외. DBmigration/설정/패키지 변경0. 실물휴대폰·Safari·스크린리더 미검증.
+
+
+### 2026-10-11 서식 표 편집·표 밀도 — 독립 검토
+① 안전한 이유: 기존 서버 Doc 검증·인가·CSRF·revision을 유지하고 table atom 원본 JSON을 보존한다. 선택 셀 하나의 PM만 생성하며 변경한 text만 적용한다. 독립 최종 셀35/0·실제 PHP 화면/Doc 검증 통합25/0, CSS밀도391/0·격리 공통196/0. 무수정4표정확왕복·부분셀변경·취소·부모undo/redo·rawID·붙여넣기멘션/잘못된링크·행열삭제/합침·200×20/뷰정리·syntheticIME·mock403409/readonly 확인. 보안 lint금지0·자산40파일/71import·PHP문법·위키69편 통과. root와 독립 검토의 최종 runtime11 SHA 일치(의미5파일, import버전만6파일).
+② 불안전한 이유: 초기 clipboardParser 혼용·span삭제 판정·복제 rawID·합침상한21 문제를 고치고 검증했다. 셀미리보기 링크href 제거로 편집 중 이동을 차단했다. 다른 종류의 미지원 꾸밈 atom은 기존 보호를 유지하며 이번 표 기능으로 모두 편집 가능하다고 주장하지 않는다. 최종 열린 재현차단0.
+③ 미검증: 실물 한글IME·실물 휴대폰·Safari/WebKit·스크린리더·사용자 자기 공격. 독립 통합API는 intercept+실제 PHP검증기이며 실제 endpoint인가/lock 시험과 구분한다. 운영 실제 편집/저장은 root의 새 예약QA합성문서로 후속 확인한다.
+④ 다음: 암호화3종 checksum/전체복호화·원본975 SHA·파일1042행·설정85·기존14표/제품6표 baseline 완료. 고정 후보 모의/드리프트→운영→HTTPS/모든원래행·파일·ownerACL 보존→기록/push. 운영 원문 쓰기0. docs/work-items/community-rich-table.md.
+
+최종 자체 검증 추가: 편집 UI45/45·읽기317/317, production import URL과 동일한 모듈로 실행. 합성 API/실제 PHP Doc 검증이며 운영 저장은 반영 후 별도로 검증한다. browser_5e.py는 compile만, 격리 공통196/0과 구분.

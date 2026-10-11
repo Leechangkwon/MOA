@@ -311,7 +311,7 @@ export const schema = new Schema({
     table: {
       group: 'block', atom: true, selectable: true,
       // 6-C — spans: 합친 칸 {'행,열': [세로, 가로]} (시작 칸만). 덮이는 칸은 비어 있다.
-      attrs: { id: { default: null }, header_row: { default: true }, header_col: { default: false }, rows: { default: [['', ''], ['', '']] }, spans: { default: {} } },
+      attrs: { id: { default: null }, header_row: { default: true }, header_col: { default: false }, rows: { default: [['', ''], ['', '']] }, spans: { default: {} }, raw: { default: null } },
       toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'table' },
         ['span', { class: 'card__title' }, '표 ' + String((node.attrs.rows || []).length) + '×' + String(((node.attrs.rows || [])[0] || []).length)],
         ['span', { class: 'card__meta' }, (((node.attrs.rows || [])[0] || []).join(' · ') || '빈 표') + ' · 두 번 눌러 고치기']]
@@ -647,8 +647,8 @@ export function fromDoc(doc, ctx) {
       content.push({ type: 'columns', attrs: { id: attrs.id, cols: cols } });
       continue;
     }
-    if (['toggle', 'table', 'image', 'file', 'link_to_page', 'embed'].indexOf(b.type) !== -1 && !atomIsPlain(b)) {
-      throw new Error('꾸밈(색·링크·열 폭 등)이 든 토글·표·설명은 아직 편집기에서 고칠 수 없습니다');
+    if (['toggle', 'image', 'file', 'link_to_page', 'embed'].indexOf(b.type) !== -1 && !atomIsPlain(b)) {
+      throw new Error('꾸밈(색·링크 등)이 든 토글·설명은 아직 편집기에서 고칠 수 없습니다');
     }
     if (b.type === 'toggle') {
       const kids = [];
@@ -673,7 +673,7 @@ export function fromDoc(doc, ctx) {
         });
         rows.push(cells.map((c) => plainOf(c && c.text)));
       });
-      content.push({ type: 'table', attrs: { id: attrs.id, header_row: b.header_row === true, header_col: b.header_col === true, rows: rows, spans: spans } });
+      content.push({ type: 'table', attrs: { id: attrs.id, header_row: b.header_row === true, header_col: b.header_col === true, rows: rows, spans: spans, raw: JSON.parse(JSON.stringify(b)) } });
       continue;
     }
     if (b.type === 'link_to_page') {
@@ -837,6 +837,12 @@ export function toDoc(pmDoc) {
       continue;
     }
     if (ourType === 'table') {
+      if (a.raw && a.raw.type === 'table' && Array.isArray(a.raw.rows)) {
+        const preserved = JSON.parse(JSON.stringify(a.raw));
+        preserved.id = block.id;
+        blocks.push(preserved);
+        continue;
+      }
       const rows = Array.isArray(a.rows) && a.rows.length > 0 ? a.rows : [['']];
       const width = Math.max(1, ...rows.map((r) => (Array.isArray(r) ? r.length : 0)));
       block.header_row = a.header_row === true;

@@ -13,7 +13,7 @@
     {
       "slug": "guide-blocks",
       "title": "블록 문서 모델 — 본문은 HTML 이 아니라 JSON",
-      "summary": "본문과 서식은 블록 JSON으로 저장합니다. 문서 바탕과 표·강조 상자의 지정 배경색은 현재 테마에 맞춰 표시하며, 서버가 문서 형식을 검증합니다."
+      "summary": "표의 색·링크·굵기·열 폭을 보존하는 셀 편집과 블록 JSON 문서 형식."
     },
     {
       "slug": "guide-memories",

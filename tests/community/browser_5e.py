@@ -111,12 +111,14 @@ with sync_playwright() as pw:
     add_block(page, "표")
     page.click("#atom-row-add")
     page.click("#atom-col-add")
-    cells = page.locator("#atom-table-grid input")
+    cells = page.locator("#atom-table-grid button.table-cell-preview")
     step("1 표 창 — 행·열 더하기 → 3×3 칸", cells.count() == 9, str(cells.count()))
     for i, t in enumerate(["이름", "역할", "메모", "하나", "둘", "셋"]):
-        cells.nth(i).fill(t)
+        cells.nth(i).click()
+        page.locator('.table-cell-input .ProseMirror').fill(t)
     page.click("#atom-col-del")
-    step("1 표 창 — 마지막 열 빼기 → 3×2, 글자는 그대로", cells.count() == 6 and cells.nth(0).input_value() == "이름")
+    page.locator(".table-delete-confirm button", has_text="삭제하기").click()
+    step("1 표 창 — 마지막 열 빼기 → 3×2, 글자는 그대로", cells.count() == 6 and cells.nth(0).inner_text() == "이름")
     shots(page, "e1-table-dialog")
     page.click("#atom-commit")
     page.wait_for_selector('#page-editor [data-atom="table"]', timeout=5000)
@@ -148,8 +150,9 @@ with sync_playwright() as pw:
     page.wait_for_selector("#atom-dialog[open]", timeout=5000)
     step("1 표 카드 두 번 누르기 → 「표 고치기」 · 칸 글자 그대로",
          page.locator("#atom-dialog-title").inner_text().strip() == "표 고치기"
-         and page.locator("#atom-table-grid input").nth(2).input_value() == "하나")
-    page.locator("#atom-table-grid input").nth(2).fill("하나(고침)")
+         and page.locator("#atom-table-grid button.table-cell-preview").nth(2).inner_text() == "하나")
+    page.locator('#atom-table-grid button.table-cell-preview').nth(2).click()
+    page.locator('.table-cell-input .ProseMirror').fill('하나(고침)')
     page.click("#atom-commit")
     shots(page, "e3-editor")
 
@@ -173,9 +176,14 @@ with sync_playwright() as pw:
     if PCOL:
         page.goto(COMMUNITY + "/p/" + PCOL, wait_until="networkidle")
         page.click("#page-edit")
-        page.wait_for_function("() => (document.getElementById('msg') || {}).textContent.includes('꾸밈')", timeout=8000)
-        step("1 꾸민 표가 든 페이지 — 편집기를 열지 않고 알린다(꾸밈을 말없이 지우지 않는다 · M2)",
-             page.locator("#page-editor .ProseMirror").count() == 0)
+        page.wait_for_selector('#page-editor .ProseMirror', timeout=8000)
+        step("1 꾸민 표가 든 페이지 — 서식을 보존하며 편집기를 연다",
+             page.locator('#page-editor [data-atom="table"]').count() > 0)
+        page.locator('#page-editor [data-atom="table"]').first.dblclick()
+        page.wait_for_selector('#atom-dialog[open]')
+        step("1 꾸민 표 — 셀을 실제 rich 입력으로 고친다",
+             page.locator('.table-cell-input .ProseMirror').count() == 1)
+        page.locator('[data-atom-close]').first.click()
 
     print("── 2. 렌더러 JS 쪽 동등성 (C:T-114) — 새 블록 표본")
     samples = json.load(open(os.environ["SMOKE_SAMPLES"], encoding="utf-8"))

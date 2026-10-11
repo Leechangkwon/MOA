@@ -796,7 +796,7 @@ require __DIR__ . '/../../views/shell_top.php';
             <button id="atom-merge" class="btn btn--quiet btn--small" type="button">고른 칸부터 합치기</button>
             <button id="atom-unmerge" class="btn btn--quiet btn--small" type="button">고른 칸 풀기</button>
           </div>
-          <p class="help">합칠 칸이 비어 있어야 합칩니다. 칸 글자에는 꾸밈이 붙지 않습니다.</p>
+          <p class="help">합칠 칸이 비어 있어야 합칩니다. 칸을 선택하면 아래에서 글자와 서식을 고칠 수 있습니다.</p>
         </div>
 
         <!-- 6-C 단 나누기 — 단 수(2·3)와 단마다의 문단(한 줄이 한 문단) -->
