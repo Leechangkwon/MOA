@@ -1,0 +1,3168 @@
+{
+  "TBOX_ROUTES": [
+    {
+      "method": "GET",
+      "path": "/spaces",
+      "handler": "product_spaces_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 39,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/home-dashboard",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 41,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/me/home-dashboard",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 42,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/product-home",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 43,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 44,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/product-spaces",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 45,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/product-spaces/join",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 46,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 47,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/product-spaces/{id}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 48,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}/home",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 49,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}/dashboard",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 50,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/product-spaces/{id}/dashboard",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 51,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}/members",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 52,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/product-spaces/{id}/members/{num}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 53,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/product-spaces/{id}/members/{num}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 54,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}/invites",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 55,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/product-spaces/{id}/invites",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 56,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/product-spaces/{id}/invites/{id}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 57,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/product-spaces/{id}/transfer",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 58,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}/items",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 59,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/product-spaces/{id}/items",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 60,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}/items/{id}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 61,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/product-spaces/{id}/items/{id}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 62,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/product-spaces/{id}/items/{id}",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 63,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/product-spaces/{id}/items/{id}/download",
+      "handler": "product_spaces.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 64,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/join",
+      "handler": "member_join_page.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 66,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/register",
+      "handler": "member_register.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 67,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/welcome",
+      "handler": "member_welcome_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 68,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/invites",
+      "handler": "member_invites.php",
+      "policy": "'user.manage'",
+      "line": 69,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/invites",
+      "handler": "member_invites.php",
+      "policy": "'user.manage'",
+      "line": 70,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/invites/{num}",
+      "handler": "member_invites.php",
+      "policy": "'user.manage'",
+      "line": 71,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/member-installer",
+      "handler": "member_installer.php",
+      "policy": "'user.manage'",
+      "line": 72,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/messages",
+      "handler": "member_messages_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 73,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages/ai",
+      "handler": "member_ai.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 74,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messages/ai",
+      "handler": "member_ai.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 75,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages/assist",
+      "handler": "member_assist.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 76,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messages/assist",
+      "handler": "member_assist.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 77,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages/attachments/{id}",
+      "handler": "member_assist_image.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 78,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/member-ai-settings",
+      "handler": "member_ai_settings.php",
+      "policy": "'user.manage'",
+      "line": 79,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/member-ai-settings",
+      "handler": "member_ai_settings.php",
+      "policy": "'user.manage'",
+      "line": 80,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages",
+      "handler": "member_messages.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 81,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messages/{num}",
+      "handler": "member_messages.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 82,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messages/{num}",
+      "handler": "member_messages.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 83,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/messages/{num}",
+      "handler": "member_messages.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 84,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/chat",
+      "handler": "assistant_chat.php",
+      "policy": "'assistant.run'",
+      "line": 85,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/chat",
+      "handler": "assistant_chat.php",
+      "policy": "'assistant.run'",
+      "line": 86,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/runs",
+      "handler": "assistant_runs.php",
+      "policy": "'assistant.run'",
+      "line": 87,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/runs",
+      "handler": "assistant_runs.php",
+      "policy": "'assistant.run'",
+      "line": 88,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/runs/{id}",
+      "handler": "assistant_runs.php",
+      "policy": "'assistant.run'",
+      "line": 89,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/runs/{id}/events",
+      "handler": "assistant_runs.php",
+      "policy": "'assistant.run'",
+      "line": 90,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/runs/{id}/cancel",
+      "handler": "assistant_runs.php",
+      "policy": "'assistant.run'",
+      "line": 91,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/runs/{id}/confirm",
+      "handler": "assistant_runs.php",
+      "policy": "'assistant.run'",
+      "line": 92,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "handler": "home.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 93,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/login",
+      "handler": "login_page.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 94,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "handler": "login.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 95,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logout",
+      "handler": "logout.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 96,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "handler": "me.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 97,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/health",
+      "handler": "health.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 98,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/time",
+      "handler": "time.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 100,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/privacy",
+      "handler": "legal_page.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 110,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/terms",
+      "handler": "legal_page.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 111,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/consent",
+      "handler": "consent_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 112,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/consents",
+      "handler": "me_consents.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 113,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/consents",
+      "handler": "me_consents.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 114,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/delete-request",
+      "handler": "me_delete_request.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 123,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/delete-request",
+      "handler": "me_delete_request.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 124,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/deletion-requests",
+      "handler": "admin_deletion_requests.php",
+      "policy": "'role:Admin'",
+      "line": 125,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/deletion-requests/{num}",
+      "handler": "admin_deletion_requests.php",
+      "policy": "'role:Admin'",
+      "line": 126,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files",
+      "handler": "files_list.php",
+      "policy": "'file.read'",
+      "line": 136,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files",
+      "handler": "files_upload.php",
+      "policy": "'file.upload'",
+      "line": 137,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/upload",
+      "handler": "api_upload.php",
+      "policy": "'file.upload'",
+      "line": 145,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/whoami",
+      "handler": "api_whoami.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 150,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files/fetch",
+      "handler": "files_fetch.php",
+      "policy": "'file.fetch'",
+      "line": 155,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/{id}/download",
+      "handler": "files_download.php",
+      "policy": "'file.read'",
+      "line": 156,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files/{id}/exec-download",
+      "handler": "files_exec_download.php",
+      "policy": "'file.read'",
+      "line": 162,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/{id}/preview",
+      "handler": "files_preview.php",
+      "policy": "'file.read'",
+      "line": 167,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/{id}/preview/raw",
+      "handler": "files_preview_raw.php",
+      "policy": "'file.read'",
+      "line": 168,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/files/{id}",
+      "handler": "files_update.php",
+      "policy": "'file.update'",
+      "line": 172,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/files/{id}",
+      "handler": "files_delete.php",
+      "policy": "'file.delete'",
+      "line": 173,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/teams",
+      "handler": "teams.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 174,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/audit",
+      "handler": "audit_list.php",
+      "policy": "'audit.read'",
+      "line": 181,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/audit",
+      "handler": "audit_page.php",
+      "policy": "'audit.read'",
+      "line": 182,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/users",
+      "handler": "users_list.php",
+      "policy": "'user.manage'",
+      "line": 193,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/users",
+      "handler": "users_create.php",
+      "policy": "'user.manage'",
+      "line": 194,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/users/{num}",
+      "handler": "users_update.php",
+      "policy": "'user.manage'",
+      "line": 195,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/users",
+      "handler": "users_page.php",
+      "policy": "'user.manage'",
+      "line": 196,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/users/{num}/password/reset",
+      "handler": "users_password_reset.php",
+      "policy": "'user.manage'",
+      "line": 201,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/users/{num}/mfa/reset",
+      "handler": "users_mfa_reset.php",
+      "policy": "'user.manage'",
+      "line": 202,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/users/{num}/api-tokens",
+      "handler": "api_tokens_list.php",
+      "policy": "'user.manage'",
+      "line": 216,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/users/{num}/api-tokens/{num}",
+      "handler": "api_tokens_revoke.php",
+      "policy": "'user.manage'",
+      "line": 217,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/password",
+      "handler": "password_change.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 221,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/mfa/enroll",
+      "handler": "mfa_enroll.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 222,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/mfa/confirm",
+      "handler": "mfa_confirm.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 223,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/mfa/disable",
+      "handler": "mfa_disable.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 224,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/me/settings",
+      "handler": "me_settings.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 229,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/api-tokens",
+      "handler": "me_tokens_list.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 240,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/api-tokens",
+      "handler": "me_tokens_issue.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 241,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/me/api-tokens/{num}",
+      "handler": "me_tokens_revoke.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 242,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/session-link",
+      "handler": "me_session_link.php",
+      "policy": "'session.open'",
+      "line": 253,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/session/open",
+      "handler": "session_open_page.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 254,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/trash",
+      "handler": "files_trash.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 267,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files/{id}/restore",
+      "handler": "files_restore.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 268,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/favorites",
+      "handler": "favorites_files.php",
+      "policy": "'file.read'",
+      "line": 277,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/files/{id}/favorite",
+      "handler": "favorites_files.php",
+      "policy": "'file.read'",
+      "line": 278,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/files/{id}/favorite",
+      "handler": "favorites_files.php",
+      "policy": "'file.read'",
+      "line": 279,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/recent",
+      "handler": "files_recent.php",
+      "policy": "'file.read'",
+      "line": 280,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/folders/favorites",
+      "handler": "favorites_folders.php",
+      "policy": "'file.read'",
+      "line": 281,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/folders/{num}/favorite",
+      "handler": "favorites_folders.php",
+      "policy": "'file.read'",
+      "line": 282,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/folders/{num}/favorite",
+      "handler": "favorites_folders.php",
+      "policy": "'file.read'",
+      "line": 283,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files/zip",
+      "handler": "files_zip.php",
+      "policy": "'file.read'",
+      "line": 287,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/trash",
+      "handler": "trash_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 296,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/settings",
+      "handler": "settings_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 297,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/programs",
+      "handler": "programs_page.php",
+      "policy": "'file.read'",
+      "line": 298,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/programs",
+      "handler": "programs.php",
+      "policy": "'file.read'",
+      "line": 299,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/programs",
+      "handler": "programs.php",
+      "policy": "'file.upload'",
+      "line": 300,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/programs/{id}/download",
+      "handler": "programs.php",
+      "policy": "'file.read'",
+      "line": 301,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/org",
+      "handler": "org_page.php",
+      "policy": "'org.manage'",
+      "line": 313,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/org/teams",
+      "handler": "org_teams.php",
+      "policy": "'org.manage'",
+      "line": 314,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/org/teams",
+      "handler": "org_team_create.php",
+      "policy": "'org.manage'",
+      "line": 315,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/org/teams/{num}",
+      "handler": "org_team_update.php",
+      "policy": "'org.manage'",
+      "line": 316,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/org/teams/{num}/members",
+      "handler": "org_team_members.php",
+      "policy": "'org.manage'",
+      "line": 317,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/org/permissions",
+      "handler": "org_permissions.php",
+      "policy": "'org.manage'",
+      "line": 318,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/wiki",
+      "handler": "wiki_books.php",
+      "policy": "'role:Admin'",
+      "line": 336,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/wiki/{book}",
+      "handler": "wiki_index.php",
+      "policy": "'role:Admin'",
+      "line": 337,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/wiki/{book}/{slug}",
+      "handler": "wiki_page.php",
+      "policy": "'role:Admin'",
+      "line": 338,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/wiki/{slug}",
+      "handler": "wiki_legacy.php",
+      "policy": "'role:Admin'",
+      "line": 339,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/activity",
+      "handler": "activity_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 345,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/activity",
+      "handler": "activity_list.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 346,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files/{id}/share",
+      "handler": "share_create.php",
+      "policy": "'file.update'",
+      "line": 357,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/shares",
+      "handler": "shares_list.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 358,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/shares/{num}",
+      "handler": "share_revoke.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 359,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/s/{token}",
+      "handler": "share_download.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 360,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/reauth",
+      "handler": "reauth.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 371,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/reauth",
+      "handler": "reauth_page.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 372,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/login/passkey/options",
+      "handler": "passkey_login_options.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 380,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/login/passkey",
+      "handler": "passkey_login.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 381,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/passkeys",
+      "handler": "me_passkeys_list.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 382,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/passkeys/options",
+      "handler": "me_passkeys_options.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 383,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/passkeys",
+      "handler": "me_passkeys_register.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 384,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/me/passkeys/{num}",
+      "handler": "me_passkeys_revoke.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 385,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/reauth/passkey/options",
+      "handler": "reauth_passkey_options.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 386,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/reauth/passkey",
+      "handler": "reauth_passkey.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 387,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/app.webmanifest",
+      "handler": "site_manifest.php",
+      "policy": "Authz::POLICY_PUBLIC",
+      "line": 390,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/me/act",
+      "handler": "me_act_start.php",
+      "policy": "'role:Admin'",
+      "line": 406,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/me/act",
+      "handler": "me_act_stop.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 407,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/admin",
+      "handler": "admin_page.php",
+      "policy": "'role:Admin'",
+      "line": 421,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/permissions",
+      "handler": "admin_permissions_page.php",
+      "policy": "'role:Admin'",
+      "line": 422,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/permissions",
+      "handler": "admin_permissions_get.php",
+      "policy": "'role:Admin'",
+      "line": 423,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/permissions",
+      "handler": "admin_permissions_update.php",
+      "policy": "'role:Admin'",
+      "line": 424,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/shares",
+      "handler": "admin_shares.php",
+      "policy": "'role:Admin'",
+      "line": 425,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/alerts",
+      "handler": "admin_alerts.php",
+      "policy": "'role:Admin'",
+      "line": 426,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/alerts-app",
+      "handler": "push_app_page.php",
+      "policy": "'role:Admin'",
+      "line": 442,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/alerts-sw.js",
+      "handler": "push_sw.php",
+      "policy": "'role:Admin'",
+      "line": 443,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/alerts-app.webmanifest",
+      "handler": "push_manifest.php",
+      "policy": "'role:Admin'",
+      "line": 444,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/push/key",
+      "handler": "push_key.php",
+      "policy": "'role:Admin'",
+      "line": 445,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/push/subscriptions",
+      "handler": "push_subscriptions.php",
+      "policy": "'role:Admin'",
+      "line": 446,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/push/subscriptions",
+      "handler": "push_subscriptions.php",
+      "policy": "'role:Admin'",
+      "line": 447,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/admin/push/subscriptions/{num}",
+      "handler": "push_subscription_delete.php",
+      "policy": "'role:Admin'",
+      "line": 448,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/push/test",
+      "handler": "push_test.php",
+      "policy": "'role:Admin'",
+      "line": 449,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/admin/fetch-hosts",
+      "handler": "admin_fetch_hosts_page.php",
+      "policy": "'role:Admin'",
+      "line": 465,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/fetch-hosts",
+      "handler": "fetch_hosts_list.php",
+      "policy": "'role:Admin'",
+      "line": 466,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/fetch-hosts",
+      "handler": "fetch_hosts_update.php",
+      "policy": "'role:Admin'",
+      "line": 467,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/folders",
+      "handler": "folders_list.php",
+      "policy": "'file.read'",
+      "line": 481,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/folders",
+      "handler": "folders_create.php",
+      "policy": "'file.upload'",
+      "line": 482,
+      "file": "public/index.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/folders/{num}",
+      "handler": "folders_update.php",
+      "policy": "'file.update'",
+      "line": 483,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/folders/{num}",
+      "handler": "folders_delete.php",
+      "policy": "'file.delete'",
+      "line": 484,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/folders/{num}/grants",
+      "handler": "access_grants.php",
+      "policy": "'file.read'",
+      "line": 494,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/folders/{num}/grants",
+      "handler": "access_grants.php",
+      "policy": "'file.update'",
+      "line": 495,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/folders/{num}/grants/{num}",
+      "handler": "access_grants.php",
+      "policy": "'file.update'",
+      "line": 496,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/files/{id}/grants",
+      "handler": "access_grants.php",
+      "policy": "'file.read'",
+      "line": 497,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/files/{id}/grants",
+      "handler": "access_grants.php",
+      "policy": "'file.update'",
+      "line": 498,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/files/{id}/grants/{num}",
+      "handler": "access_grants.php",
+      "policy": "'file.update'",
+      "line": 499,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/access/people",
+      "handler": "access_people.php",
+      "policy": "'file.update'",
+      "line": 500,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/grants/mine",
+      "handler": "access_mine.php",
+      "policy": "'file.read'",
+      "line": 501,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/access-requests",
+      "handler": "access_requests.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 502,
+      "file": "public/index.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/access-requests",
+      "handler": "access_requests.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 503,
+      "file": "public/index.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/access-requests/{num}",
+      "handler": "access_requests.php",
+      "policy": "'file.update'",
+      "line": 504,
+      "file": "public/index.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/access-requests/{num}",
+      "handler": "access_requests.php",
+      "policy": "Authz::POLICY_AUTHENTICATED",
+      "line": 505,
+      "file": "public/index.php"
+    }
+  ],
+  "COMMUNITY_ROUTES": [
+    {
+      "method": "GET",
+      "path": "/api/travel-plans",
+      "handler": "travel_plans_api.php",
+      "policy": "'travel.read'",
+      "line": 77,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-plans",
+      "handler": "travel_plans_api.php",
+      "policy": "'travel.write'",
+      "line": 78,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/travel-plans/{id}",
+      "handler": "travel_plans_api.php",
+      "policy": "'travel.read'",
+      "line": 79,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/travel-plans/{id}",
+      "handler": "travel_plans_api.php",
+      "policy": "'travel.write'",
+      "line": 80,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/travel-plans/{id}",
+      "handler": "travel_plans_api.php",
+      "policy": "'travel.write'",
+      "line": 81,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/travel-plans/{id}/records",
+      "handler": "travel_plans_api.php",
+      "policy": "'travel.write'",
+      "line": 82,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/travel-plans/{id}/records",
+      "handler": "travel_plans_api.php",
+      "policy": "'travel.write'",
+      "line": 83,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/guide",
+      "handler": "usage_guide_api.php",
+      "policy": "'community.read'",
+      "line": 84,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/me/guide",
+      "handler": "usage_guide_api.php",
+      "policy": "'community.read'",
+      "line": 85,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memories/social",
+      "handler": "memories_social.php",
+      "policy": "'community.read'",
+      "line": 86,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memories/follow",
+      "handler": "memories_social.php",
+      "policy": "'community.write'",
+      "line": 87,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/memories/follow",
+      "handler": "memories_social.php",
+      "policy": "'community.write'",
+      "line": 88,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/memories/preferences",
+      "handler": "memories_social.php",
+      "policy": "'community.write'",
+      "line": 89,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/suggestions",
+      "handler": "suggestions_create.php",
+      "policy": "'community.write'",
+      "line": 90,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/suggestions",
+      "handler": "suggestions_list.php",
+      "policy": "'community.read'",
+      "line": 91,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/suggestions/{id}",
+      "handler": "suggestion_get.php",
+      "policy": "'community.read'",
+      "line": 92,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/suggestions/{id}/accept",
+      "handler": "suggestion_accept.php",
+      "policy": "'community.write'",
+      "line": 93,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/suggestions/{id}/reject",
+      "handler": "suggestion_reject.php",
+      "policy": "'community.write'",
+      "line": 94,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/suggestions/{id}/withdraw",
+      "handler": "suggestion_withdraw.php",
+      "policy": "'community.write'",
+      "line": 95,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/suggestions",
+      "handler": "me_suggestions.php",
+      "policy": "'community.read'",
+      "line": 96,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/suggestions",
+      "handler": "home_page.php",
+      "policy": "'community.read'",
+      "line": 97,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/databases/{id}/chart",
+      "handler": "database_chart.php",
+      "policy": "'community.read'",
+      "line": 98,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/f/{id}/{view}",
+      "handler": "form_view.php",
+      "policy": "'community.read'",
+      "line": 99,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/forms/{id}/{view}",
+      "handler": "form_get.php",
+      "policy": "'community.read'",
+      "line": 100,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/forms/{id}/{view}/submit",
+      "handler": "form_submit.php",
+      "policy": "'community.read'",
+      "line": 101,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections",
+      "handler": "collections.php",
+      "policy": "'community.read'",
+      "line": 102,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/collections",
+      "handler": "collections.php",
+      "policy": "'community.read'",
+      "line": 103,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/collections/{num}",
+      "handler": "collections.php",
+      "policy": "'community.read'",
+      "line": 104,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/collections/{num}",
+      "handler": "collections.php",
+      "policy": "'community.read'",
+      "line": 105,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/collections/{num}",
+      "handler": "collections.php",
+      "policy": "'community.read'",
+      "line": 106,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/collections/{num}/items/{id}",
+      "handler": "collections.php",
+      "policy": "'community.read'",
+      "line": 107,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/collections/{num}/items/{id}",
+      "handler": "collections.php",
+      "policy": "'community.read'",
+      "line": 108,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/groups",
+      "handler": "groups.php",
+      "policy": "'community.read'",
+      "line": 109,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/groups",
+      "handler": "groups.php",
+      "policy": "'community.write'",
+      "line": 110,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/groups/{id}",
+      "handler": "groups.php",
+      "policy": "'community.read'",
+      "line": 111,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/groups/{id}",
+      "handler": "groups.php",
+      "policy": "'community.write'",
+      "line": 112,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/groups/{id}",
+      "handler": "groups.php",
+      "policy": "'community.write'",
+      "line": 113,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/pages/{id}/group-shares/{gid}",
+      "handler": "pages_group_share.php",
+      "policy": "'community.write'",
+      "line": 114,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/pages/{id}/group-shares/{gid}",
+      "handler": "pages_group_share.php",
+      "policy": "'community.write'",
+      "line": 115,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/web-publish",
+      "handler": "web_publish.php",
+      "policy": "'community.write'",
+      "line": 116,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/pages/{id}/web-publish/{num}",
+      "handler": "web_publish.php",
+      "policy": "'community.write'",
+      "line": 117,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/pages/{id}/web-publish/{num}",
+      "handler": "web_publish.php",
+      "policy": "'role:Admin'",
+      "line": 118,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/web-publications",
+      "handler": "web_publish.php",
+      "policy": "'community.read'",
+      "line": 119,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/web-publications",
+      "handler": "web_publish.php",
+      "policy": "'role:Admin'",
+      "line": 120,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/spaces/{num}/web-publish",
+      "handler": "space_web_publish.php",
+      "policy": "'role:Admin'",
+      "line": 121,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/pub/{pubtoken}",
+      "handler": "pub_view.php",
+      "policy": "'public'",
+      "line": 122,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/pub/{pubtoken}/p/{id}",
+      "handler": "pub_view.php",
+      "policy": "'public'",
+      "line": 123,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/pub/{pubtoken}/form/{viewid}",
+      "handler": "pub_form.php",
+      "policy": "'public'",
+      "line": 124,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/pub/{pubtoken}/form/{viewid}/submit",
+      "handler": "pub_form_submit.php",
+      "policy": "'public'",
+      "line": 125,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/messenger",
+      "handler": "integration_settings.php",
+      "policy": "'community.read'",
+      "line": 126,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/me/messenger",
+      "handler": "integration_settings.php",
+      "policy": "'community.read'",
+      "line": 127,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/messenger-hooks",
+      "handler": "integration_settings.php",
+      "policy": "'role:Admin'",
+      "line": 128,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/messenger-hooks",
+      "handler": "integration_settings.php",
+      "policy": "'role:Admin'",
+      "line": 129,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/messenger-hooks/{num}",
+      "handler": "integration_settings.php",
+      "policy": "'role:Admin'",
+      "line": 130,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/connectors",
+      "handler": "integration_settings.php",
+      "policy": "'role:Admin'",
+      "line": 131,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/connectors",
+      "handler": "integration_settings.php",
+      "policy": "'role:Admin'",
+      "line": 132,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/connectors/{id}",
+      "handler": "integration_settings.php",
+      "policy": "'role:Admin'",
+      "line": 133,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/integrations",
+      "handler": "integrations_page.php",
+      "policy": "'community.read'",
+      "line": 134,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/messenger/gpt",
+      "handler": "messenger_api.php",
+      "policy": "'community.write'",
+      "line": 136,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/messenger/gpt",
+      "handler": "messenger_api.php",
+      "policy": "'community.write'",
+      "line": 137,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/memories",
+      "handler": "memories_page.php",
+      "policy": "'community.read'",
+      "line": 139,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/memories/u/{username}",
+      "handler": "memories_page.php",
+      "policy": "'community.read'",
+      "line": 140,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/memories/p/{id}",
+      "handler": "memories_page.php",
+      "policy": "'community.read'",
+      "line": 141,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/memories/s/{token}",
+      "handler": "memories_shared.php",
+      "policy": "'public'",
+      "line": 142,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/memories/s/{token}/feed",
+      "handler": "memories_shared.php",
+      "policy": "'public'",
+      "line": 143,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/memories/s/{token}/media/{id}",
+      "handler": "memories_shared.php",
+      "policy": "'public'",
+      "line": 144,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memories",
+      "handler": "memories_api.php",
+      "policy": "'community.read'",
+      "line": 145,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memories",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 146,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memories/media",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 147,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memories/ai",
+      "handler": "memories_ai.php",
+      "policy": "'community.write'",
+      "line": 148,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memories/{id}/caption",
+      "handler": "memories_ai.php",
+      "policy": "'community.write'",
+      "line": 149,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memories/media/{id}",
+      "handler": "memories_api.php",
+      "policy": "'community.read'",
+      "line": 150,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memories/links",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 151,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/memories/links",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 152,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memories/{id}",
+      "handler": "memories_api.php",
+      "policy": "'community.read'",
+      "line": 153,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/memories/{id}",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 154,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/memories/{id}",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 155,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memories/{id}/like",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 156,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/memories/{id}/like",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 157,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memories/{id}/comments",
+      "handler": "memories_api.php",
+      "policy": "'community.read'",
+      "line": 158,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memories/{id}/comments",
+      "handler": "memories_api.php",
+      "policy": "'community.write'",
+      "line": 159,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/today",
+      "handler": "today_page.php",
+      "policy": "'community.read'",
+      "line": 162,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/my-tasks",
+      "handler": "my_tasks.php",
+      "policy": "'community.read'",
+      "line": 163,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/briefing",
+      "handler": "briefing.php",
+      "policy": "'community.read'",
+      "line": 164,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/",
+      "handler": "work_home_page.php",
+      "policy": "'community.read'",
+      "line": 169,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/my-tasks",
+      "handler": "my_tasks_page.php",
+      "policy": "'community.read'",
+      "line": 170,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/portfolios/{id}",
+      "handler": "portfolio_page.php",
+      "policy": "'community.read'",
+      "line": 171,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/workspace",
+      "handler": "home_page.php",
+      "policy": "'community.read'",
+      "line": 172,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/p/{id}",
+      "handler": "page_view.php",
+      "policy": "'community.read'",
+      "line": 173,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/p/{id}/print",
+      "handler": "page_print.php",
+      "policy": "'community.write'",
+      "line": 174,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/export",
+      "handler": "pages_export.php",
+      "policy": "'community.write'",
+      "line": 175,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/automations",
+      "handler": "home_page.php",
+      "policy": "'community.read'",
+      "line": 177,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/automations",
+      "handler": "automations_list.php",
+      "policy": "'community.read'",
+      "line": 178,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/automations",
+      "handler": "automations_save.php",
+      "policy": "'community.write'",
+      "line": 179,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/automations/{id}",
+      "handler": "automations_get.php",
+      "policy": "'community.read'",
+      "line": 180,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/automations/{id}",
+      "handler": "automations_save.php",
+      "policy": "'community.write'",
+      "line": 181,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/automations/{id}",
+      "handler": "automations_delete.php",
+      "policy": "'community.write'",
+      "line": 182,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/automations/{id}/dry-run",
+      "handler": "automations_dry_run.php",
+      "policy": "'community.write'",
+      "line": 183,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/automations/{id}/run",
+      "handler": "automations_run.php",
+      "policy": "'community.write'",
+      "line": 184,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/automations/{id}/runs",
+      "handler": "automations_runs.php",
+      "policy": "'community.read'",
+      "line": 185,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/automation-runs/{id}/undo",
+      "handler": "automation_runs_undo.php",
+      "policy": "'community.write'",
+      "line": 186,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/automations",
+      "handler": "automations_admin.php",
+      "policy": "'role:Admin'",
+      "line": 187,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/automations/{id}/disable",
+      "handler": "automations_admin.php",
+      "policy": "'role:Admin'",
+      "line": 188,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/space",
+      "handler": "space_me.php",
+      "policy": "'community.read'",
+      "line": 191,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/draft-key",
+      "handler": "draft_key.php",
+      "policy": "'community.read'",
+      "line": 192,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/spaces",
+      "handler": "spaces_list.php",
+      "policy": "'community.read'",
+      "line": 194,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages",
+      "handler": "pages_list.php",
+      "policy": "'community.read'",
+      "line": 196,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/procedures",
+      "handler": "procedures_list.php",
+      "policy": "'community.read'",
+      "line": 198,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/procedures",
+      "handler": "home_page.php",
+      "policy": "'community.read'",
+      "line": 199,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/ai",
+      "handler": "ai_page.php",
+      "policy": "'community.read'",
+      "line": 200,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/ai/status",
+      "handler": "ai_status.php",
+      "policy": "'community.read'",
+      "line": 201,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/ai/settings",
+      "handler": "ai_settings_get.php",
+      "policy": "'role:Admin'",
+      "line": 202,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/admin/ai/settings",
+      "handler": "ai_settings_update.php",
+      "policy": "'role:Admin'",
+      "line": 203,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ai/key",
+      "handler": "ai_key.php",
+      "policy": "'role:Admin'",
+      "line": 204,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/admin/ai/health",
+      "handler": "ai_health.php",
+      "policy": "'role:Admin'",
+      "line": 205,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/ai-permission",
+      "handler": "ai_permission_get.php",
+      "policy": "'community.read'",
+      "line": 206,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/pages/{id}/ai-permission",
+      "handler": "ai_permission_update.php",
+      "policy": "'community.write'",
+      "line": 207,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/ai-summary",
+      "handler": "ai_summary.php",
+      "policy": "'community.read'",
+      "line": 208,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/assistant",
+      "handler": "ai_assistant.php",
+      "policy": "'community.read'",
+      "line": 209,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/briefing",
+      "handler": "ai_briefing.php",
+      "policy": "'community.read'",
+      "line": 210,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/search",
+      "handler": "ai_search.php",
+      "policy": "'community.read'",
+      "line": 211,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/ai/transcribe",
+      "handler": "ai_transcribe.php",
+      "policy": "'community.read'",
+      "line": 212,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/ai-insert",
+      "handler": "ai_insert.php",
+      "policy": "'community.write'",
+      "line": 213,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/ai-log",
+      "handler": "ai_my_log.php",
+      "policy": "'community.read'",
+      "line": 214,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/ai-log",
+      "handler": "ai_admin_log.php",
+      "policy": "'role:Admin'",
+      "line": 215,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/search",
+      "handler": "search.php",
+      "policy": "'community.read'",
+      "line": 216,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages",
+      "handler": "pages_create.php",
+      "policy": "'community.write'",
+      "line": 217,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}",
+      "handler": "pages_get.php",
+      "policy": "'community.read'",
+      "line": 218,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/pages/{id}",
+      "handler": "pages_update.php",
+      "policy": "'community.write'",
+      "line": 219,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/pages/{id}/move",
+      "handler": "pages_move.php",
+      "policy": "'community.write'",
+      "line": 221,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/pages/{id}/visibility",
+      "handler": "pages_visibility.php",
+      "policy": "'community.write'",
+      "line": 223,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/pages/{id}",
+      "handler": "pages_delete.php",
+      "policy": "'community.write'",
+      "line": 224,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/heartbeat",
+      "handler": "pages_heartbeat.php",
+      "policy": "'community.write'",
+      "line": 225,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/versions",
+      "handler": "versions_list.php",
+      "policy": "'community.read'",
+      "line": 233,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/versions/{num}",
+      "handler": "version_get.php",
+      "policy": "'community.read'",
+      "line": 234,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/versions/{num}/restore",
+      "handler": "version_restore.php",
+      "policy": "'community.write'",
+      "line": 235,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/history",
+      "handler": "history.php",
+      "policy": "'community.read'",
+      "line": 236,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/trash",
+      "handler": "trash_list.php",
+      "policy": "'community.read'",
+      "line": 237,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/restore",
+      "handler": "page_restore.php",
+      "policy": "'community.write'",
+      "line": 238,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/pages/{id}/properties",
+      "handler": "pages_properties.php",
+      "policy": "'community.write'",
+      "line": 247,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/assignee-candidates",
+      "handler": "assignee_candidates.php",
+      "policy": "'community.write'",
+      "line": 248,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/projects/{id}/status",
+      "handler": "project_status.php",
+      "policy": "'community.write'",
+      "line": 255,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/projects/{id}/status",
+      "handler": "project_status.php",
+      "policy": "'community.read'",
+      "line": 256,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/spaces/{num}/portfolios",
+      "handler": "portfolios.php",
+      "policy": "'community.read'",
+      "line": 257,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/portfolios",
+      "handler": "portfolios.php",
+      "policy": "'community.write'",
+      "line": 258,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/portfolios/{id}",
+      "handler": "portfolios.php",
+      "policy": "'community.read'",
+      "line": 259,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/portfolios/{id}",
+      "handler": "portfolios.php",
+      "policy": "'community.write'",
+      "line": 260,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/portfolios/{id}",
+      "handler": "portfolios.php",
+      "policy": "'community.write'",
+      "line": 261,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/portfolios/{id}/items",
+      "handler": "portfolios.php",
+      "policy": "'community.write'",
+      "line": 262,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/portfolios/{id}/items/{id}",
+      "handler": "portfolios.php",
+      "policy": "'community.write'",
+      "line": 263,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/databases/{id}/rows",
+      "handler": "database_rows.php",
+      "policy": "'community.read'",
+      "line": 270,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/databases/{id}/schema",
+      "handler": "database_schema.php",
+      "policy": "'community.write'",
+      "line": 271,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/pages/{id}/values",
+      "handler": "page_values.php",
+      "policy": "'community.write'",
+      "line": 272,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/databases",
+      "handler": "databases_list.php",
+      "policy": "'community.read'",
+      "line": 274,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/databases/{id}/views",
+      "handler": "database_views.php",
+      "policy": "'community.write'",
+      "line": 275,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/databases/{id}/summary",
+      "handler": "database_summary.php",
+      "policy": "'community.read'",
+      "line": 276,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/templates",
+      "handler": "templates_list.php",
+      "policy": "'community.read'",
+      "line": 279,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/templates",
+      "handler": "templates_create.php",
+      "policy": "'community.write'",
+      "line": 280,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/templates/{id}",
+      "handler": "templates_get.php",
+      "policy": "'community.read'",
+      "line": 281,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/templates/{id}",
+      "handler": "templates_delete.php",
+      "policy": "'community.write'",
+      "line": 282,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/embed-domains",
+      "handler": "embed_domains_list.php",
+      "policy": "'community.read'",
+      "line": 284,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/embed-domains",
+      "handler": "embed_domains_add.php",
+      "policy": "'role:Admin'",
+      "line": 285,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/embed-domains/{num}",
+      "handler": "embed_domains_remove.php",
+      "policy": "'role:Admin'",
+      "line": 286,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/admin/popular",
+      "handler": "admin_popular.php",
+      "policy": "'role:Admin'",
+      "line": 288,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/palette.css",
+      "handler": "palette_css.php",
+      "policy": "'community.read'",
+      "line": 291,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/palettes",
+      "handler": "palettes_list.php",
+      "policy": "'community.read'",
+      "line": 292,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/palettes",
+      "handler": "palettes_add.php",
+      "policy": "'role:Admin'",
+      "line": 293,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/palettes/{num}",
+      "handler": "palettes_update.php",
+      "policy": "'role:Admin'",
+      "line": 294,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/palettes/{num}",
+      "handler": "palettes_remove.php",
+      "policy": "'role:Admin'",
+      "line": 295,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/shares",
+      "handler": "pages_shares_list.php",
+      "policy": "'community.read'",
+      "line": 305,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/pages/{id}/shares/{username}",
+      "handler": "pages_share_put.php",
+      "policy": "'community.write'",
+      "line": 306,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/pages/{id}/shares/{username}",
+      "handler": "pages_share_delete.php",
+      "policy": "'community.read'",
+      "line": 307,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/share-candidates",
+      "handler": "share_candidates.php",
+      "policy": "'community.read'",
+      "line": 308,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/handover",
+      "handler": "pages_handover.php",
+      "policy": "'community.write'",
+      "line": 309,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/b/{num}",
+      "handler": "board_view.php",
+      "policy": "'community.read'",
+      "line": 318,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boards",
+      "handler": "boards_list.php",
+      "policy": "'community.read'",
+      "line": 319,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/boards",
+      "handler": "boards_create.php",
+      "policy": "'role:Admin'",
+      "line": 320,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/boards/{num}",
+      "handler": "boards_update.php",
+      "policy": "'role:Admin'",
+      "line": 321,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boards/{num}/pages",
+      "handler": "board_pages_list.php",
+      "policy": "'community.read'",
+      "line": 322,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/boards/{num}/pages",
+      "handler": "board_pages_create.php",
+      "policy": "'community.write'",
+      "line": 323,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/boards/{num}/tags",
+      "handler": "board_tags.php",
+      "policy": "'community.read'",
+      "line": 324,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/publish",
+      "handler": "pages_publish.php",
+      "policy": "'community.write'",
+      "line": 325,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/pages/{id}/publish",
+      "handler": "pages_unpublish.php",
+      "policy": "'community.write'",
+      "line": 326,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/hide",
+      "handler": "pages_hide.php",
+      "policy": "'community.write'",
+      "line": 327,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/pages/{id}/hide",
+      "handler": "pages_hide.php",
+      "policy": "'community.write'",
+      "line": 328,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/pages/{id}/tags",
+      "handler": "pages_tags_put.php",
+      "policy": "'community.write'",
+      "line": 329,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/comments",
+      "handler": "comments_list.php",
+      "policy": "'community.read'",
+      "line": 334,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pages/{id}/comments",
+      "handler": "comments_create.php",
+      "policy": "'community.write'",
+      "line": 335,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/comments/{id}",
+      "handler": "comment_update.php",
+      "policy": "'community.write'",
+      "line": 336,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/comments/{id}",
+      "handler": "comment_delete.php",
+      "policy": "'community.write'",
+      "line": 337,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/comments/{id}/resolve",
+      "handler": "comment_resolve.php",
+      "policy": "'community.write'",
+      "line": 338,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/comments/{id}/resolve",
+      "handler": "comment_resolve.php",
+      "policy": "'community.write'",
+      "line": 339,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/comments/{id}/helpful",
+      "handler": "comment_helpful.php",
+      "policy": "'community.write'",
+      "line": 340,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/comments/{id}/helpful",
+      "handler": "comment_helpful.php",
+      "policy": "'community.write'",
+      "line": 341,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/comments/{id}/hide",
+      "handler": "comment_hide.php",
+      "policy": "'community.write'",
+      "line": 342,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/comments/{id}/hide",
+      "handler": "comment_hide.php",
+      "policy": "'community.write'",
+      "line": 343,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/mention-candidates",
+      "handler": "mention_candidates.php",
+      "policy": "'community.read'",
+      "line": 344,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/notifications",
+      "handler": "notifications_list.php",
+      "policy": "'community.read'",
+      "line": 345,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/api/notifications/read",
+      "handler": "notifications_read.php",
+      "policy": "'community.read'",
+      "line": 346,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/pages/{id}/reads",
+      "handler": "page_reads.php",
+      "policy": "'community.read'",
+      "line": 347,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/favorites",
+      "handler": "favorites.php",
+      "policy": "'community.read'",
+      "line": 353,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/me/favorites",
+      "handler": "favorites.php",
+      "policy": "'community.read'",
+      "line": 354,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/pages/{id}/favorite",
+      "handler": "favorites.php",
+      "policy": "'community.read'",
+      "line": 355,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/pages/{id}/favorite",
+      "handler": "favorites.php",
+      "policy": "'community.read'",
+      "line": 356,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me/recent",
+      "handler": "recent_list.php",
+      "policy": "'community.read'",
+      "line": 357,
+      "file": "src/community/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/me/recent",
+      "handler": "recent_clear.php",
+      "policy": "'community.read'",
+      "line": 358,
+      "file": "src/community/routes.php"
+    }
+  ],
+  "MCP_ROUTES": [
+    {
+      "method": "GET",
+      "path": "/.well-known/oauth-protected-resource/mcp",
+      "handler": "resource",
+      "policy": "'public'",
+      "line": 6,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/oauth-protected-resource",
+      "handler": "resource",
+      "policy": "'public'",
+      "line": 7,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/.well-known/oauth-authorization-server",
+      "handler": "authorization_server",
+      "policy": "'public'",
+      "line": 8,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/tbox/oauth/register",
+      "handler": "register",
+      "policy": "'public'",
+      "line": 9,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/tbox/oauth/authorize",
+      "handler": "authorize_start",
+      "policy": "'public'",
+      "line": 10,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/tbox/oauth/authorize",
+      "handler": "consent",
+      "policy": "'session'",
+      "line": 11,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/tbox/oauth/token",
+      "handler": "token",
+      "policy": "'public'",
+      "line": 12,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "POST",
+      "path": "/tbox/oauth/revoke",
+      "handler": "revoke",
+      "policy": "'public'",
+      "line": 13,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/tbox/mcp-connect",
+      "handler": "connect_page",
+      "policy": "'session'",
+      "line": 14,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "GET",
+      "path": "/tbox/api/mcp/connections",
+      "handler": "connections",
+      "policy": "'session'",
+      "line": 15,
+      "file": "src/mcp/routes.php"
+    },
+    {
+      "method": "DELETE",
+      "path": "/tbox/api/mcp/connections/{id}",
+      "handler": "disconnect",
+      "policy": "'session'",
+      "line": 16,
+      "file": "src/mcp/routes.php"
+    }
+  ]
+}
