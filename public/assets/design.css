@@ -139,7 +139,7 @@
 @keyframes q-orbit-bloom { 50% { transform:scale(1.13) rotate(25deg); } }
 
 /* Reading remains still; accessibility choices outrank every theme. */
-:root:not([data-design="claude"]) .doc { background:var(--bg); }
+/* Document backgrounds belong to their enclosing surface; explicit block colors remain visible. */
 :root[data-contrast="high"] .q-hero { background:var(--surface); color:var(--fg); border:2px solid var(--line); box-shadow:none; }
 :root[data-contrast="high"] .q-hero :is(h2 span,.q-eyebrow,.q-hero-note) { color:var(--fg); }
 :root[data-contrast="high"] .q-hero-copy > p { color:var(--muted); }
