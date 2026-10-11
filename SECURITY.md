@@ -1013,3 +1013,10 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ④ 암호화 백업3종 전체복호화·원본975 SHA 확인 완료. 백업 tar storage directorymtime 경고는 기존scheduledworker cursor 변경이며 전체압축목록/해시 검증으로 원본 정상 확인. DB복원/재시드0. docs/work-items/global-visual-fix.md.
 
 운영 최종: v2.54.2 `c22d993d84a2` HTTPS42/0·정확CSS바이트/JS0/5xx0,14기존표+6제품표 원래행·ownerACL/파일1042행·원본975 SHA·설정85개 동일. 로그인 QA계정 읽기/홈모달만 확인, 새제품행 변경0. 실물Android/WebKit 미검증 유지.
+
+
+### 2026-10-11 공간 홈 버튼 정리 — 독립 검토
+① 공간페이지 PHP/JS/CSS만 표현/동작 묶음 변경, backend/API/DB/인가/SQL변경0. textContent/htmlspecialchars·서버capability·generationGuard 보존. 별도 실제렌더170/0·UI26/0·지연14/0·추가같은공간modal지연18/0; root 격리공통196/0·보안lint금지0. 역할/acting/archive/empty·Escape/초점·비밀정리 확인.
+② 초안에서 allItems epoch선언 누락·plain버튼 흰글씨·refresh중오래된등록표시 발견 후 수정 검증. 이후 차단사항0. 비교해시동일.
+③ 실물Android·Safari·사용자자기공격 미검증. 운영HTTPS는 적용 후 별도기록.
+④ 암호화백업3종 전체복호화/원본975 SHA·설정85개/제품6표사전hash완료. 후보고정/모의/드리프트 뒤 운영검증한다. docs/work-items/space-actions-cleanup.md.
