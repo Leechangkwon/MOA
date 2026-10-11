@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.57.0",
-  "verified_runtime_commit": "1c274b62639f10fa2f66ad984574a9bf9c3ce16d",
-  "verified_checkout_commit": "1c274b62639f10fa2f66ad984574a9bf9c3ce16d",
-  "verified_tree": "b6a9c60b494e5a132bd0146bd6634d7af438c5db",
-  "verified_at": "2026-10-11T21:21:33+09:00",
+  "version": "2.57.1",
+  "verified_runtime_commit": "3b9611168e3858a894776fb7518c296d199c16f3",
+  "verified_checkout_commit": "3b9611168e3858a894776fb7518c296d199c16f3",
+  "verified_tree": "a3ce0cc931d793c134fa26be095ba1a1ebd975cb",
+  "verified_at": "2026-10-11T21:46:40+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "1c274b62639f10fa2f66ad984574a9bf9c3ce16d",
+  "release_commit": "3b9611168e3858a894776fb7518c296d199c16f3",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,47 +15,42 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Compact personal home, single editor, account-synced allowlisted icon shortcut visibility/order; original widget geometry, size, lock and authorization preserved. Reserved QA only.",
-    "https_integration_pass": 145,
+    "scope": "Community document read-view surface and explicit callout/table backgrounds; CSS only. Original document read using authorized reserved QA account, with browser writes blocked.",
+    "https_integration_pass": 62,
     "https_fail": 0,
-    "integration_ui_pass": 594,
-    "canvas_ui_pass": 84,
-    "service_contract_pass": 543,
-    "http_contract_pass": 342,
-    "independent_validator_pass": 46,
-    "independent_ui_pass": 55,
-    "independent_legacy_auth_pass": 4,
-    "independent_legacy_late_pass": 8,
-    "independent_source_revocation_pass": 13,
-    "independent_final_menu_pass": 10,
-    "independent_final_geometry_pass": 21,
-    "reviewed_final_runtime_hashes_match": true,
-    "cross_regression_pass": 196,
-    "cross_regression_scope": "Isolated common PHP/DB/HTTP initial snapshot. Final changes covered by targeted regressions; not the eight original operating shell scripts. Initial OTP boundary and live selector harness interruptions retained separately.",
-    "live_viewport_widths": [
+    "synthetic_read_pass": 317,
+    "independent_read_pass": 123,
+    "palette_boundary_pass": 3,
+    "isolated_cross_regression_pass": 196,
+    "isolated_cross_regression_scope": "Initial source snapshot; final CSS covered separately by 317/123 browser checks. Legacy production-writing scripts were not run.",
+    "security_lint_violations": 0,
+    "community_assets_files": 39,
+    "community_assets_relative_imports": 63,
+    "wiki_articles": 69,
+    "live_viewports": [
       390,
+      820,
       1280
     ],
-    "live_first_widget_y": {
-      "desktop": 271,
-      "mobile": 261
-    },
     "live_js_errors": 0,
     "live_5xx": 0,
+    "live_document_browser_writes": 0,
     "exact_live_asset_bytes_verified": true,
     "runtime_changed_files": [
-      "public/assets/dashboard-canvas.js",
-      "public/assets/dashboard-widgets.css",
-      "public/assets/home-dashboard.js",
-      "src/handlers/product_spaces.php",
-      "src/site/ProductSpaces.php",
-      "src/views/launcher.php"
+      "public/assets/community/community.css",
+      "public/assets/design.css"
     ],
+    "runtime_sha256": {
+      "public/assets/community/community.css": "5f1205d41ea74aa3380074c5ed7ba787db688ca0524048ebcc101e235b8ff2ce",
+      "public/assets/design.css": "926a1b246f3642503aff479d16b25fdd00f38318e304ac720099b1ef64a7f430"
+    },
     "migrations": [],
     "deleted_files": 0,
+    "original_document_body_format_title_version_unchanged": true,
+    "original_document_version": 1,
     "original_legacy_tables_preserved": 14,
     "product_tables_original_rows_preserved": 6,
-    "product_preservation_exception": "None for preexisting rows, including all existing QA preferences. Only new reserved QA preference and synthetic spaces added. New preference normalized via API to original effective defaults (explicit default shortcuts), both new synthetic spaces archived.",
+    "product_preservation_exception": "None; all preexisting rows including QA preferences compared. No new QA document or space created.",
     "original_database_owners_preserved": true,
     "original_database_acl_preserved": true,
     "file_records_preserved": 1042,
@@ -68,14 +63,15 @@
     "encrypted_backup_decryption_verified": true,
     "encrypted_storage_original_hashes_verified": true,
     "file_apply_rehearsal": true,
-    "rehearsal_candidate": "d271f9debab99c2f75ac97bd5b46ab2355211078",
-    "rehearsal_changed_files": 31,
+    "rehearsal_candidate": "3ea11741296a74d4e98154aa4d5ca8292551e383",
+    "rehearsal_changed_files": 13,
     "physical_android_verified": false,
     "safari_verified": false,
     "screenreader_verified": false,
-    "evidence": "docs/work-items/compact-home.md"
+    "evidence": "docs/work-items/community-editor-surface.md"
   },
   "evidence": [
+    "docs/work-items/community-editor-surface.md",
     "docs/work-items/compact-home.md",
     "docs/work-items/dashboard-inspector.md",
     "docs/work-items/dashboard-widgets.md",
@@ -143,19 +139,19 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "synchronized",
-    "remote_live_verified": true,
+    "status": "pending_push",
+    "remote_live_verified": false,
     "last_fetched_origin_main": "3602b0f5ea7d2b7559c570b7245fc4c41d43c4c1",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
-    "web_branch": "cloud/compact-home",
-    "reason": "Atomic main/cloud/compact-home and release/baseline tags pushed and fetched. Both branches verified at 3602b0f5ea7d2b7559c570b7245fc4c41d43c4c1. This metadata-only follow-up uses the same branches. v2.57.0 points to verified release1c274b6.",
-    "verified_at": "2026-10-11T21:22:11+09:00"
+    "web_branch": "cloud/community-editor-fix",
+    "reason": "Release and server read/preservation verification complete; records and atomic push pending.",
+    "verified_at": "2026-10-11T21:46:40+09:00"
   },
   "previous_verification": {
-    "version": "2.56.2",
-    "runtime_commit": "8010bf0e3039da209b69261b0ec8f9aab3b8df93",
-    "verified_at": "2026-10-11T20:28:07+09:00",
-    "evidence": "docs/work-items/dashboard-inspector.md"
+    "version": "2.57.0",
+    "runtime_commit": "1c274b62639f10fa2f66ad984574a9bf9c3ce16d",
+    "verified_at": "2026-10-11T21:21:33+09:00",
+    "evidence": "docs/work-items/compact-home.md"
   }
 }

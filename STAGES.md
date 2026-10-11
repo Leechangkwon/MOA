@@ -2964,3 +2964,5 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 사용자가 배경색판 문서의 검정 본문 바탕을 지적하고 읽기 화면임을 확인했다. 전역 .doc 배경 덮어쓰기 및 callout/header 기본 바탕과 명시색의 우선순위를 수정한다. 계약 docs/community-editor-surface-directive.md, 검증/운영 결과 docs/work-items/community-editor-surface.md.
 
 검토 완료: CSS2만 수정, 합성 읽기317/0·독립123/0·팔레트3/0·격리 공통196/0, 보안/자산/위키 통과. 원문 쓰기0, DB/설정/패키지 변경0. 삭제 팔레트의 배경 해제 경계는 DESIGN/지시서에 명시. 운영 반영은 모의·드리프트 후 별도 기록.
+
+운영 최종: v2.57.1 `3b9611168e38` / 2026-10-11T21:46:40+09:00. 고정 후보 `3ea11741296a`의 13파일 모의 적용·서버/원격 드리프트 통과, 코드 FF/patch 릴리스와 PHP-FPM reload 완료. 실제 지목한 글 HTTPS62/0·CSS2 정확 바이트·JS/5xx0·브라우저 쓰기0. PC/모바일 Aurora/Moa 및 Claude에서 본문 바탕과 지정 강조색·표 스크롤 정상, 원문 제목/본문/서식/버전1 동일. 기존14표·제품6표 모든 원래행(기존 QA 취향 포함, 제외0)·1042파일행·975원본 SHA·ownerACL·85설정 보존. 암호화3종 checksum/전체복호화 완료, worker cursor1은 운영 상태로 제외. DBmigration/설정/패키지 변경0. 실물휴대폰·Safari·스크린리더 미검증.
