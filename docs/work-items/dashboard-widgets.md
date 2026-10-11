@@ -53,3 +53,5 @@ v2.56.0 d056e55에서 실제 HTTPS97/0·자산 일치·JS/5xx0, 원본14표/제�
 - 암호화 백업3종 전체 복호화와 원본975 SHA 검증, 제품6표/설정85개 보존 기준 및 사후 비교 완료. 기존 운영 worker cursor만 보존 대상에서 제외했다. QA 개인 설정은 정상 API로 원래 값 복구(revision/시각 증가 유지), 신규 합성 공간 보관. 실제 사용자 배치 변경0.
 - 서비스 nginx/PHP-FPM/PostgreSQL active. 최종 security lint0/자산/위키69편0, 원격 동기화는 아래 기록으로 확정.
 - 증거: outputs/widgets-rehearsal.json, widgets-patch-rehearsal.json, widgets-runtime-sha256.json, widgets-live-2.56.0, widgets-final-live, widgets-preservation.log, widgets-product-preservation.log. 운영 비밀·본문·덤프를 Git에 넣지 않았다.
+
+Git2 main·cloud/dashboard-usability 및 v2.56.0/v2.56.1·selftest/review 기준 태그 atomic push·fetch 확인. 두 브랜치 b4152f9e1a04699703c55bf401306a15f58a483a 일치, v2.56.1은 검증한392e768을 가리킨다. 이 후속 기록은 같은 브랜치로 동기화하며 앱 코드는 변경하지 않는다. 부모 PRD/STAGES는 기존 기록을 보존한 부분 병합으로 로컬0153321에 기록했다.
