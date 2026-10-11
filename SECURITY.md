@@ -1011,3 +1011,5 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ② 검토 중 일반 AI 선택창 장식 퇴행 수정 확인. 현재 차단 사항 없음; 보안 lint 금지패턴0.
 ③ WebKit 실행파일없음 명시skip, 실물 Android nativepopup·사용자 자기 공격 미검증. 운영HTTPS는 적용 후 별도 기록.
 ④ 암호화 백업3종 전체복호화·원본975 SHA 확인 완료. 백업 tar storage directorymtime 경고는 기존scheduledworker cursor 변경이며 전체압축목록/해시 검증으로 원본 정상 확인. DB복원/재시드0. docs/work-items/global-visual-fix.md.
+
+운영 최종: v2.54.2 `c22d993d84a2` HTTPS42/0·정확CSS바이트/JS0/5xx0,14기존표+6제품표 원래행·ownerACL/파일1042행·원본975 SHA·설정85개 동일. 로그인 QA계정 읽기/홈모달만 확인, 새제품행 변경0. 실물Android/WebKit 미검증 유지.

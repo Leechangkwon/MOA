@@ -1,6 +1,6 @@
 # 전역 드롭다운 한글 잘림과 단색 화면 개선
 
-- 상태: 후보 검증 완료 / 독립 최종 확인·운영 적용 준비
+- 상태: 운영 v2.54.2 적용·HTTPS/원본 보존 확인 완료
 - 브랜치: cloud/global-visual-fix
 - 기준 main: a69fe989e712f193a8e6d57d6b480198f75099ca
 - 사용자 근거: 13051.jpg, 홈 구성 modal의 select 한글이 세로로 잘림. 다른 화면에도 동일 문제, 원톤 화면이 답답하다는 요청.
@@ -19,4 +19,4 @@ Chromium native control/6디자인/밝음·어두움/360·390·1280px·고대비
 암호화 DB/코드/설정/storage 백업+복호화, 고정 후보 모의 파일 적용/드리프트 확인, main FF+발행+PHP reload, 실제 HTTPS/CSS 버전/모바일 화면과 원본 보존 검증. DB migration/패키지/nginx/cron 변경0. 실패 시 코드 복귀만 판단하며 DB 삭제/복원/재시드하지 않는다.
 
 ## 배포 결과
-검증 이후 실제 결과를 기록한다.
+고정 후보5f4e4ef→main FF, v2.54.2 런타임 `c22d993d84a2666dd9cd4d02fad0c6702d40182e` / 2026-10-11T13:47:19+09:00. 코드7파일 정확 모의 적용/삭제0, 실제 변경CSS2개·발행이력3개, DB migration0·패키지/설정/PC 변경0. 암호화3종 SHA/전체복호화/원본975 storage SHA 확인; 기존 cron cursor로 tar directorymtime 경고 발생했으나 원본데이터 정상 검증. PHP-FPM reload 후 실제HTTPS42/0, 밝음·어두움390/1280px 한글 glyph 여유/모바일16px/checkbox가로/overflow0/Escape/JS·5xx0·CSS 정확바이트 확인. 기존14표+제품6표 모든 원래행 및 ownerACL·파일1042행/975원본SHA 보존,85설정파일 SHA 동일. DB복원/재시드0. Git2 atomic push는 아래 동기화 기록을 따른다. 실물 Android nativepopup/WebKit 미검증은 유지.
