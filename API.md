@@ -1426,3 +1426,6 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 
 ## 회사·모임 제품 공간 — 2026-10-11
 세션 인증된 `/tbox/api/product-spaces` 및 `/tbox/api/me/{home-dashboard,product-home}`는 기존 동의·첫 로그인·CSRF 관문을 적용한다. 프로그램 토큰 범위를 확대하지 않는다. 공간 역할·초대·소유권 재인증·설정 revision·기록/다운로드 계약은 [제품 공간 API](docs/product-spaces-api.md)를 따른다. 기존 community `/api/spaces` 문서 컨테이너와 별개이다.
+
+
+개인 홈 v3 선택 shortcuts배열(2026-10-11): 고정서비스ID 최대8·중복금지·순서보존, 없음=기본/[]=숨김. 공동/v1/v2거부·기존revision/CSRF그대로. 상세 docs/product-spaces-api.md, docs/compact-home-directive.md.

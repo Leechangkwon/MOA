@@ -43,7 +43,7 @@ with sync_playwright()as pw:
   page.locator('.dashboard-selection').get_by_role('button',name='숨기기',exact=True).click();close_inspector()
  page.route('**/*',route);page.goto('https://moa.example/',wait_until='networkidle')
  check(not page.locator('[data-home-widget=tools]').is_visible(),'server saved layout applied');check('회사 공간'in page.locator('#product-home').inner_text(),'authorized cross-space activity rendered');check(page.locator('#product-home a').get_attribute('href').endswith('/spaces?space=11111111-1111-4111-8111-111111111111'),'activity opens correct space')
- check('계정의 홈 구성'in page.locator('#home-layout-status').inner_text(),'account sync clearly identified')
+ check('계정의 홈 구성'in page.locator('#home-edit').get_attribute('title'),'account sync clearly identified')
  page.locator('#home-edit').click();batch();page.get_by_label('위젯 추가',exact=True).select_option('tools');page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  check(page.locator('[data-home-widget=tools]').is_visible(),'account layout save applied')
  check(page.evaluate('localStorage.getItem("moa-home:v1:1001")')is None,'server save does not silently mirror or overwrite browser migration data')

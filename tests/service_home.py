@@ -22,6 +22,7 @@ with sync_playwright() as pw:
    f=ROOT/'public/assets'/u.path.removeprefix('/tbox/assets/');r.fulfill(body=f.read_bytes(),content_type={'.js':'text/javascript','.css':'text/css','.jpg':'image/jpeg'}.get(f.suffix,'application/octet-stream'));return
   if u.path=='/tbox/api/login':r.fulfill(json={'ok':True});return
   if u.path=='/tbox/api/me':r.fulfill(json={'member_id':1001,'next':None,'csrf_token':'synthetic','mfa_enabled':True});return
+  if u.path=='/tbox/api/me/home-dashboard':r.fulfill(json={'layout':{'version':1,'widgets':[{'id':i,'visible':True,'size':'wide'}for i in ['recent','services','tools','stories']],'source':'all','view':'recent'},'revision':0});return
   if u.path=='/community/api/boards':r.fulfill(json={'boards':[]});return
   r.fulfill(json={'pages':[],'files':[]})
  ctx.route('**/*',route)

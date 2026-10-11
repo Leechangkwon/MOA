@@ -94,4 +94,5 @@ denied(fn()=>$svc['member']->item($sid,$link['id']),404,'revoked original rights
 $svc['secondowner']->memberChange($sid,(int)$users['viewer']['id'],null);denied(fn()=>$svc['viewer']->home($sid),404,'member removal immediately hides home');
 $svc['member']->itemChange($sid,$story['id'],null);check(count($svc['member']->items($sid,'story')['items'])===0,'delete is logical item deletion');
 check(count(Audit::$rows)>20,'mutations audited');check(!str_contains(json_encode(Audit::$rows),$inv['token']),'audit contains no invitation secret');
+require __DIR__.'/compact_home_contract.php';
 echo 'PASS '.$n." checks\n";

@@ -87,7 +87,7 @@ with sync_playwright()as pw:
  check(not any(p.startswith('/tbox/api/files/')or p.startswith('/community/api/me/')for _,p,_ in calls),'hidden new widget fetches no source')
  layout={'version':1,'widgets':[{'id':i,'visible':i in ['services','tools'],'size':'wide'}for i in ['recent','services','tools','stories']],'source':'all','view':'recent'};calls.clear();page.reload(wait_until='networkidle')
  check(not any(p.endswith('/start.js')or p.endswith('/product-home.js')for _,p,_ in calls),'services/tools-only legacy sends no recent script or source request')
- page.get_by_text('안내 옵션',exact=True).click();page.get_by_role('button',name='추천 구성 미리보기',exact=True).click();check(page.locator('[data-widget-type=recent]').is_visible(),'recommended composition preview renders new content');page.get_by_role('button',name='취소',exact=True).click()
+ page.locator('#home-edit').click();page.locator('[data-dashboard-settings]:visible').first.click();page.locator('.dashboard-batch summary').click();page.get_by_role('button',name='추천 구성 미리보기',exact=True).click();check(page.locator('[data-widget-type=recent]').is_visible(),'recommended composition preview renders new content');page.get_by_role('button',name='취소',exact=True).click()
  check(page.locator('[data-home-widget=services]').is_visible()and page.locator('[data-widget-type=recent]').count()==0,'preview cancel restores legacy DOM and geometry')
  layout=config(['recent','favorites','briefing']);page.goto('https://moa.example/',wait_until='networkidle');page.screenshot(path=str(OUT/'personal-default-three-1280.png'),full_page=True)
  check(page.locator('.dashboard-widget').count()==3,'new generic composition three widgets')

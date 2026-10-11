@@ -52,3 +52,9 @@
 
 
 공동 홈의 새 렌더러는 `/home?view=layout`을 사용한다. 이 선택형 조회는 기존 멤버십과 layout revision 검증을 거친 `space,layout,revision` 및 빈 `widgets,truncated` 객체만 반환한다. 콘텐츠5종 SQL을 수행하지 않으며 표시된 각 위젯만 `/items`로 읽는다. 쿼리 없는 기존 `/home`은 기존 응답을 유지한다. 잘못된 view는400. 따라서 레거시 배치를 읽는 새 브라우저도 숨김 위젯 때문에 불필요한 콘텐츠 조회를 하지 않는다.
+
+
+## 개인 홈 상단 바로가기
+개인 v3 root에 선택 `shortcuts` 배열을 허용한다. 값은 `spaces,work,tasks,library,story,messages,assistant,account` 중 중복없는 문자열 최대8개. 없음은 UI 기본 `spaces,work,library,tasks,messages,assistant`, 명시 `[]`는 전체숨김, 배열순서는표시순서다. URL/이름/아이콘은저장하지않는다. 공동v3 및v1/v2에는키존재자체를400거부. 기존개인GET/PATCH의계정격리·CSRF·acting거부·revision409·감사는그대로. GET은기존값에필드를강제추가하지않고DB쓰기0.
+
+개인v3 PATCH의shortcuts생략은현재저장된shortcuts가있으면revision잠금안에서보존한다. 기본복원은기본배열을명시한다. 기존shortcuts가있는v3를v1/v2로내리는요청은409 layout_version_conflict(새로고침필요); 기존v1/v2설정계약은그대로다. 원본JSON객체{}와배열[]를구별하며객체는400거부한다.

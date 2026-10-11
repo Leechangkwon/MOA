@@ -112,5 +112,5 @@ body { background: var(--bg); color: var(--fg); }
 function label(b){b.setAttribute('aria-label',cur()==='dark'?'밝은 화면으로':'어두운 화면으로');}
 document.querySelectorAll('[data-theme-toggle]').forEach(function(b){label(b);b.addEventListener('click',function(){root.setAttribute('data-theme',cur()==='dark'?'light':'dark');document.querySelectorAll('[data-theme-toggle]').forEach(label);});});})();
 </script>
-<section class="panel"><h2>개인 홈 구성</h2><p>상단 편집 도구에서 위젯 추가·취소·배치 저장을, PC 오른쪽 설정에서 선택한 위젯의 소·중·대·출처·잠금을 다룹니다. 좁은 화면은 위젯 설정을 눌러 상세 설정을 엽니다. 자유 배치와 PC/휴대폰별 저장은 유지합니다.</p></section></body>
+<section class="panel"><h2>개인 홈 구성</h2><p>내 홈은 작은 메뉴·아이콘 바로가기·위젯 순으로 배치합니다. 홈 편집 한 곳에서 바로가기 표시·순서와 위젯을 함께 저장합니다. 시작 안내는 접어 두고 추천 구성은 편집 안의 배치 옵션에서 선택합니다. 상단에는 추가·취소·저장, PC 오른쪽에는 상단 바로가기와 위젯 크기·출처·잠금을 둡니다. 좁은 화면은 위젯 설정을 눌러 상세창을 엽니다. 자유 배치와 PC/휴대폰별 저장은 유지합니다.</p></section></body>
 </html>

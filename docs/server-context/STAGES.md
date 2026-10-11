@@ -343,3 +343,7 @@
 
 
 운영최종: v2.56.2 `8010bf0e3039` / 2026-10-11T20:28:07+09:00. 상단 저장·취소·추가, PC 오른쪽 설정/모바일 명시 상세열기. 실제HTTPS123/0·정확6자산·JS0/5xx0, 저장/reload/잠금/취소 확인. 기존14표/제품6표·1042파일행·975원본SHA·ownerACL·85설정 보존. QA취향 API 원복/신규합성공간보관. 고정24파일 모의적용·3종암호화전체복호화·DB/설정/패키지변경0. 실물Android·Safari·스크린리더 미검증. 상세 docs/work-items/dashboard-inspector.md.
+
+
+## 2026-10-11 홈 상단·아이콘 바로가기 — 진행 중
+사용자 지적: 편집 진입 중복, 큰 안내/링크 때문에 위젯이 첫 화면 아래에 위치. 단일홈편집·compact상단·아이콘선택/순서계정저장으로개선한다. tbox-v2/docs/compact-home-directive.md, tbox-v2/docs/work-items/compact-home.md.

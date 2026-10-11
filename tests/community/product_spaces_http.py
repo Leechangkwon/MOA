@@ -103,6 +103,7 @@ try:
  call('GET',path+'/items/'+link['id']+'/download',user='other',expected=404)
 
  exec(compile(Path(__file__).with_name('dashboard_widgets_http.py').read_text(),str(Path(__file__).with_name('dashboard_widgets_http.py')),'exec'))
+ exec(compile(Path(__file__).with_name('compact_home_http.py').read_text(),str(Path(__file__).with_name('compact_home_http.py')),'exec'),dict(globals()))
 
  # Independent race space, preserving the transfer target test in the original company.
  race=call('POST','/api/product-spaces',{'name':'동시성 모임','kind':'group'},expected=201)['space']['id'];racepath='/api/product-spaces/'+race
@@ -156,6 +157,7 @@ try:
  check(sql("SELECT role FROM product_space_members WHERE space_id='"+sid+"' AND user_id="+str(users['manager']['id']))=='owner','target owner persisted after credential-confirmed transfer')
  check(sql("SELECT count(*) FROM audit_logs WHERE action='product.request' AND result='deny'")!='0','actual denied request audit written')
  check(sql("SELECT count(*) FROM audit_logs WHERE action='product.owner.transfer' AND detail->>'to_user'='"+str(users['manager']['id'])+"' AND detail->>'role_after'='admin'")=='1','transfer audit identifies target and role change')
+
 
 finally:
  (out/'product-spaces-checks.json').write_text(json.dumps(checks,ensure_ascii=False,indent=2));print('PASS',sum(c['pass'] for c in checks),'FAIL',sum(not c['pass'] for c in checks))

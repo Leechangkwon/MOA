@@ -1051,3 +1051,9 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 
 
 운영최종: v2.56.2 `8010bf0e3039` / 2026-10-11T20:28:07+09:00. 상단 저장·취소·추가, PC 오른쪽 설정/모바일 명시 상세열기. 실제HTTPS123/0·정확6자산·JS0/5xx0, 저장/reload/잠금/취소 확인. 기존14표/제품6표·1042파일행·975원본SHA·ownerACL·85설정 보존. QA취향 API 원복/신규합성공간보관. 고정24파일 모의적용·3종암호화전체복호화·DB/설정/패키지변경0. 실물Android·Safari·스크린리더 미검증. 상세 docs/work-items/dashboard-inspector.md.
+
+### 2026-10-11 간결한 홈·아이콘 바로가기 — 최종 독립 검토
+① 안전한 이유: 개인v3에8개고정ID배열만허용하며 임의URL/HTML/중복/객체/공동·legacy삽입을거부한다. 같은revision/행잠금에서필드누락을보존하고손실다운그레이드409, 기존session/CSRF/acting/본인·출처권한유지. service543/0·HTTP342/0·Canvas84/0·화면594/0. 독립validator46/0·browser55/0·legacy4014/0·지연8/0·출처13/0, 마지막menu10/0·geometry21/0. 공통196/0은초기사본이며최종변경은전용검사로확인했다. root보안lint금지0·자산37/0·위키69편누락0, 최종runtime6SHA일치.
+② 불안전했던 이유와 보정: canonical값의Canvas미반영·PATCH401편집잔존·checkbox초점이탈·legacy비공개목록/지연응답잔존을발견하고각각수정재검증했다. OTP30초경계실패와동의순서/검사전역변수오염은하네스문제로구분해증거보존. 현재검사범위의미해결결함0.
+③ 미검증: 실물휴대폰·Safari/WebKit·실제스크린리더·사용자자기공격. Chromium viewport/touch모의이다. 운영HTTPS/원본보존은실측후별도기록한다.
+④ 다음: 암호화백업3종checksum/전체복호화·원본975SHA·85설정·기존14표/제품6표모든원래행baseline완료. 고정후보모의/drift후운영검증. 원래개인설정행이없는예약QA계정만새취향/합성공간작성, 종료시기본값API정규화/새공간보관. 기존행삭제·DBmigration/복원/재시드·설정/패키지변경0. docs/work-items/compact-home.md.

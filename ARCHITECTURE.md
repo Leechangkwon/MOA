@@ -3290,3 +3290,6 @@ v1/v2 호환을 유지하면서 v3는 인스턴스 ID·타입·검증된 출처�
 
 
 대시보드 편집 UI 보완(2026-10-11): 공통 canvas는 편집 workspace와 inspector/dialog 생명주기를 관리하고 selectedActions 훅으로 개인/공동 출처 동작을 받는다. 패널 여닫기는 저장 JSON을 변경하지 않는다. 저장·취소·권한회수·공간전환 시 임시 DOM/예약폭/이벤트를 정리하며 layout/API/DB 계약은 그대로다. docs/dashboard-inspector-directive.md.
+
+
+개인 홈 상단 설정(2026-10-11): 개인 v3 layout의 선택 shortcuts배열은 고정8ID/순서만 저장한다. 없음은기본·[]는모두숨김, 공동/v1/v2에는허용하지않는다. 기존JSONB/PATCH/revision/인가를사용하고GET쓰기0·DBmigration0. 공통canvas homeSettings훅이개인설정을포함한하나의초안을관리한다. docs/compact-home-directive.md.

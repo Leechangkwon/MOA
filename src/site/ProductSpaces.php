@@ -194,8 +194,14 @@ final class ProductSpaces
         unset($widget);return $layout;
     }
     private function layoutV3(array $value,bool $personal): array {
-        $this->exact($value,['version','widgets','source','view','guide']);
-        if(count($value)!==5||!in_array($value['guide']??null,['pending','later','done'],true)||!in_array($value['source']??null,['all','files','pages'],true)||!in_array($value['view']??null,['recent','favorites'],true)
+        $hasShortcuts=array_key_exists('shortcuts',$value);
+        $this->exact($value,$personal?['version','widgets','source','view','guide','shortcuts']:['version','widgets','source','view','guide']);
+        if($hasShortcuts){
+            $allowed=['spaces','work','tasks','library','story','messages','assistant','account'];
+            if(!$personal||!is_array($value['shortcuts'])||!array_is_list($value['shortcuts'])||count($value['shortcuts'])>8)$this->fail(400);
+            $seenShortcuts=[];foreach($value['shortcuts'] as $shortcut){if(!is_string($shortcut)||!in_array($shortcut,$allowed,true)||isset($seenShortcuts[$shortcut]))$this->fail(400);$seenShortcuts[$shortcut]=true;}
+        }
+        if(count($value)!==5+($hasShortcuts?1:0)||!in_array($value['guide']??null,['pending','later','done'],true)||!in_array($value['source']??null,['all','files','pages'],true)||!in_array($value['view']??null,['recent','favorites'],true)
             ||!is_array($value['widgets']??null)||!array_is_list($value['widgets'])||count($value['widgets'])>20)$this->fail(400);
         $types=$personal?['my_tasks','briefing','recent','favorites','space_notice','space_event','space_task','legacy_recent','legacy_services','legacy_tools','legacy_stories']:['space_notice','space_task','space_event','space_file','space_story'];
         $seen=[];$legacy=[];$anchors=['desktop'=>[],'mobile'=>[]];
@@ -272,7 +278,12 @@ final class ProductSpaces
             if($id!==null){$s=$this->space($id,true);if(!ProductSpaceAuthz::editHome($this->u,$s))$this->fail(403);}
             else $this->db()->run('SELECT id FROM users WHERE id=:uid FOR UPDATE',
                 [':uid'=>$this->uid()]);
-            $current=$this->dashboard($id);if($current['revision']!==$b['revision'])$this->fail(409,'revision_conflict');$this->layoutSources($layout,$id);$json=json_encode($layout,JSON_THROW_ON_ERROR);
+            $current=$this->dashboard($id);if($current['revision']!==$b['revision'])$this->fail(409,'revision_conflict');
+            if($id===null&&($current['layout']['version']??null)===3&&array_key_exists('shortcuts',$current['layout'])){
+                if($layout['version']!==3)$this->fail(409,'layout_version_conflict');
+                if(!array_key_exists('shortcuts',$layout)){$layout['shortcuts']=$current['layout']['shortcuts'];$layout=$this->layout($layout,true);}
+            }
+            $this->layoutSources($layout,$id);$json=json_encode($layout,JSON_THROW_ON_ERROR);
             if($id===null)$this->db()->run('INSERT INTO product_personal_dashboards(user_id,layout) VALUES(:uid,CAST(:layout AS jsonb)) ON CONFLICT(user_id) DO UPDATE SET layout=EXCLUDED.layout,revision=product_personal_dashboards.revision+1,updated_at=now()',
                 [':uid'=>$this->uid(),':layout'=>$json]);
             else $this->db()->run('INSERT INTO product_space_dashboards(space_id,layout,updated_by) VALUES(:sid,CAST(:layout AS jsonb),:uid) ON CONFLICT(space_id) DO UPDATE SET layout=EXCLUDED.layout,revision=product_space_dashboards.revision+1,updated_by=EXCLUDED.updated_by,updated_at=now()',

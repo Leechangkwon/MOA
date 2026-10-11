@@ -9,7 +9,9 @@ checks=[]
 def check(value,label):
  checks.append({'name':label,'passed':bool(value)});print(('PASS ' if value else 'FAIL ')+label,flush=True);assert value,label
 def html(mode='signed'):
- return subprocess.check_output(['php',str(ROOT/'tests/fixtures/service_home_render.php'),'home',mode],text=True)
+ # Historical saved layouts may retain a #services navigation entry. Verify its handler with a static fixture link.
+ markup=subprocess.check_output(['php',str(ROOT/'tests/fixtures/service_home_render.php'),'home',mode],text=True)
+ return markup.replace('</header>','<a href="#services">옛 서비스 소개</a></header>',1)if mode=='signed'else markup
 FILE='11111111-1111-4111-8111-111111111111';PAGE='22222222-2222-4222-8222-222222222222'
 with sync_playwright() as pw:
  browser=pw.chromium.launch();context=browser.new_context();page=context.new_page();calls=[];errors=[]

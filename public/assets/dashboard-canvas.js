@@ -2,15 +2,18 @@
 (() => {
  'use strict';
  const clone=value=>structuredClone(value), modes=['desktop','mobile']; let serial=0;
+ const shortcutIds=['spaces','work','tasks','library','story','messages','assistant','account'],hasShortcuts=v=>Object.hasOwn(v,'shortcuts');
  const safeId=id=>typeof id==='string'&&/^[a-z][a-z0-9_-]{0,63}$/.test(id);
  const v3Types=['my_tasks','briefing','recent','favorites','space_notice','space_event','space_task','space_file','space_story','legacy_recent','legacy_services','legacy_tools','legacy_stories'];
  const exact=(v,keys)=>v&&typeof v==='object'&&!Array.isArray(v)&&Object.keys(v).length===keys.length&&Object.keys(v).every(k=>keys.includes(k));
  const geometry=(g,m,v3=false)=>exact(g,v3?['x','y','w','h','size']:['x','y','w','h'])&&['x','y','w','h'].every(k=>Number.isInteger(g[k]))&&g.x>=0&&g.y>=0&&g.w>=(m==='mobile'?160:240)&&g.w<=width(m)&&g.h>=160&&g.h<=2000&&g.x<=width(m)-g.w&&g.y<=20000-g.h&&(!v3||['s','m','l'].includes(g.size));
  const mode=()=>window.innerWidth<760?'mobile':'desktop', width=m=>m==='mobile'?360:1200;
- function valid(value,ids=[]){
+ function valid(value,ids=[],context={}){
   if(!value||![1,2,3].includes(value.version)||!Array.isArray(value.widgets)||!['all','files','pages'].includes(value.source)||!['recent','favorites'].includes(value.view))return false;
+  if(value.version!==3&&hasShortcuts(value))return false;
   if(value.version===3){
-   if(!exact(value,['version','widgets','source','view','guide'])||!['pending','later','done'].includes(value.guide)||value.widgets.length>20||new Set(value.widgets.map(w=>w?.id)).size!==value.widgets.length)return false;
+   if(hasShortcuts(value)&&(context.spaceId||context.personal===false||!Array.isArray(value.shortcuts)||value.shortcuts.length>8||new Set(value.shortcuts).size!==value.shortcuts.length||!Array.from(value.shortcuts).every(id=>typeof id==='string'&&shortcutIds.includes(id))))return false;
+   if(!exact(value,hasShortcuts(value)?['version','widgets','source','view','guide','shortcuts']:['version','widgets','source','view','guide'])||!['pending','later','done'].includes(value.guide)||value.widgets.length>20||new Set(value.widgets.map(w=>w?.id)).size!==value.widgets.length)return false;
    return value.widgets.every(w=>exact(w,['id','type','source','visible','locked','desktop','mobile'])&&safeId(w.id)&&v3Types.includes(w.type)&&typeof w.visible==='boolean'&&typeof w.locked==='boolean'&&validSource(w.type,w.source)&&modes.every(m=>geometry(w[m],m,true)));
   }
   return value.widgets.length===ids.length&&new Set(value.widgets.map(w=>w?.id)).size===ids.length&&value.widgets.every(w=>w&&ids.includes(w.id)&&typeof w.visible==='boolean'&&(value.version===1?['wide','small'].includes(w.size):modes.every(m=>geometry(w[m],m))));
@@ -22,11 +25,11 @@
  function clean(value){
   const copyGeometry=(g,v3)=>({x:g.x,y:g.y,w:g.w,h:g.h,...(v3?{size:g.size}:{})});
   const result={version:value.version,widgets:value.widgets.map(w=>value.version===1?{id:w.id,visible:w.visible,size:w.size}:{id:w.id,...(value.version===3?{type:w.type,source:{...w.source},locked:w.locked}:{}),visible:w.visible,desktop:copyGeometry(w.desktop,value.version===3),mobile:copyGeometry(w.mobile,value.version===3)}),source:value.source||'all',view:value.view||'recent'};
-  if(value.version===3)result.guide=value.guide;return result;
+  if(value.version===3){result.guide=value.guide;if(hasShortcuts(value))result.shortcuts=[...value.shortcuts];}return result;
  }
  function convert(value,nodes){if(value.version!==1)return clean(value);const result={version:2,widgets:[],source:value.source||'all',view:value.view||'recent'};let desktopY=0,mobileY=0;for(const w of value.widgets){const measured=Math.ceil(nodes[w.id]?.getBoundingClientRect().height||320),h=Math.min(2000,Math.max(200,measured));const row={id:w.id,visible:w.visible,desktop:{x:0,y:desktopY,w:w.size==='small'?588:1200,h},mobile:{x:0,y:mobileY,w:360,h:Math.max(240,h)}};result.widgets.push(row);if(w.visible){desktopY+=h+16;mobileY+=row.mobile.h+16;}}return result;}
  function upgrade(value,nodes,context={}){
-  if(value.version===3)return clean(value);const result=convert(value,nodes);result.version=3;result.guide='done';
+  if(value.version===3){if(!valid(value,[],context))throw Error('위젯 설정을 확인해 주세요.');return clean(value);}const result=convert(value,nodes);result.version=3;result.guide='done';
   for(const w of result.widgets){w.type=context.spaceId?'space_'+w.id:'legacy_'+w.id;w.source=context.spaceId?{space_id:context.spaceId,scope:'all'}:{};w.locked=false;for(const m of modes)w[m].size=w[m].w>=600&&w[m].h>=400?'l':w[m].h>=280?'m':'s';}return result;
  }
  function intersects(a,b){return a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y;}
@@ -63,7 +66,7 @@
  class Canvas extends LegacyCanvas {
   name(id){return this.names[id]||this.layout?.widgets.find(w=>w.id===id)?.type||'위젯';}
   mount(value){
-   if(value.version===3&&!valid(value))throw Error('위젯 설정을 확인해 주세요.');if(value.widgets.some(w=>!safeId(w.id)))throw Error('위젯 식별자를 확인해 주세요.');
+   if(value.version===3&&!valid(value,[],this.options.context||{}))throw Error('위젯 설정을 확인해 주세요.');if(value.widgets.some(w=>!safeId(w.id)))throw Error('위젯 식별자를 확인해 주세요.');
    super.mount(value);for(const w of this.layout.widgets)this.prepare(w);
   }
   prepare(w){
@@ -78,7 +81,7 @@
    this.toolbar.classList.add('dashboard-editor--top');this.controls.querySelector('button:last-child').textContent='배치 저장·완료';this.controls.querySelector('button:last-child').classList.add('dashboard-save');
    this.workspace=el('div',undefined,'dashboard-workspace');this.host.before(this.workspace);this.workspace.append(this.host);
    this.inspector=el('aside',undefined,'dashboard-inspector');this.inspector.setAttribute('aria-label','위젯 설정');this.workspace.append(this.inspector);
-   this.inspectorContent=el('div',undefined,'dashboard-inspector-content');this.inspector.append(this.inspectorContent);const heading=el('div',undefined,'dashboard-inspector-heading');heading.append(el('h2','위젯 설정'));const close=this.button('닫기',()=>this.closeInspector());close.className='btn btn--quiet dashboard-inspector-close';heading.append(close);this.inspectorContent.append(heading);
+   this.inspectorContent=el('div',undefined,'dashboard-inspector-content');this.inspector.append(this.inspectorContent);const heading=el('div',undefined,'dashboard-inspector-heading');heading.append(el('h2','위젯 설정'));const close=this.button('닫기',()=>this.closeInspector());close.className='btn btn--quiet dashboard-inspector-close';heading.append(close);this.inspectorContent.append(heading);if(this.options.homeSettings&&this.options.context?.personal===true){this.homeSettings=el('section',undefined,'dashboard-home-settings');this.inspectorContent.append(this.homeSettings);this.options.homeSettings(this.homeSettings,this.layout,this);}
    this.selection=el('section',undefined,'dashboard-selection');this.selection.setAttribute('aria-label','선택한 위젯 크기와 잠금');this.inspectorContent.append(this.selection);
    this.batch=el('details',undefined,'dashboard-batch');this.batch.append(el('summary','배치 옵션'));const batchBody=el('div',undefined,'dashboard-batch-body');this.batch.append(batchBody);batchBody.append(this.add);this.add.addEventListener('change',()=>{if(this.busy)return;const id=this.selectedRestore;if(id&&this.current(id)?.visible)this.select(id);this.selectedRestore=null;});this.add.addEventListener('change',()=>{this.selectedRestore=this.add.value;},true);for(const b of [...this.controls.querySelectorAll('button')])if(b.textContent==='기본 배치'){b.addEventListener('click',e=>{e.stopImmediatePropagation();this.reset();},true);batchBody.append(b);}batchBody.append(this.extra);this.inspectorContent.append(this.batch);
    this.settingsOpener=this.button('위젯 설정',()=>this.openInspector());this.settingsOpener.className='btn btn--quiet dashboard-open-inspector';this.controls.prepend(this.settingsOpener);

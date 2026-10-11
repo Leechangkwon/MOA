@@ -10,6 +10,11 @@ try {
     $itemOptions=array_intersect_key($_GET,array_flip(['view','assignee','limit']));
     if(array_key_exists('view',$_GET))$itemOptions=array_diff_key($_GET,['kind'=>true]);
     $body=in_array($verb,['POST','PATCH'],true)?Http::jsonBody():[];
+    if($path==='/api/me/home-dashboard'&&$verb==='PATCH'&&is_array($body['layout']??null)&&array_key_exists('shortcuts',$body['layout'])){
+        // Associative decoding cannot distinguish [] from {}; only this optional field needs raw shape validation.
+        $raw=json_decode((string)file_get_contents('php://input'),false,512,JSON_INVALID_UTF8_SUBSTITUTE);
+        if(!($raw instanceof stdClass)||!(($raw->layout??null) instanceof stdClass)||!is_array($raw->layout->shortcuts??null))throw new ProductSpaceError(400);
+    }
     if($path==='/api/me/home-dashboard')$result=$verb==='PATCH'?$service->dashboardSave(null,$body):$service->dashboard(null);
     elseif($path==='/api/me/product-home')$result=$service->home(null);
     elseif($path==='/api/product-spaces')$result=$verb==='POST'?$service->create($body):$service->spaces();
