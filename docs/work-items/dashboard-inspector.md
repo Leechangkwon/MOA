@@ -1,6 +1,6 @@
 # 대시보드 편집 사이드바
 
-- 상태: 구현·후보 검증 완료, 운영 검증 전
+- 상태: 운영 v2.56.2 적용·검증 완료, 원격 동기화 기록은 아래 참조
 - 기준: main `03314850e240745278d424752eb5af7f78893fed` / 운영 v2.56.1
 - 브랜치: `cloud/dashboard-inspector`
 - 사용자 지적: 하단의 큰 상세설정창이 위젯을 가리고 보기 좋지 않음.
@@ -30,3 +30,11 @@
 ## 미검증
 
 실물 Android·Safari/WebKit·스크린리더·사용자 자기 공격은 미검증이다. Chromium viewport/touch 모의 시험을 실기기 시험으로 부르지 않는다. 운영 HTTPS와 원본 보존의 최종 결과는 아래에 별도 기록한다.
+
+## 운영 결과
+
+운영최종: v2.56.2 `8010bf0e3039` / 2026-10-11T20:28:07+09:00. 상단 저장·취소·추가, PC 오른쪽 설정/모바일 명시 상세열기. 실제HTTPS123/0·정확6자산·JS0/5xx0, 저장/reload/잠금/취소 확인. 기존14표/제품6표·1042파일행·975원본SHA·ownerACL·85설정 보존. QA취향 API 원복/신규합성공간보관. 고정24파일 모의적용·3종암호화전체복호화·DB/설정/패키지변경0. 실물Android·Safari·스크린리더 미검증. 상세 docs/work-items/dashboard-inspector.md.
+
+- 기능후보: `e05f738970d49283ab3375414b864eabb820b480`,24파일 모의 exact bytes 일치, runtime6·삭제0·migration0. 운영과 origin/main이0331485로 일치한 뒤 fast-forward 및 patch 발행. 기존 발행 스크립트의 작업 경로와 작성자 표기만 정확히 지정한 로컬 사본 사용.
+- 운영 증거: outputs/inspector-live/results.json 및 화면, outputs/inspector-preservation.log, outputs/inspector-rehearsal.json. PostgreSQL 읽기 시 작업 디렉터리 접근 경고가 있었지만 모든 쿼리/비교 exit0 및 원본 동일; DB 작업/데이터 권한 실패는 없었다.
+- nginx/php8.1-fpm active, FPM reload 완료. DB/설정/패키지 변경 없이 코드만 적용. 검토된6자산과 실제HTTPS6자산이 정확히 일치한다.

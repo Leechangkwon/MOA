@@ -1048,3 +1048,6 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ② 불안전한 이유 및 보정: 모두 숨김 후 모바일 상세창 닫기에서 숨긴 버튼/비초점 body로 복귀하던 실제 결함을 가시성·활성·tabIndex 후보 검사로 수정, 최종24검사에서 재확인했다. 검토 중409 상태 설명 숨김·저장 중 배치 옵션 활성·취소 중복 DOM·403 출처명 잔존도 수정 검증했다. 초기 Tab브라우저 chrome BODY 및 보존된 숨은 legacy영역 중복 집계는 하네스 오판이며 배경컨트롤 차단/실제 widget 수로 정정했다. 현재 검사 범위의 미해결 차단0.
 ③ 미검증: 실물Android·Safari/WebKit·스크린리더·사용자 자기 공격. Chromium viewport/touch를 실기기로 주장하지 않는다. 운영 HTTPS/원본 보존은 적용 후 별도 기록한다.
 ④ 다음: 암호화백업3종 전체 복호화·원본975SHA·설정85/제품6표 baseline 완료. 고정후보 모의적용·drift 확인 후 운영 검증과 원본 비교. DB migration/복원/재시드0. docs/work-items/dashboard-inspector.md.
+
+
+운영최종: v2.56.2 `8010bf0e3039` / 2026-10-11T20:28:07+09:00. 상단 저장·취소·추가, PC 오른쪽 설정/모바일 명시 상세열기. 실제HTTPS123/0·정확6자산·JS0/5xx0, 저장/reload/잠금/취소 확인. 기존14표/제품6표·1042파일행·975원본SHA·ownerACL·85설정 보존. QA취향 API 원복/신규합성공간보관. 고정24파일 모의적용·3종암호화전체복호화·DB/설정/패키지변경0. 실물Android·Safari·스크린리더 미검증. 상세 docs/work-items/dashboard-inspector.md.

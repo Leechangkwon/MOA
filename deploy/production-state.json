@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.56.1",
-  "verified_runtime_commit": "392e768bdb77493a64e2e3e3a65792e56ef4154f",
-  "verified_checkout_commit": "392e768bdb77493a64e2e3e3a65792e56ef4154f",
-  "verified_tree": "1645a2eb4483e1ca05de9b3cf9eed7aebd28ac0b",
-  "verified_at": "2026-10-11T19:51:59+09:00",
+  "version": "2.56.2",
+  "verified_runtime_commit": "8010bf0e3039da209b69261b0ec8f9aab3b8df93",
+  "verified_checkout_commit": "8010bf0e3039da209b69261b0ec8f9aab3b8df93",
+  "verified_tree": "7c31c2f3e2dd08a2a6e29f7620a8953c2b411fa6",
+  "verified_at": "2026-10-11T20:28:07+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "392e768bdb77493a64e2e3e3a65792e56ef4154f",
+  "release_commit": "8010bf0e3039da209b69261b0ec8f9aab3b8df93",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,29 +15,19 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Seven personal and five shared content-aware S/M/L widgets, per-widget locks, freeform placement and save, contextual defaults and guide; preserved existing layouts. Reserved QA only.",
-    "https_integration_pass": 97,
-    "https_integration_version": "2.56.0",
-    "https_final_readonly_pass": 24,
-    "https_final_version": "2.56.1",
+    "scope": "Dashboard top toolbar, separate desktop right inspector, explicit mobile settings dialog; preserved content-aware size, source, lock, layout and permission semantics. Reserved QA only.",
+    "https_integration_pass": 123,
     "https_fail": 0,
-    "direct_ui_pass": 383,
-    "final_display_patch_ui_pass": 15,
-    "canvas_ui_pass": 52,
+    "integration_ui_pass": 427,
+    "canvas_ui_pass": 62,
+    "inspector_ui_pass": 81,
     "legacy_freeform_ui_pass": 142,
-    "service_home_pass": 70,
-    "backend_service_pass": 508,
-    "backend_http_pass": 303,
-    "briefing_unit_pass": 11,
-    "briefing_http_pass": 28,
-    "briefing_browser_pass": 10,
-    "independent_validator_pass": 257,
-    "independent_briefing_pass": 17,
-    "independent_canvas_pass": 15,
-    "independent_renderer_sync_pass": 7,
-    "independent_revocation_verified": true,
+    "independent_ui_pass": 52,
+    "independent_final_delta_pass": 24,
+    "independent_source_revocation_pass": 13,
+    "reviewed_final_runtime_hashes_match": true,
     "cross_regression_pass": 196,
-    "cross_regression_scope": "Isolated common PHP/DB/HTTP snapshot before final SSR/layout-only/display additions; those additions covered by final targeted regressions. Not the eight original operating shell scripts.",
+    "cross_regression_scope": "Isolated common PHP/DB/HTTP initial snapshot. Final UI deltas covered by targeted regressions. Not the eight original operating shell scripts.",
     "live_viewport_widths": [
       390,
       1280
@@ -51,13 +41,7 @@
       "public/assets/dashboard-widgets.css",
       "public/assets/dashboard-widgets.js",
       "public/assets/home-dashboard.js",
-      "public/assets/space-page.js",
-      "src/community/Briefing.php",
-      "src/handlers/product_spaces.php",
-      "src/site/ProductSpaces.php",
-      "src/site/launcher_page.php",
-      "src/views/launcher.php",
-      "src/views/space_page.php"
+      "public/assets/space-page.js"
     ],
     "migrations": [],
     "deleted_files": 0,
@@ -76,12 +60,15 @@
     "encrypted_backup_decryption_verified": true,
     "encrypted_storage_original_hashes_verified": true,
     "file_apply_rehearsal": true,
+    "rehearsal_candidate": "e05f738970d49283ab3375414b864eabb820b480",
+    "rehearsal_changed_files": 24,
     "physical_android_verified": false,
     "safari_verified": false,
     "screenreader_verified": false,
-    "evidence": "docs/work-items/dashboard-widgets.md"
+    "evidence": "docs/work-items/dashboard-inspector.md"
   },
   "evidence": [
+    "docs/work-items/dashboard-inspector.md",
     "docs/work-items/dashboard-widgets.md",
     "docs/work-items/freeform-dashboard.md",
     "docs/work-items/space-actions-cleanup.md",
@@ -147,19 +134,19 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "synchronized",
-    "remote_live_verified": true,
+    "status": "push_pending",
+    "remote_live_verified": false,
     "last_fetched_origin_main": "b4152f9e1a04699703c55bf401306a15f58a483a",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
-    "web_branch": "cloud/dashboard-usability",
-    "reason": "Atomic main/cloud/dashboard-usability and both release/baseline tags pushed and fetched. Both branches verified at b4152f9e1a04699703c55bf401306a15f58a483a. This metadata-only follow-up uses the same branches. v2.56.1 dereferences to verified release392e768.",
-    "verified_at": "2026-10-11T19:52:52+09:00"
+    "web_branch": "cloud/dashboard-inspector",
+    "reason": "Server release and HTTPS/preservation verified; atomic main/feature/release/baseline push is next.",
+    "verified_at": "2026-10-11T20:28:07+09:00"
   },
   "previous_verification": {
-    "version": "2.55.0",
-    "runtime_commit": "586a8eacb27ac1abdcba9229d2fc13e4eca00aa2",
-    "verified_at": "2026-10-11T18:30:46+09:00",
-    "evidence": "docs/work-items/freeform-dashboard.md"
+    "version": "2.56.1",
+    "runtime_commit": "392e768bdb77493a64e2e3e3a65792e56ef4154f",
+    "verified_at": "2026-10-11T19:51:59+09:00",
+    "evidence": "docs/work-items/dashboard-widgets.md"
   }
 }
