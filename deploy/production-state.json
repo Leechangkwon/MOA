@@ -166,14 +166,14 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "pending_record_push",
-    "remote_live_verified": false,
-    "last_fetched_origin_main": "61ad5f5185d560842374e0b6994dbcb6744360e7",
+    "status": "synchronized",
+    "remote_live_verified": true,
+    "last_fetched_origin_main": "1bc913d832ed0f5c50b48a7357f9fee98cd85c3a",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
     "web_branch": "cloud/community-rich-table",
-    "reason": "Runtime and data preservation verified on server; final record and branch/tag atomic push pending.",
-    "verified_at": "2026-10-11T22:29:11+09:00"
+    "reason": "Atomic main/cloud/community-rich-table, both release tags and task baseline tags pushed and fetched. Both branches verified at 1bc913d832ed0f5c50b48a7357f9fee98cd85c3a. This metadata-only follow-up uses the same branches. v2.58.1 points to verified runtime ac847cec7dcb.",
+    "verified_at": "2026-10-11T22:29:42+09:00"
   },
   "previous_verification": {
     "version": "2.57.1",

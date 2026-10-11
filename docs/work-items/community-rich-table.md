@@ -1,6 +1,6 @@
 # 커뮤니티 표 밀도와 서식 보존 편집
 
-- 상태: 운영 검증 완료, Git 동기화 준비
+- 상태: 운영 검증·Git 동기화 완료
 - 작업 브랜치: cloud/community-rich-table
 - 기준 main: f3bec3509f271fb549731bf52780781e7baa68c3, v2.57.1
 - 담당 환경: 서버 접근 가능한 Codex, 구현/독립 검토 분리
@@ -50,3 +50,5 @@ production과 동일한 import URL에서 편집 UI45/45, 읽기 회귀317/317 �
 증거: outputs/community-rich-table-live/results.json 및 실제 화면 캡처, community-rich-table-preservation.log, community-rich-table-product-preservation.log, community-rich-table-rehearsal.json 및 community-rich-table-toolbar-rehearsal.json. 첫 실패 로그와 QA 정리 로그도 별도 보존했다.
 
 실제 HTTPS 최종 검증의 첫 세션은 저장·정확서식보존·reload·390 내부폭까지18항목 통과한 뒤 Escape 한 번으로 모달이 닫힌다고 가정한 하네스가 뒤의 완료 버튼 클릭에서 timeout했다. 모달의 명시적 닫기 버튼으로 취소를 확인하도록 하네스만 수정하고 이미 저장된 같은 QA 문서에서 이어 검사했다. 추가 문서 수정 없이 원래 기대JSON exact equality부터 확인하고 390/820/1280 모달열기/닫기·원문읽기·5자산·JS/5xx·soft-delete36항목 통과. 두 세션은 동일 최종 runtime이며 Escape 닫힘 검증으로 주장하지 않는다. 첫 실패 로그 community-rich-table-live-second.log와 후속 community-rich-table-live-resume.log를 함께 보존한다.
+
+Git 동기화: main과 cloud/community-rich-table 및 v2.58.0/v2.58.1·task baseline 두 태그를 원자적 push하고 fetch로 1bc913d832ed0f5c50b48a7357f9fee98cd85c3a 동등성을 확인했다. 후속 metadata만 같은 두 브랜치로 기록하며 runtime은 검증된 ac847cec7dcb와 동일하다. 부모 문서는 현재 작업 절만 병합해 별도 c6a9da8에 기록했다.
