@@ -36,6 +36,8 @@ $uuidRe = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
    아래 두 조건은 검색 문장(`community_search_sql`)이 조건절 옆에 붙이는 것과 같은 두 줄이다. */
 $sqlListHead = <<<'SQL'
     SELECT p.public_id, p.title, p.icon, s.kind AS space_kind, s.name AS space_name,
+           p.author_id, s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
+           s.is_active AS space_is_active,
            f.position, f.created_at AS favorited_at
       FROM community.page_favorites f
       JOIN community.pages p ON p.id = f.page_id
@@ -58,6 +60,7 @@ if ($method === 'GET') {
             'title' => (string) $r['title'],
             'icon'  => $r['icon'] === null ? null : (string) $r['icon'],
             'space' => ['kind' => (string) $r['space_kind'], 'name' => (string) $r['space_name']],
+            'can_delete' => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageManage($user, $r)[0],
         ];
     }
     // ★ 전체 개수 칸이 없다 — 목록에 안 나오는 즐겨찾기의 수가 새지 않게(지시서 2장 금지 패턴).

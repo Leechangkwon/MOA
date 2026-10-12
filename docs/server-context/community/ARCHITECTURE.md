@@ -1144,3 +1144,10 @@ page_shares 확장: share_user_id NULL 허용 + share_group_id NULL → share_gr
 ### 2026-10-11 표 원본 보존 편집
 
 꾸민 표의 문서 편집 차단을 해소한다. 기존 저장 스키마/검증기는 유지하고, PM table atom 속성에 검증된 원본 block JSON 복사본을 보존한다. 셀 편집은 선택 셀 한 개의 기존 ProseMirror schema/parser를 재사용하고 수정된 rich text만 적용한다. 표의 행/셀 색·열폭·합침·마크·ID를 평문으로 다시 만들지 않는다. 기존 일반 표 attrs는 호환한다. 취소/무수정은 원본을 보존하며, 부모 문서에는 적용 때 한 transaction으로 반영해 undo/기존 저장 경합을 유지한다. 다른 atom의 손실 보호는 그대로다. docs/community-rich-table-directive.md.
+
+
+## 2026-10-12 문서 선택 휴지통 UI와 읽기 capability
+
+기존 GET /api/pages(기본·tree·shared), /api/me/favorites, /api/me/recent 및 community_work_projects 읽기helper 응답에 can_delete boolean을 제공한다. Authz::canCommunityWrite와 CommunityAuthz::decidePageManage 판정을 사용하며 can_edit와혼용하지않는다. 기존SQL가시범위/정렬/limit·삭제/복원라우트·감사/스키마는유지한다. 필요한판정열은기존SELECT에포함하여row별추가DB질의를하지않는다. 단일삭제/30일연쇄휴지통·복원 계약은그대로이며frontend가동일DELETE를순차호출한다. UUID중복정리/최대100·확인/부분실패·401중단/같은계정재개·10초undo, 현재편집저장/충돌확인후삭제. docs/document-bulk-trash-directive.md 참조.
+
+프로젝트 삭제·복원 후 편집 내용을 유지하며 목록을 새로 읽기 위해 `GET /api/pages?view=projects`를 추가한다. 기존 라우트의 읽기 갈래이며 `community_work_projects($user, 10)`의 `items`를 `pages`로, `more`는 그대로 반환한다. 진행률 계산 없이 `progress:null`, 기존 가시범위·정렬·10개 상한, 다른 문서 필터는 이 전용 갈래에서 적용하지 않는다. 최근 조회 쓰기와 별도 쿼리·N+1은 없다. 일반·트리 목록에는 게시판도 올 수 있으므로 `can_delete`는 작성자와 게시판 활성 여부까지 포함한 행별 관리 판정이다.

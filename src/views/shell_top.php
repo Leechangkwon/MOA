@@ -579,11 +579,22 @@ if ($shellMod === 'community'): ?>
          새 클래스 0: 제목은 `.nav-title`, 줄은 사이드바 트리와 같은 `.nav-tree` 줄(5-A′). 접기·펼치기는 <details> 가 한다
          (여닫는 스크립트 0 · 키보드로도 열린다 — DESIGN 2.14 페이지 트리와 같은 방식). 즐겨찾기 순서는 줄을 끌어 놓거나
          Alt+↑/↓ 로 바꾼다(editor.js — `PATCH /community/api/me/favorites`). -->
+    <div class="sidebar-document-tools">
+      <button type="button" class="btn btn--small btn--quiet" id="sidebar-document-select" aria-pressed="false">문서 선택</button>
+      <div id="sidebar-document-selection" hidden>
+        <span id="sidebar-document-count" aria-live="polite">0개 선택</span>
+        <button type="button" class="btn btn--small btn--quiet" id="sidebar-document-all">보이는 문서 전체 선택</button>
+        <button type="button" class="btn btn--small btn--quiet" id="sidebar-document-clear">선택 해제</button>
+        <button type="button" class="btn btn--small btn--quiet" id="sidebar-document-trash" disabled>선택 휴지통</button>
+        <button type="button" class="btn btn--small btn--quiet" id="sidebar-document-done">완료</button>
+        <p id="sidebar-document-note" class="help" role="status">한 번에 100개까지 선택합니다.</p>
+      </div>
+    </div>
     <details id="nav-community-fav-box" data-sidebar-group open hidden>
       <summary class="nav-title">즐겨찾기</summary>
       <nav id="nav-community-fav" class="nav" aria-label="즐겨찾기"></nav>
     </details>
-    <details id="nav-community-recent-group" data-sidebar-group open>
+    <details id="nav-community-recent-group" data-sidebar-group>
     <summary id="nav-community-recent-title" class="nav-title" hidden>최근</summary>
     <nav id="nav-community-recent" class="nav" aria-label="최근 본 페이지" hidden></nav>
     </details>
@@ -618,11 +629,11 @@ $shellProjects = function_exists('community_work_projects') && $shellUser !== []
     ? community_work_projects($shellUser, 10) : ['items' => [], 'more' => false];
 $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
 ?>
-    <details id="nav-work-projects-group" data-sidebar-group open>
+    <details id="nav-work-projects-group" data-sidebar-group>
     <summary id="nav-work-projects-title" class="nav-title"<?= $shellProjectsShown ? '' : ' hidden' ?>>프로젝트</summary>
     <nav id="nav-work-projects" class="nav" aria-label="프로젝트"<?= $shellProjectsShown ? '' : ' hidden' ?>>
 <?php foreach ($shellProjects['items'] as $shellProject): ?>
-      <a class="nav__item" href="<?= Http::communityUrl('/p/') ?><?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-project-id="<?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-project-purpose="<?= $shellProject['purpose'] === 'my_tasks' ? 'my_tasks' : 'project' ?>"><span class="task-color<?= $shellProject['color'] === null ? '' : ' moa-' . htmlspecialchars((string) $shellProject['color'], ENT_QUOTES, 'UTF-8') ?>" aria-hidden="true"></span><span><?= htmlspecialchars((string) $shellProject['title'], ENT_QUOTES, 'UTF-8') ?></span></a>
+      <a class="nav__item" href="<?= Http::communityUrl('/p/') ?><?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-project-id="<?= htmlspecialchars((string) $shellProject['id'], ENT_QUOTES, 'UTF-8') ?>" data-can-delete="<?= ($shellProject['can_delete'] ?? false) ? 'true' : 'false' ?>" data-project-purpose="<?= $shellProject['purpose'] === 'my_tasks' ? 'my_tasks' : 'project' ?>"><span class="task-color<?= $shellProject['color'] === null ? '' : ' moa-' . htmlspecialchars((string) $shellProject['color'], ENT_QUOTES, 'UTF-8') ?>" aria-hidden="true"></span><span><?= htmlspecialchars((string) $shellProject['title'], ENT_QUOTES, 'UTF-8') ?></span></a>
 <?php endforeach; ?>
 <?php if ($shellProjects['more']): ?>
       <a id="nav-work-all-projects" class="nav__item" href="<?= Http::communityUrl('/') ?>#work-projects"><span class="icon" data-icon="log"></span><span>모든 프로젝트</span></a>
@@ -646,7 +657,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
     </details>
     <!-- 문서 (Q:F-12 2.19 ⑦) — 내 문서(`/community/workspace` 그대로) · 내 페이지 트리(5-A′ — editor.js 가 `?tree=1` 의 답으로 채운다) · 절차서,
          이어서 「게시판」 목록(볼 수 있는 게시판만 — 게시판 모음 화면이 따로 없어 목록째 이 묶음 끝에 둔다). -->
-    <details id="nav-community-documents-box" data-sidebar-group open>
+    <details id="nav-community-documents-box" data-sidebar-group>
     <summary class="nav-title">문서</summary>
     <nav class="nav" aria-label="문서">
       <a id="nav-community-home" class="<?= $shellNavClass('community-home') ?>" href="<?= Http::communityUrl('/workspace') ?>">

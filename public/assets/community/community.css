@@ -1133,3 +1133,19 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
   }
   body[data-page-editing] #page-title-input:focus-visible { border-color: var(--ring); box-shadow: 0 0 0 3px var(--ring-soft); }
 }
+
+/* Document actions remain siblings of links: no nested interactive controls. */
+.document-search-row { display:flex; align-items:center; gap:8px; min-width:0; }
+.document-search-row > .card { flex:1; min-width:0; }
+.document-search-row > input { flex:none; width:20px; height:20px; }
+.page-tree__row .document-row-trash { flex:none; }
+#community-bulk-bar { flex-wrap:wrap; }
+#document-trash-dialog, #document-trash-results { width:min(620px,calc(100vw - 32px)); max-height:calc(100dvh - 32px); overflow:auto; }
+#document-trash-items { max-height:35dvh; overflow:auto; overflow-wrap:anywhere; }
+#document-trash-msg:empty { display:none; }
+#document-trash-body td { overflow-wrap:anywhere; }
+
+/* 게시판 바닥의 이전/다음이 고정 사용 안내 단추 아래에 놓이지 않도록 스크롤 여유를 둔다. */
+body[data-page="community-board"] .table-foot {
+  margin-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+}

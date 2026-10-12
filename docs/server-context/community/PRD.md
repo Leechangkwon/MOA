@@ -399,3 +399,6 @@ t-box PRD 7장의 S-01~S-04·S-07·S-09 를 **그대로 상속**한다(같은 �
 
 
 2026-10-04 서버 통합 결과: 회원 경험 PR #3은 v2.47.0 `d75a5d5`로 운영 배포됐다. 공통 교차 회귀162·운영 HTTPS70 통과, DB migration5개·변경108파일 반영, 기존 행/owner/ACL·저장 원본1018파일 보존. 최신 근거는 `deploy/production-state.json`과 `docs/work-items/community-member-experience.md`. 실물 휴대폰/Windows 및 채팅 MCP 연결은 별도 미완료다.
+
+
+2026-10-12 사용자 문서정리(Q:F-3a/12·C:F-17/20): 내문서와사이드바의개별/부분/현재목록전체선택휴지통, 기본접기/직접접힘기억. 기존DELETE/복원과관리인가·100개한도·하위cascade확인유지. 새문서삭제시험은신규예약QA만, 기존원본0. docs/document-bulk-trash-directive.md 참조.

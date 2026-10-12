@@ -2962,7 +2962,9 @@ function community_work_projects(array $u, int $limit, bool $projectsOnly = fals
     $limit = max(1, min(100, $limit));
     [$visible, $visBind] = community_search_pages_where($u);
     $sql = <<<SQL
-        SELECT d.id AS db_id, p.public_id, p.title, p.icon, d.color, d.purpose, fav.page_id AS fav_page
+        SELECT d.id AS db_id, p.public_id, p.title, p.icon, d.color, d.purpose, fav.page_id AS fav_page,
+               p.author_id, s.kind AS space_kind, s.owner_user_id AS space_owner_user_id,
+               s.team_id AS space_team_id, s.is_active AS space_is_active
           FROM community.databases d
           JOIN community.pages p ON p.id = d.page_id
           JOIN community.spaces s ON s.id = p.space_id
@@ -3013,6 +3015,7 @@ function community_work_projects(array $u, int $limit, bool $projectsOnly = fals
             'color'    => in_array($color, DbProps::PROJECT_COLORS, true) ? $color : null,
             'purpose'  => (string) $r['purpose'],
             'favorite' => $r['fav_page'] !== null,
+            'can_delete' => Authz::canCommunityWrite($u) && CommunityAuthz::decidePageManage($u, $r)[0],
             'progress' => $withProgress ? ($progress[(int) $r['db_id']] ?? ['done' => 0, 'total' => 0]) : null,
         ];
     }
