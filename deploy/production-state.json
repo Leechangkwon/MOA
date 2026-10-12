@@ -120,11 +120,11 @@
     "docs/work-items/scale-a.md"
   ],
   "git_sync": {
-    "status": "push_pending",
-    "remote_live_verified": false,
+    "status": "synced",
+    "remote_live_verified": true,
     "web_branch": "cloud/document-bulk-trash",
-    "last_fetched_origin_main": "e1d0ce80f454d2d048b2cda60e9f51e1d94a4f48",
-    "reason": "Runtime and original-data preservation verified; deployment evidence awaiting atomic push.",
-    "verified_at": "2026-10-12T13:16:23+09:00"
+    "last_fetched_origin_main": "9ba9031a708a4f5e3392570975494265b9a0d96a",
+    "reason": "Verified v2.61.0 runtime and deployment evidence atomically pushed with main, work branch and release/baseline tags; this follow-up records confirmed synchronization.",
+    "verified_at": "2026-10-12T13:17:33+09:00"
   }
 }

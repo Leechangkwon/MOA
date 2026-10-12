@@ -1,6 +1,6 @@
 # 내 문서·업무 사이드바 선택 삭제
 
-- 상태: 운영 v2.61.0 검증 완료, 원격 동기화 예정
+- 상태: 운영 v2.61.0 검증·Git2 동기화 완료
 - 기준 main: `e618320c6297843dd9367971849593b4e49c5db8` / v2.60.0
 - 작업 브랜치: `cloud/document-bulk-trash`
 - 담당 환경: 서버의 격리 worktree. Codex root, 백엔드·프런트 구현 담당, 별도 컨텍스트 독립 검토 담당.
@@ -57,3 +57,5 @@
 고정 후보 `4178ecf5dd3294ce5dd68fc1275c6376121266d3`, 릴리스 `35569143809dd7c5c46998fe1ff5a3fa54828471`. 증거는 outputs/document-trash-integrated-rehearsal.json, document-trash-integrated-drift.json, document-trash-live/results.json·cleanup.json, document-trash-integrated-preservation.log·document-trash-integrated-product-preservation.log다. 실제 HTTPS의 모든 브라우저 쓰기를 새 QA UUID 허용목록으로 제한했고 원래 문서·파일·개인 설정은 변경하지 않았다.
 
 첫 HTTPS 시도는 숨겨진 tree와 표시 목록의 동일 UUID 버튼을 시험 selector가 동시에 잡아 strict-mode로 중단했다. 실제 앞선 삭제/복원은 통과했고 신규 QA 4개 전부 정상 휴지통 정리했다. selector를 #community-list로 한정한 재시험을 완료했으며 앱 런타임 수정은 없었다. 첫 로그·정리는 outputs/document-trash-live-first.log 및 document-trash-live-first/cleanup.json에 보존했다. 두 실행의 신규 QA를 모두 보존 검사 기준 이후에 생성했고 기존 문서 쓰기0이다.
+
+Git2 동기화: 2026-10-12T13:17:33+09:00 main·작업 브랜치·v2.61.0·최초 기준 태그 2개를 atomic push하고 원격 ref가 로컬과 같은지 확인했다. 서버 부모 문서 커밋 `a4e006c`는 원격 없는 부모 저장소에 기록했으며 최신 규모 A 문서를 보존했다. 실제 검증 runtime 19의 바이트는 후속 문서 커밋에서 바뀌지 않는다.
