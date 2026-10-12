@@ -755,15 +755,13 @@ v2.46.0(56a4ae1)에 개인 파일 권한과 문서 첨부 인가, 권한 요청 
 
 | 날짜 | 구분 | 내용 | 해소·근거 |
 |---|---|---|---|
-| 2026-10-03 | 요청 | 커뮤니티 전체 기능 입구, 팔로우·팔로워와 공개 범위, 첫 가입자 강조 안내, 유연한 여행 계획, 긴 스토리 요약/상세 모달, 다크 흰 카드 수정 | `../tbox-v2/docs/community-member-experience-directive.md` |
-| 2026-10-03 | 구현 | cloud/community-member-experience 후보. 기존 원문/사진 보존, 발견 게시 opt-in, 여행 계획 독립 소유·MCP 범위 | `../tbox-v2/docs/work-items/community-member-experience.md`, `wiki/community/guide-memories.json` |
+| 2026-10-03 | 요청 | 커뮤니티 전체 기능 입구, 팔로우·팔로워와 공개 범위, 첫 가입자 강조 안내, 유연한 여행 계획, 긴 스토리 요약/상세 모달, 다크 흰 카드 수정 | `docs/community-member-experience-directive.md` |
+| 2026-10-03 | 구현 | cloud/community-member-experience 후보. 기존 원문/사진 보존, 발견 게시 opt-in, 여행 계획 독립 소유·MCP 범위 | `docs/work-items/community-member-experience.md`, `wiki/community/guide-memories.json` |
 
 PHP·격리 PostgreSQL·실물 기기·운영 HTTPS는 미검증이며 기존 운영 완료 표를 변경하지 않는다.
 
 
-### 2026-10-04 회원 경험 v2.47.0 운영 반영
-
-사용자 배포 지시로 PR #3을 운영에 반영했다. 발행 커밋 `d75a5d5`, DB migration5개 적용·코드108파일 모의 적용/해시 일치·FPM reload 완료. 공통 경로162 및 운영 HTTPS70/70, 기존 행/소유권/ACL·저장 원본1018파일 해시 보존. 암호화 백업/복호화 확인: `/var/backups/tbox-v2/member-20261004`. 실물 휴대폰/Windows와 이 채팅 MCP 연결은 별도 미완료다. 상세 `../tbox-v2/docs/work-items/community-member-experience.md`.
+2026-10-04 서버 통합 결과: 회원 경험 PR #3은 v2.47.0 `d75a5d5`로 운영 배포됐다. 공통 교차 회귀162·운영 HTTPS70 통과, DB migration5개·변경108파일 반영, 기존 행/owner/ACL·저장 원본1018파일 보존. 최신 근거는 `deploy/production-state.json`과 `docs/work-items/community-member-experience.md`. 실물 휴대폰/Windows 및 채팅 MCP 연결은 별도 미완료다.
 
 
 ## 2026-10-04 여러 스레드 요약 표시 보정 (서버 검증·배포 대기)
@@ -793,6 +791,11 @@ PHP·격리 PostgreSQL·실물 기기·운영 HTTPS는 미검증이며 기존 �
 2026-10-04 사용자 지시로 PR #6 후보 `394d452`를 v2.48.0 `941cb84`로 운영 배포했다. 변경20파일 모의 적용·최종 해시 일치, DB/migration·서버 설정·운영 패키지·서비스 재시작 없음. gallery8·social12·실제 PHP/격리 DB 화면19·공통교차162·공식 자산39파일/59import·위키67편·보안린트0 통과. 실제 HTTPS 128/128, 390/1440px 기존 공개글3개의 요약/전체 이야기·사진 순서·PC 버튼·현재 번호·원본 이미지 로딩·앨범/목록/새로고침을 검증했다. 실제 HTTPS의390px 모바일 에뮬레이션에서도 가로 왕복 스와이프와 세로 스크롤을 확인했다. 운영 글/사진 재저장 없이 검사 대상 DB행·owner/ACL 및 원본1028파일 SHA-256 보존. 실물 휴대폰·Safari/Firefox·사용자 자기 공격은 미보고다.
 
 
+### 2026-10-06 PR #4 ChatGPT 원격 연결 운영 반영(기본 비활성)
+
+2026-10-06 사용자 지시(「PR #4 진행」·「PR #4 반영 + 메신저 기획 병행」)로 PR #4 후보 `af88127` 을 v2.48.0 main 위에 통합(`5af8138`·시험 보정 `82d6cd9`)하고 v2.49.0 `302d415` 로 운영에 **기본 비활성**(MCP_REMOTE_ENABLED 미설정) 반영했다. 변경62파일 모의 적용·최종 해시 일치, migration `2026-10-15_remote_mcp.sql` 1개(사용자 보안 epoch 열·트리거 + mcp_* 표5 · 추가 전용), nginx 3파일(정확 위치·요청 제한·로그 가림) 운영 `nginx -t` 통과 후 reload, PHP-FPM reload. 반영 전 운영 /etc nginx 와 v2.48.0 저장소 바이트 동일(드리프트0). 독립 검토(Fable 새 문맥, 2026-10-06 00:36): 차단·중요0, 경미2 — PHP 단위 oauth141·protocol94·tools61·photo15, 실 PHP+격리 DB remote_http738, 격리 인스턴스 직접 공격(OAuth·/mcp·IDOR·닫힌 실패), 후보 nginx 실기동, 회귀 travel62·story65·memories138·social134·실화면19·stdio MCP114·return-path85·guard23·합성 연결48·여행15·로그인36·공통교차162, 운영 사본 migration 2회·owner/ACL 보존. 운영 HTTPS 71/71: MCP 창구 전부 503(닫힘)·연결 화면 「기능 꺼짐」·설정 진입 링크·로그인 화면 CSP/프레임 보호 유지·기존 기능·자산 바이트·390/1440px·JS 오류0·5xx0·접근 로그에 MCP/OAuth/로그인 원문 0·app.log 새 예외0. 기존 행(users 는 새 열 제외)·owner/ACL·저장 원본1028파일 SHA-256 보존. 실제 ChatGPT 등록·OAuth 왕복·휴대폰·앞단 프록시 로그·사용자 자기 공격은 미검증(기능을 켜기 전 할 일).
+
+
 ## 2026-10-11 읽기 본문의 검정 바탕·배경색 보정
 사용자가 배경색판 문서의 읽기 화면을 지적하고 캡처를 제공했다. .doc 배경 강제 규칙을 제거하고 강조 상자·표의 명시 배경색 우선순위를 바로잡는다. 본문·표 데이터와 편집/저장/권한은 유지. 상세 tbox-v2/docs/work-items/community-editor-surface.md.
 
@@ -814,6 +817,16 @@ PHP·격리 PostgreSQL·실물 기기·운영 HTTPS는 미검증이며 기존 �
 최종 보정 검증: 독립105/0, 자체 전체 matrix의 geometry/키보드/모달372항목 통과(마지막 heartbeat 오분류 하네스 실패 로그 보존), heartbeat만 합성 정상응답으로 보정한 좁은390px 최종24/0·JS/CSP0·문서쓰기0. CSS a807b324256d51d35d0f2df59f36205e284b7839fc709a4f0530cf82c0216372, 나머지 runtime10 바이트 불변. 전체 기존45/317/391 재실행으로 과장하지 않으며 변경된 한 속성에 대한 별도 검증이다.
 
 운영 최종: v2.58.1 `ac847cec7dcb` / 2026-10-11T22:29:11+09:00. 서식 표 원본 JSON 보존·선택 셀 편집과 읽기 밀도 개선. 초기25파일/runtime11 고정 모의 적용 후 실제 모바일 toolbar 넘침을 발견해 CSS1 경계 보정·별도 고정 모의/드리프트·patch/FPM reload까지 완료. 실제 HTTPS 최초 저장18항목·후속36항목 통과: 예약QA 신규 글 한셀100→1005 실제 저장/reload, 나머지 모든 블록·색·링크·열폭 정확 보존, 390/820/1280 편집·모달·취소/내부폭 확인. 원래 사용자 글은 읽기만 했고 제목/본문/서식/버전 동일. JS/5xx0·라이브자산5 바이트 일치·최종runtime11 검토hash 동일. 기존14표·제품6표 모든 원래행·1042파일행·975원본SHA·ownerACL·85설정 보존. QA 신규 문서2개만 정상 API로 soft-delete, 기존 자료 수정0. 암호화3종 checksum/전체복호화·DBmigration/설정/패키지변경0. 실물IME/휴대폰·Safari·스크린리더 미검증. 상세 docs/work-items/community-rich-table.md.
+
+
+## 2026-10-12 내 문서·업무 사이드바 선택 삭제
+
+사용자요청: 최근·프로젝트·문서 기본펼침과 개별상세진입삭제 불편. 기본접기/직접여닫기기억, 내문서검색·트리 및사이드바 page항목의개별/부분/현재목록전체선택휴지통. 기존100개상한/하위cascade/확인/순차진행/복원/인가·원문보호를유지. docs/document-bulk-trash-directive.md·docs/work-items/document-bulk-trash.md 참조.
+
+2026-10-12 구현·독립 검토 완료: API307/0·자체UI53/0·독립API158/0·독립UI80/0·초기공통196/0, lint0/자산40·71/위키69. runtime19(생성버전7) 동결. 운영 반영 전. 학습: 편집 공유와 삭제 관리를 분리하고, 검색 결과의 중간 조상이 없어도 최신 전체 트리로 계층을 보존한다. 비동기 작업 중단·복원은 현재 작업 상태와 화면 잠금의 수명주기를 함께 검사해야 한다. docs/work-items/document-bulk-trash.md.
+
+
+운영 최종: v2.61.0 `35569143809d` / 2026-10-12T13:16:23+09:00. 내 문서 검색·트리와 업무 사이드바에서 개별·부분·현재 목록 전체선택 휴지통 이동을 제공한다. 최근·프로젝트·문서는 기본 접기와 사용자별 PC 펼침 기억, UUID 중복 제거·100개 한도·하위 동반 이동 확인·실패/재인증·10초 되돌리기·30일 복원을 유지한다. 저장 실패·충돌 문서를 보호하고 실제 삭제 권한을 표시한다. 고정 후보 36파일/runtime 19 모의 적용·fresh drift·FF/minor/FPM reload, 실제 HTTPS 46/0·4자산 정확 바이트·JS/5xx0. 새 예약 QA 문서 8개만 생성·삭제·복원 후 휴지통 정리, 기존 원문 쓰기0. 기존 14표+제품6표+메신저5표 모든 원래 행(제외0), 1042파일행·959원본SHA·ownerACL·93설정 보존. 암호화3종 checksum/전체복호화 확인, DBmigration/설정/패키지변경0. 실물휴대폰/Safari/스크린리더 미검증. 상세 docs/work-items/document-bulk-trash.md.
 
 ## 2026-10-12 규모 점검 — 인덱스·페이징·캐시·DB 부하 (점검만, 코드 변경 0)
 
@@ -846,13 +859,3 @@ A는 v2.60.2/4e71c9d 운영 완료 상태 유지. B 후보는 /home/changkwon/qa
 | 별도 카운터표 대안 5천 갱신 | — | 68.483ms (사용자 지정 pages 칸 유지 선택) |
 
 SR5 게시판별 글수·SR12 등 범위 밖은 그대로다. 다음단추 겹침 해결 및 B수락 재개 지시를 기다린다.
-
-
-## 2026-10-12 내 문서·업무 사이드바 선택 삭제
-
-사용자요청: 최근·프로젝트·문서 기본펼침과 개별상세진입삭제 불편. 기본접기/직접여닫기기억, 내문서검색·트리 및사이드바 page항목의개별/부분/현재목록전체선택휴지통. 기존100개상한/하위cascade/확인/순차진행/복원/인가·원문보호를유지. docs/document-bulk-trash-directive.md·docs/work-items/document-bulk-trash.md 참조.
-
-2026-10-12 구현·독립 검토 완료: API307/0·자체UI53/0·독립API158/0·독립UI80/0·초기공통196/0, lint0/자산40·71/위키69. runtime19(생성버전7) 동결. 운영 반영 전. 학습: 편집 공유와 삭제 관리를 분리하고, 검색 결과의 중간 조상이 없어도 최신 전체 트리로 계층을 보존한다. 비동기 작업 중단·복원은 현재 작업 상태와 화면 잠금의 수명주기를 함께 검사해야 한다. docs/work-items/document-bulk-trash.md.
-
-
-운영 최종: v2.61.0 `35569143809d` / 2026-10-12T13:16:23+09:00. 내 문서 검색·트리와 업무 사이드바에서 개별·부분·현재 목록 전체선택 휴지통 이동을 제공한다. 최근·프로젝트·문서는 기본 접기와 사용자별 PC 펼침 기억, UUID 중복 제거·100개 한도·하위 동반 이동 확인·실패/재인증·10초 되돌리기·30일 복원을 유지한다. 저장 실패·충돌 문서를 보호하고 실제 삭제 권한을 표시한다. 고정 후보 36파일/runtime 19 모의 적용·fresh drift·FF/minor/FPM reload, 실제 HTTPS 46/0·4자산 정확 바이트·JS/5xx0. 새 예약 QA 문서 8개만 생성·삭제·복원 후 휴지통 정리, 기존 원문 쓰기0. 기존 14표+제품6표+메신저5표 모든 원래 행(제외0), 1042파일행·959원본SHA·ownerACL·93설정 보존. 암호화3종 checksum/전체복호화 확인, DBmigration/설정/패키지변경0. 실물휴대폰/Safari/스크린리더 미검증. 상세 docs/work-items/document-bulk-trash.md.
