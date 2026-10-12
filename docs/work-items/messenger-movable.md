@@ -1,6 +1,6 @@
 # 메신저 공통 진입·창 이동
 
-- 상태: 운영 v2.59.0 검증 완료, 원격 동기화 예정
+- 상태: 운영 v2.59.0 검증·원격 동기화 완료
 - 브랜치: cloud/messenger-movable
 - 기준: 01114a9fd667cfd6c58124a81c8c44d6a10a618d / v2.58.2
 - 담당: Codex root·창구현·레일구현·독립검토
@@ -45,3 +45,5 @@ CDP4배 확대(visual320/layout1280)에서 제목 flex폭이0이 되어 손잡�
 후보 `5e53299a05a2a6fa9573d46915c662dc0bd40b0d`, 릴리스 `23ea727001d70c4f2c046524dcee7cb2524e7ab8`. 실제운영 로그 outputs/messenger-live.log, 결과/캡처 messenger-movable-live/, 모의 messenger-movable-rehearsal.json·drift messenger-drift.json·보존 messenger-preservation.log/messenger-product-preservation.log. 예약QA claude_admin01 정상인증으로 확인했고 브라우저 비GET/HEAD/OPTIONS를 차단하여 메시지전송/AI생성/기존문서·개인설정 쓰기0.
 
 실운영 첫 하네스는 이야기 본문의 기존 메신저 동작까지 전역 opener로 세어 실패했다. DOM probe로 공통 레일1·본문동작1을 구분하고 검증 범위를 셸의 두 고정 id로 맞춰 전체81/0 완료했다. 런타임 추가수정0. 첫 product hash 비교는 사용자 동시 저장1행을 감지해 멈췄고, 암호화 백업 row의 revision2와 현재5·일반브라우저 감사3건을 대조했다. 그 행만 문서화한 예외로 유지하며 나머지 원래행과 QA취향은 모두 불변. 증거 messenger-live-first.log·messenger-live-entry-probe.log·messenger-concurrent-dashboard.log, 비공개 백업 concurrent-user-dashboard.json.
+
+main·cloud/messenger-movable·v2.59.0·baseline태그 atomic push/fetch 완료, 양쪽 브랜치 564035eac5fd5935ee1e2fc55c12d3207abd51c2 동일 확인. 이 동기화 후속 기록도 같은 두 브랜치로 전달한다. 부모 PRD/STAGES/기획의 선택절은 8fd08e6으로 기록했고 최종 런타임은 23ea727001d7과 동일하다.
