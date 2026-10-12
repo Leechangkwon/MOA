@@ -57,3 +57,5 @@ T17~19 기준선 사전 읽기전용 `sudo bash scripts/check_baseline.sh`: OK24
 PG 리허설 첫 적용은 임시 perf 사용자 기본 search_path에 perf 스키마가 있어 확장이 public 밖에 생성돼 REVOKE에서 멈췄다. `WITH SCHEMA public`과 기존namespace 검사로 보정하고 임시 확장만 제거 후 재실행 통과(`pg-rehearsal-final.log`). 운영은 아직 확장이 없어 영향0. 예상치 못한 기존 확장스키마가 있으면 자동이동하지 않고 멈춘다.
 
 2026-10-12 A 최종 독립 검토 통과: review/review-A.md·reviewed-hashes.json, 런타임/설정 해시 차이0·남은 치명/주요0. HTTP25/0·공통196/0·보호15/0·위키69/0·금지패턴0. 확장 public 명시와 기존namespace불일치중단, nginx429 error 계약 보정까지 검토했다. 검토용 운영 HTTPS로그인200. 배포·관측·데이터보존은 아직 후속 검증 대상이다.
+
+발행후 운영전 도구 호환성 확인에서 설치 logrotate3.19는 `--wait-for-state-lock`을 지원하지 않음을 확인했다. cron을 기본 state lock 방식으로 보정한다(동시실행은기본잠금으로거절,다음5분재시도). v2.60.1은 운영/원격미반영 검증후보이며 최종 patch번호를 새로 발행해 기존태그를 덮어쓰지 않는다.
