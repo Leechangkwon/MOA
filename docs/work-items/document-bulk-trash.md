@@ -1,6 +1,6 @@
 # 내 문서·업무 사이드바 선택 삭제
 
-- 상태: 구현·독립 검토 완료, 운영 반영 전
+- 상태: 운영 v2.61.0 검증 완료, 원격 동기화 예정
 - 기준 main: `e618320c6297843dd9367971849593b4e49c5db8` / v2.60.0
 - 작업 브랜치: `cloud/document-bulk-trash`
 - 담당 환경: 서버의 격리 worktree. Codex root, 백엔드·프런트 구현 담당, 별도 컨텍스트 독립 검토 담당.
@@ -49,3 +49,11 @@
 최신 운영 별도 백업 `/var/backups/tbox-v2/product-spaces-document-trash-integrated-20261012`: DB·코드·설정/저장소 암호화 3종 checksum/전체 복호화 확인. tar의 파일변경 경고는 959개 안정 원본 파일 SHA 전체 대조로 검증했고 worker cursor 1개만 제외했다. 원래 파일 1042행·14+6+5표 모든 기존 행·owner/ACL·PostgreSQL 포함 설정 93개를 새 보존 기준으로 기록했다. 기존 백업·실패한 drift 증거는 덮어쓰지 않았다.
 
 통합 독립 영향 UI: 실제 격리 PHP/PostgreSQL/브라우저 고유 의미 검사 48/0(반복 fixture HTTP 제외). 늦은 검색 응답이 최신 목록·선택을 덮지 않음, 실제 삭제/복원·401 중지와 같은 계정 재개, 사이드바, upstream 게시판 요청 취소·429 후 재시도·통합 검색 닫기를 확인했다. 기존 테스트의 hidden tree 중복 selector/개수 산정과 선별 fixture의 개인 공간 초기화 3건은 하네스만 보정하고 실패 로그를 보존했다. 미해결 제품 결함 0. `outputs/document-trash-review/integrated-final.json`; 최종 runtime 19가 root 동결과 네 번의 검토 snapshot 모두 같음(manifest SHA `25822a29bf57560958e94438904489835368b11a003381ae522fbd528f6330c4`). 운영 HTTPS·실물 기기는 별도다.
+
+## 운영 최종 결과
+
+운영 최종: v2.61.0 `35569143809d` / 2026-10-12T13:16:23+09:00. 내 문서 검색·트리와 업무 사이드바에서 개별·부분·현재 목록 전체선택 휴지통 이동을 제공한다. 최근·프로젝트·문서는 기본 접기와 사용자별 PC 펼침 기억, UUID 중복 제거·100개 한도·하위 동반 이동 확인·실패/재인증·10초 되돌리기·30일 복원을 유지한다. 저장 실패·충돌 문서를 보호하고 실제 삭제 권한을 표시한다. 고정 후보 36파일/runtime 19 모의 적용·fresh drift·FF/minor/FPM reload, 실제 HTTPS 46/0·4자산 정확 바이트·JS/5xx0. 새 예약 QA 문서 8개만 생성·삭제·복원 후 휴지통 정리, 기존 원문 쓰기0. 기존 14표+제품6표+메신저5표 모든 원래 행(제외0), 1042파일행·959원본SHA·ownerACL·93설정 보존. 암호화3종 checksum/전체복호화 확인, DBmigration/설정/패키지변경0. 실물휴대폰/Safari/스크린리더 미검증. 상세 docs/work-items/document-bulk-trash.md.
+
+고정 후보 `4178ecf5dd3294ce5dd68fc1275c6376121266d3`, 릴리스 `35569143809dd7c5c46998fe1ff5a3fa54828471`. 증거는 outputs/document-trash-integrated-rehearsal.json, document-trash-integrated-drift.json, document-trash-live/results.json·cleanup.json, document-trash-integrated-preservation.log·document-trash-integrated-product-preservation.log다. 실제 HTTPS의 모든 브라우저 쓰기를 새 QA UUID 허용목록으로 제한했고 원래 문서·파일·개인 설정은 변경하지 않았다.
+
+첫 HTTPS 시도는 숨겨진 tree와 표시 목록의 동일 UUID 버튼을 시험 selector가 동시에 잡아 strict-mode로 중단했다. 실제 앞선 삭제/복원은 통과했고 신규 QA 4개 전부 정상 휴지통 정리했다. selector를 #community-list로 한정한 재시험을 완료했으며 앱 런타임 수정은 없었다. 첫 로그·정리는 outputs/document-trash-live-first.log 및 document-trash-live-first/cleanup.json에 보존했다. 두 실행의 신규 QA를 모두 보존 검사 기준 이후에 생성했고 기존 문서 쓰기0이다.
