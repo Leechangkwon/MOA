@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=c481218d6d2c';
-import { hydrateDashboard } from './dashboard.js?v=c481218d6d2c';
+import { createTableEditor } from './table-editor.js?v=5f9902233840';
+import { hydrateDashboard } from './dashboard.js?v=5f9902233840';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,22 +42,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=c481218d6d2c';
-import { renderDoc, embedHost } from './doc-render.js?v=c481218d6d2c';
-import { createDatabaseView } from './database.js?v=c481218d6d2c';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=c481218d6d2c';
-import { bindEmbedAdmin } from './embeds.js?v=c481218d6d2c';
-import { bindPopular } from './popular.js?v=c481218d6d2c';
-import { bindPalettes } from './palettes.js?v=c481218d6d2c';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=c481218d6d2c';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=c481218d6d2c';
-import { drawTrust, bindProcedures } from './procedures.js?v=c481218d6d2c';
-import { createPageExport } from './export.js?v=c481218d6d2c';
-import { createDrafts } from './drafts.js?v=c481218d6d2c';
-import { drawPageAi, bindAiCenter } from './ai.js?v=c481218d6d2c';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=c481218d6d2c';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=5f9902233840';
+import { renderDoc, embedHost } from './doc-render.js?v=5f9902233840';
+import { createDatabaseView } from './database.js?v=5f9902233840';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=5f9902233840';
+import { bindEmbedAdmin } from './embeds.js?v=5f9902233840';
+import { bindPopular } from './popular.js?v=5f9902233840';
+import { bindPalettes } from './palettes.js?v=5f9902233840';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=5f9902233840';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=5f9902233840';
+import { drawTrust, bindProcedures } from './procedures.js?v=5f9902233840';
+import { createPageExport } from './export.js?v=5f9902233840';
+import { createDrafts } from './drafts.js?v=5f9902233840';
+import { drawPageAi, bindAiCenter } from './ai.js?v=5f9902233840';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=5f9902233840';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=c481218d6d2c';
+import { createWork } from './work.js?v=5f9902233840';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -165,7 +165,7 @@ function api(method, path, payload, opts) {
     return Promise.resolve({ status: 0, data: {} });
   }
   // 부르는 쪽에는 상태·본문만 — 보낸 토큰은 이 함수 안에서만 쓴다
-  const answer = (sent) => ({ status: sent.status, data: sent.data });
+  const answer = (sent) => ({ status: sent.status, data: sent.data, retryAfter: sent.retryAfter });
   const again = () => apiSend(method, path, payload, opts).then(answer);
   return apiSend(method, path, payload, opts).then((sent) => {
     const result = answer(sent);
@@ -280,8 +280,9 @@ function apiSend(method, path, payload, opts) {
       options.keepalive = true;
     }
   }
+  if (opts && opts.signal) { options.signal = opts.signal; }
   return fetch(COMMUNITY_BASE + path, options).then((response) =>
-    readJson(response).then((data) => ({ status: response.status, data: data, token: token }))
+    readJson(response).then((data) => ({ status: response.status, data: data, token: token, retryAfter: response.headers.get('Retry-After') }))
   );
 }
 
@@ -2566,6 +2567,10 @@ function initBoard() {
   let pageNo = 1;
   let timer = null;
   let board = null;
+  let requestController = null;
+  let requestSerial = 0;
+  function cancelList() { requestSerial++; if (requestController) { requestController.abort(); } }
+  window.addEventListener('pagehide', () => { cancelList(); clearTimeout(timer); });
 
   function listPath() {
     const params = new URLSearchParams();
@@ -2672,8 +2677,26 @@ function initBoard() {
     });
   }
 
-  function load() {
-    return api('GET', listPath()).then((result) => {
+  function load(retrying = false) {
+    cancelList();
+    const mine = requestSerial;
+    const q = searchEl ? searchEl.value.normalize('NFC').trim() : '';
+    if (q && Array.from(q.replace(/[\s\p{Z}]/gu, '')).length < 2) {
+      clear(bodyEl); show(emptyEl, false); setText(msg, '공백을 제외하고 두 글자 이상 입력해 주세요.');
+      return Promise.resolve(false);
+    }
+    requestController = new AbortController();
+    return api('GET', listPath(), undefined, { signal: requestController.signal }).then((result) => {
+      if (mine !== requestSerial) { return false; }
+      if (result.status === 429 && !retrying) {
+        setText(msg, '앞선 검색을 마치는 중입니다…');
+        timer = setTimeout(() => { if (mine === requestSerial) { load(true); } }, Math.min(3000, Math.max(1000, Number(result.retryAfter || 1) * 1000)));
+        return false;
+      }
+      if (result.data && result.data.notice) {
+        if (result.data.board) { drawHead(result.data.board); }
+        clear(bodyEl); show(emptyEl, false); setText(msg, result.data.notice); return false;
+      }
       if (result.status === 401) { toLogin(); return; }
       if (result.status !== 200) {
         setText(msg, errorMessage(result.data));
@@ -2696,10 +2719,11 @@ function initBoard() {
       show(emptyEl, pages.length === 0);
       setText(msg, '');
       return true;
-    }).catch(() => { setText(msg, GENERIC_ERROR); return false; });
+    }).catch((error) => { if (mine === requestSerial && error.name !== 'AbortError') { setText(msg, GENERIC_ERROR); } return false; });
   }
 
   function later() {
+    cancelList();
     if (timer !== null) { clearTimeout(timer); }
     timer = setTimeout(() => { timer = null; pageNo = 1; load(); }, 250);
   }

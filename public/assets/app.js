@@ -1807,6 +1807,14 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   var favFolders = {};
   /** 보기를 빨리 바꿀 때 늦게 온 옛 응답이 새 보기를 덮지 않게 — 부를 때마다 하나씩 오른다 */
   var loadSeq = 0;
+  var fileSearchController = null;
+  var fileSearchRetry = 0;
+  function cancelFileSearch() {
+    loadSeq++;
+    clearTimeout(fileSearchRetry);
+    if (fileSearchController) { fileSearchController.abort(); fileSearchController = null; }
+  }
+  window.addEventListener('pagehide', cancelFileSearch);
   /** 보기마다의 빈 목록 문장(DESIGN 2.4 「(무엇)이 없습니다.」 + 다음에 할 일 한 문장) */
   var EMPTY_TEXT = {
     files: '표시할 파일이 없습니다.',
@@ -3509,6 +3517,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
 
   /** 지금 보기의 목록을 다시 받는다 — 올리기·지우기·고치기·옮기기 뒤의 새로 고침이 모두 여기를 부른다 */
   function loadFiles() {
+    cancelFileSearch();
     if (state.view === 'favorites') {
       loadFavoritesView();
       return;
@@ -3524,8 +3533,17 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     loadFolderFiles();
   }
 
-  function loadFolderFiles() {
+  function loadFolderFiles(retrying) {
+    cancelFileSearch();
     var seq = ++loadSeq;
+    var normalized = state.q.normalize('NFC');
+    if (state.q !== '' && Array.from(normalized.replace(/[\s\p{Z}]/gu, '')).length < 2) {
+      clearRows();
+      setText(msg, '공백을 제외하고 두 글자 이상 입력해 주세요.');
+      return;
+    }
+    fileSearchController = new AbortController();
+    var signal = fileSearchController.signal;
     var query =
       '?q=' + encodeURIComponent(state.q) +
       '&sort=' + encodeURIComponent(state.sort) +
@@ -3540,8 +3558,17 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       query += '&folder=' + encodeURIComponent(String(state.folder));
     }
 
-    fetch(APP_BASE + '/api/files' + query, { credentials: 'same-origin', cache: 'no-store' })
+    fetch(APP_BASE + '/api/files' + query, { credentials: 'same-origin', cache: 'no-store', signal: signal })
       .then(function (response) {
+        if (seq !== loadSeq || signal.aborted) { return null; }
+        if (response.status === 429 && !retrying) {
+          var seconds = Number(response.headers.get('Retry-After')) || 1;
+          fileSearchRetry = setTimeout(function () {
+            if (seq === loadSeq && state.view === 'files') { loadFolderFiles(true); }
+          }, Math.min(3, Math.max(1, seconds)) * 1000);
+          setText(msg, '앞선 검색을 마치는 중입니다. 잠시 기다려 주세요.');
+          return null;
+        }
         if (response.status === 401) {
           toLogin();
           return null;
@@ -3549,6 +3576,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
         return readJson(response).then(function (data) {
           // 개발 대기열 6 — 그 사이 다른 보기로 바뀌었으면 옛 응답으로 표를 덮지 않는다
           if (seq !== loadSeq || state.view !== 'files') {
+            return null;
+          }
+          if (data && data.notice) {
+            clearRows();
+            setText(msg, data.notice);
             return null;
           }
           if (!response.ok) {
@@ -3566,7 +3598,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
           return null;
         });
       })
-      .catch(function () {
+      .catch(function (error) {
+        if (seq !== loadSeq || error.name === 'AbortError') { return; }
         setText(msg, GENERIC_ERROR);
       });
   }
@@ -6144,6 +6177,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     step();
   }
 
+  if (qInput) { qInput.addEventListener('input', cancelFileSearch); }
   if (searchForm) {
     searchForm.addEventListener('submit', function (event) {
       event.preventDefault();

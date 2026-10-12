@@ -1,0 +1,2 @@
+# /etc/cron.d/tbox-pg-logrotate — 전체 logrotate와 같은 lock/state 사용. 로그 보존 정책만 실행.
+*/5 * * * * root /usr/sbin/logrotate --wait-for-state-lock /etc/logrotate.d/postgresql-common

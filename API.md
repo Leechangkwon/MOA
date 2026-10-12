@@ -1429,3 +1429,11 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 
 
 개인 홈 v3 선택 shortcuts배열(2026-10-11): 고정서비스ID 최대8·중복금지·순서보존, 없음=기본/[]=숨김. 공동/v1/v2거부·기존revision/CSRF그대로. 상세 docs/product-spaces-api.md, docs/compact-home-directive.md.
+
+## 규모 A 검색 보호 (2026-10-12)
+
+`GET /community/api/search?q=`, 폴더 없는 `GET /tbox/api/files?q=`, 게시판 글 목록의 `q`는 한글 분해 자모를 조합하고 공백을 뺀 두 글자부터 실행한다. 짧으면 200 + `search_status: short`/`notice`, 오래 걸리면 200 + `search_status: timeout`/`notice`와 빈 결과. SQL 전체가 3초 예산을 나눈다. 사용자당 세 창구 합쳐 한 검색만 실행하며 중복은 즉시429, `Retry-After: 1`, `search_status: busy`/`notice`/`error`를 준다. 권한 실패·로그인 실패로 세지 않는다.
+
+프로그램 토큰 파일 API의 성공 응답은 기존 최상위 배열을 유지한다. short/timeout은 200 `[]` + `X-Search-Status: short|timeout`; 일반 빈 결과와 구분하려면 이 헤더를 확인한다. 토큰429는 기존 오류 객체 계약대로 `error`를 포함한다. 일반 검색 결과의 필드·권한·정렬은 유지한다.
+
+nginx는 검색·파일목록·게시판글목록의 GET에 IP당8r/s+burst16을 적용한다. q 없는 같은 창구도 포함해 인코딩된 q 키로 우회할 수 없게 한다. 여러 탭/같은 NAT는 IP 제한을 공유한다. 끝 슬래시·인코딩·중복 슬래시를 정규화한 뒤 같은 제한을 적용한다.

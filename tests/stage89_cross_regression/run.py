@@ -10,6 +10,7 @@ def main():
     parser=argparse.ArgumentParser()
     parser.add_argument('--output',type=Path,required=True)
     parser.add_argument('--port',type=int,default=8548,choices=(8548,8558))
+    parser.add_argument('--scale-a',action='store_true')
     args=parser.parse_args(); args.output=args.output.resolve()
     if str(ROOT).startswith('/var/www/'):
         raise SystemExit('Refusing operational source directory; use the reviewed source snapshot')
@@ -68,7 +69,7 @@ def main():
                 time.sleep(.1)
             else:raise RuntimeError('Owned HTTP startup timed out')
             print('EMPTY_SYNTHETIC_DB=1; PRODUCTION_RECORDS_COPIED=0; LEGACY_SCRIPTS_EXECUTED=0',flush=True)
-            ret=subprocess.run([sys.executable,'tests/stage89_cross_regression/suite.py'],cwd=instance,
+            ret=subprocess.run([sys.executable,('tests/scale/acceptance.py' if args.scale_a else 'tests/stage89_cross_regression/suite.py')],cwd=instance,
                 env=dict(testenv,FILE_RENAME_MANIFEST=str(work/'manifest.json'),FILE_RENAME_OUTPUT=str(args.output)))
             log.flush();raw=(work/'logs/php.log').read_text(errors='replace')
             for secret in [password]+[config.get(k,'') for k in ['DB_PASS','APP_SECRET','API_TOKEN']]:

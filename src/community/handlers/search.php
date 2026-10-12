@@ -40,9 +40,14 @@ declare(strict_types=1);
  * @var array<string,mixed> $user 라우터가 넘긴 현재 사용자
  */
 
+require_once __DIR__ . '/../../SearchGuard.php';
 $db = Db::instance();
 
 $q = trim(Http::queryText('q', 100));
+if (!SearchGuard::longEnough($q)) {
+    Http::json(['results' => [], 'comments' => [], 'q' => $q, 'search_status' => 'short', 'notice' => SearchGuard::SHORT]);
+    return;
+}
 // J-11 — 글자·숫자가 하나도 없으면(「#」「%%」) 빈 결과. 빈 검색어도 빈 결과 — 한 글자도 치지 않은 채
 // 「전부」가 나오는 자리를 만들지 않는다.
 if ($q === '' || !SearchText::hasWordChar($q)) {
@@ -63,16 +68,16 @@ if ($terms === [] || count($terms) > 60) {
 [$sqlPages, $bindPages] = community_search_sql($user, $terms, 'pages');
 [$sqlComments, $bindComments] = community_search_sql($user, $terms, 'comments');
 // 읽기만 하는 트랜잭션 하나 — 페이지 문장의 계획 설정(SET LOCAL)이 이 안에서만 걸리고 끝나면 풀린다(routes.php 상수 머리글)
-$db->begin();
 try {
-    $db->run(COMMUNITY_SEARCH_PAGES_PLAN_ON);
-    $rows = $db->run($sqlPages, $bindPages)->fetchAll();
-    $db->run(COMMUNITY_SEARCH_PAGES_PLAN_OFF);
-    $crow = $db->run($sqlComments, $bindComments)->fetchAll();
-    $db->commit();
+    [$rows, $crow] = SearchGuard::execute((int) $user['id'], static function (callable $run) use ($sqlPages, $bindPages, $sqlComments, $bindComments): array {
+        $run(COMMUNITY_SEARCH_PAGES_PLAN_ON);
+        $rows = $run($sqlPages, $bindPages)->fetchAll();
+        $run(COMMUNITY_SEARCH_PAGES_PLAN_OFF);
+        return [$rows, $run($sqlComments, $bindComments)->fetchAll()];
+    });
 } catch (Throwable $e) {
-    $db->rollback();
-    throw $e;
+    SearchGuard::limited($e, ['results' => [], 'comments' => [], 'q' => $q]);
+    return;
 }
 
 /** 본문에서 찾은 자리 앞뒤 — 평문 그대로, 줄바꿈은 빈칸으로. 낱말 중 먼저 찾은 것, 못 찾으면 본문 첫머리.

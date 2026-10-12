@@ -2,7 +2,7 @@
  * public/assets/search.js — 통합 검색 창 (두 앱 공통 — 사이트 PRD Q:F-2, 지시서 docs/qf2-unified-search-directive.md 2.5)
  *
  * 전에는 커뮤니티 안의 페이지 검색이었다(public/assets/community/search.js — 5-B). 이제 t-box 셸에도 실려
- * 사이드바 「검색」 단추나 Ctrl+K(맥 ⌘K)로 연다. 치고 **250ms** 멈추면 두 창구를 **동시에** 부른다:
+ * 사이드바 「검색」 단추나 Ctrl+K(맥 ⌘K)로 연다. 치고 **250ms** 멈추면 두 창구를 **차례로** 부른다:
  *   · 커뮤니티 `GET /community/api/search?q=` — 페이지 · 댓글 두 묶음
  *   · t-box `GET /tbox/api/files?q=`(folder 없이 = 전역 검색, T:F-26) — 파일 묶음
  * 한쪽이 401·403 이면(Guest 등 — 각 앱의 판정이 정한다) 그 묶음만 조용히 뺀다. 둘 다 401 이면 로그인이 끝난 것 — 새로 고친다.
@@ -46,6 +46,8 @@
   if (key && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '')) { key.textContent = '⌘K'; }
 
   var timer = 0;
+  var controller = null;
+  function cancelSearch() { serial++; window.clearTimeout(timer); if (controller) { controller.abort(); controller = null; } }
   var serial = 0;
   var items = [];        // 고를 수 있는 줄(li) — 결과와 「더 보기」
   var index = -1;
@@ -198,30 +200,46 @@
   }
 
   /** 한 창구를 부른다 — 결과 배열, 권한 없음(401·403)은 'denied', 그 밖의 실패는 null */
-  function ask(url, pick) {
-    return fetch(url, { credentials: 'same-origin', cache: 'no-store' })
-      .then(function (res) {
-        if (res.status === 401) { return { status: 401 }; }
-        if (res.status === 403) { return { status: 403 }; }
-        if (!res.ok) { return { status: res.status }; }
-        return res.json().then(function (d) { return { status: 200, data: pick(d) }; });
-      })
-      .catch(function () { return { status: 0 }; });
+  async function ask(url, pick, signal, retry) {
+    try {
+      var res = await fetch(url, { credentials: 'same-origin', cache: 'no-store', signal: signal });
+      if (res.status === 429 && retry) {
+        var delay = Math.min(3000, Math.max(1000, Number(res.headers.get('Retry-After') || 1) * 1000));
+        await new Promise(function (resolve, reject) {
+          function stop() { clearTimeout(wait); reject(new DOMException('Aborted', 'AbortError')); }
+          var wait = setTimeout(function () { signal.removeEventListener('abort', stop); resolve(); }, delay);
+          signal.addEventListener('abort', stop, { once: true });
+          if (signal.aborted) { stop(); }
+        });
+        return ask(url, pick, signal, false);
+      }
+      if (!res.ok) { return { status: res.status, notice: res.status === 429 ? '앞선 검색을 마치는 중입니다. 잠시 뒤 다시 시도해 주세요.' : '' }; }
+      var data = await res.json();
+      return { status: 200, data: pick(data), notice: data.notice || '' };
+    } catch (error) {
+      if (error.name === 'AbortError') { return { status: -2 }; }
+      return { status: 0 };
+    }
   }
 
   function run() {
+    cancelSearch();
+    if (!dialog.open) { return; }
+    controller = new AbortController();
+    var signal = controller.signal;
+    var notices = [];
     var q = input.value.normalize ? input.value.normalize('NFC').trim() : input.value.trim();
     var mine = ++serial;
     expanded = {};
-    if (q === '') {
+    if (Array.from(q.replace(/[\s\p{Z}]/gu, '')).length < 2) {
       last = null;
       draw();
-      note.textContent = '페이지 제목·본문, 댓글, t-box 파일 이름·설명에서 찾습니다. 내가 볼 수 있는 것만 나옵니다.';
+      note.textContent = '공백을 제외하고 두 글자 이상 입력해 주세요. 내가 볼 수 있는 페이지·댓글·파일에서 찾습니다.';
       return;
     }
     note.textContent = '찾는 중…';
     var enc = encodeURIComponent(q);
-    // 두 창구는 따로 도착한다 — 먼저 온 묶음부터 그린다(늦은 쪽을 기다리느라 첫 결과가 늦지 않게). 앞 검색어의 결과는
+    // 두 창구는 차례로 실행하고 먼저 끝난 묶음부터 그린다. 앞 검색어의 결과는
     // 이 검색어의 첫 답이 올 때까지 그대로 둔다(깜빡이지 않게).
     var cur = { q: q, terms: q.split(/\s+/).filter(function (t) { return t !== ''; }), groups: { pages: [], comments: [], files: [] } };
     var st = { c: -1, f: -1 };   // -1 = 아직 · 0 = 연결 실패 · 그 밖 = HTTP 상태
@@ -243,7 +261,9 @@
       if (g.pages.length) { parts.push('페이지 ' + String(g.pages.length)); }
       if (g.comments.length) { parts.push('댓글 ' + String(g.comments.length)); }
       if (g.files.length) { parts.push('파일 ' + String(g.files.length)); }
-      if (waiting) {
+      if (!waiting && notices.length) {
+        note.textContent = notices.join(' · ');
+      } else if (waiting) {
         note.textContent = (parts.length ? parts.join(' · ') + ' — ' : '') + '더 찾는 중…';
       } else if (n === 0) {
         note.textContent = failed ? '찾지 못했습니다. 잠시 뒤 다시 해 보세요.' : '「' + q + '」 이(가) 든 페이지·댓글·파일이 없습니다.';
@@ -253,17 +273,21 @@
     }
     ask(COMM + '/api/search?q=' + enc, function (d) {
       return { pages: Array.isArray(d.results) ? d.results : [], comments: Array.isArray(d.comments) ? d.comments : [] };
-    }).then(function (r) {
+    }, signal, true).then(function (r) {
+      if (mine !== serial) { return; }
+      if (r.notice) { notices.push(r.notice); }
       st.c = r.status;
       if (r.status === 200) { cur.groups.pages = r.data.pages; cur.groups.comments = r.data.comments; }
       settle();
-    });
-    ask(TBOX + '/api/files?q=' + enc, function (d) { return Array.isArray(d.files) ? d.files : []; })
+      return ask(TBOX + '/api/files?q=' + enc, function (d) { return Array.isArray(d.files) ? d.files : []; }, signal, true)
       .then(function (r) {
+        if (mine !== serial) { return; }
+        if (r.notice && notices.indexOf(r.notice) < 0) { notices.push(r.notice); }
         st.f = r.status;
         if (r.status === 200) { cur.groups.files = r.data; }
         settle();
       });
+    });
   }
 
   function open() {
@@ -274,8 +298,9 @@
     run();
   }
 
+  dialog.addEventListener('close', cancelSearch);
   input.addEventListener('input', function () {
-    window.clearTimeout(timer);
+    cancelSearch();
     timer = window.setTimeout(run, WAIT);
   });
   input.addEventListener('keydown', function (ev) {

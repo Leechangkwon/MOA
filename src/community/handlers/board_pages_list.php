@@ -30,6 +30,7 @@ declare(strict_types=1);
  * @var list<string>        $params [0] = 게시판 번호
  */
 
+require_once __DIR__ . '/../../SearchGuard.php';
 $db      = Db::instance();
 $boardId = (int) $params[0];
 
@@ -48,6 +49,10 @@ $perPage = 20;
 $pageNo  = Http::queryInt('page', 1, 1, 100000);
 
 $q    = trim(Http::queryText('q', 100));
+if ($q !== '' && !SearchGuard::longEnough($q)) {
+    Http::json(['board' => community_board_summary($board, $user), 'pages' => [], 'total' => 0, 'page' => $pageNo, 'per_page' => $perPage, 'search_status' => 'short', 'notice' => SearchGuard::SHORT]);
+    return;
+}
 $like = $q === '' ? '' : '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
 $tag  = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', Http::queryText('tag', COMMUNITY_TAG_MAX_CHARS));
 
@@ -96,8 +101,6 @@ $sqlCount = <<<SQL
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
     {$where}
     SQL;
-$countRow = $db->run($sqlCount, $bind)->fetch();
-$total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 
 $sqlList = <<<SQL
     SELECT p.id, p.public_id, p.title, p.icon, p.visibility, p.created_at, p.updated_at, p.resolved,
@@ -120,8 +123,20 @@ $sqlList = <<<SQL
 $bind[':lim'] = $perPage;
 $bind[':off'] = ($pageNo - 1) * $perPage;
 
+$query = static function (callable $run) use ($sqlCount, $sqlList, $bind): array {
+    $countBind = $bind;
+    unset($countBind[':lim'], $countBind[':off']);
+    $countRow = $run($sqlCount, $countBind)->fetch();
+    return [is_array($countRow) ? (int) $countRow['n'] : 0, $run($sqlList, $bind)->fetchAll()];
+};
+try {
+    [$total, $rows] = $q !== '' ? SearchGuard::execute((int) $user['id'], $query) : $query([$db, 'run']);
+} catch (Throwable $e) {
+    SearchGuard::limited($e, ['board' => community_board_summary($board, $user), 'pages' => [], 'total' => 0, 'page' => $pageNo, 'per_page' => $perPage]);
+    return;
+}
 $items = [];
-foreach ($db->run($sqlList, $bind)->fetchAll() as $r) {
+foreach ($rows as $r) {
     $tags = $r['tags'] === null ? [] : json_decode((string) $r['tags'], true);
     $items[] = [
         'id'         => (string) $r['public_id'],
