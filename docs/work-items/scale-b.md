@@ -1,6 +1,6 @@
 # 규모 B — 게시판 목록 커서와 조회수
 
-- 상태: 운영 반영·실제 검증 완료, 기록 동기화 중
+- 상태: 배포 완료
 - 브랜치: cloud/scale-b
 - 기준: e1d0ce80f454 (운영 v2.60.2 / 4e71c9d)
 - 사용자 지시: root docs/scale-fix-codex-prompt-2026-10-12.md ④. A 운영/기록/push 완료 뒤 시작.
@@ -14,7 +14,7 @@
 - [x] 옛 page≤20 호환, 호출자전수조사, 전체개수/쪽번호제거
 - [x] 실제HTTP·순서/경계·권한·삭제·필터·동시조회, light/dark390브라우저클릭/스크린샷직접확인
 - [x] 독립검토·백업/복호화·고정/모의·드리프트·운영 minor 발행·보존
-- [ ] 기록/push
+- [x] 기록/push
 
 허용: src/community/BoardCursor.php(신규), src/community/handlers/board_pages_list.php, src/community/routes.php의 community_record_view/community_view_count만, pages_get.php(필요한 응답), public/assets/community/editor.js·board화면 뷰, moa.js·clients/호출자(계약정합필요시), 자산생성import, db/migrations/2026-10-25_scale_board*.sql, tests/scale/* 및 격리실행기·관련회귀기대값, API/ARCHITECTURE/DESIGN/SECURITY/STAGES·위키/차례·인계·production-state·발행파일/이기록. C권한함수 변경금지, SR5게시판개수 등 범위밖기록만.
 
@@ -94,3 +94,5 @@ v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`. 최종 독립 검토 manifes
 업무92표의 모든 기존 행·page_views 전행·원본959파일·기존 owner/ACL 보존. pages.view_count만 기존행 해시에서 제외하고 전체 실제집계 불일치0을 별도 확인. 동적16표는 행수만 별도 기록하며 기존행 불변으로 과장하지 않는다. 증거 `/home/changkwon/qaredi-scale-results-20261012/deploy-b/`의 apply.log·applied.json·https-results.json·preservation-verified.json, review-b/final-review.txt·final manifest.
 
 보안① 기존 권한 조건절과 게시판 gate 유지, 최종 후보/도구 독립 검토·음성5종/동등성·운영 원본 보존 증거. ② 조회수 색인의 HOT 손실과 쓰기 비용, 읽는 동안 수정/조회에 따른 순서 변동은 남는다. ③ 실물 휴대폰/Safari/스크린리더·큰 게시 갈래 혼합 분포·장기 동시부하·운영 다음/이전 왕복 미검증. ④ B 기록/push 뒤 C 구현과 합성 전수 대조를 진행하며 별도 세션의 독립 검토 통과를 사용자가 알리기 전에는 C를 배포하지 않는다. SR5/SR12와 원래 purge_trash의 모호한 page_id는 후속으로만 남긴다.
+
+B 기록 동기화 확인: root 기록 eda46bd, 웹 기록588f6e0 및 cloud/scale-b·v2.62.0·기준태그를 원격에 원자적으로 올리고 원격 main SHA 일치를 확인했다. 앱 런타임 차이0. 다음 묶음 C를 시작할 수 있으며 C는 독립 세션 검토 전 배포하지 않는다.
