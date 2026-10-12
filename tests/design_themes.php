@@ -4,7 +4,7 @@ require dirname(__DIR__) . '/src/Design.php';
 $count = 0;
 foreach ([null, '', 'bad', [], ['nova'], 'nova" onload="alert(1)', '<svg>', 123, 'NOVA'] as $bad) {
     $_COOKIE = ['qaredi_design'=>$bad, 'qaredi_motion'=>[]];
-    if (Design::theme() !== 'astra' || Design::attrs() !== ' data-design="astra" data-motion="auto"') { throw new RuntimeException('invalid preference escaped allowlist'); }
+    if (Design::theme() !== 'moa' || Design::attrs() !== ' data-design="moa" data-motion="auto"') { throw new RuntimeException('invalid preference escaped allowlist'); }
     $count++;
 }
 foreach (array_keys(Design::THEMES) as $theme) {

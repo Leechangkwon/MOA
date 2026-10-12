@@ -36,9 +36,11 @@ try:
     context.route('**/assets/app.js?*',lambda r:r.fulfill(content_type='text/javascript',body=''))
     context.route('**/assets/search.js?*',lambda r:r.fulfill(content_type='text/javascript',body=''))
     context.route('**/assets/passkey.js?*',lambda r:r.fulfill(content_type='text/javascript',body=''))
+    for script in ['moa','start','product-home','home-dashboard','dashboard-canvas','dashboard-widgets','messenger-window','member']:
+      context.route('**/assets/'+script+'.js?*',lambda r:r.fulfill(content_type='text/javascript',body=''))
     for width in [360,412,820,1440]:
       page.set_viewport_size({'width':width,'height':960})
-      for theme in ['claude','astra','aurora','bloom','nova']:
+      for theme in ['moa','claude','astra','aurora','bloom','nova']:
        for brightness in ['light','dark']:
         context.clear_cookies()
         context.add_cookies([{'name':'qaredi_design','value':theme,'url':BASE},{'name':'tbox_theme','value':brightness,'url':BASE}])
@@ -50,7 +52,9 @@ try:
           check(tag+' overflow',page.evaluate('document.documentElement.scrollWidth <= innerWidth'))
           check(tag+' duplicate IDs',page.evaluate('(()=>{const ids=[...document.querySelectorAll("[id]")].map(x=>x.id);return ids.length===new Set(ids).size})()'))
           check(tag+' CSP markup',page.locator('[style],script:not([src]),[onclick]').count()==0)
-          if screen=='anonymous': check(tag+' private apps hidden',page.locator('a[href="/tbox/"],a[href="/community/"],.q-module-card').count()==0)
+          if screen=='anonymous':
+            check(tag+' personal dashboard and private loaders absent',page.locator('#home-widgets,#dashboard-services,script[src*="home-dashboard.js"],script[src*="start.js"],script[src*="product-home.js"]').count()==0)
+            check(tag+' public service descriptions remain',page.locator('.moa-service-card').count()==4)
           if screen=='launcher' and width==1440 and brightness=='light':
             page.screenshot(path=str(OUT/f'{theme}-launcher.png'),full_page=True)
           if screen=='login' and theme=='nova' and width in [360,1440] and brightness=='light':
@@ -67,7 +71,7 @@ try:
     opener.click(); page.locator('[data-design-choice="nova"]').click()
     expect(page.locator('html')).to_have_attribute('data-design','nova')
     page.keyboard.press('Escape')
-    expect(page.locator('html')).to_have_attribute('data-design','astra')
+    expect(page.locator('html')).to_have_attribute('data-design','moa')
     check('cancel restores focus',opener.evaluate('(e)=>e===document.activeElement'))
     opener.click(); page.locator('[data-design-choice="nova"]').click(); page.locator('#q-motion-reduce').check(); page.locator('#q-design-save').click()
     expect(page.locator('#q-design-status')).to_contain_text('저장했습니다')
@@ -80,11 +84,13 @@ try:
     check('cookie scope',all(c['path']=='/' and c['sameSite']=='Lax' and c['expires']>time.time()+30000000 for c in context.cookies() if c['name'].startswith('qaredi_')))
     page.goto(BASE+'/?screen=launcher&hc=1')
     check('high contrast keeps original primary',page.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()') in ['#000000','#18181b','#09090b','#ffffff','#fafafa'])
-    check('high contrast hides art',page.locator('.q-art').evaluate('(e)=>getComputedStyle(e).display')=='none')
+    check('high contrast clears large service decoration',page.locator('.moa-service-card').first.evaluate('(e)=>getComputedStyle(e).backgroundImage')=='none')
     context.clear_cookies(); context.add_cookies([{'name':'qaredi_design','value':'nova','url':BASE}]); page.emulate_media(reduced_motion='reduce',color_scheme='dark')
     page.goto(BASE+'/?screen=launcher')
-    check('OS motion preference',page.locator('.q-wordmark').evaluate('(e)=>getComputedStyle(e).animationName')=='none')
-    check('OS dark color',page.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()')=='#1b172a')
+    page.locator('[data-design-open]').first.click()
+    check('OS motion preference',page.locator('.q-theme-option').first.evaluate('(e)=>getComputedStyle(e).transitionDuration')=='0s')
+    page.keyboard.press('Escape')
+    check('OS dark color',page.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()')=='#222427')
     page.emulate_media(reduced_motion='no-preference',color_scheme='light')
     page.goto(BASE+'/?screen=launcher')
     page.wait_for_timeout(4700)

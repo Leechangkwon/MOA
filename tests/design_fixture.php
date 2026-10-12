@@ -11,11 +11,16 @@ define('TBOX_HOME_PATH', '/community/');
 require $root . '/src/Http.php';
 require $root . '/src/Apps.php';
 final class Auth { public static function currentUser(): ?array { return null; } }
-final class Authz { public static function canCommunityWrite(array $user): bool { return ($_GET['guest'] ?? '') !== '1'; } }
+final class Legal { public static function needsConsent(int $id): bool { return false; } }
+final class Authz {
+    public static function canCommunityWrite(array $user): bool { return ($_GET['guest'] ?? '') !== '1'; }
+    public static function canAdmin(array $user): bool { return false; }
+    public static function canManageUsers(array $user): bool { return false; }
+}
 function community_palette_version(): string { return 'fixture'; }
 function community_embed_csp(): void {}
 function tbox_person_label(?string $name, string $username): string { return $name ? $name . ' (' . $username . ')' : $username; }
-$user = ['username'=>'design_review', 'display_name'=>'디자인 검토', 'role'=>'Employee', 'high_contrast'=>($_GET['hc'] ?? '')==='1'];
+$user = ['id'=>1001, 'username'=>'design_review', 'display_name'=>'디자인 검토', 'role'=>'Employee', 'high_contrast'=>($_GET['hc'] ?? '')==='1'];
 $params = [];
 $screen = $_GET['screen'] ?? 'launcher';
 if ($screen === 'launcher' || $screen === 'anonymous') {

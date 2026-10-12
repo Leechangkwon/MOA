@@ -859,3 +859,7 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 화면 전용 용지 폭은 좁은 컨테이너 안에 맞춘다. A4/A3/Letter 선택과 인쇄 치수는 유지한다. 표 편집 구성요소는 .table-cell-preview(선택 가능한 셀), .table-cell-editor/__label(선택 셀), .table-cell-toolbar, .table-cell-input, .table-delete-confirm(명시 삭제 확인)이며 기존 색 토큰을 사용한다.
 
 좁은 화면 편집 도구줄은 `.editor-toolbar__row`를 줄바꿈하여 색·배경·링크·멘션 버튼을 모두 화면 안에 둔다. 표 자체의 내부 가로 스크롤은 유지한다.
+
+## 2026-10-12 중립색 표면과 브랜드 강조
+
+사용자 승인: 전역 테마색 과잉을 줄인다. Astra/Aurora/Bloom/Nova의 canvas·surface·surface-2·본문/보조글자·테두리를 중립축으로 통일하고 브랜드 primary·선택·focus를 유지한다. 컬러 그림자와 큰 gradient는 낮추며 서비스 구분색은 작은 아이콘 중심. Moa 중립 표면·Claude 원본·고대비 및 문서 --bg/nt/pal 명시색은 보존한다. 빛/어둠/시스템 모두 적용. 모바일 기본 홈에서 사용자 대시보드가 먼저 보이도록 진입과 배치를 확인한다. 시안 예시자료0, 계정별 위젯 배치/편집기능은 유지. 상세 docs/neutral-theme-home-directive.md.
