@@ -1091,3 +1091,6 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ② 불안전한 이유: 최종 열린재현blocker0. 초기기대값·합성fixture·transition중계산색측정 문제는 증거를 보존하고 시험을 현재계약에 맞췄다. 보안/auth/동의/API/DB/저장JS변경0. 모바일기본홈은이미root였고 특정사용자기기의다른첫화면원인은미확정; 이번수정은공개홈진입을명확히한다.
 ③ 미검증: 실물휴대폰·Windows·Safari·스크린리더·사용자자기공격. 고대비/forced는원문불변·소스예외검사이며모든interactive대비전수검사아님. 합성entry/PM을운영endpoint인가/lock검사로과장하지않는다. root후보CSS가로채기실제읽기119/0은배포성공과구분한다.
 ④ 다음 조치: 암호화3종전체복호화/959원본SHA/1042파일행/14기존표·제품6표모든원래행/ownerACL/85설정baseline완료. 후보고정·모의·freshdrift뒤FF/patch/FPM·실제HTTPS/원본보존·기록/push. 원문과기존취향쓰기0. 상세 docs/work-items/neutral-theme-home.md.
+
+
+운영 최종: v2.58.2 `6559e9749cb9` / 2026-10-12T09:26:42+09:00. Astra/Aurora/Bloom/Nova 중립 배경·카드·글자, 버튼/선택/초점에 브랜드 강조. 공개 홈은 내 대시보드 열기→홈 로그인, 동의필요 상태는 기존 동의 관문 안내. 고정후보 18파일/runtime2 모의 적용·드리프트·FF/patch/FPM reload. 실제HTTPS124/0·CSS3 정확바이트·JS/5xx/브라우저쓰기0, Aurora/Bloom 밝음/어둠 PC1280·모바일390에서 홈/자료실/원문4표 확인. 첫 저장v1 위젯 모바일248px/PC262px, 원문 전체응답·취향/revision 동일. 기존14표/제품6표 모든 원래행·1042파일행·959원본SHA·ownerACL·85설정 보존, 암호화3종 checksum/전체복호화. 테마1594/0·기존디자인1354/0·모바일76/0·독립1334+13/0·PM45/0·초기격리196/0. DBmigration/설정/패키지 변경0. 사용자 기기의 다른 첫 화면은 미재현이며 주소·세션 미확인; 실물휴대폰/Safari/스크린리더 미검증. 상세 docs/work-items/neutral-theme-home.md.
