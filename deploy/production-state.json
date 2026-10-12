@@ -168,14 +168,14 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "push_pending",
-    "remote_live_verified": false,
-    "last_fetched_origin_main": "d61c1d8020e532896cf686ffaceebeb3de5419bc",
+    "status": "synced",
+    "remote_live_verified": true,
+    "last_fetched_origin_main": "38e62540c1f22f26cf23ce2c4c3218847491460b",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
     "web_branch": "cloud/messenger-resize-home",
-    "reason": "Runtime and preservation verified; deployment records awaiting atomic push.",
-    "verified_at": "2026-10-12T11:15:07+09:00"
+    "reason": "Verified runtime v2.60.0 and deployment records atomically pushed with work branch and release/baseline tags; this follow-up only records the verified synchronization.",
+    "verified_at": "2026-10-12T11:16:25+09:00"
   },
   "previous_verification": {
     "version": "2.59.0",

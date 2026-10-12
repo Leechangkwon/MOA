@@ -1,6 +1,6 @@
 # AI 창 공간·크기 조절과 홈 바로가기
 
-- 상태: 운영 v2.60.0 검증 완료, 원격 동기화 예정
+- 상태: 운영 v2.60.0 검증 및 Git2 동기화 완료
 - 브랜치: cloud/messenger-resize-home
 - 기준: d61c1d8020e532896cf686ffaceebeb3de5419bc / v2.59.0
 - 담당: Codex root·창구현·홈조사/구현·독립검토
@@ -42,3 +42,5 @@ Runtime 6파일: public/assets/app.css, app.js(크기키 로그아웃정리1줄)
 후보 `acab7f5f3a5b78fe60425c55154fb27e889af6b8`, 릴리스 `6fbd01424104895299fe686b41eb18b18d3629b3`. outputs/resize-live.log·messenger-resize-live/results.json, resize-preservation.log·resize-product-preservation.log, messenger-resize-home-rehearsal.json·resize-drift.json 참조. 예약QA claude_admin01 정상인증, 브라우저 비GET/HEAD/OPTIONS 차단. 기존문서/개인설정/메시지/AI생성쓰기0.
 
 배포전드리프트에서 부모문서의 다른세션 community/STAGES.md·docs/scale-review-2026-10-12.md 규모점검작업을 발견했다. 이2파일은수정/스테이지하지않고해시로보존확인했으며, 부모의이번작업 PRD.md/STAGES.md/persistent-messenger-plan.md만선택병합했다. 부모전체clean을주장하지않는다. drift helper의 porcelain문자열앞공백 strip오판은 원출력행으로고쳤고운영 main/원격/후보파일은정확히일치했다. 원본검사첫시도는보호된백업/스토리지 읽기권한으로실행전중단되어, 기존sudo경로로수행하고25표/959원본/85설정보존을확인했다. 파일권한변경0.
+
+원격 동기화: main/cloud/messenger-resize-home·v2.60.0·selftest-base/messenger-resize-home·review-base/messenger-resize-home atomic push 후 fresh fetch에서 `38e62540c1f22f26cf23ce2c4c3218847491460b` 일치. 부모선택문서 커밋9463c58, 별도세션규모점검2파일은그대로유지. 이 후속 커밋은 동기화 기록뿐이며 검증runtime6fbd014와6파일SHA는불변.
