@@ -1,6 +1,6 @@
 # 중립색 테마와 모바일 첫 화면
 
-- 상태: 운영 v2.58.2 검증 완료, 원격 동기화 기록 예정
+- 상태: 운영 v2.58.2 검증·원격 동기화 완료
 - 브랜치: cloud/neutral-theme-home
 - 기준 main: 566872d0eeacbd0609967ef3383bb87d2372d8f8, v2.58.1
 - 담당: Codex root / 테마 구현 / 모바일 구현 / 독립 검토
@@ -53,3 +53,5 @@ DBmigration/설정/패키지/서비스설치 변경0. 실물Android/iOS·Safari�
 운영 최종: v2.58.2 `6559e9749cb9` / 2026-10-12T09:26:42+09:00. Astra/Aurora/Bloom/Nova 중립 배경·카드·글자, 버튼/선택/초점에 브랜드 강조. 공개 홈은 내 대시보드 열기→홈 로그인, 동의필요 상태는 기존 동의 관문 안내. 고정후보 18파일/runtime2 모의 적용·드리프트·FF/patch/FPM reload. 실제HTTPS124/0·CSS3 정확바이트·JS/5xx/브라우저쓰기0, Aurora/Bloom 밝음/어둠 PC1280·모바일390에서 홈/자료실/원문4표 확인. 첫 저장v1 위젯 모바일248px/PC262px, 원문 전체응답·취향/revision 동일. 기존14표/제품6표 모든 원래행·1042파일행·959원본SHA·ownerACL·85설정 보존, 암호화3종 checksum/전체복호화. 테마1594/0·기존디자인1354/0·모바일76/0·독립1334+13/0·PM45/0·초기격리196/0. DBmigration/설정/패키지 변경0. 사용자 기기의 다른 첫 화면은 미재현이며 주소·세션 미확인; 실물휴대폰/Safari/스크린리더 미검증. 상세 docs/work-items/neutral-theme-home.md.
 
 후보 `8c94af52e1c6e0e1664ba60c88573f87fb19e269`, 릴리스 `6559e9749cb9dafbc79f65b034548025f0975f61`. 실제운영 HTTPS 로그 outputs/neutral-home-live.log, 결과/캡처 outputs/neutral-home-live/, 보존 neutral-preservation.log·neutral-product-preservation.log, 모의 neutral-home-rehearsal.json·drift neutral-drift.json. 운영 브라우저는 모든 비GET/HEAD/OPTIONS를 막았고 개인 홈 설정이나 원문 편집을 하지 않았다. 운영 기본 로그인 302 `/`, 명시 tbox/community 복귀, 익명 주요CTA→login?to=home를 확인했다.
+
+main·cloud/neutral-theme-home·v2.58.2·baseline태그 atomic push/fetch 완료, 양쪽 브랜치 `d6f33758b0d433576a4cffd43728ec732a532d7b` 동일 확인. 이 동기화 상태 후속 기록도 같은 두 브랜치로 전달한다. 부모 STAGES는 선택절만 병합해 `98a22e6`으로 기록했다. 최종런타임은 릴리스 `6559e9749cb9`와동일하다.
