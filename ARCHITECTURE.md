@@ -3293,3 +3293,11 @@ v1/v2 호환을 유지하면서 v3는 인스턴스 ID·타입·검증된 출처�
 
 
 개인 홈 상단 설정(2026-10-11): 개인 v3 layout의 선택 shortcuts배열은 고정8ID/순서만 저장한다. 없음은기본·[]는모두숨김, 공동/v1/v2에는허용하지않는다. 기존JSONB/PATCH/revision/인가를사용하고GET쓰기0·DBmigration0. 공통canvas homeSettings훅이개인설정을포함한하나의초안을관리한다. docs/compact-home-directive.md.
+
+## 규모 A: 검색 자원과 관측 (2026-10-12)
+
+SearchGuard는 요청 인증 뒤 사용자번호의 PostgreSQL 트랜잭션 advisory lock을 기다리지 않고 얻는다. 세 검색 창구는 같은 키를 쓰며 다른 사용자는 서로 막지 않는다. 모든 검색 SQL이 monotonic deadline 3초를 나누고 `SET LOCAL`로 남은 시간만 허용한다. 예외/시간초과는 rollback, 성공은 commit으로 잠금·설정을 해제한다. PgBouncer/외부 캐시를 추가하지 않는다. 브라우저 AbortController는 이전 응답을 폐기하지만 이미 DB에서 실행 중인 작업은 최대3초 보호에 맡긴다.
+
+통합 검색은 커뮤니티 다음 파일을 순차 호출한다. 새 입력/닫기/화면 이동은 취소하고, 429는 마지막 입력에 한해 한 번 재시도한다. 자료실과 게시판 검색에도 같은 안내를 적용한다. 댓글은 삭제된 부모가 남는 기존 SQL을 유지하고 `(page_id,created_at,id)` 전체 인덱스만 추가한다.
+
+PostgreSQL 설정 예시는 `deploy/postgresql/scale-*`, 운영 경로/diff/검증은 `docs/work-items/scale-a.md`. 앱 역할의 통계 뷰·함수 접근을 열지 않는다. 느린 문장은500ms, 매개변수 기록0, 임시파일10MB, temp_file_limit64MB/프로세스. 로그는5분마다 회전 확인·20MB기준·7개 보관하며 순간 폭증의 하드 용량 한도는 아니다.

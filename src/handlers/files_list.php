@@ -33,6 +33,7 @@ declare(strict_types=1);
  * 이 값이 바꾸는 것은 **페이지 크기와 마지막 투영**뿐이다 — 권한 조건·SQL·검색·폴더 규칙은
  * 세션 요청과 한 글자도 다르지 않다(PRD S-02, ARCH 4.3 「새 판정 코드가 없다」).
  */
+require_once __DIR__ . '/../SearchGuard.php';
 $viaToken = defined('TBOX_AUTH_METHOD');
 
 // 웹은 20 고정. 토큰 요청만 limit(1~100, 기본 20)을 받는다 — 형태가 아니거나 범위를
@@ -66,6 +67,11 @@ $folder = Http::queryInt('folder', 0, 0, 999999999);
  */
 $folderGiven  = array_key_exists('folder', $_GET);
 $globalSearch = $q !== '' && !$folderGiven;
+if ($globalSearch && !SearchGuard::longEnough($q)) {
+    header('X-Search-Status: short');
+    Http::json($viaToken ? [] : ['files' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage, 'search_status' => 'short', 'notice' => SearchGuard::SHORT]);
+    return;
+}
 
 /* ─── [권한 ✔ 폴더] 연 폴더 자체를 읽을 수 있나 (18-1, PRD F-26, ARCH 5.16) ───
  *
@@ -224,18 +230,21 @@ if ($q !== '') {
 
 $db = Db::instance();
 
-// 전체 건수 — 목록과 **같은 조건**(권한 + 검색)으로 센다. 내가 볼 수 있는 개수만 나간다 (PRD S-02)
-$countRow = $db->run($sqlCount . ' ' . $visibleWhere . $filter, $bind)->fetch();
-$total    = is_array($countRow) ? (int) $countRow['total'] : 0;
-
-$listBind         = $bind;
-$listBind[':lim'] = $perPage;
-$listBind[':off'] = ($page - 1) * $perPage;
-
-$rows = $db->run(
-    $sqlList . ' ' . $visibleWhere . $filter . $orderSql[$sort . '|' . $dir] . $sqlTail,
-    $listBind
-)->fetchAll();
+$query = static function (callable $run) use ($sqlCount, $visibleWhere, $filter, $bind, $perPage, $page, $sqlList, $orderSql, $sort, $dir, $sqlTail): array {
+    $countRow = $run($sqlCount . ' ' . $visibleWhere . $filter, $bind)->fetch();
+    $total = is_array($countRow) ? (int) $countRow['total'] : 0;
+    $listBind = $bind;
+    $listBind[':lim'] = $perPage;
+    $listBind[':off'] = ($page - 1) * $perPage;
+    $rows = $run($sqlList . ' ' . $visibleWhere . $filter . $orderSql[$sort . '|' . $dir] . $sqlTail, $listBind)->fetchAll();
+    return [$total, $rows];
+};
+try {
+    [$total, $rows] = $globalSearch ? SearchGuard::execute((int) $user['id'], $query) : $query([$db, 'run']);
+} catch (Throwable $e) {
+    SearchGuard::limited($e, ['files' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage], $viaToken);
+    return;
+}
 
 /* ─── 행마다 「어느 폴더에 있나」 를 사람이 읽을 수 있는 경로로 (18-1 검토 결정) ───
  *

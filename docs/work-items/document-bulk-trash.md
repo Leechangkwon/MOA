@@ -37,3 +37,15 @@
 독립 UI 최종: 실제 격리 PHP·PostgreSQL·브라우저의 의미 검사를 중복 제거하고 최신 증거로 합쳐 80/0. 같은 계정 재개, 현재 문서 조상 삭제 전 저장·삭제 후 본문 정리·되돌리기, 무관한 삭제의 동일 편집 DOM·URL·입력 유지, 프로젝트 10개/더보기/생성 진입·복원 갱신을 확인했다. `outputs/document-trash-review/final-review.json`에 실행별 결과와 미검증 범위를 기록했다. UI 시험의 CSP 문자열 평가·편집 URL 정리·중단 문구의 완료 오인 세 종류는 하네스만 고쳐 해당 경우를 다시 확인했고 런타임은 변경하지 않았다. 첫 API의 게시판 capability 실제 결함은 보정 후 검증했다. 미해결 제품 결함 0.
 
 최종 런타임은 19파일이며 네 번의 독립 UI 시험과 현재 SHA가 같다. 그중 7파일은 import 버전 생성 변경뿐이다. root의 `outputs/document-trash-source-freeze.json`과 독립 `runtime-final.sha256`를 함께 확인했다. 모바일 360/390px 화면 및 44px 터치 영역을 Chromium에서 확인했으며 실물 기기 검증으로 표현하지 않는다.
+
+## 최신 검색 개선과 통합
+
+최초 후보 `1b19bc522f036ac097f8d2b4e343e648a8b7e1d0`의 운영 직전 drift 검사에서 먼저 배포된 규모 A·검색 안정성 변경을 발견했다. 기존 후보와 증거는 보존하고 최신 `e1d0ce80f454d2d048b2cda60e9f51e1d94a4f48` / v2.60.2를 작업 브랜치로 병합한다. editor.js·app.js의 정규화한 diff는 양쪽 의미 변경의 정확한 합집합이며 중복·겹침이 없다. 해당 증거는 `outputs/document-bulk-trash/frontend/merge-semantic-proof.json`이다.
+
+문서 삭제 PHP 4개를 포함한 PHP 8개·CSS 2개는 기존 검토 SHA와 같아 API 307/0·독립 158/0 결과가 그대로 적용된다. 생성된 import 7파일은 upstream과 버전 표기만 다르다. 신규 기준에 DB·설정·패키지 변경을 추가하지 않으며, 규모 A의 이미 적용된 검색 보호·인덱스·관측 설정을 그대로 보존한다.
+
+통합 자산 `b6ea4f321402` / ProseMirror `5823578fa61a`, 40파일/71import. 통합 UI 자체검사 53/0, 보안 린트 0·PHP/JS 문법·위키 69/0 통과. `outputs/document-bulk-trash/integrated-frontend/`, `outputs/document-trash-integrated-source-freeze.json`. 독립 영향 검사 48/0, 아래 최종 기록 참조.
+
+최신 운영 별도 백업 `/var/backups/tbox-v2/product-spaces-document-trash-integrated-20261012`: DB·코드·설정/저장소 암호화 3종 checksum/전체 복호화 확인. tar의 파일변경 경고는 959개 안정 원본 파일 SHA 전체 대조로 검증했고 worker cursor 1개만 제외했다. 원래 파일 1042행·14+6+5표 모든 기존 행·owner/ACL·PostgreSQL 포함 설정 93개를 새 보존 기준으로 기록했다. 기존 백업·실패한 drift 증거는 덮어쓰지 않았다.
+
+통합 독립 영향 UI: 실제 격리 PHP/PostgreSQL/브라우저 고유 의미 검사 48/0(반복 fixture HTTP 제외). 늦은 검색 응답이 최신 목록·선택을 덮지 않음, 실제 삭제/복원·401 중지와 같은 계정 재개, 사이드바, upstream 게시판 요청 취소·429 후 재시도·통합 검색 닫기를 확인했다. 기존 테스트의 hidden tree 중복 selector/개수 산정과 선별 fixture의 개인 공간 초기화 3건은 하네스만 보정하고 실패 로그를 보존했다. 미해결 제품 결함 0. `outputs/document-trash-review/integrated-final.json`; 최종 runtime 19가 root 동결과 네 번의 검토 snapshot 모두 같음(manifest SHA `25822a29bf57560958e94438904489835368b11a003381ae522fbd528f6330c4`). 운영 HTTPS·실물 기기는 별도다.

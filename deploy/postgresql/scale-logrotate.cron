@@ -1,0 +1,3 @@
+# /etc/cron.d/tbox-pg-logrotate — 전체 logrotate와 같은 기본 state lock 사용.
+# 설치본3.19에는 wait-for-state-lock이 없다. 다른 회전 작업과 겹치면 기본 잠금이 막고 다음5분에 재시도한다.
+*/5 * * * * root /usr/sbin/logrotate /etc/logrotate.d/postgresql-common

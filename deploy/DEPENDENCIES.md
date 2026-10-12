@@ -236,3 +236,7 @@ HTTP 는 표준 라이브러리(`urllib` · `ssl.create_default_context()`)로 �
 
 ## 사진 이야기 참조 이미지 (2026-10-03)
 Ubuntu 배포판 php8.1-gd 8.1.2-1ubuntu2.26 / libgd3 2.3.0-2ubuntu2.3를 사용한다(PHP License / libgd BSD 계열). PHP 런타임 버전은 유지한다. 운영 gd.so SHA-256 `d31d9e4ccb91744cce73397f88260a357147a637628ee30649a84af92159b780`. 새 설치는 `php8.1-gd`를 설치하고 PHP-FPM에 로드한다. GD는 원본을 읽어 메모리 안에서 최대1280px JPEG 참조본을 만들며 원본 파일을 쓰거나 전송본을 저장하지 않는다. 원본 무결성·사진 MIME/해상도·메모리 예산을 확인한다. 기존 FPM open_basedir/disable_functions 및 네트워크 제한은 그대로다.
+
+### 규모 A — PostgreSQL 통계 확장 (2026-10-12)
+
+`/usr/lib/postgresql/14/lib/pg_stat_statements.so`는 현재 설치된 `postgresql-14` 배포판 패키지 소유(`dpkg -S` 확인), extension1.9. 별도 다운로드/런타임라이브러리 추가0. `shared_preload_libraries`에 기존 항목을 보존하고 pg_stat_statements를 추가한 뒤 한 번 재시작; DB CREATE EXTENSION과 PUBLIC 뷰/함수권한 회수. 설정 원본 `deploy/postgresql/scale-observability.conf`, 역할/표 `scale-role-tables.sql`. PG14 지원종료2026-11-12 위험은 기존 R-21이며 업그레이드는 별도 작업이다. 공식: https://www.postgresql.org/docs/14/pgstatstatements.html · https://www.postgresql.org/support/versioning/

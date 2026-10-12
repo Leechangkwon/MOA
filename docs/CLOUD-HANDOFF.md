@@ -132,3 +132,5 @@ php scripts/wiki_check.php
 옛 브랜치는 삭제하지 않았다. `wip/g0`, `wip/qf10`, `wip/ux-r1`은 충돌을 최신 기능에 맞게 해결하여 main에 통합했고 검증·운영 반영까지 마쳤다. 과거 STAGES의 미체크 기록 전체를 완료로 바꾸지는 않는다. 실제 휴대폰·Windows 확인과 위 신규 기능은 다음 작업이다.
 
 운영 DB의 일부 표는 postgres, 다른 표는 tbox_owner 소유다. 소유권을 바꾸지 않는다. 격리 DB 모의 적용에서도 원래 owner/ACL을 유지해야 한다. 첫 적용은 이 차이로 트랜잭션에서 중단됐으며 기존 코드/데이터 변경 없이, 실제 소유권을 보존한 사본에서 다시 검증한 뒤 적용했다. 백업 복원이나 재시드는 실행하지 않았다.
+
+2026-10-12 규모A 운영완료: v2.60.2 4e71c9d8dfa06fd74ce39efb62edbf01e7720006. docs/work-items/scale-a.md 및 production-state 참조. B/C 미시작, C는별도세션검토승인전배포금지.
