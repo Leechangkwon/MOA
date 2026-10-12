@@ -32,6 +32,8 @@ import { createDrafts } from './community/drafts.js?v=c481218d6d2c';
 
 /** 창 상태 열쇠 접두 — 뒤에 진짜 사용자 아이디(`/api/me` 의 username — 역할로 보기 중에도 실제 계정) */
 const STATE_PREFIX = 'qaredi-messenger:v1:';
+/** 같은 탭의 창 위치만. 대화 v1 및 암호화 초안과 독립된 숫자 데이터. */
+const POSITION_PREFIX = 'qaredi-messenger-position:v1:';
 /** 임시저장 접두(drafts.js · app.js clearMyDrafts 와 같은 값) */
 const DRAFT_PREFIX = 'qaredi-draft:v1:';
 /** 대표 탭 잠금 · 탭 사이 통로 이름 접두(B-3) — 뒤에 진짜 아이디. 다른 사람 탭과 섞이지 않는다 */
@@ -132,6 +134,7 @@ function writeState(owner, st) {
 function forgetOthers(owner) {
   const s = sessionArea(), mine = stateKey(owner);
   for (const n of names(s)) { if (n.indexOf(STATE_PREFIX) === 0 && n !== mine) { drop(s, n); } }
+  for (const n of names(s)) { if (n.indexOf(POSITION_PREFIX) === 0 && n !== POSITION_PREFIX + owner) { drop(s, n); } }
   const l = localArea();
   for (const n of names(l)) {
     const m = n.match(OTHER_MESSENGER_DRAFT_RE);
@@ -142,8 +145,130 @@ function forgetOthers(owner) {
 /** 로그아웃 — 이 사람의 창 상태와 쓰던 글 접두 전부(app.js clearMyDrafts 와 같은 범위 — 값을 읽지 않는다) */
 function forgetMine(owner) {
   drop(sessionArea(), stateKey(owner));
+  drop(sessionArea(), POSITION_PREFIX + owner);
   const l = localArea(), mine = DRAFT_PREFIX + owner + ':';
   for (const n of names(l)) { if (n.indexOf(mine) === 0) { drop(l, n); } }
+}
+
+/** 떠 있는 창의 표시 위치만 관리한다. 본문/대화/서버 상태에 관여하지 않는다. */
+function movableWindow(dialog, owner, available) {
+  const head = dialog.querySelector('.modal__head');
+  const handle = document.getElementById('messenger-move-handle');
+  const reset = document.getElementById('messenger-position-reset');
+  const desktop = window.matchMedia('(min-width:720px)');
+  const key = POSITION_PREFIX + owner;
+  const listeners = [];
+  let desired = null, drag = null, dead = false;
+  const valid = (v) => Number.isInteger(v) && v >= 0 && v <= 100000;
+  try {
+    const raw = sessionArea() && sessionArea().getItem(key);
+    if (raw !== null && raw !== undefined) {
+      const value = JSON.parse(raw);
+      if (plainObject(value) && exactKeys(value, 'v,x,y') && value.v === 1 && valid(value.x) && valid(value.y)) {
+        desired = { x: value.x, y: value.y };
+      } else { drop(sessionArea(), key); }
+    }
+  } catch (e) { drop(sessionArea(), key); }
+  function on(target, type, fn, options) {
+    target.addEventListener(type, fn, options);
+    listeners.push(() => target.removeEventListener(type, fn, options));
+  }
+  function modalOpen() {
+    return document.querySelector('dialog:modal') !== null;
+  }
+  function viewport() {
+    const v = window.visualViewport;
+    return { x: v ? v.offsetLeft : 0, y: v ? v.offsetTop : 0, w: v ? v.width : innerWidth, h: v ? v.height : innerHeight };
+  }
+  function clearPosition() {
+    for (const property of ['left', 'top', 'right', 'bottom', 'max-width', 'max-height']) { dialog.style.removeProperty(property); }
+  }
+  function draw(point) {
+    const v = viewport();
+    dialog.style.maxWidth = Math.max(0, v.w - 32) + 'px';
+    dialog.style.maxHeight = Math.max(0, v.h - 32) + 'px';
+    const rect = dialog.getBoundingClientRect();
+    const minX = v.x + 16, minY = v.y + 16;
+    const maxX = Math.max(minX, v.x + v.w - 16 - rect.width);
+    const maxY = Math.max(minY, v.y + v.h - 16 - rect.height);
+    const x = Math.round(Math.max(minX, Math.min(maxX, point ? point.x : v.x + v.w - 16 - rect.width)));
+    const y = Math.round(Math.max(minY, Math.min(maxY, point ? point.y : v.y + v.h - 72 - rect.height)));
+    if (!Number.isFinite(x) || !Number.isFinite(y)) { return; }
+    dialog.style.left = x + 'px'; dialog.style.top = y + 'px';
+    dialog.style.right = 'auto'; dialog.style.bottom = 'auto';
+  }
+  function apply() {
+    if (dead) { return; }
+    const enabled = desktop.matches && available();
+    handle.tabIndex = enabled ? 0 : -1;
+    if (enabled) { handle.setAttribute('role', 'button'); handle.setAttribute('aria-label', '메신저 창 이동'); handle.setAttribute('aria-describedby', 'messenger-move-help'); }
+    else { handle.removeAttribute('role'); handle.removeAttribute('aria-label'); handle.removeAttribute('aria-describedby'); }
+    reset.disabled = !enabled;
+    if (!desktop.matches) { clearPosition(); return; }
+    if (dialog.open) { draw(desired); }
+  }
+  function persist() {
+    if (dead || !available() || desired === null) { return; }
+    try { const s = sessionArea(); if (s) { s.setItem(key, JSON.stringify({ v: 1, x: desired.x, y: desired.y })); } } catch (e) { /* 저장이 막혀도 메모리 위치는 유지 */ }
+  }
+  function finish(commit = false) {
+    if (drag === null) { return; }
+    const id = drag.id;
+    drag = null;
+    dialog.classList.remove('is-moving');
+    if (commit && desktop.matches && available() && !modalOpen()) {
+      const rect = dialog.getBoundingClientRect();
+      desired = { x: Math.round(rect.left), y: Math.round(rect.top) };
+      persist();
+    }
+    // lostpointercapture가 동기로 와도 확정 좌표를 되돌리지 않도록 먼저 기록한다.
+    try { if (head.hasPointerCapture(id)) { head.releasePointerCapture(id); } } catch (e) { /* 이미 끝난 포인터 */ }
+    apply();
+  }
+  const cancel = () => { finish(false); apply(); };
+  on(head, 'pointerdown', (e) => {
+    if (dead || !available() || !desktop.matches || !dialog.open || modalOpen() || drag !== null || e.button !== 0 || e.isPrimary === false) { return; }
+    if (!(e.target instanceof Element) || e.target.closest('button,a,input,textarea,select,label,[contenteditable="true"]')) { return; }
+    if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) { return; }
+    const rect = dialog.getBoundingClientRect();
+    drag = { id: e.pointerId, clientX: e.clientX, clientY: e.clientY, x: rect.left, y: rect.top };
+    try { head.setPointerCapture(e.pointerId); } catch (error) { drag = null; return; }
+    e.preventDefault(); handle.focus({ preventScroll: true }); dialog.classList.add('is-moving');
+  });
+  on(head, 'pointermove', (e) => {
+    if (drag === null || drag.id !== e.pointerId) { return; }
+    if (!available() || !desktop.matches || modalOpen()) { cancel(); return; }
+    if (Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) { draw({ x: drag.x + e.clientX - drag.clientX, y: drag.y + e.clientY - drag.clientY }); }
+  });
+  on(head, 'pointerup', (e) => { if (drag !== null && drag.id === e.pointerId) { finish(true); } });
+  on(head, 'pointercancel', cancel);
+  on(head, 'lostpointercapture', cancel);
+  on(handle, 'keydown', (e) => {
+    if (!desktop.matches || !available() || !dialog.open || modalOpen() || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) { return; }
+    const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!direction) { return; }
+    e.preventDefault(); cancel();
+    const rect = dialog.getBoundingClientRect(), step = e.shiftKey ? 40 : 10;
+    draw({ x: rect.left + direction[0] * step, y: rect.top + direction[1] * step });
+    const moved = dialog.getBoundingClientRect();
+    desired = { x: Math.round(moved.left), y: Math.round(moved.top) }; persist();
+  });
+  on(reset, 'click', () => {
+    if (dead || !available() || !desktop.matches || modalOpen()) { return; }
+    finish(false); desired = null; drop(sessionArea(), key); apply();
+  });
+  on(window, 'resize', cancel);
+  on(window, 'blur', cancel);
+  on(window, 'pagehide', cancel);
+  on(dialog, 'close', cancel);
+  on(desktop, 'change', cancel);
+  if (window.visualViewport) { on(window.visualViewport, 'resize', cancel); on(window.visualViewport, 'scroll', cancel); }
+  on(document, 'visibilitychange', () => { if (document.hidden) { cancel(); } });
+  on(document, 'focusin', () => { if (drag !== null && modalOpen()) { cancel(); } });
+  const observer = new MutationObserver(() => { if (drag !== null && (!dialog.open || modalOpen())) { cancel(); } });
+  observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
+  apply();
+  return { apply, cancel, destroy() { finish(false); dead = true; observer.disconnect(); for (const remove of listeners) { remove(); } clearPosition(); handle.tabIndex = -1; handle.removeAttribute('role'); handle.removeAttribute('aria-label'); handle.removeAttribute('aria-describedby'); reset.disabled = true; } };
 }
 
 /** 임시저장 열쇠 받기 — drafts.js 가 한 화면에 한 번만 부른다(실패도 기억). 커뮤니티 editor.js 와 같은 요청 모양. */
@@ -519,7 +644,7 @@ async function mount(options) {
   forgetOthers(owner);
   // 쓰기 자격이 없거나 역할로 보기면 붙이지 않고 이 사람의 창 상태를 지운다. 창은 자격이 **참**일 때만(값이 없으면 붙이지 않는다).
   if ((isWindow ? me.can_community_write !== true : me.can_community_write === false) || me.acting === true) {
-    drop(sessionArea(), stateKey(owner)); return null;
+    drop(sessionArea(), stateKey(owner)); drop(sessionArea(), POSITION_PREFIX + owner); return null;
   }
 
   const $ = (id) => document.getElementById(id);
@@ -527,6 +652,7 @@ async function mount(options) {
   if (isWindow && (dialog === null || typeof dialog.show !== 'function')) { return null; }
   const base = document.body.dataset.base || '/tbox';
   let loggedOut = false, halted = false, badge = null;
+  const position = isWindow ? movableWindow(dialog, owner, () => !loggedOut && !halted) : null;
 
   /** 「임시저장 못 함」(회색 — 꺼짐, 커뮤니티와 같은 글자·클래스). 입력 칸 아래에 한 번만 만든다. */
   function off(on) {
@@ -547,6 +673,7 @@ async function mount(options) {
   /** 401(세션 만료)을 받은 그 순간 — 열쇠가 이미 메모리에 있으면 쓰던 글을 남긴다(커뮤니티 「401 그 순간」 규칙). 창은 폴링을 멈춘다 */
   const call = (path, method = 'GET', body, join = false, passive = false) => api(path, method, body, join, passive).catch((error) => {
     if (error && error.status === 401 && !loggedOut) { store.flushAll(); saveState(); if (isWindow) { halted = true; schedule(null); } }
+    if (isWindow && error && (error.status === 401 || error.status === 403)) { position.cancel(); }
     // 사이트 Q:F-13 P1 — AI 국외 전송 동의가 없어 서버가 409 로 막은 요청(모아 AI · 메시지 AI 도구): 동의 창 → 동의하면 같은 요청을 한 번 다시.
     // 다시 보낸 요청은 call 이 아니라 api 로 보낸다(고리 0). 자동 요청(passive)은 창을 띄우지 않는다.
     if (error && error.status === 409 && error.code === 'ai_consent_required' && !passive) {
@@ -931,6 +1058,7 @@ async function mount(options) {
     if (!isWindow || loggedOut) { return false; }
     const before = document.activeElement, wasOpen = dialog.open;
     if (!wasOpen) { dialog.show(); }
+    position.apply();
     if (!user) { keepFocus(before); }
     if (user && by) { opener = by; }
     markOpeners(true);
@@ -950,6 +1078,7 @@ async function mount(options) {
   function hide() {
     if (!isWindow || !dialog.open) { return; }
     const inside = dialog.contains(document.activeElement);
+    position.cancel();
     store.flushAll(); saveState(false);
     dialog.close();
     markOpeners(false);
@@ -1016,6 +1145,7 @@ async function mount(options) {
   });
   // 로그아웃(app.js 가 지우기 직전에 알린다 — 이 화면에 app.js 가 없을 때도 같은 이벤트면 같게): 다시 쓰지 않고 이 사람 몫을 지운다.
   document.addEventListener('qaredi:logout', () => {
+    if (position !== null) { position.destroy(); }
     loggedOut = true; window.clearTimeout(scrollTimer); store.shutdown(); forgetMine(owner);
     share.close();
     if (isWindow) { schedule(null); lead.stop(); if (dialog.open) { dialog.close(); } markOpeners(false); paintBadge(0); }

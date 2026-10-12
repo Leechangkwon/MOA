@@ -531,7 +531,7 @@ try:
                 metrics['sidebar_work'] = work
                 seq = [x['text'] for x in work if x['t'] != 'folded']
                 top = seq[:6]
-                check(top == ['새로 만들기', '홈', '내 작업', '받은 알림', '검색Ctrl K', '메신저'], 'C-2 업무 sidebar top: 새로 만들기 → 홈 → 내 작업 → 받은 알림 → 검색 → 메신저 ' + json.dumps(top, ensure_ascii=False))
+                check(top == ['새로 만들기', '홈', '내 작업', '받은 알림', '검색Ctrl K', '프로젝트'], 'C-2 업무 sidebar top: 새로 만들기 → 홈 → 내 작업 → 받은 알림 → 검색 → 프로젝트 ' + json.dumps(top, ensure_ascii=False))
                 titles = [x['text'] for x in work if x['t'] == 'title']
                 check(titles[-1:] == ['더보기'] and '문서' in titles and titles.index('문서') < titles.index('더보기'), 'C-2 업무 sidebar groups … 문서 → 더보기(last) ' + json.dumps(titles, ensure_ascii=False))
                 check(all('오늘 할 일' not in x['text'] for x in work) and p.locator('#sidebar').get_by_text('오늘 할 일').count() == 0, 'C-2 업무 sidebar has no 「오늘 할 일」')
@@ -542,7 +542,7 @@ try:
                 p.click('#nav-community-more-box > summary')
                 p.wait_for_timeout(200)
                 check(p.locator('#nav-community-trash').is_visible(), 'C-2 「더보기」 opens and shows 「내 휴지통」')
-                check(p.locator('#sidebar [data-messenger-open]').count() == 1, 'C-2 업무 sidebar: one messenger opener')
+                check(p.locator('.app-rail [data-messenger-open]').count() == 1 and p.locator('#sidebar [data-messenger-open]').count() == 0, 'C-2 업무 common rail: one messenger opener, no sidebar duplicate')
                 p.screenshot(path=str(shots / 'sidebar-work-1440.png'))
                 # 「＋ 새로 만들기」 메뉴 — 작업 · 프로젝트 · 문서(작업·프로젝트는 조각 D 가 연다 — 기대값 바꿈 2026-10-07 D: 전엔 둘이 hidden) · 문서를 누르면 새 페이지
                 p.click('#nav-new-menu > summary')
@@ -565,11 +565,11 @@ try:
                 story = p.evaluate(SIDEBAR_JS)
                 metrics['sidebar_story'] = story
                 seq = [x['text'] for x in story if x['t'] != 'folded']
-                check(seq == ['새 이야기', '팔로잉 스레드', '나의 스레드', '새로운 이야기 발견', '여행 계획', '검색Ctrl K', '메신저'], 'C-2 이야기 sidebar: 새 이야기 → 팔로잉 → 나의 → 발견 → 여행 계획 → 검색 → 메신저 ' + json.dumps(seq, ensure_ascii=False))
+                check(seq == ['새 이야기', '팔로잉 스레드', '나의 스레드', '새로운 이야기 발견', '여행 계획', '검색Ctrl K'], 'C-2 이야기 sidebar: 새 이야기 → 팔로잉 → 나의 → 발견 → 여행 계획 → 검색 ' + json.dumps(seq, ensure_ascii=False))
                 html = p.content()
                 check('community/editor.js' not in html and 'id="nav-community-tree"' not in html and 'id="nav-community-bell"' not in html and 'id="appbar-bell"' not in html,
                       'C-2 이야기 shell: no editor.js · no 업무 groups · no bell')
-                check(p.locator('#sidebar [data-messenger-open]').count() == 1, 'C-2 이야기 sidebar: one messenger opener')
+                check(p.locator('.app-rail [data-messenger-open]').count() == 1 and p.locator('#sidebar [data-messenger-open]').count() == 0, 'C-2 이야기 common rail: one messenger opener, no sidebar duplicate')
                 active = p.evaluate("[...document.querySelectorAll('#sidebar [data-thread-nav]')].map(a=>[a.dataset.threadNav,a.classList.contains('is-active')])")
                 check(active == [['feed', True], ['mine', False], ['discover', False]], 'C-2 이야기 sidebar: 팔로잉 is-active on /community/memories (memories.js) ' + json.dumps(active))
                 p.screenshot(path=str(shots / 'sidebar-story-1440.png'))

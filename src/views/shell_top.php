@@ -360,13 +360,23 @@ if ($shellMod === 'community'): ?>
        목록은 런처·앱 메뉴와 같은 Apps::all() 순서 그대로이고 `status: soon` 앱은 그리지 않는다. 손님·「역할로 보기」도 같은 목록이다 —
        앱 안의 판정은 각 앱(라우트 정책)이 한다. 아이콘은 Apps::ICON_PATHS 의 고정 path(moa_icon.php) — 새 SVG 를 화면에 직접 쓰지 않는다.
        960px 미만은 CSS 가 그리지 않는다(display:none — 화면 읽기에 같은 목록이 두 번 나오지 않게, 폰은 윗줄 앱 이름 ▾).
-       메신저는 여기 넣지 않는다(DESIGN 2.17 — 여는 단추 자리는 사이드바 「메신저」 · 폰 윗줄 말풍선 그대로). 스크립트 0 · 인라인 style 0. -->
+       메신저는 앱 목록 아래 별도 공통 동작으로 둔다. 폰은 윗줄 말풍선을 사용한다. 스크립트 0 · 인라인 style 0. -->
   <nav class="app-rail" aria-label="앱 바꾸기">
     <a class="app-rail__home" href="/" aria-label="모아 홈"><span class="moa-symbol" aria-hidden="true">m.</span></a>
 <?php foreach ($shellApps as $shellRailApp): ?>
 <?php   if (($shellRailApp['status'] ?? '') === 'soon') { continue; } ?>
     <a class="app-rail__item" href="<?= htmlspecialchars((string) $shellRailApp['path'], ENT_QUOTES, 'UTF-8') ?>"<?= $shellRailApp['key'] === $shellCurrentApp ? ' aria-current="page"' : '' ?>><?php $moaIcon = (string) $shellRailApp['icon']; require __DIR__ . '/moa_icon.php'; ?><span><?= htmlspecialchars((string) $shellRailApp['name'], ENT_QUOTES, 'UTF-8') ?></span></a>
 <?php endforeach; ?>
+<?php if (!empty($shellUser)): ?>
+    <span class="app-rail__divider" aria-hidden="true"></span>
+<?php if ($shellMessenger): ?>
+    <button id="messenger-open" class="app-rail__item app-rail__messenger" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false">
+      <span class="icon" data-icon="messages"></span><span>메신저</span><span class="badge badge--internal" data-message-unread hidden></span>
+    </button>
+<?php else: ?>
+    <a class="app-rail__item app-rail__messenger" href="<?= Http::url('/messages') ?>" aria-label="메신저 이용 안내"><span class="icon" data-icon="messages"></span><span>메신저</span></a>
+<?php endif; ?>
+<?php endif; ?>
     <span class="app-rail__spacer"></span>
     <a class="app-rail__me" href="<?= Http::url('/settings') ?>" aria-label="내 계정 — <?= $shellRailMe ?>"><span aria-hidden="true"><?= $shellInitial ?></span></a>
   </nav>
@@ -396,6 +406,8 @@ if ($shellMod === 'community'): ?>
       <button id="appbar-messenger" class="btn btn--icon btn--plain" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false" aria-label="메신저">
         <span class="icon" data-icon="messages"></span><span class="badge badge--internal" data-message-unread hidden></span>
       </button>
+<?php elseif (!empty($shellUser)): ?>
+      <a id="appbar-messenger" class="btn btn--icon btn--plain" href="<?= Http::url('/messages') ?>" aria-label="메신저 이용 안내"><span class="icon" data-icon="messages"></span></a>
 <?php endif; ?>
 <?php if ($shellMod === 'community'): ?>
       <button id="appbar-bell" class="btn btn--icon btn--plain" type="button" aria-haspopup="dialog" aria-label="알림">
@@ -539,16 +551,6 @@ if ($shellMod === 'community'): ?>
       <ul id="search-results" class="search-results" role="listbox" aria-label="검색 결과"></ul>
       <p id="search-note" class="search-dialog__note muted" role="status"></p>
     </dialog>
-<?php if ($shellMessenger): ?>
-    <!-- Q:F-11 — 메신저(떠 있는 창, DESIGN 2.17). 세 모드 공용 · 같은 자리(검색 바로 아래 — Q:F-12 에서도 바뀌지 않음). 창은 shell_bottom 이 messenger_window.php 로 붙인다. -->
-    <nav class="nav" aria-label="메신저">
-      <button id="messenger-open" class="nav__item" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false">
-        <span class="icon" data-icon="messages"></span><span>메신저</span><span class="badge badge--internal" data-message-unread hidden></span>
-      </button>
-    </nav>
-<?php elseif (!empty($shellUser)): ?>
-    <nav class="nav" aria-label="메신저"><a class="nav__item" href="<?= Http::url('/messages') ?>"><span class="icon" data-icon="messages"></span><span>메신저</span></a></nav>
-<?php endif; ?>
 <?php if ($shellMod === 'community'): ?>
     <!-- ─── 업무 앱의 사이드바 아래쪽 (커뮤니티 ARCHITECTURE.md 21.3 → Q:F-12 DESIGN 2.19 ④~⑧) ───────────────────
          즐겨찾기 · 최근(있을 때만) → 프로젝트 → 포트폴리오 → 팀 → 문서 → 공유받은 페이지 → 「더보기」(접힘).

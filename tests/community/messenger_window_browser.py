@@ -428,10 +428,9 @@ try:
         p.locator('#appbar-apps').click();p.wait_for_timeout(200)
         if not p.locator('#logout').is_visible():p.locator('details.appbar__apps > summary').click()
         p.locator('#logout').scroll_into_view_if_needed();p.wait_for_timeout(200)
-        hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);const d=document.getElementById('messenger-window');return !!(e&&e.closest('#logout'))&&d.open&&!d.getClientRects().length;})()")
-        check(hit,'Q:T-16 '+tag+': opening the drawer menu folds the sheet (logout hit-testable, window state still open)')
-        p.locator('#appbar-apps').click();p.wait_for_timeout(300)
-        if p.locator('#sidebar').is_visible():p.locator('#nav-toggle').click();p.wait_for_timeout(300)
+        hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);const d=document.getElementById('messenger-window');const m=document.getElementById('mobile-nav-dialog');return !!(e&&e.closest('#logout'))&&d.open&&m.matches(':modal')&&m.contains(e);})()")
+        check(hit,'Q:T-16 '+tag+': native drawer sits above the sheet (logout hit-testable, window state still open)')
+        p.locator('#mobile-nav-close').click();p.wait_for_timeout(300)
         check(p.locator('#messenger-window').is_visible() and t.is_open(),'Q:T-16 '+tag+': closing the drawer shows the sheet again')
       else:
        g=geo['guide']

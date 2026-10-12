@@ -300,6 +300,12 @@ button.appbar__brand .icon { display: inline-flex; color: var(--muted); }
 .app-rail__item:hover { color: var(--rail-fg); background: color-mix(in srgb, var(--rail-fg) 14%, transparent); text-decoration: none; }
 .app-rail__item[aria-current="page"] { color: var(--rail-fg); background: color-mix(in srgb, var(--rail-fg) 14%, transparent); font-weight: 600; }
 .app-rail__spacer { flex-grow: 1; min-height: 12px; }
+.app-rail__divider { flex: none; width: 32px; border-top: 1px solid color-mix(in srgb, var(--rail-fg) 28%, transparent); margin: 6px 0; }
+.app-rail__messenger { position: relative; border: 0; background: transparent; font-family: inherit; cursor: pointer; }
+.app-rail__messenger .icon { width: 20px; height: 20px; }
+.app-rail__messenger .badge { position: absolute; top: 2px; right: 0; min-width: 18px; padding: 1px 4px; font-size: 11px; line-height: 16px; }
+.app-rail__messenger[aria-expanded="true"] { color: var(--rail-fg); background: color-mix(in srgb, var(--rail-fg) 14%, transparent); }
+.app-rail__messenger:focus-visible { outline: 2px solid var(--rail-fg); outline-offset: 2px; }
 /* 아래 끝 「내 계정」 — 이니셜 36px 원(줄 색을 뒤집은 것) */
 .app-rail__me {
   display: inline-flex;
@@ -1139,9 +1145,20 @@ dialog.floating > .modal__head > .modal__title { flex: 1 1 auto; min-width: 0; }
 dialog.floating > .modal__head > .btn--icon { margin-left: 0; }
 /* 머리는 한 줄(‹ 목록 · 제목 · 크게 보기 · ✕)이라 좁은 폭 모달의 「✕ 를 머리 오른끝에 띄워 붙이기」(아래 720 규칙)를 쓰지 않는다 — 제자리에 둔다 */
 dialog.floating > .modal__head > .btn--icon:last-child { position: relative; top: auto; right: auto; }
+.messenger-move-handle { white-space: nowrap; border-radius: var(--r-sm); }
+.messenger-move-handle:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
+@media (min-width: 720px) {
+  .messenger-move-handle::before { content: '⠿'; color: var(--muted); font-size: 14px; margin-right: 4px; }
+  #messenger-window > .modal__head { cursor: grab; touch-action: none; flex-wrap: wrap; gap: 6px; padding-inline: 12px; }
+  #messenger-window > .modal__head > .modal__title { min-width: max-content; }
+  #messenger-window > .modal__head .btn--small { padding-inline: 8px; }
+  #messenger-window.is-moving { user-select: none; }
+  #messenger-window.is-moving > .modal__head { cursor: grabbing; }
+}
 #messenger-window-status { flex: none; margin: 0; padding: 8px 16px 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 #messenger-window-status:empty { display: none; }
 @media (max-width: 719.98px) {
+  #messenger-position-reset { display: none; }
   dialog.floating {
     inset: auto 0 0 0;
     width: 100%;

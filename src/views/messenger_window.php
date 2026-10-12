@@ -24,10 +24,12 @@ $messengerAsset = static function (string $file): string {
 <dialog id="messenger-window" class="floating" aria-labelledby="messenger-window-title" data-view="list">
   <div class="modal__head">
     <button type="button" id="messenger-back" class="btn btn--quiet btn--small" hidden>‹ 목록</button>
-    <h2 id="messenger-window-title" class="modal__title">메신저</h2>
+    <h2 id="messenger-window-title" class="modal__title"><span id="messenger-move-handle" class="messenger-move-handle" tabindex="0" role="button" aria-label="메신저 창 이동" aria-describedby="messenger-move-help">메신저</span></h2>
+    <button type="button" id="messenger-position-reset" class="btn btn--quiet btn--small" aria-label="메신저 창을 기본 위치로">기본 위치</button>
     <a class="btn btn--quiet btn--small" href="<?= Http::url('/messages') ?>">크게 보기</a>
     <button type="button" class="btn btn--icon btn--plain" data-messenger-close aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
   </div>
+  <span id="messenger-move-help" class="sr-only">창 제목을 끌거나 방향키로 이동하세요. Shift와 방향키를 함께 누르면 크게 이동합니다.</span>
   <p id="messenger-window-status" role="status" aria-live="polite"></p>
   <div class="moa-messenger">
     <aside class="moa-people" aria-label="대화 상대">
