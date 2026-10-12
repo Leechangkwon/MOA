@@ -438,6 +438,9 @@ try:
        if path=='/tbox/' and not contrast:
         # 시트가 열린 채 앱 메뉴를 열면 메뉴가 시트 위에 — 로그아웃까지 누를 수 있다.
         # Q:F-12 U2 (DESIGN 2.18 「폰」) — 윗줄 앱 이름 ▾(#appbar-apps)는 서랍(앱·계정 모드) 대신 같은 앱 격자 details#app-grid 를 연다(윗줄 아래 전체 폭).
+        # 상대를 고른 open() 은 대화 · 목록을 다 읽은 뒤 입력 칸에 초점을 준다(messenger.js) — 그 전에 ▾ 를 누르면 늦게 온 초점이 격자 밖으로 나가
+        # 격자가 닫힌다(app.js focusout · RV-U2-2 에서 찾은 경합). 「시트가 다 열린 뒤 ▾」를 재려고 입력 칸 초점을 기다린다.
+        expect(p.locator('#message-text')).to_be_focused()
         p.locator('#appbar-apps').click();p.wait_for_timeout(200)
         if p.locator('#logout').is_visible():p.locator('#logout').scroll_into_view_if_needed();p.wait_for_timeout(200)
         hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);const d=document.getElementById('messenger-window');const g=document.getElementById('app-grid');return {hit:!!(e&&e.closest('#logout')),window:d.open,grid:g.open,on:e?(e.id||String(e.className)||e.tagName):null,on_sheet:!!(e&&e.closest('#messenger-window'))};})()")

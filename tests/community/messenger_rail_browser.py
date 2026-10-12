@@ -68,8 +68,8 @@ with sync_playwright()as pw:
      page.keyboard.press('Escape');page.wait_for_timeout(100)
      check(not page.locator('#messenger-window').evaluate('(n)=>n.open'),'Escape closes '+tag)
      focus=page.evaluate(FOCUS_JS);metrics['focus-after-close-'+tag]=focus
-     # 넓은 화면: 연 타일은 격자가 닫혀 보이지 않는다 → messenger.js 가 본문 첫 초점(격자 줄)으로 돌린다. 폰: 윗줄 말풍선 그대로
-     if wide:check(focus['in_tools'],'focus returns to the grid tool row '+tag+' '+json.dumps(focus))
+     # 넓은 화면: 연 타일은 격자가 닫혀 보이지 않는다 → messenger.js 가 본문 첫 초점 = 격자를 연 ⋮⋮⋮(summary)로 돌린다(RV-U2-2 ③). 폰: 윗줄 말풍선 그대로
+     if wide:check(focus['in_tools'] and summary.evaluate('(n)=>document.activeElement===n'),'focus returns to the ⋮⋮⋮ summary '+tag+' '+json.dumps(focus))
      else:check(trigger.evaluate('(n)=>document.activeElement===n'),'focus returns to common opener '+tag)
     else:
      tile=page.locator('#app-grid a.app-menu__app[href="/tbox/messages"]')
@@ -86,7 +86,8 @@ with sync_playwright()as pw:
      check(urlsplit(page.url).path=='/','restricted information retains current context '+tag)
      page.keyboard.press('Escape');page.wait_for_timeout(100)
      focus=page.evaluate(FOCUS_JS);metrics['restricted-focus-after-close-'+tag]=focus
-     if wide:check(focus['in_tools'],'restricted information focus returns to the grid tool row '+tag+' '+json.dumps(focus))
+     # 넓은 화면: 안내 창을 닫으면 messenger-access.js 가 안 보이는 타일 대신 ⋮⋮⋮(summary)로 돌린다(RV-U2-2 ①)
+     if wide:check(focus['in_tools'] and summary.evaluate('(n)=>document.activeElement===n'),'restricted information focus returns to the ⋮⋮⋮ summary '+tag+' '+json.dumps(focus))
      else:check(trigger.evaluate('(n)=>document.activeElement===n'),'restricted information focus returns '+tag)
     check(not any(method not in ['GET','HEAD']for method,_ in requests),'no message or other API write '+tag)
     if module=='files'and kind=='employee'and width in [1280,390]:page.screenshot(path=str(OUT/f'rail-{width}.png'))

@@ -675,7 +675,7 @@ function paintBadge(count) {
 
 /** 그 영역 안에서 키보드로 처음 닿는 보이는 것 — 복원으로 열린 창을 닫을 때 초점을 둘 자리(DESIGN 2.17 「본문 첫 초점」) */
 function firstFocusable(root) {
-  const list = root.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+  const list = root.querySelectorAll('a[href], button:not([disabled]), summary, input:not([disabled]):not([type="hidden"]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
   for (const el of list) {
     if (el.closest('[hidden]') === null && el.closest('dialog:not([open])') === null && el.getClientRects().length > 0) { return el; }
   }

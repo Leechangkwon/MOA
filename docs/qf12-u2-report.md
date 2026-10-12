@@ -131,3 +131,50 @@ q_launcher.sh 는 writes_prod(운영 8082) 시험이라 **실행하지 않았다
 ④ messenger_window_browser.py 를 735행 밖 넷 더 고쳤다 — 모두 「옛 아이콘 줄(늘 보이는 `#messenger-open`) · 옛 서랍」을 기대하던 자리다. 안 고치면 Q:T-11 첫 「셸 사이드바」 click 에서 시험 전체가 멈춰 C-6 까지 가지 못한다(첫 실행 118/25 + 중단). 손님 · 역할로 보기 8건은 U2 셸의 **HTML 주석**(`<!-- … [data-messenger-open] … -->`, shell_top.php 765행 — 브라우저로 나가는 주석)이 문자열 검사에 걸린 것이라 주석을 빼고 센다(마크업 속성은 그대로 0 확인).
 ⑤ messenger-access.js: 지시서 「선택자 → 격자 메신저 타일을 가리키게」와 「격자 타일에 작은 글자가 붙는 지금 동작 유지」는 함께 될 수 없다 — 그 선택자는 **글자를 붙이지 않을** 요소 목록이라, 격자 타일을 넣으면 「이용 제한」이 사라진다. 지금 동작 유지를 따르고 죽은 `.app-rail__messenger` 만 뺐다(격자 타일은 주석에 이름으로 적음). rail 시험이 「격자 타일에 `small.messenger-access-note` 「이용 제한」 1 · `#appbar-messenger` 0」을 잰다(전부 통과).
 ⑥ rail 시험의 check 를 「실패 적고 계속」으로 바꿨다 — 첫 실패에서 멈추면 ①이 뒤 단언 수백 개를 가린다. 종료 코드는 실패가 있으면 1 그대로.
+
+## 9. RV-U2-2 — 앱 격자와 메신저 창 · 시트 사이의 초점 · 겹침 결함 셋 (2026-10-12)
+
+시작 전에 포트 8768 이 비었는지 확인했다(`ss -ltn | grep 8768` 출력 0). 기능은 그대로이고 바꾼 것은 초점과 쌓임 순서뿐이다. 결과 폴더는 `/home/changkwon/qaredi-qf12u2-results-20261012/RV2/` 이다.
+
+### 9.1 변경 파일
+
+| 파일 | 내용 |
+|---|---|
+| `public/assets/messenger-access.js` | ① 안내 창 `close` 처리: opener 가 보이면(`getClientRects().length > 0`) opener 로 초점을 돌리고, 안 보이면(닫힌 격자 안 타일) `#app-grid > summary` → `#appbar-apps` 순서로 **보이는 쪽**으로 돌린다. 둘 다 안 보이면 초점을 옮기지 않는다 |
+| `public/assets/messenger.js` | ③ `firstFocusable` 선택자에 `summary` 를 더했다(그 밖 0). 넓은 화면에서 격자 타일로 연 창을 닫으면 본문 첫 초점 = ⋮⋮⋮ |
+| `public/assets/app.css` | ② `@media (max-width:959.98px)` 의 `.shell-tools:has(> .appbar__apps[open])` z-index `30` → `calc(var(--z-floating) + 1)` + 주석 1줄. 새 토큰 0 · 새 색 0 |
+| `public/assets/app.js` | 0 — CSS 만으로 충분했다(아래 9.4 ⑦) |
+| `tests/community/messenger_rail_browser.py` | 넓은 화면 초점 단언 둘(직원 창 닫기 · 자격 없는 사람 안내 창 닫기)을 「격자 줄 안」에서 「`#app-grid > summary` 가 activeElement」로 좁혔다. 단언 이름은 `… returns to the ⋮⋮⋮ summary …`. 단언 수는 같다 |
+| `tests/community/messenger_window_browser.py` | Q:T-16 폰 「격자가 시트 위」 앞에 `expect(#message-text).to_be_focused()` 기다림 한 줄과 주석을 넣었다. 기대값은 바꾸지 않았다(아래 9.4 ⑧) |
+| `docs/qf12-u2-report.md` | 이 절 |
+
+shell_top.php · work.js 는 바꾸지 않았다(0). `php scripts/community_asset_version.php` 를 인자 없이 돌린 결과는 「바뀐 파일 없음」이다. messenger.js 는 뷰가 filemtime 으로 버전을 찍고, 이 스크립트는 그 안의 `./community/` import 만 다루기 때문이다.
+
+### 9.2 실행한 명령과 출력(원문은 결과 폴더)
+
+| 명령 | 출력 | 로그 |
+|---|---|---|
+| `MESSENGER_RAIL_RESULTS=…/RV2/rail python3 tests/community/messenger_rail_browser.py` | `614 checks passed 0 failed` · `RESULT pass=614 fail=0` · rc 0. 넓은 화면 12자리(3 셸 × 직원 · 손님 · 역할로 보기 × 1280 · 960) 모두 초점 `{"tag": "SUMMARY", "cls": "btn btn--icon btn--plain", "in_tools": true, "body": false}` | `rail.log` · `rail/results.json` |
+| `python3 tests/community/memories_harness.py --suite messenger_window_browser.py --output …/RV2/window`(전체 · 기본) | `RESULT pass=138 fail=17` 뒤 같은 자리에서 중단: Q:T-11 「런처 타일」 `Locator.click: Timeout 30000ms exceeded` · `a#messenger-open … element is not visible`. FAIL 줄은 RV-1 `window.log` 및 기준 판 `window-base-8c36f8b.log` 와 `diff` 0 | `window.log` · `window/` |
+| `QF11B_ONLY=t12,t13,t14,t16,t17,t18,t20,c3,c5,c6,snap` 같은 명령 → `…/RV2/window-rest` | `RESULT pass=285 fail=16` — 16건이 모두 `ui_snapshot AUDIT_JS`. Q:T-16 PASS 125(격자 · 시트 10건 포함) · C-6 PASS 8. 숫자: RV-1 275/26 에서 Q:T-16 10건이 실패에서 통과로 넘어갔다 | `window-rest.log` · `window-rest/` |
+| 대조 — `QF11B_ONLY=t16` · **app.css 만 HEAD 로 되돌림**(시험의 초점 기다림은 넣은 채) | `RESULT pass=130 fail=5` — 5폭 모두 `{"hit": false, "window": true, "grid": true, "on": "message-list", "on_sheet": true}`(격자가 열렸지만 시트 **아래**에 있다). 그 뒤 app.css 를 고친 판으로 되돌렸다 | `window-t16-css-before.log` |
+| `QF11B_ONLY=t16`(고친 판 전체) | `RESULT pass=135 fail=0` · 5폭 모두 `{"hit": true, "window": true, "grid": true, "on": "logout", "on_sheet": false}` | `window-t16.log` |
+| `. …/env.sh` 뒤 `python3 tests/community/memories_harness.py --suite qf12_shell_browser.py --output …/RV2/shell` | `RESULT pass=611 fail=13`. FAIL 이름은 `U2/shell-full.log` · 메인 검토 `review/qf12_shell_browser.log` · 기준 판 `U2/baseline/shell-head.log` 셋과 모두 `diff` 0 | `shell.log` · `shell/` |
+| `php scripts/community_asset_version.php --check` → 인자 없이 → `--check` | 세 번 모두 rc 0 · `부품 버전 bd4c73cb5052 · ProseMirror 버전 5823578fa61a · 파일 40개 · 상대 import 71개 · 폴더 밖 진입 1개`(인자 없이 돌린 때는 `(바뀐 파일 없음)`) | `static.log` |
+| `node --check` messenger.js · messenger-access.js · app.js | rc 0 ×3 | `static.log` |
+| `bash scripts/security_lint.sh` | `결과: 통과 (금지 패턴 0건)` · rc 0 | `static.log` |
+| `git diff --check` | rc 0 | `static.log` |
+
+### 9.3 기준 판부터 실패하던 단언(이번 변경과 무관 · 고치지 않음) — 이름 대조
+
+- **messenger_window_browser 전체 실행 · Q:T-19 17건**(RV-1 · 기준 판 `8c36f8b` 과 같은 이름): `Q:T-19 {t-box 홈 · 설정 · 활동 · 내 휴지통 · 위키 · 관리 허브 · 업무 홈 · 내 문서 · 페이지 · 게시판 · 응답 양식 · 절차서 · 문서 AI · 공유·연동 · 스레드 · 시작 안내 · 런처}: no standalone 「GPT」/「OpenAI」 text on the screen (help dialog counted separately)`.
+- **Q:T-11 중단**: `Q:T-11 런처 타일` — `/` 의 `a#messenger-open` 이 안 보여 click 이 30초를 넘는다(RV-1 · 기준 판과 같은 줄 259).
+- **window-rest · snap 16건**(RV-1 · 기준 판과 같은 이름): `ui_snapshot AUDIT_JS {1440 · 1280} {/tbox/ · /tbox/settings · /tbox/activity · /tbox/users · /tbox/audit · /tbox/trash · /community/ · /community/memories}: window adds 0 defects besides floating over the page`(`span#messenger-move-help.sr-only` 등이 「clipped」로 잡힌다). 기준 판에서 실패하던 C-6 「메신저」 text once 3건은 RV-1 에서 고쳐져 통과한다.
+- **qf12_shell_browser 13건**(기준 판 `shell-head.log` 와 같은 이름): `Q:T-38 launcher (signed-in) tiles start 자료실 · 업무 · 이야기` · `Q:T-38 launcher signed-in tile links` · `Q:T-38 launcher header links 업무 · 이야기 (커뮤니티 0)` · `Q:T-38 launcher (signed-out) tiles start 자료실 · 업무 · 이야기` · `Q:T-38 launcher signed-out tile links (login first)` · `Q:T-39 return address outside the allow-list is ignored` ×3(`/community/memories/../workspace` · `//evil.example/community/memories` · `/community/memories?view=evil` → `/`) · `mobile drawer {360 · 412 · 820} raised AssertionError: Locator expected to be visible` · `C-2 업무 sidebar top: 새로 만들기 → 홈 → 내 작업 → 받은 알림 → 검색 → 프로젝트` · `C-2 「더보기」 folded: 자동 작업 · 내 제안 · 공유·연동 설정 · 문서 AI · 내 휴지통`.
+
+### 9.4 판단 · 찾은 것 · 못 한 것
+
+⑦ **② 는 CSS 로 고쳤다(app.js 0)**. 시험 Q:T-16 은 「시트(창 상태 open)를 그대로 둔 채 격자가 위에 뜨고, Esc 로 격자만 닫으면 시트가 다시 보인다」를 잰다. DESIGN 2.19 「두 판을 동시에 펼치지 않는다」는 **서랍(☰)과 격자**에 대한 규칙이고, 떠 있는 창(2.17 — 화면을 옮겨도 열린 채 남는 비모달)은 판이 아니다. 그래서 격자를 연다고 시트를 닫으면 2.17 의 「열린 채 남는다」와 맞지 않는다고 봤다.
+⑧ **RV-1 이 본 실제 셸의 `grid.open: false` 는 z 때문이 아니었다. 경합이었다**(일부러 계측해 확인했다 — 계측은 지웠다). `Tab.person()` 은 상대 이름이 보이면 바로 돌아오는데, messenger.js `open()` 은 그 뒤 `people()` 까지 기다린 다음 `#message-text.focus()` 를 한다. 그 사이에 ▾ 를 누르면 격자는 열리지만, 늦게 온 초점이 격자 밖으로 나가 app.js `focusout` 이 격자를 닫는다(계측 순서: `set true(app.js 12124)` → `focusout app-menu__app → message-text` → `set false(app.js 12702, open → messenger.js 915)`). 실패 수가 실행마다 달랐다(RV-1 10건 · 이번 판 첫 `t16` 실행 8건 = 390-light 통과 · 계측 실행 8건 = 412-light 통과 — 경합이라 어느 폭이 통과하는지 정해지지 않는다. 첫 실행 로그는 같은 `window-t16` 폴더로 다시 돌리며 덮어썼고, 계측 실행은 scratch 에서만 돌려 결과 폴더에 없다 — 수치만 여기 남긴다). 시험에는 「입력 칸 초점을 기다린 뒤 ▾」 한 줄을 넣었다. 기다림만 넣고 CSS 를 되돌린 대조 실행(9.2)에서는 격자가 시트 **아래**로 5폭 실패했으므로, z 결함도 따로 실제로 있었다.
+⑨ **메인 세션에 알릴 것(이 지시서 밖 — 고치지 않음)**: 위 경합은 사용자에게도 생길 수 있다. 느린 망에서 대화 상대를 누르고 곧바로 다른 곳(격자 · 다른 칸)으로 초점을 옮기면, messenger.js `open()` 이 끝나며 초점을 입력 칸으로 다시 가져간다. 이 지시서는 messenger.js 를 「③ 선택자 그 밖 0」으로 묶어서 손대지 않았다. 고칠 자리는 messenger.js `open()` 의 `if (!restoring) { $('message-text').focus(); }` 이고, 그 사이에 초점이 창 밖으로 나갔으면 옮기지 않으면 된다(`composerFocus()` 와 같은 방식).
+⑩ **못 한 것 · 미검증**: 폰(<960)에서 자격 없는 사람이 앱 이름 ▾ → 격자 「메신저」 타일로 안내 창을 열고 닫았을 때 초점이 `#appbar-apps` 로 가는 것은 시험이 재지 않는다. rail 시험의 폰 자리는 윗줄 말풍선 `#appbar-messenger` 로 연다. 코드상 그 길로 가지만 브라우저로 확인하지는 않았다. `stage89` 교차 회귀는 이번 지시서 완료 기준에 없어 돌리지 않았다.

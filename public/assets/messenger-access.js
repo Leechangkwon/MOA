@@ -19,5 +19,12 @@
       event.preventDefault(); opener = link; if (!dialog.open) dialog.showModal();
     });
   });
-  dialog.addEventListener('close', () => { if (opener?.isConnected) opener.focus({ preventScroll: true }); });
+  // 닫으면 초점은 연 링크로 — 앱 격자 타일은 누를 때 격자가 닫혀(app.js) 안 보이므로, 그때는 격자를 여는 보이는 단추로
+  // (넓은 화면 ⋮⋮⋮ `#app-grid > summary` · 폰 윗줄 앱 이름 ▾ `#appbar-apps` — Q:F-12 U2 · DESIGN 2.15 「창을 닫으면 초점이 돌아온다」).
+  const shown = (el) => el !== null && el.isConnected && el.getClientRects().length > 0;
+  dialog.addEventListener('close', () => {
+    if (!opener?.isConnected) return;
+    const back = shown(opener) ? opener : [document.querySelector('#app-grid > summary'), document.getElementById('appbar-apps')].find(shown);
+    if (back) back.focus({ preventScroll: true });
+  });
 })();
