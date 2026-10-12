@@ -11,7 +11,7 @@ declare(strict_types=1);
  *   q     제목·본문 찾기(100자까지) — `ILIKE` 는 `#` 로 이스케이프한 뒤 **바인딩**
  *   tag   이 태그가 붙은 글만(30자까지, 대소문자 무시 — DB `lower()`)
  *   sort  `new`(기본, 올린 시각) · `updated`(고친 시각) · `views`(조회수) — **허용 목록 → 고정 SQL 조각**
- *   page  1부터, 한 쪽 20건
+ *   cursor 서버가 준 위치 문자열. page는 1~20까지만 호환, 두 값을 함께 주면400. 한 쪽20건.
  *
  * 관문 둘 (C:S-02)
  *   [게시판] 없거나 **읽을 수 없는** 게시판은 **403 동일 문구**다(PRD F-04 — 번호 열거 방지. 404 로
@@ -45,94 +45,51 @@ if (!$mayRead) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
+require_once __DIR__ . '/../BoardCursor.php';
 $perPage = 20;
-$pageNo  = Http::queryInt('page', 1, 1, 100000);
-
-$q    = trim(Http::queryText('q', 100));
+$pageNo = 1;
+if (array_key_exists('page', $_GET)) {
+    $rawPage = $_GET['page'];
+    if (!is_string($rawPage) || preg_match('/^[1-9][0-9]?$/D', $rawPage) !== 1 || (int) $rawPage > 20) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $pageNo = (int) $rawPage;
+}
+$q = trim(Http::queryText('q', 100));
+$tag = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', Http::queryText('tag', COMMUNITY_TAG_MAX_CHARS));
+$sortKey = Http::queryChoice('sort', ['new','updated','views'], 'new');
+if (array_key_exists('cursor', $_GET) && array_key_exists('page', $_GET)) { Http::error(400, Http::MSG_BAD_REQUEST); }
+$cursor = BoardCursor::decode($_GET['cursor'] ?? null, $boardId, $sortKey, $q, $tag);
+$empty = ['board'=>community_board_summary($board, $user), 'pages'=>[], 'per_page'=>$perPage,
+          'next_cursor'=>null, 'prev_cursor'=>null, 'has_next'=>false, 'has_prev'=>false];
 if ($q !== '' && !SearchGuard::longEnough($q)) {
-    Http::json(['board' => community_board_summary($board, $user), 'pages' => [], 'total' => 0, 'page' => $pageNo, 'per_page' => $perPage, 'search_status' => 'short', 'notice' => SearchGuard::SHORT]);
+    Http::json($empty + ['search_status'=>'short','notice'=>SearchGuard::SHORT]);
     return;
 }
-$like = $q === '' ? '' : '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
-$tag  = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', Http::queryText('tag', COMMUNITY_TAG_MAX_CHARS));
-
-// 정렬 — 허용 목록의 **고정 SQL 조각**만. 요청 값은 표의 열쇠로만 쓰이고 SQL 에 들어가지 않는다 (PRD S-04).
-$sorts = [
-    'new'     => ' ORDER BY posted_at DESC, p.id DESC',
-    'updated' => ' ORDER BY p.updated_at DESC, p.id DESC',
-    'views'   => ' ORDER BY views DESC, posted_at DESC, p.id DESC',
-];
-$sortKey = Http::queryText('sort', 10);
-if (!array_key_exists($sortKey, $sorts)) {
-    $sortKey = 'new';
-}
-$orderBy = $sorts[$sortKey];
-
-[$visible, $visBind] = community_visible_pages_where($user);
-
-$where = <<<SQL
-     WHERE p.deleted_at IS NULL
-       AND p.hidden_at IS NULL
-       AND (p.space_id = CAST(:b1 AS bigint)
-            OR (p.visibility = 'published' AND p.published_board_id = CAST(:b2 AS bigint)))
-       AND {$visible}
-       AND (CAST(:qoff AS boolean)
-            OR p.title ILIKE :like1 ESCAPE '#'
-            OR p.plain_text ILIKE :like2 ESCAPE '#')
-       AND (CAST(:toff AS boolean)
-            OR EXISTS (SELECT 1 FROM community.page_tags tf
-                        WHERE tf.page_id = p.id AND tf.tag_norm = lower(:tag)))
-SQL;
-
-$bind = array_merge([
-    ':b1'    => $boardId,
-    ':b2'    => $boardId,
-    ':qoff'  => $q === '' ? 'true' : 'false',
-    ':like1' => $like,
-    ':like2' => $like,
-    ':toff'  => $tag === '' ? 'true' : 'false',
-    ':tag'   => $tag,
-], $visBind);
-
-$sqlCount = <<<SQL
-    SELECT count(*) AS n
-      FROM community.pages p
-      JOIN community.spaces s ON s.id = p.space_id
-      LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-    {$where}
-    SQL;
-
-$sqlList = <<<SQL
-    SELECT p.id, p.public_id, p.title, p.icon, p.visibility, p.created_at, p.updated_at, p.resolved,
-           s.kind AS space_kind,
-           (CASE WHEN p.visibility = 'published' THEN p.published_at ELSE p.created_at END) AS posted_at,
-           (CASE WHEN s.kind = 'board' THEN au.username     ELSE owner.username     END) AS writer_name,
-           (CASE WHEN s.kind = 'board' THEN au.display_name ELSE owner.display_name END) AS writer_display_name,
-           left(p.plain_text, 160) AS excerpt,
-           (SELECT json_agg(t.tag ORDER BY t.tag_norm) FROM community.page_tags t WHERE t.page_id = p.id) AS tags,
-           (SELECT count(*) FROM community.page_views v WHERE v.page_id = p.id) AS views
-      FROM community.pages p
-      JOIN community.spaces s ON s.id = p.space_id
-      LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-      LEFT JOIN public.users au    ON au.id    = p.author_id
-    {$where}
-    {$orderBy}
-     LIMIT CAST(:lim AS int) OFFSET CAST(:off AS int)
-    SQL;
-
-$bind[':lim'] = $perPage;
-$bind[':off'] = ($pageNo - 1) * $perPage;
-
-$query = static function (callable $run) use ($sqlCount, $sqlList, $bind): array {
-    $countBind = $bind;
-    unset($countBind[':lim'], $countBind[':off']);
-    $countRow = $run($sqlCount, $countBind)->fetch();
-    return [is_array($countRow) ? (int) $countRow['n'] : 0, $run($sqlList, $bind)->fetchAll()];
+// 작은 옛 page 호환도 OFFSET 없이 커서를 최대20번 걷는다. q 전체 예산은 같은3초다.
+$query = static function (callable $run) use ($user,$boardId,$sortKey,$q,$tag,$cursor,$pageNo,$perPage): array {
+    $position = $cursor;
+    for ($step = 1; $step <= $pageNo; $step++) {
+        [$sql,$bind] = BoardCursor::sql($user,$boardId,$sortKey,$q,$tag,$position,$perPage);
+        $rows = $run($sql,$bind)->fetchAll();
+        $more = count($rows) > $perPage;
+        if ($more) { array_pop($rows); }
+        $previous = ($position['direction'] ?? 'next') === 'prev';
+        if ($previous) { $rows = array_reverse($rows); }
+        $hasPrev = $rows !== [] && ($previous ? $more : $position !== null);
+        $hasNext = $rows !== [] && ($previous ? $position !== null : $more);
+        $prev = $hasPrev ? BoardCursor::encode($boardId,$sortKey,$q,$tag,'prev',$rows[0]) : null;
+        $next = $hasNext ? BoardCursor::encode($boardId,$sortKey,$q,$tag,'next',$rows[count($rows)-1]) : null;
+        if ($step === $pageNo) { return [$rows,$prev,$next]; }
+        if ($next === null) { return [[],null,null]; }
+        $position = BoardCursor::decode($next,$boardId,$sortKey,$q,$tag);
+    }
+    return [[],null,null];
 };
 try {
-    [$total, $rows] = $q !== '' ? SearchGuard::execute((int) $user['id'], $query) : $query([$db, 'run']);
+    [$rows,$prevCursor,$nextCursor] = $q !== '' ? SearchGuard::execute((int) $user['id'], $query) : $query([$db, 'run']);
 } catch (Throwable $e) {
-    SearchGuard::limited($e, ['board' => community_board_summary($board, $user), 'pages' => [], 'total' => 0, 'page' => $pageNo, 'per_page' => $perPage]);
+    SearchGuard::limited($e, $empty);
     return;
 }
 $items = [];
@@ -160,8 +117,10 @@ foreach ($rows as $r) {
 Http::json([
     'board'    => community_board_summary($board, $user),
     'pages'    => $items,
-    'total'    => $total,
-    'page'     => $pageNo,
+    'next_cursor' => $nextCursor,
+    'prev_cursor' => $prevCursor,
+    'has_next' => $nextCursor !== null,
+    'has_prev' => $prevCursor !== null,
     'per_page' => $perPage,
     'q'        => $q,
     'tag'      => $tag,

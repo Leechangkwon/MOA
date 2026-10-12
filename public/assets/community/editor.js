@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=5f9902233840';
-import { hydrateDashboard } from './dashboard.js?v=5f9902233840';
+import { createTableEditor } from './table-editor.js?v=537c77a69ff8';
+import { hydrateDashboard } from './dashboard.js?v=537c77a69ff8';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,22 +42,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=5f9902233840';
-import { renderDoc, embedHost } from './doc-render.js?v=5f9902233840';
-import { createDatabaseView } from './database.js?v=5f9902233840';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=5f9902233840';
-import { bindEmbedAdmin } from './embeds.js?v=5f9902233840';
-import { bindPopular } from './popular.js?v=5f9902233840';
-import { bindPalettes } from './palettes.js?v=5f9902233840';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=5f9902233840';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=5f9902233840';
-import { drawTrust, bindProcedures } from './procedures.js?v=5f9902233840';
-import { createPageExport } from './export.js?v=5f9902233840';
-import { createDrafts } from './drafts.js?v=5f9902233840';
-import { drawPageAi, bindAiCenter } from './ai.js?v=5f9902233840';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=5f9902233840';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=537c77a69ff8';
+import { renderDoc, embedHost } from './doc-render.js?v=537c77a69ff8';
+import { createDatabaseView } from './database.js?v=537c77a69ff8';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=537c77a69ff8';
+import { bindEmbedAdmin } from './embeds.js?v=537c77a69ff8';
+import { bindPopular } from './popular.js?v=537c77a69ff8';
+import { bindPalettes } from './palettes.js?v=537c77a69ff8';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=537c77a69ff8';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=537c77a69ff8';
+import { drawTrust, bindProcedures } from './procedures.js?v=537c77a69ff8';
+import { createPageExport } from './export.js?v=537c77a69ff8';
+import { createDrafts } from './drafts.js?v=537c77a69ff8';
+import { drawPageAi, bindAiCenter } from './ai.js?v=537c77a69ff8';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=537c77a69ff8';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=5f9902233840';
+import { createWork } from './work.js?v=537c77a69ff8';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -2557,14 +2557,15 @@ function initBoard() {
   const tagOptions = document.getElementById('board-tag-options');
   const tagsBox = document.getElementById('board-tags');
   const sortEl = document.getElementById('board-sort');
-  const countEl = document.getElementById('board-count');
   const bodyEl = document.getElementById('board-body');
   const emptyEl = document.getElementById('board-empty');
   const pageInfo = document.getElementById('board-page-info');
   const prevButton = document.getElementById('board-prev');
   const nextButton = document.getElementById('board-next');
 
-  let pageNo = 1;
+  let cursor = null;
+  let prevCursor = null;
+  let nextCursor = null;
   let timer = null;
   let board = null;
   let requestController = null;
@@ -2579,7 +2580,7 @@ function initBoard() {
     if (q !== '') { params.set('q', q); }
     if (tag !== '') { params.set('tag', tag); }
     if (sortEl && sortEl.value !== 'new') { params.set('sort', sortEl.value); }
-    if (pageNo > 1) { params.set('page', String(pageNo)); }
+    if (cursor) { params.set('cursor', cursor); }
     const tail = params.toString();
     return '/api/boards/' + boardId + '/pages' + (tail === '' ? '' : '?' + tail);
   }
@@ -2648,7 +2649,7 @@ function initBoard() {
       chip.className = 'btn btn--small btn--quiet';
       chip.textContent = '#' + t;
       chip.setAttribute('aria-label', '태그 ' + t + ' 로 거르기');
-      chip.addEventListener('click', () => { if (tagEl) { tagEl.value = t; } pageNo = 1; load(); });
+      chip.addEventListener('click', () => { if (tagEl) { tagEl.value = t; } cursor = null; load(); });
       if (tags.firstChild) { tags.appendChild(document.createTextNode(' ')); }
       tags.appendChild(chip);
     }
@@ -2670,7 +2671,7 @@ function initBoard() {
         chip.className = 'btn btn--small btn--quiet';
         chip.textContent = '#' + t.tag + ' ' + String(t.count);
         chip.setAttribute('aria-label', '태그 ' + t.tag + ' 로 거르기');
-        chip.addEventListener('click', () => { if (tagEl) { tagEl.value = t.tag; } pageNo = 1; load(); });
+        chip.addEventListener('click', () => { if (tagEl) { tagEl.value = t.tag; } cursor = null; load(); });
         tagsBox.appendChild(chip);
       }
       show(tagsBox, tags.length > 0);
@@ -2680,6 +2681,8 @@ function initBoard() {
   function load(retrying = false) {
     cancelList();
     const mine = requestSerial;
+    if (prevButton) { prevButton.disabled = true; }
+    if (nextButton) { nextButton.disabled = true; }
     const q = searchEl ? searchEl.value.normalize('NFC').trim() : '';
     if (q && Array.from(q.replace(/[\s\p{Z}]/gu, '')).length < 2) {
       clear(bodyEl); show(emptyEl, false); setText(msg, '공백을 제외하고 두 글자 이상 입력해 주세요.');
@@ -2707,13 +2710,11 @@ function initBoard() {
       clear(bodyEl);
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
       for (const item of pages) { bodyEl.appendChild(row(item)); }
-      const total = Number(result.data.total) || 0;
-      const per = Number(result.data.per_page) || 20;
-      const last = Math.max(1, Math.ceil(total / per));
-      setText(countEl, '전체 ' + String(total) + '건');
-      setText(pageInfo, String(pageNo) + ' / ' + String(last) + ' 페이지 · 전체 ' + String(total) + '건');
-      if (prevButton) { prevButton.disabled = pageNo <= 1; }
-      if (nextButton) { nextButton.disabled = pageNo >= last; }
+      prevCursor = result.data.prev_cursor || null;
+      nextCursor = result.data.next_cursor || null;
+      setText(pageInfo, pages.length === 0 ? '' : (nextCursor ? '다음 글을 더 볼 수 있습니다.' : '마지막 글까지 보았습니다.'));
+      if (prevButton) { prevButton.disabled = !prevCursor; }
+      if (nextButton) { nextButton.disabled = !nextCursor; }
       const filtered = (searchEl && searchEl.value.trim() !== '') || (tagEl && tagEl.value.trim() !== '');
       setText(emptyEl, filtered ? '조건에 맞는 글이 없습니다.' : '아직 글이 없습니다.');
       show(emptyEl, pages.length === 0);
@@ -2725,7 +2726,7 @@ function initBoard() {
   function later() {
     cancelList();
     if (timer !== null) { clearTimeout(timer); }
-    timer = setTimeout(() => { timer = null; pageNo = 1; load(); }, 250);
+    timer = setTimeout(() => { timer = null; cursor = null; load(); }, 250);
   }
   if (searchEl) { searchEl.addEventListener('input', later); }
   if (tagEl) {
@@ -2734,9 +2735,9 @@ function initBoard() {
       later();
     });
   }
-  if (sortEl) { sortEl.addEventListener('change', () => { pageNo = 1; load(); }); }
-  if (prevButton) { prevButton.addEventListener('click', () => { if (pageNo > 1) { pageNo -= 1; load(); } }); }
-  if (nextButton) { nextButton.addEventListener('click', () => { pageNo += 1; load(); }); }
+  if (sortEl) { sortEl.addEventListener('change', () => { cursor = null; load(); }); }
+  if (prevButton) { prevButton.addEventListener('click', () => { if (prevCursor) { cursor = prevCursor; load(); } }); }
+  if (nextButton) { nextButton.addEventListener('click', () => { if (nextCursor) { cursor = nextCursor; load(); } }); }
 
   /* ── 「새 글」 창 — 제목·태그만 받고, 만든 뒤 그 글을 편집 모드로 연다 ── */
   const newDialog = document.getElementById('board-new-dialog');

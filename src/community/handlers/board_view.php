@@ -75,7 +75,6 @@ require __DIR__ . '/../../views/shell_top.php';
         <option value="updated">최근 고친 순</option>
         <option value="views">조회수 순</option>
       </select>
-      <span id="board-count" class="muted"></span>
     </div>
     <!-- 많이 쓰인 태그 — 누르면 그 태그로 거른다. 단추는 editor.js 가 `.btn--small.btn--quiet` 로 만든다. -->
     <div id="board-tags" class="toolbar" hidden></div>
@@ -90,7 +89,7 @@ require __DIR__ . '/../../views/shell_top.php';
     </div>
     <p id="board-empty" class="muted" hidden>아직 글이 없습니다.</p>
     <div class="table-foot">
-      <span id="board-page-info" class="muted"></span>
+      <span id="board-page-info" class="muted" aria-live="polite"></span>
       <div class="pager">
         <button id="board-prev" class="btn btn--small btn--quiet" type="button" disabled>이전</button>
         <button id="board-next" class="btn btn--small btn--quiet" type="button" disabled>다음</button>

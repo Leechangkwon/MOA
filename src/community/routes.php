@@ -2402,6 +2402,7 @@ function community_page_tags(int $pageId): array
 /**
  * 조회 한 번 — **한 사람 하루 한 줄**(`ON CONFLICT DO NOTHING`). 새 줄이 생겼으면 참.
  * 날짜는 DB 의 오늘(`current_date` 기본값)이다. 읽기 판정을 **지난 뒤에만** 부른다.
+ * scale_page_view_count_insert 트리거가 실제 새 줄에만 같은 트랜잭션에서 pages.view_count를 +1 한다.
  */
 function community_record_view(int $pageId, int $userId): bool
 {
@@ -2413,11 +2414,11 @@ function community_record_view(int $pageId, int $userId): bool
     return Db::instance()->run($sql, [':pid' => $pageId, ':uid' => $userId])->rowCount() > 0;
 }
 
-/** 조회수 = 조회 기록 줄 수(사람 × 날). 누가 봤는지는 돌려주지 않는다. */
+/** 조회수 = 기록 줄과 같은 트랜잭션에서 유지하는 칸(사람 × 날). 누가 봤는지는 돌려주지 않는다. */
 function community_view_count(int $pageId): int
 {
     $sql = <<<'SQL'
-        SELECT count(*) AS n FROM community.page_views WHERE page_id = CAST(:pid AS bigint)
+        SELECT view_count AS n FROM community.pages WHERE id = CAST(:pid AS bigint)
         SQL;
     $row = Db::instance()->run($sql, [':pid' => $pageId])->fetch();
     return is_array($row) ? (int) $row['n'] : 0;

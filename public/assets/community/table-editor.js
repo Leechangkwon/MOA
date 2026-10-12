@@ -1,10 +1,10 @@
 /** Lossless table atom draft. Only the selected cell owns a ProseMirror view. */
 import {
   schema, fromDoc, toDoc, uuid4, COLORS, schemeOkForEditor, colorAllowed, editorDomParser, clipboardDomParser
-} from './editor-schema.js?v=5f9902233840';
+} from './editor-schema.js?v=537c77a69ff8';
 import {
   renderDoc
-} from './doc-render.js?v=5f9902233840';
+} from './doc-render.js?v=537c77a69ff8';
 import {
   EditorState
 } from './vendor/pm/prosemirror-state.js?v=5823578fa61a';

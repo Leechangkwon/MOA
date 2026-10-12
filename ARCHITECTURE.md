@@ -3301,3 +3301,9 @@ SearchGuard는 요청 인증 뒤 사용자번호의 PostgreSQL 트랜잭션 advi
 통합 검색은 커뮤니티 다음 파일을 순차 호출한다. 새 입력/닫기/화면 이동은 취소하고, 429는 마지막 입력에 한해 한 번 재시도한다. 자료실과 게시판 검색에도 같은 안내를 적용한다. 댓글은 삭제된 부모가 남는 기존 SQL을 유지하고 `(page_id,created_at,id)` 전체 인덱스만 추가한다.
 
 PostgreSQL 설정 예시는 `deploy/postgresql/scale-*`, 운영 경로/diff/검증은 `docs/work-items/scale-a.md`. 앱 역할의 통계 뷰·함수 접근을 열지 않는다. 느린 문장은500ms, 매개변수 기록0, 임시파일10MB, temp_file_limit64MB/프로세스. 로그는5분마다 회전 확인·20MB기준·7개 보관하며 순간 폭증의 하드 용량 한도는 아니다.
+
+## 규모 B: 게시판 목록 후보
+
+게시판 글 목록만 두 정렬된 갈래를 UNION ALL/Merge Append로 모으고 기존 community_visible_pages_where를 글자 그대로 LATERAL에 적용한다. 21번째 행은 다음 목록 유무 판정에만 쓴다. 세 정렬에 대응하는 갈래별 부분 색인 6개를 CONCURRENTLY 추가하며 기존 색인은 제거하지 않는다. new/updated는 timestamp+id, views는 count+posted+id가 위치다. AES-256-GCM 커서는 게시판/정렬/필터에 귀속되고 UTC 날짜·정수 범위를 엄격 검증한다. 페이지 권한은 커서와 무관하게 매번 적용한다. 상세 API.md·docs/work-items/scale-b.md.
+
+조회수 표 대안은 5천 갱신에서 68.483ms·WAL 2,379,944바이트, pages에 6색인을 둔 방식은 376.010ms·10,404,104바이트였다. pages의 view_count를 진실로 하라는 사용자 결정에 맞춰 후자를 택한다. 쓰기 비용/HOT 손실을 숨기지 않으며 별도 표의 동기화 상태를 추가하지 않는다.
