@@ -7,7 +7,8 @@ declare(strict_types=1);
  * 요구사항: 사이트 Q:F-12 WK-4 · WK-8 · 기획 `../../../../community/work-ux-plan.md` 5.3 (b), DESIGN.md 2.20 · 2.21 · 6장,
  *           커뮤니티 `../../../../community/ARCHITECTURE.md` 23.4 · 23.5. 옛 「오늘」(`/community/today`)은 308 로 여기로 온다.
  *
- * 이 파일은 **뼈대만 그린다.** 묶음(지난 기한 · 오늘 · 이번 주 · 나중에 · 기한 없음)과 줄은 work.js 가 `GET /api/my-tasks` 의 답으로,
+ * 이 파일은 **뼈대만 그린다.** 업무함(Q:F-12 U2 · DESIGN 2.20-A — 지난 기한 · 오늘 · 검토 요청 · 멘션 · 이번 주 · 나중에 · 기한 없음 꼬리표로 이은
+ * 한 줄 흐름)은 work.js 가 `GET /api/my-tasks` + `GET /api/briefing` 의 답으로,
  * 오른쪽 작업 상세 칸(`aside.task-pane` — 이 화면에서는 「‹ 목록」 · 전체 화면 규칙이 프로젝트 화면과 같다)은 `GET /api/pages/{id}` 로 채운다.
  * 그 자리 추가(「＋ 작업 추가」)는 「내 할 일」 빠른 추가(`POST /api/pages {my_tasks:true}` — 처음이면 서버가 「내 할 일」 프로젝트를 만든다).
  *
@@ -57,10 +58,11 @@ require __DIR__ . '/../../views/shell_top.php';
 
       <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 
-      <!-- 목록(DESIGN 2.20) — 묶음 · 줄은 work.js 가 그린다. 칸: 이름 · 프로젝트 · 마감 -->
-      <section id="my-tasks-list" class="task-list panel" aria-label="내 작업 목록">
-        <div class="task-list__head" aria-hidden="true"><span>이름</span><span>프로젝트</span><span>마감</span></div>
-        <div id="my-tasks-groups"></div>
+      <!-- 목록 = 업무함 전체(Q:F-12 U2 · WK-20 C · DESIGN 2.20-A) — 묶음 머리 없는 한 줄 한 건(꼬리표 「지난 기한 n」 … 로만 경계). 줄은 work.js 가
+           `GET /api/my-tasks` + `GET /api/briefing` 의 답을 잇기만 해 그린다(buildInbox). 「오늘」 「기한 없음」 꼬리표 뒤 「＋ 작업 추가」 · 묶음 「더 보기」 그대로.
+           ≥1200 은 줄을 누르면 그 줄 아래 펼침 · 그보다 좁으면 아래 aside 칸(2.21). -->
+      <section id="my-tasks-list" class="task-list task-inbox panel" aria-label="내 작업 목록">
+        <ul id="my-tasks-rows" class="task-list__rows"></ul>
         <p id="my-tasks-empty" class="muted" hidden></p>
       </section>
       <!-- 보드 — 묶음을 열로(끌어 옮기지 않는다 — 묶음은 기한이 정한다) · 달력 — 기한 날짜 칸(calendar.js 그대로) -->

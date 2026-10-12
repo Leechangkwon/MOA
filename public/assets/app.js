@@ -59,6 +59,37 @@ var GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시
 var COMMUNITY_BASE = (document.body && document.body.getAttribute('data-community-base')) || '/community';
 
 /**
+ * 사이드바 접기 ⑨ — 첫 그리기 (사이트 Q:F-12 U2 · DESIGN 2.19 ⑨ · WK-19 A).
+ *
+ * 접힘은 사용자마다 이 브라우저 localStorage 의 참/거짓 하나(`qaredi-sidebar-collapsed:v1:<아이디>` — 묶음 펼침 기억
+ * `qaredi-sidebar-folds:v1:<아이디>` 와 같은 방식 · 서버 0 · 민감 정보 0)다. 아이디는 `/api/me` 뒤에야 알므로, 그 전(이 파일이 평가되는 때 —
+ * 셸 끝의 스크립트라 본문은 이미 있다)에는 이 접두의 키 가운데 하나라도 `1` 이면 임시로 `<body data-sidebar="collapsed">` 를 달아 깜빡임을 줄인다.
+ * `/api/me` 뒤 initShell 이 그 사람의 키로 바로잡는다. 효과는 CSS 가 ≥960 에서만 낸다(폰 서랍은 그대로). 머리 스크립트 0(CSP).
+ */
+var SIDEBAR_COLLAPSE_PREFIX = 'qaredi-sidebar-collapsed:v1:';
+/** 접힘 표시 한 곳 — `<body data-sidebar>` 와 ☰ 의 aria-expanded · aria-label 을 함께(마크업 재생성 0) */
+function paintSidebarCollapse(collapsed) {
+  if (collapsed) { document.body.setAttribute('data-sidebar', 'collapsed'); } else { document.body.removeAttribute('data-sidebar'); }
+  var button = document.getElementById('sidebar-collapse');
+  if (button) {
+    button.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    button.setAttribute('aria-label', collapsed ? '메뉴 펼치기' : '메뉴 접기');
+  }
+}
+(function () {
+  if (!document.body || !document.getElementById('sidebar-collapse')) { return; }
+  try {
+    for (var i = 0; i < localStorage.length; i++) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf(SIDEBAR_COLLAPSE_PREFIX) === 0 && localStorage.getItem(key) === '1') {
+        paintSidebarCollapse(true);
+        return;
+      }
+    }
+  } catch (e) { /* 저장소가 막힌 브라우저 — 펼친 채 시작 */ }
+})();
+
+/**
  * 로그인 화면의 `?to=` **키 → 갈 곳** 고정 맵 (커뮤니티 ARCHITECTURE.md 21.2).
  *
  * 서버(`src/handlers/login_page.php`)가 허용 목록으로 거른 키만 <body data-to> 에 넣고,
@@ -12008,12 +12039,14 @@ function paintAccessRequestsNav(count, inGate) {
   setText(badge, n > 99 ? '99+' : String(n));
 }
 
-/** 모바일 서랍의 두 입구와 접이식 목록. 권한/목록 데이터는 기존 서버 판정을 쓴다. */
+/** 모바일 서랍(☰ — 지금 앱 내비 한 판)과 윗줄 앱 이름 ▾(앱 격자)와 접이식 목록. 권한/목록 데이터는 기존 서버 판정을 쓴다.
+    Q:F-12 U2(DESIGN 2.18 「폰」) — 서랍의 「앱·계정」 모드를 없앴다. 앱 이름 ▾ 는 본문의 앱 격자 `details.appbar__apps`(문서에 하나)를
+    열고 닫는다(aria-expanded 를 함께) — 두 판(서랍 · 격자)은 동시에 펼치지 않는다. */
 function initMobileSidebar(sidebar, navToggle, owner) {
   if (!sidebar || !navToggle) { return; }
   var media = window.matchMedia('(max-width: 959.98px)');
   var appsButton = document.getElementById('appbar-apps');
-  var appsBox = sidebar.querySelector('details.appbar__apps');
+  var appsBox = document.querySelector('details.appbar__apps');
   var groups = Array.from(sidebar.querySelectorAll('details[data-sidebar-group]'));
   var foldIds = ['nav-community-recent-group','nav-work-projects-group','nav-community-documents-box'];
   var foldKey = typeof owner === 'string' && owner.length <= 64 && owner !== '' ? 'qaredi-sidebar-folds:v1:' + owner : null;
@@ -12048,19 +12081,14 @@ function initMobileSidebar(sidebar, navToggle, owner) {
   var parent = sidebar.parentNode;
   var anchor = document.createComment('sidebar home');
   parent.insertBefore(anchor, sidebar);
-  var switches = modal ? Array.from(modal.querySelectorAll('[data-mobile-nav-mode]')) : [];
 
   function setDrawer(mode) {
     sidebar.hidden = !mode;
     sidebar.dataset.mobilePanel = mode || 'nav';
     navToggle.setAttribute('aria-expanded', mode === 'nav' ? 'true' : 'false');
     navToggle.setAttribute('aria-label', mode === 'nav' ? '메뉴 닫기' : '메뉴 열기');
-    if (appsButton) { appsButton.setAttribute('aria-expanded', mode === 'apps' ? 'true' : 'false'); }
-    if (appsBox) { appsBox.open = mode === 'apps'; }
+    if (mode && appsBox && appsBox.open) { appsBox.open = false; }
     sidebar.querySelectorAll('details.menu[open]').forEach(function (menu) { menu.open = false; });
-    switches.forEach(function (button) {
-      button.setAttribute('aria-pressed', button.dataset.mobileNavMode === mode ? 'true' : 'false');
-    });
     if (modal && mode && media.matches) {
       modal.appendChild(sidebar);
       document.documentElement.classList.add('mobile-nav-open');
@@ -12089,12 +12117,16 @@ function initMobileSidebar(sidebar, navToggle, owner) {
     setDrawer('nav');
   });
   if (appsButton && appsBox) {
+    // 앱 이름 ▾ — 같은 앱 격자를 연다/닫는다. 열면 다른 앱 타일에 초점(☰ → 앱 전환 → 자료실 세 번이 두 번 — UX-12 그대로)
     appsButton.addEventListener('click', function () {
-      if (!sidebar.hidden && sidebar.dataset.mobilePanel === 'apps') { closeDrawer(); return; }
-      opener = appsButton;
-      setDrawer('apps');
+      if (appsBox.open) { appsBox.open = false; return; }
+      if (!sidebar.hidden) { setDrawer(null); }
+      appsBox.open = true;
       var other = appsBox.querySelector('a.app-menu__app:not([aria-current])[href]:not([href="/"])');
-      if (other) { other.focus({preventScroll: true}); }
+      if (other && media.matches) { other.focus({preventScroll: true}); }
+    });
+    appsBox.addEventListener('toggle', function () {
+      appsButton.setAttribute('aria-expanded', appsBox.open ? 'true' : 'false');
     });
   }
   groups.forEach(function (group) {
@@ -12105,12 +12137,6 @@ function initMobileSidebar(sidebar, navToggle, owner) {
   });
   if (modal) {
     if (closeButton) { closeButton.addEventListener('click', closeDrawer); }
-    switches.forEach(function (button) {
-      button.addEventListener('click', function () {
-        if (button.dataset.mobileNavMode === 'nav') { collapseGroups(); }
-        setDrawer(button.dataset.mobileNavMode);
-      });
-    });
     modal.addEventListener('cancel', function (event) { event.preventDefault(); closeDrawer(); });
     modal.addEventListener('close', function () {
       if (!modal.open && !sidebar.hidden) { closeDrawer(); }
@@ -12140,7 +12166,29 @@ function initMobileSidebar(sidebar, navToggle, owner) {
       groups.forEach(function (group, i) { group.open = desktopOpen[i]; });
     }
     setDrawer(null);
+    if (appsBox && appsBox.open) { appsBox.open = false; }
     sidebar.dispatchEvent(new Event('qaredi:sidebar-layout'));
+  });
+}
+
+/**
+ * 사이드바 접기 ⑨ (Q:F-12 U2 · DESIGN 2.19 ⑨) — ☰(`#sidebar-collapse`, ≥960 에서만 보인다)를 누르면 `<body data-sidebar="collapsed">` 를 단다/뗀다.
+ * 값은 이 사람의 키(`qaredi-sidebar-collapsed:v1:<아이디>` — 아이디는 `/api/me` 의 username 이고 글자 집합에 `:` 가 없어 접두가 겹치지 않는다)에
+ * `1`/`0` 하나로 남긴다. 첫 그리기에서 임시로 단 값(위 즉시 함수)을 이 사람의 값으로 바로잡는다. 서버 0 · 판단 0.
+ */
+function initSidebarCollapse(owner) {
+  var button = document.getElementById('sidebar-collapse');
+  if (!button) { return; }
+  var key = typeof owner === 'string' && owner !== '' && owner.length <= 64 ? SIDEBAR_COLLAPSE_PREFIX + owner : null;
+  var stored = null;
+  try { stored = key ? localStorage.getItem(key) : null; } catch (e) { stored = null; }
+  paintSidebarCollapse(stored === '1');
+  button.addEventListener('click', function () {
+    var next = document.body.getAttribute('data-sidebar') !== 'collapsed';
+    paintSidebarCollapse(next);
+    // 펼친 메뉴(「＋ 새로 만들기」)는 접는 순간 닫는다 — 자리가 바뀐다
+    document.querySelectorAll('#sidebar details.menu[open]').forEach(function (menu) { menu.open = false; });
+    try { if (key) { localStorage.setItem(key, next ? '1' : '0'); } } catch (e) { /* 기억은 편의 */ }
   });
 }
 
@@ -12217,6 +12265,8 @@ function initShell(me, csrfToken) {
 
   // 모바일은 현재 앱 내비와 앱·계정 메뉴 중 하나만 연다.
   initMobileSidebar(sidebar, navToggle, me.username);
+  // Q:F-12 U2 — ≥960 사이드바 접기(☰) · 사용자별 기억
+  initSidebarCollapse(me.username);
 
   /* 사이트 Q:F-12 C-2 (DESIGN 2.19 「이야기」) — 이야기 사이드바의 「＋ 새 이야기」는 스레드 화면이 내놓은 쓰기 창 창구
      (`window.MemoryComposer.open` — memories.js, 화면 안 「지금 어떤 이야기를…」 단추와 같은 함수)를 부른다. 쓸 수 있는지는
@@ -12614,6 +12664,42 @@ function initMenus() {
     open.open = false;
     var summary = open.querySelector('summary');
     if (summary) { summary.focus(); }
+  });
+
+  /* Q:F-12 U2 (DESIGN 2.18) — 본문 오른쪽 위 앱 격자 `details.appbar__apps`(문서에 하나)도 같은 세 길로 닫는다: 타일 · 로그아웃을 누르면 · 밖을 누르면 · Esc.
+     폰 윗줄 앱 이름 ▾(#appbar-apps)는 격자를 여는 단추라 「밖」으로 치지 않는다(initMobileSidebar 가 연다). 닫으면 초점은 연 단추로 —
+     넓은 화면은 ⋮⋮⋮(summary), 폰은 앱 이름 ▾. 검색 타일은 사이드바 「검색」(#nav-search)과 같은 창을 연다(같은 단추를 누른다 — 창 두 벌 0). */
+  var grid = document.querySelector('details.appbar__apps');
+  if (!grid) { return; }
+  function gridOpener() {
+    var phone = document.getElementById('appbar-apps');
+    return phone && phone.getClientRects().length > 0 ? phone : grid.querySelector('summary');
+  }
+  document.addEventListener('click', function (event) {
+    var target = event.target;
+    if (!grid.open || !target || !target.closest) { return; }
+    var tile = target.closest('details.appbar__apps .app-menu__app, details.appbar__apps .app-menu__logout');
+    if (tile) {
+      grid.open = false;
+      if (tile.hasAttribute('data-search-tile')) {
+        var search = document.getElementById('nav-search');
+        if (search) { search.click(); }
+      }
+      return;
+    }
+    if (target.closest('details.appbar__apps') || target.closest('#appbar-apps')) { return; }
+    grid.open = false;
+  }, true);
+  document.addEventListener('keydown', function (event) {
+    if (event.key !== 'Escape' || !grid.open || document.querySelector('details.menu[open]')) { return; }
+    grid.open = false;
+    var back = gridOpener();
+    if (back) { back.focus(); }
+  });
+  document.addEventListener('focusout', function (event) {
+    if (!grid.open || !event.target || !grid.contains(event.target)) { return; }
+    if (event.relatedTarget && (grid.contains(event.relatedTarget) || event.relatedTarget.id === 'appbar-apps')) { return; }
+    if (event.relatedTarget) { grid.open = false; }
   });
 }
 

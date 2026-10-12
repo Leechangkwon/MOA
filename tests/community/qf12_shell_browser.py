@@ -9,11 +9,13 @@
   Q:T-38 앱 목록    Apps::validate 통과 · 순서 자료실 · 업무 · 이야기 · 이야기 = /community/memories — 런처 타일(로그인 전·뒤) · 앱 메뉴 · 아이콘 줄이 같은 순서·링크
   Q:T-39 옛 주소    /community/?view=mine(전처럼 스레드 화면 — 이제 이야기 셸) · 공개 공유 /community/memories/s/{token}(로그인 없이 200 · 셸 0) ·
                     돌아갈 주소 /community/memories…(미로그인 302 → 로그인 → 같은 주소) · /community/today 308 Location /community/my-tasks
-  Q:T-40 아이콘 줄  자료실 /tbox/ · 업무 /community/workspace · 이야기 /community/memories × 1440 · 1280 · 960 줄 1개 + aria-current 정확 /
-                    959 · 820 · 412 · 360 줄 0 · 가로 넘침 0 · 테마 여섯 × 밝게 · 어둡게 · 고대비(밝게 · 어둡게) 글자 대비 ≥ 4.5 계산값 원문
+  Q:T-40 앱 격자    (U2 · DESIGN 2.18 — 옛 아이콘 줄 단언을 바꿈) 자료실 /tbox/ · 업무 /community/ · 이야기 /community/memories × 1440 · 1280 · 960:
+                    nav.app-rail 0 · div.shell-tools 1(main 첫 자식 · 오른쪽 정렬) · details.appbar__apps 문서에 하나 · 닫힘 기본 · 누르면 판(폭 300 ±8 · 단추 오른쪽 아래) ·
+                    타일 순서 · aria-current 하나 · Esc · 바깥 누름 / 959 · 820 · 412 · 360: shell-tools display none · #appbar-apps → 같은 details(전체 폭) ·
+                    가로 넘침 0 · 테마 여섯 × 밝게 · 어둡게 · 고대비(밝게 · 어둡게) 타일 글자 대비 ≥ 4.5 계산값 원문
   C-2 셸           업무 · 이야기 사이드바 항목 순서(DESIGN 2.19) · 「오늘 할 일」 0 · 「내 휴지통」 은 「더보기」 안 · nav.moa-space-nav 0 ·
                     「＋ 새로 만들기 → 문서」 가 새 페이지를 만든다 · 「＋ 새 이야기」 가 쓰기 창 · 「여행 계획」 이 여행 창 · 손님 · 역할로 보기 쓰는 단추 0 ·
-                    런처 · /tbox/welcome · /tbox/messages(모아 머리 화면)에는 줄 0 · 이야기 셸은 editor.js 0 · 메신저 여는 단추는 사이드바에 하나
+                    런처 · /tbox/welcome · /tbox/messages(모아 머리 화면)에는 격자 줄 0 · 이야기 셸은 editor.js 0 · 메신저 여는 단추는 격자에 하나(사이드바 0)
   더해서           scripts/ui_snapshot.py(AUDIT_JS) 를 이 인스턴스에서 1440 · 1280 — 화면마다 결함 수(기준 판과 대조는 결과 폴더 두 벌로)
 """
 from pathlib import Path
@@ -159,24 +161,29 @@ def hexof(c):
     return '#' + ''.join('%02x' % round(v * 255) for v in c[:3])
 
 
-RAIL_STATE_JS = r"""() => {
-  const rail = document.querySelector('nav.app-rail');
-  if (!rail) return null;
-  const cs = getComputedStyle(rail);
-  const vis = el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0; };
-  const items = [...rail.querySelectorAll('a.app-rail__item')].map(a => { const s = getComputedStyle(a); const r = a.getBoundingClientRect();
-    return {name: a.textContent.trim(), href: a.getAttribute('href'), current: a.getAttribute('aria-current'), color: s.color, bg: s.backgroundColor,
-            weight: s.fontWeight, size: s.fontSize, w: Math.round(r.width), h: Math.round(r.height), icon: (a.querySelector('svg') || {getBoundingClientRect: () => ({width: 0})}).getBoundingClientRect().width}; });
-  const me = rail.querySelector('a.app-rail__me'); const ms = me ? getComputedStyle(me) : null;
-  const home = rail.querySelector('a.app-rail__home'); const hs = home ? getComputedStyle(home.querySelector('.moa-symbol')) : null;
+GRID_STATE_JS = r"""() => {
+  const main = document.getElementById('main');
+  const tools = document.querySelector('div.shell-tools');
+  const d = document.querySelector('details.appbar__apps');
+  const vis = el => { if (!el) return false; const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' && r.width > 0 && r.height > 0; };
+  const box = el => { if (!el) return null; const r = el.getBoundingClientRect(); return {l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom), w: Math.round(r.width), vis: vis(el)}; };
+  const sum = d ? d.querySelector(':scope > summary') : null;
+  const panel = d ? d.querySelector('.app-menu') : null;
+  const tiles = d ? [...d.querySelectorAll('.app-menu__apps > li')].filter(li => getComputedStyle(li).display !== 'none').map(li => { const a = li.firstElementChild; const n = a.querySelector('.app-menu__name'); const s = getComputedStyle(n); const ts = getComputedStyle(a);
+    return {name: n.textContent.trim(), href: a.getAttribute('href'), current: a.getAttribute('aria-current'), tag: a.tagName, id: a.id, color: s.color, bg: ts.backgroundColor, size: s.fontSize}; }) : [];
+  const out = d ? d.querySelector('.app-menu__logout') : null;
+  const ms = getComputedStyle(main);
+  const mr = main.getBoundingClientRect();
   const root = getComputedStyle(document.documentElement);
-  const rr = rail.getBoundingClientRect();
-  return {visible: vis(rail), display: cs.display, width: Math.round(rr.width), height: Math.round(rr.height), left: Math.round(rr.left), bg: cs.backgroundColor, items: items,
-          me: me ? {label: me.getAttribute('aria-label'), href: me.getAttribute('href'), color: ms.color, bg: ms.backgroundColor, text: me.textContent.trim()} : null,
-          home: home ? {label: home.getAttribute('aria-label'), href: home.getAttribute('href'), color: hs.color, bg: hs.backgroundColor} : null,
-          ring: root.getPropertyValue('--ring').trim(), railBgToken: root.getPropertyValue('--rail-bg').trim(), railFgToken: root.getPropertyValue('--rail-fg').trim(),
+  return {rail: document.querySelectorAll('nav.app-rail').length, toolsCount: document.querySelectorAll('div.shell-tools').length, firstIsTools: !!tools && main.firstElementChild === tools,
+          toolsDisplay: tools ? getComputedStyle(tools).display : null, details: document.querySelectorAll('details.appbar__apps').length, open: d ? d.open : null,
+          tools: box(tools), mainInnerRight: Math.round(mr.right - parseFloat(ms.paddingRight)), sum: box(sum), panel: box(panel), tiles: tiles,
+          panelBg: panel ? getComputedStyle(panel).backgroundColor : null, bodyBg: getComputedStyle(document.body).backgroundColor,
+          logout: out ? {text: out.textContent.trim(), color: getComputedStyle(out).color, vis: vis(out), last: out === panel.lastElementChild} : null,
+          me: (() => { const m = document.querySelector('a.shell-tools__me'); return m ? {href: m.getAttribute('href'), label: m.getAttribute('aria-label'), vis: vis(m)} : null; })(),
           design: document.documentElement.getAttribute('data-design'), theme: document.documentElement.getAttribute('data-theme'), contrast: document.documentElement.getAttribute('data-contrast'),
-          overflow: document.documentElement.scrollWidth > window.innerWidth, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth};
+          overflow: document.documentElement.scrollWidth > window.innerWidth, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth,
+          appsExpanded: (document.getElementById('appbar-apps') || {getAttribute: () => null}).getAttribute('aria-expanded')};
 }"""
 
 SIDEBAR_JS = r"""() => {
@@ -187,7 +194,7 @@ SIDEBAR_JS = r"""() => {
   const spacer = s.querySelector('.sidebar__spacer');
   // 보이는 글자만(숨은 배지의 숫자 0 같은 것은 뺀다)
   const txt = el => { const c = el.cloneNode(true); c.querySelectorAll('[hidden]').forEach(n => n.remove()); return c.textContent.replace(/\s+/g, ' ').trim(); };
-  for (const el of s.querySelectorAll('summary.btn, button.btn, .nav__item, p.nav-title, summary.nav-title, .app-menu')) {
+  for (const el of s.querySelectorAll('summary.btn, button.btn:not(#sidebar-collapse), .nav__item, p.nav-title, summary.nav-title, .app-menu')) {
     if (spacer && (spacer.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING)) continue;   // 아래 끝(테마 · 버전 · 사용자)은 셸 공통
     if (el.closest('.app-menu') || el.closest('dialog') || el.closest('.menu__list')) continue;
     if (el.closest('details:not([open])') && !el.matches('summary')) { out.push({t: 'folded', text: txt(el)}); continue; }
@@ -198,14 +205,20 @@ SIDEBAR_JS = r"""() => {
 }"""
 
 
-def rail_html(html):
-    m = re.search(r'<nav class="app-rail" aria-label="앱 바꾸기">(.*?)</nav>', html, re.S)
+def grid_html(html):
+    m = re.search(r'<ul class="app-menu__apps">(.*?)</ul>', html, re.S)
     return m.group(1) if m else None
 
 
-def rail_items(html):
-    block = rail_html(html) or ''
-    return [(a, b, c) for a, b, c in re.findall(r'<a class="app-rail__item" href="([^"]+)"( aria-current="page")?>\s*<svg[^>]*>.*?</svg>\s*<span>([^<]+)</span></a>', block, re.S)]
+def grid_tiles(html):
+    """앱 격자 타일(HTML 순서) — (이름, href 또는 None, 지금 앱이면 True, id)"""
+    out = []
+    for li in re.findall(r'<li>(.*?)</li>', grid_html(html) or '', re.S):
+        name = re.search(r'<span class="app-menu__name">([^<]+)</span>', li)
+        href = re.search(r'^<a [^>]*href="([^"]+)"', li)
+        tid = re.search(r'^<(?:a|button|span) id="([^"]+)"', li)
+        out.append((name.group(1).strip() if name else None, href.group(1) if href else None, 'aria-current="page"' in li.split('>', 1)[0], tid.group(1) if tid else None))
+    return out
 
 
 failures_before = 0
@@ -244,7 +257,7 @@ try:
             hrefs = re.findall(r'<a (?:id="messenger-open" )?href="([^"]+)"', tiles.group(1)) if tiles else []
             metrics['launcher_tiles_' + label] = list(zip(names, hrefs))
             check(r.status_code == 200 and [n.strip() for n in names][:3] == ['자료실', '업무', '이야기'], 'Q:T-38 launcher (' + label + ') tiles start 자료실 · 업무 · 이야기 ' + json.dumps(names, ensure_ascii=False))
-            check('app-rail' not in r.text, 'Q:T-38 launcher (' + label + ') has no app icon rail (DESIGN 2.18 — 런처에는 넣지 않는다)')
+            check('app-rail' not in r.text and 'shell-tools' not in r.text, 'Q:T-38 launcher (' + label + ') has no rail · no shell-tools grid row (DESIGN 2.18 — 런처는 셸이 아니다)')
             if token:
                 check(hrefs[:3] == ['/tbox/', '/community/', '/community/memories'], 'Q:T-38 launcher signed-in tile links ' + json.dumps(hrefs[:3]))
                 # tests/q_launcher.sh(운영) 의 기대값을 이 인스턴스에서 같은 셈으로 — 수만 남긴다(본문 0)
@@ -257,50 +270,52 @@ try:
                 check(hrefs[:3] == ['/tbox/', '/tbox/login?to=community', '/tbox/login?to=%2Fcommunity%2Fmemories'], 'Q:T-38 launcher signed-out tile links (login first) ' + json.dumps(hrefs[:3]))
                 lr = get('/tbox/login?to=%2Fcommunity%2Fmemories')
                 check(lr.status_code == 200 and 'data-to="/community/memories"' in lr.text, 'Q:T-38 signed-out 이야기 tile → login page keeps the return address /community/memories (returnPath allow-list as before)')
-        # 셸의 앱 메뉴 · 아이콘 줄(HTML) — 세 앱
-        for path, here in (('/tbox/', 'tbox'), ('/community/workspace', 'community'), ('/community/memories', 'story')):
+        # 셸의 앱 격자(HTML) — 세 앱 (U2 · DESIGN 2.18 — 옛 아이콘 줄 · 사이드바 앱 메뉴 단언을 격자 단언으로 바꿈)
+        TILES = ['모아 홈', '자료실', '업무', '이야기', '메신저', '내 계정', '내 활동', '관리자 페이지', '검색']
+        for path, here in (('/tbox/', 'tbox'), ('/community/', 'community'), ('/community/memories', 'story')):
             r = get(path, users['employee']['session'])
-            menu = re.search(r'<ul class="app-menu__apps">(.*?)</ul>', r.text, re.S).group(1)
-            mnames = re.findall(r'<span class="app-menu__name">([^<]+)', menu)
-            mhrefs = re.findall(r'<a class="app-menu__app" href="([^"]+)"', menu)
-            mcur = re.findall(r'href="([^"]+)" aria-current="page"', menu)
-            items = rail_items(r.text)
-            metrics['menu' + path.replace('/', '_')] = list(zip(mnames, mhrefs))
-            metrics['rail_html' + path.replace('/', '_')] = items
+            tiles = grid_tiles(r.text)
+            metrics['grid_html' + path.replace('/', '_')] = tiles
             want_href = {'tbox': '/tbox/', 'community': '/community/', 'story': '/community/memories'}[here]
-            check(mnames == ['모아 홈', '자료실', '업무', '이야기'] and mhrefs == ['/', '/tbox/', '/community/', '/community/memories'], 'Q:T-38 app menu ' + path + ' order/links ' + json.dumps(mnames, ensure_ascii=False))
-            check(mcur == [want_href], 'Q:T-38 app menu ' + path + ' aria-current = ' + want_href)
-            check([i[2] for i in items] == ['자료실', '업무', '이야기'] and [i[0] for i in items] == ['/tbox/', '/community/', '/community/memories'], 'Q:T-38 rail ' + path + ' order/links (same list as menu)')
-            check([i[0] for i in items if i[1]] == [want_href], 'Q:T-38 rail ' + path + ' aria-current only on the current app')
-            check(r.text.count('<nav class="app-rail"') == 1 and r.text.count('class="moa-space-nav"') == 0, 'Q:T-38 ' + path + ' one rail markup · nav.moa-space-nav 0')
+            check([t_[0] for t_ in tiles] == TILES, 'Q:T-38 app grid ' + path + ' tile order (HTML — 관리자 is hidden until can_admin) ' + json.dumps([t_[0] for t_ in tiles], ensure_ascii=False))
+            check([t_[1] for t_ in tiles[:4]] == ['/', '/tbox/', '/community/', '/community/memories'] and tiles[5][3] == 'menu-settings' and tiles[6][3] == 'menu-activity' and tiles[7][3] == 'menu-admin',
+                  'Q:T-38 app grid ' + path + ' links (Apps::all() order) · ids menu-settings · menu-activity · menu-admin kept')
+            check([t_[1] for t_ in tiles if t_[2]] == [want_href], 'Q:T-38 app grid ' + path + ' aria-current only on the current app = ' + want_href)
+            check(re.search(r'<li><span class="app-menu__app[^"]*"[^>]*>|data-search-tile', r.text) is not None and 'id="messenger-open"' in r.text, 'Q:T-38 ' + path + ' messenger tile (button) · search tile present')
+            check(r.text.count('<details class="appbar__apps"') == 1 and 'app-rail' not in r.text and r.text.count('class="moa-space-nav"') == 0 and 'moa-shell-links' not in r.text,
+                  'Q:T-38 ' + path + ' one app menu (moved, not copied) · rail 0 · nav.moa-space-nav 0 · .moa-shell-links 0')
+            check(re.search(r'<main id="main" class="main">\s*(?:<!--.*?-->\s*)?<div class="shell-tools">', r.text, re.S) is not None, 'Q:T-38 ' + path + ' div.shell-tools is the first child of <main>')
+            check(r.text.count('id="logout"') == 1 and re.search(r'<button id="logout" class="app-menu__logout"', r.text) is not None, 'Q:T-38 ' + path + ' 로그아웃 one row inside the grid panel')
+            check('data-mobile-nav-mode' not in r.text, 'Q:T-38 ' + path + ' drawer 「메뉴 / 앱·계정」 switch removed')
             brand = {'tbox': '모아 자료실', 'community': '모아 업무', 'story': '모아 이야기'}[here]
             check(('aria-label="' + brand + ' — 앱 전환"') in r.text, 'C-2 ' + path + ' phone app-name button aria-label 「' + brand + ' — 앱 전환」')
-            short = {'tbox': '자료실', 'community': '업무', 'story': '이야기'}[here]
-            check(re.search(r'<summary class="brand__switch moa-brand-menu" aria-label="' + short + r' 메뉴 — 앱 바꾸기와 계정"[^>]*>\s*<span>' + short + '</span>', r.text) is not None, 'C-2 ' + path + ' app menu summary text = app name 「' + short + ' ▾」 (DESIGN 2.19 ①)')
-            me = re.search(r'<a class="app-rail__me" href="([^"]+)" aria-label="([^"]+)">', r.text)
-            check(me is not None and me.group(1) == '/tbox/settings' and me.group(2) == '내 계정 — ' + users['employee']['display'], 'Q:T-38 rail bottom 「내 계정」 → /tbox/settings with display name label')
+            check('<summary class="btn btn--icon btn--plain" aria-label="앱 — 앱 바꾸기와 계정"' in r.text and 'brand__switch' not in r.text, 'C-2 ' + path + ' grid summary = ⋮⋮⋮ icon button 「앱 — 앱 바꾸기와 계정」 · brand is no longer a menu (DESIGN 2.19 ① U2)')
+            check(re.search(r'<button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="메뉴 접기">', r.text) is not None, 'C-2 ' + path + ' sidebar head ☰ #sidebar-collapse')
+            me = re.search(r'<a class="shell-tools__me" href="([^"]+)" aria-label="([^"]+)">', r.text)
+            check(me is not None and me.group(1) == '/tbox/settings' and me.group(2) == '내 계정 — ' + users['employee']['display'], 'Q:T-38 grid row 「내 계정」 avatar → /tbox/settings with display name label')
         # 손님 · 역할로 보기도 같은 목록(앱 안 판정은 앱이 한다)
         for label, token in (('guest', users['guest']['session']), ('acting', acting)):
-            for path in ('/tbox/', '/community/workspace', '/community/memories'):
+            for path in ('/tbox/', '/community/', '/community/memories'):
                 r = get(path, token)
-                check(r.status_code == 200 and [i[2] for i in rail_items(r.text)] == ['자료실', '업무', '이야기'], 'Q:T-38 ' + label + ' ' + path + ' rail same list')
+                check(r.status_code == 200 and [t_[0] for t_ in grid_tiles(r.text)] == TILES, 'Q:T-38 ' + label + ' ' + path + ' grid same list')
                 if label == 'guest':
                     check('id="nav-new-menu"' not in r.text and 'id="nav-story-new"' not in r.text and 'id="nav-story-travel"' not in r.text and 'id="nav-community-new"' not in r.text,
                           'C-2 guest ' + path + ' no write buttons (새로 만들기 · 새 이야기 · 여행 계획) — 판정 함수 값(can_community_write)')
-        # 모아 머리 화면(member_top) 에는 줄이 없다
+                    check('id="messenger-open"' not in r.text, 'C-2 guest ' + path + ' messenger tile is the 이용 안내 link (no window opener)')
+        # 모아 머리 화면(member_top) 에는 격자 줄이 없다
         for path in ('/tbox/welcome', '/tbox/messages'):
             r = get(path, users['employee']['session'])
-            check(r.status_code == 200 and 'app-rail' not in r.text, 'Q:T-38 ' + path + ' (모아 머리 화면) has no rail')
+            check(r.status_code == 200 and 'app-rail' not in r.text and 'shell-tools' not in r.text, 'Q:T-38 ' + path + ' (모아 머리 화면) has no rail · no shell-tools')
 
     # ─── Q:T-39 옛 주소 그대로(WK-15 A) ─────────────────────────────────────────────────────────────────
     if want('t39'):
         r = get('/community/?view=mine', users['employee']['session'])
         check(r.status_code == 200 and 'id="community-threads"' in r.text and 'data-page="community-threads"' in r.text, 'Q:T-39 /community/?view=mine → threads screen 200 (as before)')
-        check([i[0] for i in rail_items(r.text) if i[1]] == ['/community/memories'], 'Q:T-39 /community/?view=mine is drawn in the 이야기 shell (rail 이야기 current)')
+        check([t_[1] for t_ in grid_tiles(r.text) if t_[2]] == ['/community/memories'], 'Q:T-39 /community/?view=mine is drawn in the 이야기 shell (grid 이야기 current)')
         r = get('/community/?space=1', users['employee']['session'])
-        check(r.status_code == 200 and [i[0] for i in rail_items(r.text) if i[1]] == ['/community/'], 'Q:T-39 /community/?space= (old workspace bookmark) still the workspace in the 업무 shell')
+        check(r.status_code == 200 and [t_[1] for t_ in grid_tiles(r.text) if t_[2]] == ['/community/'], 'Q:T-39 /community/?space= (old workspace bookmark) still the workspace in the 업무 shell')
         r = requests.get(site + share_path, headers={'User-Agent': UA}, timeout=35, allow_redirects=False)
-        check(r.status_code == 200 and 'threads-public' in r.text and 'app-rail' not in r.text and 'id="sidebar"' not in r.text, 'Q:T-39 public share link without login: 200 · no shell · no rail')
+        check(r.status_code == 200 and 'threads-public' in r.text and 'shell-tools' not in r.text and 'id="sidebar"' not in r.text, 'Q:T-39 public share link without login: 200 · no shell · no grid')
         check(not [h for h in r.headers if h.lower() == 'set-cookie'], 'Q:T-39 public share link Set-Cookie 0')
         feed = requests.get(site + share_path + '/feed', headers={'User-Agent': UA}, timeout=35)
         check(feed.status_code == 200 and [p['id'] for p in feed.json()['posts']] == [shared_post], 'Q:T-39 public share feed returns exactly the shared post')
@@ -353,16 +368,23 @@ try:
                             dims=p.locator('#sidebar [data-sidebar-group] > summary:visible').evaluate_all('(els)=>els.map(e=>e.getBoundingClientRect().height)')
                             check(dims and min(dims)>=44, 'mobile %d group summary touch targets >=44' % width)
                             p.screenshot(path=str(shots/('mobile-nav-%d.png' % width)))
-                        p.locator('[data-mobile-nav-mode=apps]').click()
-                        check(p.locator('.app-menu').is_visible() and not p.locator(main_link).is_visible(), 'mobile %d %s apps only' % (width,path))
+                        # U2(DESIGN 2.18 「폰」) — 서랍의 「앱·계정」 전환 단추는 없다. 앱 이름 ▾(#appbar-apps)가 본문의 같은 앱 격자 details 를 연다(전체 폭)
+                        check(p.locator('[data-mobile-nav-mode]').count() == 0, 'mobile %d %s drawer mode switch removed (☰ = navigation only)' % (width,path))
+                        p.locator('#mobile-nav-close').click()
+                        p.locator('#appbar-apps').click()
+                        p.wait_for_timeout(150)
+                        g = p.evaluate(GRID_STATE_JS)
+                        check(g['open'] and g['details'] == 1 and g['panel']['vis'] and not p.locator(main_link).is_visible(), 'mobile %d %s app name ▾ opens the same app grid (drawer closed)' % (width,path))
+                        check(abs(g['panel']['w'] - width) <= 2 and g['panel']['t'] >= 51, 'mobile %d %s grid panel full width under the top bar %s' % (width,path,json.dumps(g['panel'])))
                         check(p.locator('#menu-settings').is_visible() and p.locator('#menu-admin').is_visible(), 'mobile %d %s account/admin reachable' % (width,path))
                         check(p.locator('#appbar-apps').get_attribute('aria-expanded')=='true' and p.locator('#nav-toggle').get_attribute('aria-expanded')=='false', 'mobile %d %s exclusive expanded state' % (width,path))
                         check(p.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'mobile %d %s no horizontal overflow' % (width,path))
                         p.screenshot(path=str(shots/('mobile-apps-%d-%s.png' % (width,path.split('/')[1]))))
                         p.keyboard.press('Escape')
-                        check(not p.locator('#sidebar').is_visible() and p.locator('#nav-toggle').evaluate('(e)=>document.activeElement===e'), 'mobile %d %s Escape closes and restores focus' % (width,path))
-                        p.locator('#appbar-apps').click();p.locator('[data-mobile-nav-mode=nav]').click()
-                        check(p.locator(main_link).is_visible() and not p.locator('.app-menu').is_visible(), 'mobile %d %s app panel switches directly to navigation' % (width,path))
+                        check(not p.evaluate("document.querySelector('details.appbar__apps').open") and p.locator('#appbar-apps').evaluate('(e)=>document.activeElement===e') and p.locator('#appbar-apps').get_attribute('aria-expanded')=='false',
+                              'mobile %d %s Escape closes the grid and restores focus to the app name' % (width,path))
+                        p.locator('#appbar-apps').click();p.locator('#nav-toggle').click()
+                        check(p.locator(main_link).is_visible() and not p.locator('.app-menu').is_visible(), 'mobile %d %s grid → ☰ switches directly to navigation (one panel at a time)' % (width,path))
                         p.locator('#mobile-nav-close').click();p.locator('#nav-toggle').click()
                         check(p.locator('#sidebar').evaluate('(e)=>e.scrollTop')==0 and p.locator('#sidebar [data-sidebar-group][open]').count()==0, 'mobile %d %s reopen starts compact at top' % (width,path))
                     # Only the drawer scrolls; keyboard focus stays in the modal.
@@ -407,10 +429,12 @@ try:
                 guard('mobile drawer '+str(width), mobile_drawer)
                 ctx.close()
 
-        # ─── Q:T-40 아이콘 줄 — 폭 · 켜짐 · 넘침 ───────────────────────────────────────────────────────
+        # ─── Q:T-40 앱 격자 — 자리 · 열고 닫기 · 순서 · 넘침 (U2 · DESIGN 2.18 — 옛 아이콘 줄 단언을 바꿈) ───────────────────────────
         if want('t40'):
             tok = new_session('employee')
-            screens = (('/tbox/', '/tbox/', '자료실'), ('/community/workspace', '/community/', '업무'), ('/community/memories', '/community/memories', '이야기'))
+            tok_admin = new_session('admin')
+            screens = (('/tbox/', '/tbox/', '자료실'), ('/community/', '/community/', '업무'), ('/community/memories', '/community/memories', '이야기'))
+            TILES_EMP = ['모아 홈', '자료실', '업무', '이야기', '메신저', '내 계정', '내 활동', '검색']
             for width in (1440, 1280, 960, 959, 820, 412, 360):
                 ctx = browser.new_context(viewport={'width': width, 'height': 900}, locale='ko-KR', user_agent=UA, has_touch=width <= 412, is_mobile=width <= 412)
                 ctx.add_cookies(cookie(tok, {'qaredi_motion': 'reduce'}))
@@ -420,37 +444,89 @@ try:
                 def one_width():
                     for path, current, label in screens:
                         t.go(path)
-                        st = p.evaluate(RAIL_STATE_JS)
-                        key = 'rail-%d%s' % (width, path.replace('/', '_'))
-                        metrics[key] = {k: st[k] for k in ('visible', 'display', 'width', 'height', 'left', 'overflow', 'scrollWidth', 'innerWidth')}
+                        st = p.evaluate(GRID_STATE_JS)
+                        key = 'grid-%d%s' % (width, path.replace('/', '_'))
+                        metrics[key] = {k: st[k] for k in ('rail', 'toolsCount', 'firstIsTools', 'toolsDisplay', 'details', 'open', 'tools', 'mainInnerRight', 'sum', 'overflow', 'scrollWidth', 'innerWidth')}
+                        check(st['rail'] == 0 and st['details'] == 1 and st['toolsCount'] == 1 and st['firstIsTools'], 'Q:T-40 %d %s nav.app-rail 0 · div.shell-tools 1 (first child of main) · details.appbar__apps one in the document' % (width, label))
+                        check(st['open'] is False, 'Q:T-40 %d %s grid closed by default' % (width, label))
                         if width >= 960:
-                            cur = [i['href'] for i in st['items'] if i['current'] == 'page']
-                            check(st['visible'] and st['width'] == 64 and st['left'] == 0 and st['height'] == 900, 'Q:T-40 %d %s rail drawn: 64px wide · full height · left edge %s' % (width, label, json.dumps(metrics[key])))
-                            check(p.locator('nav.app-rail').count() == 1 and cur == [current], 'Q:T-40 %d %s exactly one rail · aria-current = %s' % (width, label, current))
-                            sizes = [(i['w'], i['h'], i['size'], round(i['icon'])) for i in st['items']]
-                            metrics[key]['items'] = sizes
-                            check(all(w >= 56 and h >= 52 and s == '12px' and ic == 20 for w, h, s, ic in sizes), 'Q:T-40 %d %s items ≥56×52 · label 12px · icon 20px %s' % (width, label, json.dumps(sizes)))
-                            side = p.evaluate("(()=>{const s=document.getElementById('sidebar').getBoundingClientRect();return {left:Math.round(s.left),width:Math.round(s.width)};})()")
-                            check(side['left'] == 64 and side['width'] == 240, 'Q:T-40 %d %s sidebar sits right of the rail (left 64 · width 240) %s' % (width, label, json.dumps(side)))
+                            check(st['toolsDisplay'] == 'flex' and abs(st['tools']['r'] - st['mainInnerRight']) <= 2 and st['sum']['vis'] and st['me']['vis'],
+                                  'Q:T-40 %d %s shell-tools row right-aligned (right %s = main inner right %s) · ⋮⋮⋮ + avatar visible' % (width, label, st['tools']['r'], st['mainInnerRight']))
+                            p.locator('details.appbar__apps > summary').click()
+                            p.wait_for_timeout(150)
+                            st = p.evaluate(GRID_STATE_JS)
+                            metrics[key]['panel'] = st['panel']
+                            metrics[key]['tiles'] = [x['name'] for x in st['tiles']]
+                            check(st['open'] and st['panel']['vis'] and abs(st['panel']['w'] - 300) <= 8 and abs(st['panel']['r'] - st['sum']['r']) <= 8 and st['panel']['t'] >= st['sum']['b'],
+                                  'Q:T-40 %d %s click → panel opens (width 300 ±8 · right-aligned under the button) %s' % (width, label, json.dumps([st['panel'], st['sum']])))
+                            check([x['name'] for x in st['tiles']] == TILES_EMP, 'Q:T-40 %d %s tile order 모아 홈 · 자료실 · 업무 · 이야기 · 메신저 · 내 계정 · 내 활동 · 검색 (관리자 hidden for employee) %s' % (width, label, json.dumps([x['name'] for x in st['tiles']], ensure_ascii=False)))
+                            check([x['href'] for x in st['tiles'] if x['current'] == 'page'] == [current], 'Q:T-40 %d %s aria-current = %s only' % (width, label, current))
+                            check(st['logout'] and st['logout']['vis'] and st['logout']['last'] and st['logout']['text'] == '로그아웃', 'Q:T-40 %d %s 로그아웃 = last row under a divider' % (width, label))
+                            if width in (1440, 412) or (width == 960 and path == '/community/'):
+                                p.screenshot(path=str(shots / ('grid-open-%d%s.png' % (width, path.replace('/', '_')))))
+                            p.keyboard.press('Escape')
+                            p.wait_for_timeout(100)
+                            check(not p.evaluate("document.querySelector('details.appbar__apps').open") and p.evaluate("document.activeElement === document.querySelector('details.appbar__apps > summary')"),
+                                  'Q:T-40 %d %s Esc closes · focus back on ⋮⋮⋮' % (width, label))
+                            p.locator('details.appbar__apps > summary').click()
+                            p.mouse.click(st['tools']['l'] + 20, (st['tools']['t'] + st['tools']['b']) / 2)   # 격자 줄의 빈 왼쪽(누를 것이 없는 자리)
+                            p.wait_for_timeout(100)
+                            check(not p.evaluate("document.querySelector('details.appbar__apps').open"), 'Q:T-40 %d %s outside click closes' % (width, label))
                         else:
-                            check(not st['visible'] and st['display'] == 'none', 'Q:T-40 %d %s rail not drawn (display:none)' % (width, label))
+                            check(st['toolsDisplay'] == 'none', 'Q:T-40 %d %s shell-tools display none' % (width, label))
+                            p.locator('#appbar-apps').click()
+                            p.wait_for_timeout(150)
+                            st = p.evaluate(GRID_STATE_JS)
+                            check(st['open'] and st['panel']['vis'] and abs(st['panel']['w'] - width) <= 2 and st['appsExpanded'] == 'true' and [x['name'] for x in st['tiles']] == TILES_EMP,
+                                  'Q:T-40 %d %s #appbar-apps → the same details opens (full width %s) · aria-expanded true' % (width, label, json.dumps(st['panel'])))
+                            if width in (412,):
+                                p.screenshot(path=str(shots / ('grid-open-%d%s.png' % (width, path.replace('/', '_')))))
+                            p.locator('#appbar-apps').click()
+                            p.wait_for_timeout(100)
+                            check(not p.evaluate("document.querySelector('details.appbar__apps').open") and p.locator('#appbar-apps').get_attribute('aria-expanded') == 'false', 'Q:T-40 %d %s app name ▾ again closes' % (width, label))
                         check(not st['overflow'], 'Q:T-40 %d %s horizontal overflow 0 (%d ≤ %d)' % (width, label, st['scrollWidth'], st['innerWidth']))
-                        if width in (1440, 960, 412):
-                            p.screenshot(path=str(shots / ('rail-%d%s.png' % (width, path.replace('/', '_')))))
                     if width <= 412:
-                        # 폰 — 서랍을 열어도 줄은 없다 · 업무/이야기 서랍 사진
-                        for path in ('/community/workspace', '/community/memories'):
+                        # 폰 — 서랍(☰)은 내비만 · 격자 0 · 넘침 0
+                        for path in ('/community/', '/community/memories'):
                             t.go(path)
                             p.click('#nav-toggle')
                             p.wait_for_timeout(300)
-                            st = p.evaluate(RAIL_STATE_JS)
-                            check(not st['visible'] and not st['overflow'], 'Q:T-40 %d drawer open %s: rail 0 · overflow 0' % (width, path))
+                            st = p.evaluate(GRID_STATE_JS)
+                            check(not st['open'] and not p.locator('.app-menu').is_visible() and not st['overflow'], 'Q:T-40 %d drawer open %s: navigation only (grid closed) · overflow 0' % (width, path))
                             p.screenshot(path=str(shots / ('drawer-%d%s.png' % (width, path.replace('/', '_')))), full_page=True)
                 guard('Q:T-40 %d' % width, one_width)
                 check(t.clean('t40-%d' % width), 'Q:T-40 %d no page errors / 5xx / script console output' % width)
                 ctx.close()
+            # 관리자 — 「관리자 페이지」 타일(can_admin 표시용 그대로)
+            ctx = browser.new_context(viewport={'width': 1440, 'height': 900}, locale='ko-KR', user_agent=UA)
+            ctx.add_cookies(cookie(tok_admin, {'qaredi_motion': 'reduce'}))
+            t = Tab(ctx)
+            p = t.page
 
-        # ─── Q:T-40 테마 여섯 × 밝게 · 어둡게 · 고대비(밝게 · 어둡게) — 아이콘 줄 글자 대비 ≥ 4.5 ─────────────────────
+            def admin_tiles():
+                for path in ('/tbox/', '/community/'):
+                    t.go(path)
+                    p.locator('details.appbar__apps > summary').click()
+                    p.wait_for_timeout(150)
+                    st = p.evaluate(GRID_STATE_JS)
+                    names = [x['name'] for x in st['tiles']]
+                    check(names == ['모아 홈', '자료실', '업무', '이야기', '메신저', '내 계정', '내 활동', '관리자 페이지', '검색'], 'Q:T-40 admin %s tiles include 관리자 페이지 (can_admin) %s' % (path, json.dumps(names, ensure_ascii=False)))
+                    p.keyboard.press('Escape')
+                # 검색 타일 → 사이드바 「검색」과 같은 창 · 메신저 타일 → 떠 있는 창
+                p.locator('details.appbar__apps > summary').click()
+                p.locator('details.appbar__apps [data-search-tile]').click()
+                p.wait_for_timeout(300)
+                check(p.evaluate("document.getElementById('search-dialog').open") and not p.evaluate("document.querySelector('details.appbar__apps').open"), 'Q:T-40 search tile opens the same search dialog (grid closes)')
+                p.keyboard.press('Escape')
+                p.locator('details.appbar__apps > summary').click()
+                p.locator('details.appbar__apps [data-messenger-open]').click()
+                p.wait_for_timeout(600)
+                check(p.evaluate("document.getElementById('messenger-window').open") and not p.evaluate("document.querySelector('details.appbar__apps').open"), 'Q:T-40 messenger tile opens the floating messenger (grid closes)')
+            guard('Q:T-40 admin tiles', admin_tiles)
+            check(t.clean('t40-admin'), 'Q:T-40 admin no page errors / 5xx / script console output')
+            ctx.close()
+
+        # ─── Q:T-40 테마 여섯 × 밝게 · 어둡게 · 고대비(밝게 · 어둡게) — 앱 격자 타일 글자 대비 ≥ 4.5 (U2 · DESIGN 2.18 「대비 · 초점」) ─────────
         if want('contrast'):
             tok = new_session('employee')
             contrast = {}
@@ -464,50 +540,34 @@ try:
 
                     def one_theme():
                         row = {}
-                        for path in ('/community/workspace', '/community/memories', '/tbox/'):
+                        for path in ('/community/', '/community/memories', '/tbox/'):
                             t.go(path)
-                            st = p.evaluate(RAIL_STATE_JS)
-                            rail_bg = parse_color(st['bg'])
-                            row_items = []
-                            for it in st['items']:
+                            p.locator('details.appbar__apps > summary').click()
+                            p.mouse.move(5, 895)   # 올림(hover) 바탕이 타일에 남지 않게
+                            p.wait_for_timeout(200)
+                            st = p.evaluate(GRID_STATE_JS)
+                            body_bg = parse_color(st['bodyBg'])
+                            panel_bg = parse_color(st['panelBg'])
+                            panel_eff = over(panel_bg, body_bg) if panel_bg and body_bg and panel_bg[3] < 1 else panel_bg
+                            items = []
+                            for it in st['tiles'] + [{'name': '로그아웃', 'current': None, 'color': st['logout']['color'], 'bg': 'rgba(0, 0, 0, 0)'}]:
                                 fg = parse_color(it['color'])
                                 bg = parse_color(it['bg'])
-                                eff = over(bg, rail_bg) if bg and rail_bg else None
+                                eff = over(bg, panel_eff) if bg and panel_eff else None
                                 if fg and fg[3] < 1 and eff:
                                     fg = over(fg, eff)
                                 val = ratio(fg, eff) if fg and eff else None
-                                row_items.append({'name': it['name'], 'current': it['current'] == 'page', 'fg': hexof(fg) if fg else it['color'], 'bg': hexof(eff) if eff else it['bg'], 'ratio': val})
-                            mefg, mebg = parse_color(st['me']['color']), parse_color(st['me']['bg'])
-                            ring = parse_color(st['ring'])
-                            ring_eff = over(ring, rail_bg) if ring and rail_bg and ring[3] < 1 else ring
-                            me = {'fg': hexof(mefg), 'bg': hexof(mebg), 'ratio': ratio(mefg, mebg)} if mefg and mebg else {'raw': st['me'], 'ratio': None}
-                            # 실제 초점 고리 — 처음부터 Tab 으로 줄 안 첫 앱까지(건너뛰기 → 모아 홈 → 첫 앱) 가서 :focus-visible 의 box-shadow 색을 잰다
-                            p.mouse.move(700, 450)
-                            p.evaluate("document.activeElement && document.activeElement.blur && document.activeElement.blur()")
-                            focus = None
-                            for _ in range(4):
-                                p.keyboard.press('Tab')
-                                focus = p.evaluate("(()=>{const a=document.activeElement;if(!a||!a.closest('nav.app-rail'))return null;return {cls:a.className,shadow:getComputedStyle(a).boxShadow,visible:a.matches(':focus-visible')};})()")
-                                if focus and 'app-rail__item' in focus['cls']:
-                                    break
-                            ringseen = parse_color(re.match(r'(rgba?\([^)]*\)|color\([^)]*\))', focus['shadow']).group(1)) if focus and focus['shadow'] and focus['shadow'] != 'none' else None
-                            focus_ratio = ratio(over(ringseen, rail_bg) if ringseen and ringseen[3] < 1 else ringseen, rail_bg) if ringseen and rail_bg else None
-                            row[path] = {'design': st['design'], 'theme': st['theme'], 'contrast': st['contrast'], 'rail_bg': hexof(rail_bg) if rail_bg else st['bg'],
-                                         'tokens': {'--rail-bg': st['railBgToken'], '--rail-fg': st['railFgToken'], '--ring': st['ring']},
-                                         'items': row_items, 'me': me,
-                                         'ring_token_vs_rail': {'ring': hexof(ring_eff) if ring_eff else st['ring'], 'ratio': ratio(ring_eff, rail_bg) if ring_eff and rail_bg else None},
-                                         'focus_ring': {'shadow': focus['shadow'] if focus else None, 'focus_visible': focus['visible'] if focus else None, 'ring': hexof(ringseen) if ringseen else None, 'ratio_vs_rail': focus_ratio}}
+                                items.append({'name': it['name'], 'current': it['current'] == 'page', 'fg': hexof(fg) if fg else it['color'], 'bg': hexof(eff) if eff else it['bg'], 'ratio': val})
+                            row[path] = {'design': st['design'], 'theme': st['theme'], 'contrast': st['contrast'], 'panel_bg': hexof(panel_eff) if panel_eff else st['panelBg'], 'items': items}
                             tag = '%s %s %s' % (themename, mode, path)
                             check(st['design'] == themename and (st['contrast'] == 'high') == mode.startswith('hc') and (st['theme'] == 'dark') == mode.endswith('dark'), 'Q:T-40 contrast setup ' + tag + ' (data-design · data-theme · data-contrast as asked)')
-                            worst = min([i['ratio'] or 0 for i in row_items] + [me['ratio'] or 0])
-                            check(worst >= 4.5, 'Q:T-40 contrast %s: rail text ≥ 4.5 (min %.2f · current %s · others %s · me %s)' % (
-                                tag, worst, [i['ratio'] for i in row_items if i['current']], [i['ratio'] for i in row_items if not i['current']], me['ratio']))
-                            check(focus is not None and focus['visible'] and (focus_ratio or 0) >= 3, 'Q:T-40 contrast %s: keyboard focus ring on a rail item is visible — ring vs rail ≥ 3 (%s · ring %s · the --ring token alone would be %s)' % (
-                                tag, focus_ratio, hexof(ringseen) if ringseen else None, row[path]['ring_token_vs_rail']['ratio']))
+                            worst = min([i['ratio'] or 0 for i in items])
+                            check(worst >= 4.5, 'Q:T-40 contrast %s: grid tile text ≥ 4.5 (min %.2f · current %s · others %s)' % (
+                                tag, worst, [i['ratio'] for i in items if i['current']], sorted({i['ratio'] for i in items if not i['current']})))
+                            if path == '/community/' and mode in ('light', 'dark', 'hc-light') and themename in ('moa', 'claude'):
+                                p.locator('details.appbar__apps .app-menu').screenshot(path=str(shots / ('grid-%s-%s.png' % (themename, mode))))
+                            p.keyboard.press('Escape')
                         contrast['%s/%s' % (themename, mode)] = row
-                        if mode in ('light', 'dark', 'hc-light'):
-                            p.goto(site + '/community/workspace', wait_until='networkidle')
-                            p.locator('nav.app-rail').screenshot(path=str(shots / ('rail-%s-%s.png' % (themename, mode))))
                     guard('Q:T-40 contrast %s %s' % (themename, mode), one_theme)
                     check(t.clean('contrast-%s-%s' % (themename, mode)), 'Q:T-40 contrast %s %s no page errors / 5xx / script console output' % (themename, mode))
                     ctx.close()
@@ -515,7 +575,7 @@ try:
             (out / 'qf12-shell-contrast.json').write_text(json.dumps(contrast, ensure_ascii=False, indent=1))
             ratios = [i['ratio'] for v in contrast.values() for r in v.values() for i in r['items'] if i['ratio'] is not None]
             metrics['contrast_min_text'] = min(ratios) if ratios else None
-            metrics['focus_ring_ratio_vs_rail'] = {k: [v['/community/workspace']['focus_ring']['ratio_vs_rail'], v['/community/workspace']['ring_token_vs_rail']['ratio']] for k, v in contrast.items() if '/community/workspace' in v}
+            metrics['contrast_min_current'] = min([i['ratio'] for v in contrast.values() for r in v.values() for i in r['items'] if i['current'] and i['ratio'] is not None] or [None])
 
         # ─── C-2 사이드바 — 업무 · 이야기 (1440 · 직원) ──────────────────────────────────────────────────
         if want('c2'):
@@ -542,7 +602,7 @@ try:
                 p.click('#nav-community-more-box > summary')
                 p.wait_for_timeout(200)
                 check(p.locator('#nav-community-trash').is_visible(), 'C-2 「더보기」 opens and shows 「내 휴지통」')
-                check(p.locator('.app-rail [data-messenger-open]').count() == 1 and p.locator('#sidebar [data-messenger-open]').count() == 0, 'C-2 업무 common rail: one messenger opener, no sidebar duplicate')
+                check(p.locator('.shell-tools [data-messenger-open]').count() == 1 and p.locator('#sidebar [data-messenger-open]').count() == 0, 'C-2 업무 common grid: one messenger opener (tile), no sidebar duplicate')
                 p.screenshot(path=str(shots / 'sidebar-work-1440.png'))
                 # 「＋ 새로 만들기」 메뉴 — 작업 · 프로젝트 · 문서(작업·프로젝트는 조각 D 가 연다 — 기대값 바꿈 2026-10-07 D: 전엔 둘이 hidden) · 문서를 누르면 새 페이지
                 p.click('#nav-new-menu > summary')
@@ -553,7 +613,7 @@ try:
                 fgc, bgc = parse_color(bg[1]), parse_color(bg[0])
                 check(fgc is not None and bgc is not None and ratio(fgc, bgc) >= 4.5 and bg[2] >= 200, 'C-2 새로 만들기 (open) stays a full-width black button, text contrast ≥ 4.5 ' + json.dumps(bg))
                 lst = p.evaluate("(()=>{const l=document.querySelector('#nav-new-menu .menu__list').getBoundingClientRect();return {left:Math.round(l.left),right:Math.round(l.right),top:Math.round(l.top)};})()")
-                check(lst['left'] >= 64 and lst['right'] <= 64 + 240, 'C-2 새로 만들기 menu list opens inside the sidebar column ' + json.dumps(lst))
+                check(lst['left'] >= 0 and lst['right'] <= 240, 'C-2 새로 만들기 menu list opens inside the sidebar column (U2 — rail gone, sidebar at 0) ' + json.dumps(lst))
                 p.screenshot(path=str(shots / 'sidebar-work-new-menu-1440.png'))
                 p.click('#nav-community-new')
                 p.wait_for_url(re.compile(r'.*/community/p/[0-9a-f-]{36}.*'), timeout=15000)
@@ -569,7 +629,7 @@ try:
                 html = p.content()
                 check('community/editor.js' not in html and 'id="nav-community-tree"' not in html and 'id="nav-community-bell"' not in html and 'id="appbar-bell"' not in html,
                       'C-2 이야기 shell: no editor.js · no 업무 groups · no bell')
-                check(p.locator('.app-rail [data-messenger-open]').count() == 1 and p.locator('#sidebar [data-messenger-open]').count() == 0, 'C-2 이야기 common rail: one messenger opener, no sidebar duplicate')
+                check(p.locator('.shell-tools [data-messenger-open]').count() == 1 and p.locator('#sidebar [data-messenger-open]').count() == 0, 'C-2 이야기 common grid: one messenger opener (tile), no sidebar duplicate')
                 active = p.evaluate("[...document.querySelectorAll('#sidebar [data-thread-nav]')].map(a=>[a.dataset.threadNav,a.classList.contains('is-active')])")
                 check(active == [['feed', True], ['mine', False], ['discover', False]], 'C-2 이야기 sidebar: 팔로잉 is-active on /community/memories (memories.js) ' + json.dumps(active))
                 p.screenshot(path=str(shots / 'sidebar-story-1440.png'))
@@ -631,8 +691,8 @@ try:
                 metrics['snap-%d' % width] = counts
                 check(r.returncode == 0 and rep, 'ui_snapshot.py %d ran on this instance (%s)' % (width, (r.stdout.strip().splitlines() or ['?'])[-1]))
                 for path, c in counts.items():
-                    rail_defects = [x for k, v in c.items() if isinstance(v, list) for x in v if 'app-rail' in x or 'nav-new' in x or 'nav-story' in x or 'nav-work' in x or 'nav-community-more' in x]
-                    check(not rail_defects and not c.get('overflow_x') and not c.get('console_errors'), 'ui_snapshot %d %s: rail/new sidebar adds 0 defects · overflow 0 · console 0 %s' % (width, path, json.dumps(rail_defects, ensure_ascii=False)))
+                    rail_defects = [x for k, v in c.items() if isinstance(v, list) for x in v if any(w in x for w in ('app-rail', 'shell-tools', 'app-menu', 'appbar__apps', 'sidebar-collapse', 'nav-new', 'nav-story', 'nav-work', 'nav-community-more'))]
+                    check(not rail_defects and not c.get('overflow_x') and not c.get('console_errors'), 'ui_snapshot %d %s: grid/new sidebar adds 0 defects · overflow 0 · console 0 %s' % (width, path, json.dumps(rail_defects, ensure_ascii=False)))
         browser.close()
 finally:
     (out / 'qf12-shell-browser-metrics.json').write_text(json.dumps(metrics, ensure_ascii=False, indent=1))

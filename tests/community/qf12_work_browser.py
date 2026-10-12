@@ -17,6 +17,9 @@
                        하위 작업 제목 그 자리 고치기(Enter = 서버 값 · Esc · 빈 값 · 떠나면 저장) · › 열기 · 「＋ 하위 작업 추가」 / 보기 공유 · 손님 고치기 0 /
                        새 프로젝트 창 첫 값 = 팀 공간 · 팀 없는 계정 = 내 공간 하나 / 360 · 412(터치) · 820 · 1199 · 1280 · 1440 × 밝게 · 어둡게 · 고대비
                        (넘침 0 · 콘솔 0 · 누름 자리 44 · 인라인 style 0) — 묶음 이름 u1 (QF12D_ONLY=u1)
+  U2(사용감 라운드)    [접기 collapse] ☰ → 폭 64 · 글자 0 · 남는 항목 · 툴팁 · 기억 · 959 0 / [업무함 u2] 화면 순서 = buildInbox(JS) = Python 규칙 ·
+                       꼬리표 · 「@」 · 「검토」 · ★ · 줄 아래 펼침(2.21 요소) · 주소 · ✕ · Esc · 뒤로 · 완료 · ↓↑ · 홈 10줄 · briefing 403 · 1199 · 412 ·
+                       손님 · 역할로 보기(손님) 쓰는 단추 0 · 폭 여섯 × 밝게 · 어둡게 · 고대비 (QF12D_ONLY=u2,collapse · 보고용 사본 shots)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -389,25 +392,28 @@ try:
                 t = Tab(ctx)
                 p = t.page
                 t.go('/community/my-tasks')
-                p.wait_for_selector('#my-tasks-groups .task-group', timeout=15000)
-                names = p.evaluate("[...document.querySelectorAll('#my-tasks-groups .task-group__toggle')].map(b => b.children[1].textContent)")
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                # U2(DESIGN 2.20-A) — 묶음 머리 대신 꼬리표(「지난 기한 n」 …) · 맡긴 표시는 줄의 보조 글(「○○ 님이 맡김」)
+                names = p.evaluate("[...document.querySelectorAll('#my-tasks-rows > .task-inbox__tag')].map(t => t.textContent.replace(/ [0-9]+\\+?$/, ''))")
                 metrics['my_tasks_groups'] = names
-                check(names[:2] == ['지난 기한', '오늘'], 'my tasks groups start 지난 기한 · 오늘 ' + json.dumps(names, ensure_ascii=False))
-                late = p.locator('#my-tasks-groups [data-bucket="overdue"] .task-group__toggle')
-                check('task-group--late' in (late.get_attribute('class') or ''), '「지난 기한」 group name uses --danger (task-group--late)')
-                check(p.locator('#my-tasks-groups .badge', has_text=' 님이 맡김').count() >= 2, 'assigned rows show 「○○ 님이 맡김」 badge')
-                p.locator('#my-tasks-groups [data-add-bucket="today"]').click()
-                inp = p.locator('#my-tasks-groups [data-bucket="today"] .task-add__input')
+                check(names[:2] == ['지난 기한', '오늘'], 'my tasks tags start 지난 기한 · 오늘 ' + json.dumps(names, ensure_ascii=False))
+                late = p.locator('#my-tasks-rows > .task-inbox__tag[data-bucket="overdue"]')
+                check('task-group--late' in (late.get_attribute('class') or ''), '「지난 기한」 tag uses --danger (task-group--late)')
+                check(p.locator('#my-tasks-rows .task-row__aux', has_text=' 님이 맡김').count() >= 2, 'assigned rows show 「○○ 님이 맡김」 (sub text)')
+                p.locator('#my-tasks-rows [data-add-bucket="today"]').click()
+                inp = p.locator('#my-tasks-rows .task-add__input')
                 inp.fill('합성 빠른 할 일')
                 with p.expect_response(lambda r: r.url.endswith('/community/api/pages') and r.request.method == 'POST') as resp:
                     inp.press('Enter')
                 check(resp.value.status == 201, 'quick add POST /api/pages {my_tasks} 201')
-                p.wait_for_selector('#my-tasks-groups [data-bucket="today"] .task-row__title:text("합성 빠른 할 일")', timeout=10000)
-                check(True, 'quick add → row appears in 「오늘」 group')
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row .task-row__title:text("합성 빠른 할 일")', timeout=10000)
+                today_rows = p.evaluate("""() => { const out = []; let on = false; for (const li of document.querySelectorAll('#my-tasks-rows > li')) {
+                    if (li.matches('.task-inbox__tag')) { on = li.getAttribute('data-bucket') === 'today'; continue; } if (on && li.matches('.task-inbox__row')) out.push(li.querySelector('.task-row__title').textContent); } return out; }""")
+                check('합성 빠른 할 일' in today_rows, 'quick add → row appears under the 「오늘」 tag')
                 after = sql('SELECT count(*) FROM community.my_tasks_projects WHERE user_id=' + str(emp))
                 info = sql("SELECT p.title||'|'||p.visibility||'|'||d.purpose FROM community.my_tasks_projects m JOIN community.pages p ON p.id=m.page_id JOIN community.databases d ON d.page_id=p.id WHERE m.user_id=" + str(emp))
                 check(before == '0' and after == '1' and info == '내 할 일|private|my_tasks', 'quick add created 「내 할 일」 (my_tasks_projects 0 → 1 · private · purpose my_tasks)')
-                check(p.locator('#my-tasks-groups [data-bucket="today"] .task-add__input').count() == 1, 'after Enter the input stays for the next line (DESIGN 2.20)')
+                check(p.locator('#my-tasks-rows .task-add__input').count() == 1, 'after Enter the input stays for the next line (DESIGN 2.20)')
                 p.keyboard.press('Escape')
                 p.screenshot(path=str(shots / 'my-tasks-1280.png'), full_page=True)
                 check(t.clean('quick'), 'quick add console 0')
@@ -518,11 +524,13 @@ try:
                 t = Tab(ctx)
                 p = t.page
                 t.go('/community/')
-                p.wait_for_selector('#work-home [data-home-bucket="overdue"] .task-row', timeout=15000)
+                p.wait_for_selector('#work-home-rows .task-inbox__row', timeout=15000)
                 check(p.locator('[id^="overview-"]').count() == 0 and p.locator('#community-overview').count() == 0, 'browser: /community/ has no #overview-* / #community-overview')
-                cols = p.evaluate("[...document.querySelectorAll('[data-home-bucket]')].map(c => [c.getAttribute('data-home-bucket'), c.querySelectorAll('.task-row[data-task]').length])")
+                # U2(WK-20 C) — 세 칸 대신 업무함 앞 10줄 — 꼬리표 「지난 기한」 · 「오늘」 아래 줄이 있다
+                cols = p.evaluate("""() => { const out = {}; let k = null; for (const li of document.querySelectorAll('#work-home-rows > li')) {
+                    if (li.matches('.task-inbox__tag')) { k = li.getAttribute('data-bucket'); out[k] = 0; continue; } if (k && li.matches('.task-inbox__row')) out[k] += 1; } return out; }""")
                 metrics['home_cols'] = cols
-                check([c[0] for c in cols] == ['overdue', 'today', 'this_week'] and cols[0][1] >= 1 and cols[1][1] >= 1, 'home summary three columns (지난 기한 · 오늘 · 이번 주) filled ' + json.dumps(cols))
+                check(list(cols)[:2] == ['overdue', 'today'] and cols['overdue'] >= 1 and cols['today'] >= 1 and sum(cols.values()) <= 10, 'home inbox (지난 기한 · 오늘 …) filled · ≤ 10 rows ' + json.dumps(cols))
                 p.wait_for_selector('#work-home-notice:not([hidden])', timeout=8000)
                 check(p.locator('#work-home-notice-link').inner_text() == '합성 공지 한 줄' and p.locator('#work-home-notice-link').get_attribute('href') == '/community/p/' + notice_id,
                       'home notice line = unread notice (briefing others)')
@@ -632,11 +640,11 @@ try:
                             elif name == 'project-list':
                                 p.wait_for_selector('#project-list .task-row[data-task]', timeout=15000)
                             elif name == 'my-tasks':
-                                p.wait_for_selector('#my-tasks-groups .task-group', timeout=15000)
+                                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
                             elif name == 'portfolio':
                                 p.wait_for_selector('#portfolio-rows tr', timeout=15000)
                             elif name == 'home':
-                                p.wait_for_selector('[data-home-bucket] .task-row', timeout=15000)
+                                p.wait_for_selector('#work-home-rows .task-inbox__row', timeout=15000)
                             p.wait_for_timeout(250)
                             a = p.evaluate(AUDIT_JS, touch or width < 720)
                             summary[tag] = {'overflow': a['overflow'], 'heads': a['heads'], 'small': a['smallCount'], 'inline': a['inlineStyle']}
@@ -1060,6 +1068,561 @@ try:
             guard('U1 readers', u1_readers)
             guard('U1 new project', u1_new_project)
             guard('U1 matrix', u1_matrix)
+
+        # ─── 사용감 라운드 U2(2026-10-12 — 기획 work-ux-plan.md 14장 · DESIGN 2.19 ⑨ · 2.20-A) ───────────────────────────────────
+        #   [접기] 1440 ☰ → body[data-sidebar=collapsed] · 폭 64 · 글자 0 · 남는 항목 · 툴팁 · 기억(새로고침 · 다른 화면) · 다시 240 · 959 ☰ 0
+        #   [업무함] 합성 데이터(다른 팀 직원 claude_employee02 — 지난 기한 2 · 오늘 1 · 이번 주 3 · 나중에 3 · 기한 없음 1 · 검토 요청 1 · 멘션 1(지난 기한 작업과 같은 페이지))
+        #            화면 줄 순서 = buildInbox(JS · 같은 규칙의 Python 계산 둘 다) · 꼬리표 · 「@」 · ★ · 줄 아래 펼침 · 주소 · 닫기 셋 · 완료 · ↓↑ · 홈 10줄 ·
+        #            briefing 403 · 1199 aside · 412 전체 화면 · 손님 · 역할로 보기(손님) 쓰는 단추 0 · 폭 여섯 × 밝게 · 어둡게 · 고대비 — 묶음 이름 u2 · collapse
+        INBOX_DOM = """(sel) => [...document.querySelectorAll(sel + ' > li')].map(li => li.matches('.task-inbox__tag') ? ['tag', li.textContent.trim(), li.classList.contains('task-group--late')]
+            : li.matches('.task-inbox__row') ? ['row', li.getAttribute('data-task'), [...li.querySelectorAll(':scope > .task-inbox__line .badge')].map(b => b.textContent.trim()),
+                li.querySelector(':scope > .task-inbox__line .task-row__cell--meta').textContent.trim(), (li.querySelector(':scope > .task-inbox__line .task-row__main .task-row__aux') || {textContent: ''}).textContent.trim()]
+            : ['li', (li.querySelector('[data-add-bucket]') || {getAttribute: () => null}).getAttribute('data-add-bucket'), (li.querySelector('[data-more-bucket]') || {getAttribute: () => null}).getAttribute('data-more-bucket')])"""
+        LINE_STATE = """() => [...document.querySelectorAll('li.task-inbox__row')].map(li => [li.getAttribute('data-task'), li.querySelector(':scope > .task-inbox__line').getAttribute('aria-expanded'),
+            !!li.querySelector(':scope > .task-inbox__pane:not([hidden])')])"""
+
+        def py_inbox(mt, br, fav):
+            """buildInbox(work.js) 와 같은 규칙을 시험이 따로 계산한다 — 두 구현이 같은 답이어야 한다."""
+            groups, index = [], {}
+            for b in mt['buckets']:
+                items = [{'id': it['public_id'], 'marks': [], 'fav': it['public_id'] in fav} for it in b['items']]
+                for e in items:
+                    index.setdefault(e['id'], e)
+                groups.append({'key': b['key'], 'name': b['name'], 'more': b['next_cursor'], 'items': [e for e in items if e['fav']] + [e for e in items if not e['fav']]})
+            extra, seen = [], {}
+            for lst in ((br.get('top') or [], br.get('missed') or [], br.get('others') or []) if br else ()):
+                for it in lst:
+                    pid = it.get('page_id')
+                    if not isinstance(pid, str) or pid == '':
+                        continue
+                    kinds = [it.get('kind')] + [r.get('kind') for r in (it.get('reasons') or [])]
+                    marks = [k for k in ('review', 'mention') if k in kinds]
+                    if not marks:
+                        continue
+                    tgt = index.get(pid) or seen.get(pid)
+                    if tgt:
+                        tgt['marks'] += [m for m in marks if m not in tgt['marks']]
+                        continue
+                    e = {'id': pid, 'marks': marks, 'fav': pid in fav}
+                    seen[pid] = e
+                    extra.append(e)
+            at = next((i for i, g in enumerate(groups) if g['key'] not in ('overdue', 'today')), len(groups))
+            groups.insert(at, {'key': 'review_mention', 'name': '검토 요청 · 멘션', 'more': None, 'items': [e for e in extra if e['fav']] + [e for e in extra if not e['fav']]})
+            return groups
+
+        def py_dom(groups, limit=None, add=()):
+            """화면에 나와야 할 li 줄(꼬리표 · 줄 · 작업 추가) — 홈은 limit 10 · 그 자리 추가 없음"""
+            out, shown = [], 0
+            for g in groups:
+                room = (limit - shown) if limit else len(g['items'])
+                items = g['items'][:max(0, room)]
+                if not items and g['key'] not in add:
+                    continue
+                out.append(['tag', g['name'] + ' ' + str(len(g['items'])) + ('+' if g['more'] else ''), g['key'] == 'overdue'])
+                for e in items:
+                    out.append(['row', e['id'], (['@'] if 'mention' in e['marks'] else []) + (['검토'] if 'review' in e['marks'] else [])])
+                shown += len(items)
+                if g['more'] and not limit:
+                    out.append(['more', g['key']])
+                if g['key'] in add:
+                    out.append(['add', g['key']])
+            return out
+
+        def dom_simple(rows):
+            out = []
+            for r in rows:
+                if r[0] != 'li':
+                    out.append(r[:3])
+                elif r[2]:
+                    out.append(['more', r[2]])
+                elif r[1]:
+                    out.append(['add', r[1]])
+            return out
+
+        if want('u2'):
+            def ddate(n):
+                return sql("SELECT ((now() AT TIME ZONE 'Asia/Seoul')::date + (%d))" % n)
+            sunday = sql("SELECT ((now() AT TIME ZONE 'Asia/Seoul')::date + (7 - extract(isodow FROM (now() AT TIME ZONE 'Asia/Seoul'))::int))")
+            pu2 = call('POST', '/api/pages', {'database': True, 'preset': 'project', 'title': 'U2 업무함 프로젝트'}, user='other', expected=201)['page']
+
+            def u2task(title, due=None, status='todo'):
+                r = call('POST', '/api/pages', {'parent_id': pu2['id'], 'title': title, 'properties': {'section': '01. 진행'}}, user='other', expected=201)['page']
+                props = {'status': status}
+                if due:
+                    props['due'] = due
+                call('PATCH', '/api/pages/' + r['id'] + '/properties', props, user='other')
+                return r
+            o1 = u2task('U2 지난 기한 하나', ddate(-3))
+            o2 = u2task('U2 지난 기한 둘', ddate(-1))
+            t1 = u2task('U2 오늘', today)
+            ws = [u2task('U2 이번 주 %d' % i, sunday) for i in (1, 2, 3)] if sunday > today else []
+            ls = [u2task('U2 나중에 %d' % i, ddate(20)) for i in (1, 2, 3)]
+            n1 = u2task('U2 기한 없음')
+            r1 = u2task('U2 검토 요청', None, 'review')
+            for pg in (o1, r1):
+                rr = raw('PUT', '/api/pages/' + pg['id'] + '/shares/' + users['employee']['username'], {'level': 'edit'}, user='other')
+                check(rr.status_code in (200, 201), 'U2 fixture: edit share to employee (%d)' % rr.status_code)
+            call('PATCH', '/api/pages/' + r1['id'] + '/properties', {'assignee': users['employee']['username']}, user='other')
+            call('POST', '/api/pages/' + o1['id'] + '/comments', {'body': '@' + users['other']['username'] + ' U2 확인 부탁해요'}, user='employee', expected=201)
+            star_task = ws[1] if ws else ls[1]
+            call('PUT', '/api/pages/' + star_task['id'] + '/favorite', {}, user='other')
+            mt = call('GET', '/api/my-tasks', user='other')
+            br = call('GET', '/api/briefing', user='other')
+            fav = {p_['id'] for p_ in call('GET', '/api/me/favorites', user='other')['pages']}
+            want_groups = py_inbox(mt, br, fav)
+            flat = [e['id'] for g in want_groups for e in g['items']]
+            metrics['u2_api'] = {'buckets': {b['key']: [i['title'] for i in b['items']] for b in mt['buckets']},
+                                 'briefing': [[i.get('kind'), i.get('title'), [r.get('kind') for r in i.get('reasons', [])]] for k in ('top', 'missed', 'others') for i in br.get(k, [])]}
+            check([b['key'] for b in mt['buckets']] == ['overdue', 'today', 'this_week', 'later', 'no_due'], 'U2 fixture: my-tasks buckets overdue · today · this_week · later · no_due')
+            fixture_order = [o1['id'], o2['id'], t1['id'], r1['id']] + [w['id'] for w in ws if w['id'] == star_task['id']] \
+                + [i['public_id'] for i in next(b for b in mt['buckets'] if b['key'] == 'this_week')['items'] if i['public_id'] != star_task['id']] \
+                + [i['public_id'] for i in next(b for b in mt['buckets'] if b['key'] == 'later')['items'] if i['public_id'] != star_task['id']] + [n1['id']]
+            if not ws:
+                fixture_order = [o1['id'], o2['id'], t1['id'], r1['id'], star_task['id']] + [x['id'] for x in ls if x['id'] != star_task['id']] + [n1['id']]
+            check(flat == fixture_order, 'U2 inbox order (Python rule) = 지난 기한 오래된 순 → 오늘 → 검토·멘션 → 이번 주(★ 먼저) → 나중에 → 기한 없음 ' + json.dumps([fixture_order.index(x) if x in fixture_order else -1 for x in flat]))
+            check(next(e for g in want_groups for e in g['items'] if e['id'] == o1['id'])['marks'] == ['mention'] and r1['id'] in [e['id'] for e in want_groups[2]['items']],
+                  'U2 mention on the overdue task merges into that row (「@」) · review-only page sits in 「검토 요청 · 멘션」 ' + json.dumps([g['key'] for g in want_groups]))
+            UNIT_JS = r"""async () => {
+              const src = [...document.scripts].map(s => s.src).find(u => u.includes('/community/editor.js'));
+              const text = await (await fetch(src)).text();
+              const m = text.match(/from '\.\/work\.js\?v=([0-9a-f]+)'/);
+              const mod = await import(new URL('./work.js?v=' + m[1], src).href);
+              const b = (k, ids, more) => ({ key: k, name: k, items: ids.map(id => ({ public_id: id, title: id, status: 'todo', due: null })), next_cursor: more || null });
+              const mt = { buckets: [b('overdue', ['a', 'b']), b('today', []), b('this_week', ['c', 'd', 'e'], '100'), b('later', []), b('no_due', ['f'])] };
+              const brief = { top: [{ kind: 'mention', page_id: 'b', title: 'b', summary: 's' }, { kind: 'review', page_id: 'x', title: 'x', summary: '검토', due: '2026-10-15' }],
+                missed: [{ kind: 'mention', page_id: 'x', title: 'x' }], others: [{ kind: 'notice', page_id: 'n', title: 'n' }, { kind: 'overdue', page_id: 'y', title: 'y', reasons: [{ kind: 'overdue' }, { kind: 'review' }] },
+                { kind: 'unchecked', page_id: 'z', title: 'z' }, { kind: 'pending_file', title: 'file' }] };
+              const g1 = mod.buildInbox(mt, brief, new Set(['d', 'y']), '2026-10-12');
+              const g2 = mod.buildInbox(mt, null, ['e'], '2026-10-12');
+              const pick = (gs) => gs.map(g => [g.key, g.items.map(e => e.id + (e.marks.length ? ':' + e.marks.join('+') : '') + (e.fav ? '*' : '')), g.more]);
+              return { g1: pick(g1), g2: pick(g2), x: g1.find(g => g.key === 'review_mention').items.find(e => e.id === 'x'), key: mod.INBOX_REVIEW_KEY };
+            }"""
+
+            def u2_unit():
+                ctx = context('other', 1440)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/my-tasks')
+                res = p.evaluate(UNIT_JS)
+                metrics['u2_unit'] = res
+                check(res['g1'] == [['overdue', ['a', 'b:mention'], None], ['today', [], None], ['review_mention', ['y:review*', 'x:review+mention'], None],
+                                    ['this_week', ['d*', 'c', 'e'], '100'], ['later', [], None], ['no_due', ['f'], None]],
+                      'U2 buildInbox unit: bucket order kept · 검토·멘션 between today and this_week · ★ first per group · same page once (marks merged) · notice/unchecked/file not joined ' + json.dumps(res['g1'], ensure_ascii=False))
+                check(res['g2'] == [['overdue', ['a', 'b'], None], ['today', [], None], ['review_mention', [], None], ['this_week', ['e*', 'c', 'd'], '100'], ['later', [], None], ['no_due', ['f'], None]],
+                      'U2 buildInbox unit: briefing null → task rows unchanged · empty 검토·멘션 group · favorites array accepted ' + json.dumps(res['g2'], ensure_ascii=False))
+                check(res['x'] and res['x']['from'] == 'briefing' and res['x']['summary'] == '검토' and res['x']['due'] == '2026-10-15' and res['x']['project'] is None and res['key'] == 'review_mention',
+                      'U2 buildInbox unit: briefing-only row keeps summary · due · source none (「문서」 on screen)')
+                # 화면 = JS buildInbox(지금 창구 답) = Python 계산
+                js_now = p.evaluate("""async () => {
+                  const src = [...document.scripts].map(s => s.src).find(u => u.includes('/community/editor.js'));
+                  const text = await (await fetch(src)).text();
+                  const m = text.match(/from '\\.\\/work\\.js\\?v=([0-9a-f]+)'/);
+                  const mod = await import(new URL('./work.js?v=' + m[1], src).href);
+                  const get = async (u) => (await fetch(document.body.dataset.communityBase + u, { credentials: 'same-origin' })).json();
+                  const [mt, br, fv] = await Promise.all([get('/api/my-tasks?done=0'), get('/api/briefing'), get('/api/me/favorites')]);
+                  return mod.buildInbox(mt, br, new Set(fv.pages.map(x => x.id)), mt.today).map(g => [g.key, g.items.map(e => [e.id, e.marks])]);
+                }""")
+                check([[g['key'], [[e['id'], e['marks']] for e in g['items']]] for g in want_groups] == js_now, 'U2 JS buildInbox(live API) == Python rule (same groups · rows · marks)')
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                until(p, "() => document.querySelectorAll('#my-tasks-rows .task-inbox__row').length === %d" % len(flat), 10000)
+                dom = dom_simple(p.evaluate(INBOX_DOM, '#my-tasks-rows'))
+                want_dom = py_dom(want_groups, add=('today', 'no_due'))
+                metrics['u2_my_tasks_dom'] = dom
+                check(dom == want_dom, 'U2 내 작업 screen rows/tags/marks == buildInbox result (tags 「이름 n」 · 「지난 기한」 --danger · 「@」 · 「검토」 · 작업 추가 after 오늘 · 기한 없음)')
+                full = p.evaluate(INBOX_DOM, '#my-tasks-rows')
+                rrow = next(r for r in full if r[0] == 'row' and r[1] == r1['id'])
+                orow = next(r for r in full if r[0] == 'row' and r[1] == o1['id'])
+                check(rrow[3] == '문서' and rrow[4] != '' and orow[3] == 'U2 업무함 프로젝트', 'U2 source column: briefing row 「문서」 + summary · task row = project name ' + json.dumps([rrow[3:], orow[3:]], ensure_ascii=False))
+                check(p.locator('#my-tasks-rows .task-inbox__row').count() == len(flat), 'U2 내 작업 = all rows (%d)' % len(flat))
+                st = p.evaluate("(id) => { const li = document.querySelector('li.task-inbox__row[data-task=\"' + id + '\"]'); const s = li.querySelector('.task-inbox__star'); return [s.tagName, s.getAttribute('aria-pressed')]; }", star_task['id'])
+                check(st == ['BUTTON', 'true'], 'U2 ★ task: star button aria-pressed true (favorites API) ' + json.dumps(st))
+                check(t.clean('u2-unit'), 'U2 unit/order console 0')
+                p.screenshot(path=str(shots / 'u2-my-tasks-1440.png'))
+                ctx.close()
+
+            def u2_expand():
+                ctx = context('other', 1440)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/my-tasks')
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                line = lambda pid: p.locator('li.task-inbox__row[data-task="' + pid + '"] > .task-inbox__line')
+                line(o1['id']).click()
+                p.wait_for_selector('li.task-inbox__row[data-task="' + o1['id'] + '"] > .task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_timeout(400)
+                st = p.evaluate(LINE_STATE)
+                pane_parts = p.evaluate("""(id) => { const pn = document.querySelector('li.task-inbox__row[data-task="' + id + '"] > .task-inbox__pane');
+                    const li = pn.closest('li'); const lr = li.querySelector(':scope > .task-inbox__line').getBoundingClientRect(); const pr = pn.getBoundingClientRect();
+                    return {h2: !!pn.querySelector('h2#task-pane-title'), props: !!pn.querySelector('dl.task-pane__props'), doc: !!pn.querySelector('.task-pane__doc'),
+                            subs: [...pn.querySelectorAll('.task-pane__section-head')].some(h => h.textContent.startsWith('하위 작업')), act: !!pn.querySelector('.task-pane__activity'),
+                            foot: !!pn.querySelector('form.task-pane__foot textarea'), below: pr.top >= lr.bottom - 1, indent: Math.round(parseFloat(getComputedStyle(pn).paddingLeft)),
+                            asideHidden: document.getElementById('task-pane').hidden, taskOpen: document.body.hasAttribute('data-task-open'), cur: li.getAttribute('aria-current')}; }""", o1['id'])
+                metrics['u2_expand_1440'] = pane_parts
+                check([s for s in st if s[1] == 'true'] == [[o1['id'], 'true', True]], 'U2 1440 click row → that row aria-expanded true · pane inside that row only')
+                check(all(pane_parts[k] for k in ('h2', 'props', 'doc', 'subs', 'act', 'foot', 'below')) and pane_parts['indent'] == 68,
+                      'U2 1440 pane right below the row has 2.21 parts (h2 · dl.task-pane__props · 설명 · 하위 작업 · 활동 · 댓글 칸) · indent 68 ' + json.dumps(pane_parts))
+                check(pane_parts['asideHidden'] and not pane_parts['taskOpen'] and pane_parts['cur'] == 'true', 'U2 1440 aside#task-pane unused · body[data-task-open] absent · expanded row aria-current (--accent-soft)')
+                check(parse_qs(p.evaluate('location.search').lstrip('?')).get('task') == [o1['id']], 'U2 1440 address ?task={row}')
+                p.screenshot(path=str(shots / 'u2-inbox-expanded-1440.png'))
+                line(o2['id']).click()
+                p.wait_for_selector('li.task-inbox__row[data-task="' + o2['id'] + '"] > .task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                st = p.evaluate(LINE_STATE)
+                check([s for s in st if s[1] == 'true' or s[2]] == [[o2['id'], 'true', True]] and parse_qs(p.evaluate('location.search').lstrip('?')).get('task') == [o2['id']],
+                      'U2 1440 another row → previous row collapses (aria-expanded false) · only one open · ?task=row2')
+                line(o2['id']).click()
+                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
+                check(p.evaluate('location.search') == '' and all(s[1] == 'false' for s in p.evaluate(LINE_STATE)), 'U2 1440 same row again → collapsed · no ?task')
+                # ✕
+                line(o1['id']).click()
+                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.locator('.task-inbox__pane .task-pane__tools .btn--icon[aria-label="닫기"]').click()
+                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
+                check(p.evaluate('location.search') == '', 'U2 1440 ✕ collapses')
+                # Esc
+                line(o1['id']).click()
+                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                line(o1['id']).focus()
+                p.keyboard.press('Escape')
+                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
+                check(p.evaluate("document.activeElement && document.activeElement.matches('li[data-task=\"%s\"] > .task-inbox__line')" % o1['id']), 'U2 1440 Esc collapses · focus back on the row')
+                # 뒤로 가기
+                line(o1['id']).click()
+                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.go_back()
+                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
+                check(p.evaluate('location.search') == '' and all(s[1] == 'false' for s in p.evaluate(LINE_STATE)), 'U2 1440 back → collapsed')
+                # ↓↑
+                line(o1['id']).focus()
+                p.keyboard.press('ArrowDown')
+                a1 = p.evaluate("document.activeElement.closest('li').getAttribute('data-task')")
+                p.keyboard.press('ArrowUp')
+                a2 = p.evaluate("document.activeElement.closest('li').getAttribute('data-task')")
+                check(a1 == o2['id'] and a2 == o1['id'], 'U2 ↓↑ moves between row buttons')
+                # Tab 순서: 완료 원 → ★ → 줄
+                p.locator('li.task-inbox__row[data-task="' + t1['id'] + '"] > .task-check').focus()
+                p.keyboard.press('Tab')
+                b1 = p.evaluate("document.activeElement.className")
+                p.keyboard.press('Tab')
+                b2 = p.evaluate("document.activeElement.className")
+                check(b1 == 'task-inbox__star' and b2 == 'task-inbox__line', 'U2 tab order: check → ★ → row ' + json.dumps([b1, b2]))
+                # 완료 원 → 흐림 + 다음 줄 초점 → work:changed 뒤 빠짐
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + t1['id'] + '/properties') and r.request.method == 'PATCH') as resp:
+                    p.locator('li.task-inbox__row[data-task="' + t1['id'] + '"] > .task-check').click()
+                check(resp.value.status == 200, 'U2 check → PATCH properties 200')
+                until(p, "() => document.querySelector('li.task-inbox__row[data-task=\"%s\"]').classList.contains('task-row--done')" % t1['id'], 5000)
+                nxt = p.evaluate("document.activeElement && document.activeElement.matches('.task-inbox__line') ? document.activeElement.closest('li').getAttribute('data-task') : null")
+                check(nxt == flat[flat.index(t1['id']) + 1], 'U2 done row dims (.task-row--done) · focus moves to the next row')
+                p.screenshot(path=str(shots / 'u2-inbox-done-1440.png'))
+                p.evaluate("window.dispatchEvent(new Event('work:changed'))")
+                until(p, "() => !document.querySelector('li.task-inbox__row[data-task=\"%s\"]')" % t1['id'], 8000)
+                check(True, 'U2 after work:changed the done row is gone')
+                call('PATCH', '/api/pages/' + t1['id'] + '/properties', {'status': 'todo'}, user='other')
+                # ★ 토글 → 목록 다시 그림(같은 묶음 맨 위)
+                target = (ws or ls)[0]
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + target['id'] + '/favorite') and r.request.method == 'PUT') as resp:
+                    p.locator('li.task-inbox__row[data-task="' + target['id'] + '"] > .task-inbox__star').click()
+                check(resp.value.status == 200, 'U2 ★ toggle → PUT /api/pages/{id}/favorite 200 (sidebar favorites function)')
+                until(p, "() => { const s = document.querySelector('li.task-inbox__row[data-task=\"%s\"] > .task-inbox__star'); return s && s.getAttribute('aria-pressed') === 'true'; }" % target['id'], 8000)
+                grp = p.evaluate("""(k) => { const out = []; let on = false; for (const li of document.querySelectorAll('#my-tasks-rows > li')) {
+                    if (li.matches('.task-inbox__tag')) { on = li.getAttribute('data-bucket') === k; continue; } if (on && li.matches('.task-inbox__row')) out.push(li.getAttribute('data-task')); } return out; }""", 'this_week' if ws else 'later')
+                check(set(grp[:2]) == {target['id'], star_task['id']}, 'U2 ★ rows lead their group after the toggle (list redrawn)')
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + target['id'] + '/favorite') and r.request.method == 'DELETE'):
+                    p.locator('li.task-inbox__row[data-task="' + target['id'] + '"] > .task-inbox__star').click()
+                until(p, "() => { const s = document.querySelector('li.task-inbox__row[data-task=\"%s\"] > .task-inbox__star'); return s && s.getAttribute('aria-pressed') === 'false'; }" % target['id'], 8000)
+                # 보드 · 달력 · 끝난 작업 탭 그대로
+                p.locator('[data-my-view="board"]').click()
+                check(p.locator('#my-tasks-board').is_visible() and p.locator('#my-tasks-list').is_hidden() and p.locator('#my-tasks-board .db-board__col').count() == 5, 'U2 보드 tab: board with five columns · list hidden')
+                p.locator('[data-my-view="calendar"]').click()
+                check(p.locator('#my-tasks-calendar').is_visible(), 'U2 달력 tab shows the calendar')
+                p.locator('[data-my-view="list"]').click()
+                p.locator('#my-tasks-done').click()
+                p.wait_for_timeout(800)
+                check(p.locator('#my-tasks-rows .task-inbox__tag').count() == 0, 'U2 끝난 작업: one flow without tags')
+                p.locator('#my-tasks-done').click()
+                p.wait_for_selector('#my-tasks-rows .task-inbox__tag', timeout=8000)
+                check(t.clean('u2-expand'), 'U2 expand/keyboard/done console 0')
+                ctx.close()
+
+            def u2_home():
+                ctx = context('other', 1440)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/')
+                p.wait_for_selector('#work-home-rows .task-inbox__row', timeout=15000)
+                rows_ = p.evaluate("[...document.querySelectorAll('#work-home-rows .task-inbox__row')].map(li => li.getAttribute('data-task'))")
+                mt2 = call('GET', '/api/my-tasks', user='other')
+                fav2 = {p_['id'] for p_ in call('GET', '/api/me/favorites', user='other')['pages']}
+                g2 = py_inbox(mt2, call('GET', '/api/briefing', user='other'), fav2)
+                want_home = [e['id'] for g in g2 for e in g['items']][:10]
+                check(len(rows_) == 10 and rows_ == want_home, 'U2 홈 = first 10 rows of the inbox (crossing group boundaries) %d' % len(rows_))
+                dom = dom_simple(p.evaluate(INBOX_DOM, '#work-home-rows'))
+                check(dom == py_dom(g2, limit=10), 'U2 홈 tags/rows == buildInbox (limit 10 · no add lines)')
+                allv = p.locator('#work-home-all')
+                check(allv.is_visible() and allv.get_attribute('href') == '/community/my-tasks' and allv.inner_text().strip() == '모두 보기', 'U2 홈 「모두 보기」 → /community/my-tasks')
+                check(p.locator('#work-home-tasks .work-cols').count() == 0 and p.locator('[data-home-bucket]').count() == 0, 'U2 홈 three columns gone')
+                p.locator('li.task-inbox__row[data-task="' + rows_[0] + '"] > .task-inbox__line').click()
+                p.wait_for_selector('#work-home-rows .task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_timeout(400)
+                p.screenshot(path=str(shots / 'u2-home-expanded-1440.png'))
+                check(t.clean('u2-home'), 'U2 홈 console 0')
+                ctx.close()
+                # briefing 403 — 작업 줄은 그대로
+                ctx = context('other', 1440)
+                t = Tab(ctx)
+                p = t.page
+                p.route('**/community/api/briefing', lambda route: route.fulfill(status=403, content_type='application/json', body='{"error":"권한 없음"}'))
+                t.go('/community/my-tasks')
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                p.wait_for_timeout(300)
+                ids = p.evaluate("[...document.querySelectorAll('#my-tasks-rows .task-inbox__row')].map(li => li.getAttribute('data-task'))")
+                no_brief = [e['id'] for g in py_inbox(mt2, None, fav2) for e in g['items']]
+                check(ids == no_brief and r1['id'] not in ids and p.locator('#my-tasks-rows .badge', has_text='@').count() == 0, 'U2 briefing 403: task rows still drawn (review/mention group and 「@」 absent)')
+                ctx.close()
+
+            def u2_mid_phone():
+                for width, touch in ((1199, False), (412, True)):
+                    ctx = context('other', width, 900 if width > 800 else 915, touch=touch)
+                    t = Tab(ctx)
+                    p = t.page
+                    t.go('/community/my-tasks')
+                    p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                    p.locator('li.task-inbox__row[data-task="' + o1['id'] + '"] > .task-inbox__line').click()
+                    p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                    p.wait_for_timeout(400)
+                    st = p.evaluate(PANE_JS)
+                    metrics['u2_pane_%d' % width] = st
+                    check(st['pane']['visible'] and not st['list']['visible'] and p.locator('.task-inbox__pane:not([hidden])').count() == 0,
+                          'U2 %d row click → aside#task-pane replaces the list (no inline pane)' % width)
+                    if width == 1199:
+                        check(st['back'] is True, 'U2 1199 「‹ 목록」 visible')
+                        p.screenshot(path=str(shots / 'u2-my-tasks-pane-1199.png'))
+                    else:
+                        check(st['pane']['w'] >= 412 - 2 * 24 and p.evaluate('document.documentElement.scrollWidth <= innerWidth'), 'U2 412 pane full screen · overflow 0')
+                        p.locator('#task-pane .task-pane__back').click()
+                        until(p, "() => document.getElementById('task-pane').hidden === true", 8000)
+                        p.screenshot(path=str(shots / 'u2-my-tasks-412.png'))
+                    check(t.clean('u2-%d' % width), 'U2 %d console 0' % width)
+                    ctx.close()
+
+            def u2_readers():
+                tok_act = secrets.token_hex(32)
+                sql("UPDATE sessions SET reauth_at=now() WHERE user_id=" + str(adm))
+                sql("INSERT INTO sessions(id,user_id,expires_at,ip,user_agent,act_role,act_started_at,act_last_seen_at) VALUES('" + hashlib.sha256(tok_act.encode()).hexdigest() + "'," + str(adm)
+                    + ",clock_timestamp()+interval '8 hours','127.0.0.1','" + UA + "','Guest',now(),now())")
+                call('POST', '/api/pages', {'my_tasks': True, 'title': 'U2 관리자 할 일', 'due': today}, user='admin', expected=201)
+                for label in ('guest', 'acting-guest'):
+                    if label == 'guest':
+                        ctx = context('guest', 1440)
+                    else:
+                        ctx = browser.new_context(viewport={'width': 1440, 'height': 900}, user_agent=UA, reduced_motion='reduce')
+                        ctx.add_cookies(cookie(tok_act, {'qaredi_motion': 'reduce'}))
+                    t = Tab(ctx)
+                    p = t.page
+                    for path in ('/community/', '/community/my-tasks'):
+                        t.go(path)
+                        p.wait_for_timeout(1200)
+                        w = p.evaluate("""() => ({rows: document.querySelectorAll('li.task-inbox__row').length, checks: document.querySelectorAll('li.task-inbox__row > .task-check').length,
+                            starButtons: document.querySelectorAll('button.task-inbox__star').length, add: document.querySelectorAll('[data-add-bucket], #my-tasks-add, #work-home-add, [data-work-new-task]').length,
+                            empty: [...document.querySelectorAll('#my-tasks-empty, #work-home-empty')].filter(e => !e.hidden).map(e => e.textContent)})""")
+                        metrics['u2_reader_%s_%s' % (label, path)] = w
+                        check(w['checks'] == 0 and w['starButtons'] == 0 and w['add'] == 0, 'U2 %s %s: 완료 원 0 · ★ toggle 0 · 작업 추가 0 %s' % (label, path, json.dumps(w, ensure_ascii=False)))
+                    check(t.clean('u2-' + label), 'U2 %s console 0' % label)
+                    ctx.close()
+
+            def u2_matrix():
+                widths = [(360, False), (412, True), (820, False), (1199, False), (1280, False), (1440, False)]
+                summary = {}
+                for mode in ('light', 'dark', 'hc'):
+                    sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(oth))
+                    for width, touch in widths:
+                        ctx = context('other', width, 900 if width > 800 else 915, touch=touch, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
+                        t = Tab(ctx)
+                        p = t.page
+                        for name, path in (('home', '/community/'), ('my-tasks', '/community/my-tasks')):
+                            tag = 'u2-%s-%d%s-%s' % (name, width, 't' if touch else '', mode)
+
+                            def one():
+                                t.go(path)
+                                p.wait_for_selector('.task-inbox__row', timeout=15000)
+                                for state in ('list', 'open'):
+                                    if state == 'open':
+                                        p.locator('li.task-inbox__row > .task-inbox__line').first.click()
+                                        p.wait_for_selector('#task-pane-title', timeout=10000)
+                                        p.wait_for_timeout(300)
+                                    a = p.evaluate(AUDIT_JS, touch or width < 720)
+                                    summary[tag + '-' + state] = {'overflow': a['overflow'], 'small': a['smallCount'], 'inline': a['inlineStyle']}
+                                    check(a['overflow'] <= 0, 'U2 %s %s horizontal overflow 0 (%d)' % (tag, state, a['overflow']))
+                                    if touch or width < 720:
+                                        check(a['smallCount'] == 0, 'U2 %s %s tap targets ≥ 44 (%d small: %s)' % (tag, state, a['smallCount'], json.dumps(a['small'], ensure_ascii=False)))
+                                    check(a['inlineStyle'] == 0, 'U2 %s %s inline style 0' % (tag, state))
+                                if mode in ('light', 'dark') and ((width, touch, name) in ((412, True, 'my-tasks'), (1440, False, 'home'))):
+                                    p.screenshot(path=str(shots / ('%s.png' % tag)))
+                            guard('U2 matrix ' + tag, one)
+                        check(t.clean('u2m-%d-%s' % (width, mode)), 'U2 %d%s %s console 0 · page errors 0 · 5xx 0' % (width, ' touch' if touch else '', mode))
+                        ctx.close()
+                sql('UPDATE users SET high_contrast=false WHERE id=' + str(oth))
+                metrics['u2_matrix'] = summary
+
+            guard('U2 unit/order', u2_unit)
+            guard('U2 expand', u2_expand)
+            guard('U2 home', u2_home)
+            guard('U2 1199/412', u2_mid_phone)
+            guard('U2 readers', u2_readers)
+            guard('U2 matrix', u2_matrix)
+
+        if want('collapse'):
+            COLLAPSE_JS = """() => { const s = document.getElementById('sidebar'); const r = s.getBoundingClientRect(); const m = document.getElementById('main').getBoundingClientRect();
+                const vis = el => { const h = el.closest('[hidden]'); return (!h || h === s) && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none'; };
+                const textW = [...s.querySelectorAll('.nav__item > span:not(.icon):not(.badge), #nav-search > span:not(.icon), #nav-new-menu > summary > span:not(.icon)')].filter(vis).map(e => e.getBoundingClientRect().width).filter(w => w > 1).length;
+                const items = [...s.querySelectorAll('#sidebar-collapse, #nav-new-menu > summary, .nav__item, #nav-search')].filter(vis).map(e => e.id || e.parentElement.id);
+                const hidden = ['.nav-title', '.sidebar-document-tools', '.q-design-open', '.sidebar__version', '.theme-toggle', '.userchip', '.legal-links', '.moa-brand-home', '.nav-search__key']
+                    .map(q => [q, [...s.querySelectorAll(q)].filter(e => e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none').length]);
+                const bell = document.getElementById('nav-community-bell'); const badge = document.getElementById('nav-community-bell-count');
+                const bi = bell.querySelector('.icon').getBoundingClientRect(); const bb = badge.getBoundingClientRect();
+                const btn = document.getElementById('sidebar-collapse');
+                return {collapsed: document.body.getAttribute('data-sidebar'), width: Math.round(r.width), mainLeft: Math.round(m.left), textW: textW, items: items, hidden: hidden,
+                        badge: {shown: !badge.hidden, overlaps: !badge.hidden && bb.left < bi.right + 6 && bb.bottom > bi.top - 6 && bb.top < bi.top + 8},
+                        expanded: btn.getAttribute('aria-expanded'), label: btn.getAttribute('aria-label'), btnVisible: getComputedStyle(btn).display !== 'none',
+                        overflow: document.documentElement.scrollWidth - innerWidth}; }"""
+
+            def collapse_wide():
+                ctx = context('employee', 1440)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/')
+                p.wait_for_selector('#work-home-rows .task-inbox__row', timeout=15000)
+                until(p, "() => !document.getElementById('nav-community-bell-count').hidden", 35000)
+                st0 = p.evaluate(COLLAPSE_JS)
+                metrics['collapse_open'] = st0
+                check(st0['btnVisible'] and st0['collapsed'] is None and st0['width'] == 240 and st0['expanded'] == 'true' and st0['label'] == '메뉴 접기',
+                      'U2 collapse 1440: #sidebar-collapse visible · expanded · width 240 ' + json.dumps({k: st0[k] for k in ('width', 'expanded', 'label')}, ensure_ascii=False))
+                p.screenshot(path=str(shots / 'u2-sidebar-open-1440.png'))
+                p.locator('#sidebar-collapse').click()
+                p.wait_for_timeout(300)
+                st = p.evaluate(COLLAPSE_JS)
+                metrics['collapse_closed'] = st
+                check(st['collapsed'] == 'collapsed' and st['width'] == 64, 'U2 collapse: body[data-sidebar=collapsed] · sidebar width 64 (%d)' % st['width'])
+                check(st['textW'] == 0, 'U2 collapse: visible .nav__item text 0 (clipped, kept for screen readers)')
+                check(st['items'] == ['sidebar-collapse', 'nav-new-menu', 'nav-work-home', 'nav-work-my-tasks', 'nav-community-bell', 'nav-search'],
+                      'U2 collapse: visible = ☰ · ＋ · 홈 · 내 작업 · 받은 알림 · 검색 ' + json.dumps(st['items']))
+                check(all(n == 0 for _, n in st['hidden']), 'U2 collapse: group titles · 문서 선택 · 테마 · 버전 · 약관 · 사용자 칩 · 브랜드 · Ctrl K hidden ' + json.dumps(st['hidden']))
+                check(st['badge']['shown'] and st['badge']['overlaps'], 'U2 collapse: 받은 알림 badge overlaps the icon ' + json.dumps(st['badge']))
+                check(st0['mainLeft'] - st['mainLeft'] == 176, 'U2 collapse: main left x moves 176 (%d → %d)' % (st0['mainLeft'], st['mainLeft']))
+                check(st['expanded'] == 'false' and st['label'] == '메뉴 펼치기', 'U2 collapse: aria-expanded false · label 「메뉴 펼치기」')
+                p.locator('#nav-work-home').hover()
+                p.wait_for_timeout(250)
+                tip = p.evaluate("(() => { const a = getComputedStyle(document.getElementById('nav-work-home'), '::after'); const r = document.getElementById('nav-work-home').getBoundingClientRect(); return [a.content, a.display, Math.round(r.right)]; })()")
+                check(tip[0] == '"홈"' and tip[1] == 'block', 'U2 collapse: hover tooltip text = item name 「홈」 ' + json.dumps(tip, ensure_ascii=False))
+                p.screenshot(path=str(shots / 'u2-sidebar-collapsed-1440.png'))
+                # 「＋」 메뉴는 사이드바 오른쪽 바깥으로
+                p.locator('#nav-new-menu > summary').click()
+                p.wait_for_timeout(200)
+                lst = p.evaluate("(() => { const e = document.querySelector('#nav-new-menu .menu__list'); const l = e.getBoundingClientRect(); const c = getComputedStyle(e); return [Math.round(l.left), Math.round(l.width), document.querySelector('#nav-new-menu .menu__item:not([hidden])') ? 1 : 0, Math.round(l.top)]; })()")
+                check(lst[0] >= 64 and lst[1] > 100, 'U2 collapse: 「＋」 menu opens to the right of the sidebar (not clipped) ' + json.dumps(lst))
+                p.keyboard.press('Escape')
+                # 기억 — 새로고침 · 다른 화면
+                t.go('/community/')
+                st = p.evaluate(COLLAPSE_JS)
+                key = p.evaluate("Object.keys(localStorage).filter(k => k.startsWith('qaredi-sidebar-collapsed:v1:'))")
+                check(st['collapsed'] == 'collapsed' and st['width'] == 64 and key == ['qaredi-sidebar-collapsed:v1:' + users['employee']['username']], 'U2 collapse kept after reload (key %s)' % json.dumps(key))
+                t.go('/community/my-tasks')
+                st = p.evaluate(COLLAPSE_JS)
+                check(st['collapsed'] == 'collapsed' and st['width'] == 64, 'U2 collapse kept on /community/my-tasks')
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                p.locator('#my-tasks-rows li.task-inbox__row > .task-inbox__line').first.click()
+                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_timeout(400)
+                p.screenshot(path=str(shots / 'u2-collapsed-inbox-expanded-1440.png'))
+                for path in ('/tbox/', '/community/memories'):
+                    t.go(path)
+                    st = p.evaluate("(() => ({w: Math.round(document.getElementById('sidebar').getBoundingClientRect().width), o: document.documentElement.scrollWidth - innerWidth}))()")
+                    check(st['w'] == 64 and st['o'] <= 0, 'U2 collapse %s (other shell): width 64 · overflow 0' % path)
+                t.go('/community/my-tasks')
+                p.locator('#sidebar-collapse').click()
+                p.wait_for_timeout(300)
+                st = p.evaluate(COLLAPSE_JS)
+                check(st['collapsed'] is None and st['width'] == 240 and st['expanded'] == 'true', 'U2 collapse: press again → 240')
+                check(t.clean('collapse'), 'U2 collapse console 0')
+                ctx.close()
+                # 959 — ☰ 접기 단추 0 · 서랍 그대로(접힘 값이 남아 있어도)
+                ctx = context('employee', 959)
+                ctx.add_init_script("localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '1')" % users['employee']['username'])
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/')
+                st = p.evaluate("(() => ({btn: getComputedStyle(document.getElementById('sidebar-collapse')).display, attr: document.body.getAttribute('data-sidebar')}))()")
+                p.locator('#nav-toggle').click()
+                p.wait_for_timeout(300)
+                w = p.evaluate("Math.round(document.getElementById('sidebar').getBoundingClientRect().width)")
+                check(st['btn'] == 'none' and w > 200 and p.locator('#nav-work-home').is_visible(), 'U2 959: #sidebar-collapse display none · drawer as before (width %d, collapsed value ignored)' % w)
+                check(t.clean('collapse-959'), 'U2 959 console 0')
+                ctx.close()
+                # 첫 그리기 깜빡임 — 화면이 그려지는 프레임마다(rAF · 그리기 직전) 사이드바가 이미 있는데 접힘 표시가 없는 프레임이 있었나 센다
+                ctx = context('employee', 1440)
+                ctx.add_init_script("""localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '1'); window.__u2frames = [];
+                    const tick = () => { const s = document.getElementById('sidebar'); window.__u2frames.push(s ? (document.body.getAttribute('data-sidebar') || 'open') : 'no-sidebar');
+                      if (document.readyState !== 'complete' && window.__u2frames.length < 400) requestAnimationFrame(tick); };
+                    requestAnimationFrame(tick);""" % users['employee']['username'])
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/my-tasks')
+                frames = p.evaluate('window.__u2frames')
+                metrics['collapse_first_paint_frames'] = frames[:40]
+                # 머리 스크립트 0(CSP) 이라 app.js(본문 끝) 가 돌기 전 프레임은 펼친 채일 수 있다 — 그 수를 재서 남긴다(보고서 「첫 그리기 깜빡임」)
+                early = frames.index('collapsed') if 'collapsed' in frames else len(frames)
+                metrics['collapse_first_paint_open_frames'] = frames[:early].count('open')
+                check(early <= 2 and 'open' not in frames[early:] and p.evaluate("document.body.getAttribute('data-sidebar')") == 'collapsed',
+                      'U2 first paint: expanded frames before the collapsed mark ≤ 2 (measured %d) · never expanded afterwards (/api/me correction keeps it)' % frames[:early].count('open'))
+                ctx.close()
+            guard('U2 collapse', collapse_wide)
+
+        # ─── U2 보고용 화면 사본(밝게 · 어둡게 한 벌) — 지시서 「스크린샷」 목록 · 묶음 이름 shots ───────────────────────────────
+        if want('shots'):
+            def u2_shots():
+                for theme in ('light', 'dark'):
+                    for collapsed in (False, True):
+                        ctx = context('employee', 1440, extra={'tbox_theme': theme})
+                        if collapsed:
+                            ctx.add_init_script("localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '1')" % users['employee']['username'])
+                        t = Tab(ctx)
+                        p = t.page
+                        t.go('/community/')
+                        p.wait_for_selector('#work-home-rows .task-inbox__row', timeout=15000)
+                        p.locator('#work-home-rows li.task-inbox__row > .task-inbox__line').first.click()
+                        p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                        p.wait_for_timeout(500)
+                        p.screenshot(path=str(shots / ('final-1440-%s-%s-home-expanded.png' % ('collapsed' if collapsed else 'open', theme))))
+                        if not collapsed:
+                            p.locator('details.appbar__apps > summary').click()
+                            p.wait_for_timeout(300)
+                            p.screenshot(path=str(shots / ('final-1440-%s-grid.png' % theme)))
+                        check(t.clean('shots-1440-%s-%s' % (theme, collapsed)), 'U2 shots 1440 %s %s console 0' % (theme, 'collapsed' if collapsed else 'open'))
+                        ctx.close()
+                    ctx = context('employee', 412, 915, touch=True, extra={'tbox_theme': theme})
+                    t = Tab(ctx)
+                    p = t.page
+                    t.go('/community/my-tasks')
+                    p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                    p.wait_for_timeout(300)
+                    p.screenshot(path=str(shots / ('final-412-%s-my-tasks.png' % theme)))
+                    p.locator('#appbar-apps').click()
+                    p.wait_for_timeout(300)
+                    p.screenshot(path=str(shots / ('final-412-%s-grid.png' % theme)))
+                    check(t.clean('shots-412-' + theme), 'U2 shots 412 %s console 0' % theme)
+                    ctx.close()
+                    ctx = context('employee', 1199, extra={'tbox_theme': theme})
+                    t = Tab(ctx)
+                    p = t.page
+                    t.go('/community/my-tasks')
+                    p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                    p.locator('#my-tasks-rows li.task-inbox__row > .task-inbox__line').first.click()
+                    p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                    p.wait_for_timeout(400)
+                    check(p.locator('#task-pane .task-pane__back').is_visible(), 'U2 shots 1199 %s 「‹ 목록」 visible' % theme)
+                    p.screenshot(path=str(shots / ('final-1199-%s-pane.png' % theme)))
+                    check(t.clean('shots-1199-' + theme), 'U2 shots 1199 %s console 0' % theme)
+                    ctx.close()
+            guard('U2 shots', u2_shots)
 
         browser.close()
 finally:

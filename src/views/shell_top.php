@@ -54,6 +54,15 @@ require_once __DIR__ . '/../Design.php';
  *   · 커뮤니티 셸을 두 모드로 나눴다 — `$shellModule = 'community'`(업무: 홈 · 내 작업 · 프로젝트 · 문서 …) ·
  *     `'story'`(이야기: 스레드 · 여행 — memories_page.php 하나). 주소·라우트 정책은 그대로다(WK-15 A — 이 파일은 링크만 그린다).
  *   · 옛 사이드바의 세 공간 상시 표시(`nav.moa-space-nav`)는 아이콘 줄이 대신해 없앴다.
+ *
+ * ★ Q:F-12 U2 (사용감 라운드 — WK-19 A+ⓐ · WK-23 B, DESIGN 2.18 · 2.19 ⑨ · 기획 work-ux-plan.md 14.4 U2-a · U2-c):
+ *   · 왼쪽 아이콘 줄(`nav.app-rail`)과 사이드바 `.moa-shell-links` 를 **없앴다**. 앱 바꾸기 · 계정 · 관리자 · 로그아웃은 앱 메뉴
+ *     `details.appbar__apps` **하나**가 맡고, 그 요소를 사이드바 브랜드 줄에서 본문 `<main>` 첫 줄 `div.shell-tools`(오른쪽 위 ⋮⋮⋮ 격자)로
+ *     **옮겼다**(복제 0 — 문서에 하나). 폰(<960)은 `div.shell-tools` 를 CSS 가 숨기고 윗줄 `#appbar-apps` 가 같은 details 를 연다(app.js).
+ *   · 사이드바 머리 = ☰ 접기 단추(`#sidebar-collapse` — ≥960 에서만 보인다 · 누르면 app.js 가 `<body data-sidebar="collapsed">`) + 브랜드 링크.
+ *     접힌 사이드바에서 남는 항목의 툴팁 글자는 고정 글자 `data-tip`(동적 값 0).
+ *   · 서랍(`#mobile-nav-dialog`)의 「메뉴 / 앱·계정」 전환 단추를 없앴다 — ☰ 는 앱 내비만 연다.
+ *   · 세 앱 셸(자료실 · 업무 · 이야기) 모두 같은 마크업 한 벌이다. 역할 비교 0 · 인라인 style·script 0 그대로.
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
@@ -238,8 +247,8 @@ $themeAttr = Http::themeAttr();
 /** 자산 주소에 파일이 마지막으로 바뀐 시각(정수)을 붙여 옛 파일이 남지 않게 한다 (11단계) */
 $shellCssVersion = (int) filemtime(__DIR__ . '/../../public/assets/app.css');
 
-/** 앱 아이콘 줄 아래 끝 「내 계정」 — aria-label 에 표시 이름(이름이 없으면 아이디). 이스케이프는 여기서 한 번(PRD S-03) */
-$shellRailMe = htmlspecialchars($shellRawName, ENT_QUOTES, 'UTF-8');
+/** 본문 오른쪽 위 「내 계정」 아바타(`a.shell-tools__me`, DESIGN 2.18) — aria-label 에 표시 이름(이름이 없으면 아이디). 이스케이프는 여기서 한 번(PRD S-03) */
+$shellMeLabel = htmlspecialchars($shellRawName, ENT_QUOTES, 'UTF-8');
 
 /**
  * 25단계 — 화면이 더 싣는 스타일시트. **허용 목록 안의 이름만** 통과한다.
@@ -355,31 +364,7 @@ if ($shellMod === 'community'): ?>
 <body data-service="<?= $shellMod === 'community' ? 'work' : ($shellMod === 'story' ? 'story' : 'library') ?>" data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 <div class="app">
-  <!-- ─── 앱 아이콘 줄 (사이트 Q:F-12 · WK-11 ② · DESIGN 2.18) ───────────────────────────────
-       자료실 · 업무 · 이야기 사이를 한 번에 옮기는 맨 왼쪽 좁은 줄. **세 앱 셸 모두 이 마크업 한 벌**이다(앱마다 따로 그리지 않는다).
-       목록은 런처·앱 메뉴와 같은 Apps::all() 순서 그대로이고 `status: soon` 앱은 그리지 않는다. 손님·「역할로 보기」도 같은 목록이다 —
-       앱 안의 판정은 각 앱(라우트 정책)이 한다. 아이콘은 Apps::ICON_PATHS 의 고정 path(moa_icon.php) — 새 SVG 를 화면에 직접 쓰지 않는다.
-       960px 미만은 CSS 가 그리지 않는다(display:none — 화면 읽기에 같은 목록이 두 번 나오지 않게, 폰은 윗줄 앱 이름 ▾).
-       메신저는 앱 목록 아래 별도 공통 동작으로 둔다. 폰은 윗줄 말풍선을 사용한다. 스크립트 0 · 인라인 style 0. -->
-  <nav class="app-rail" aria-label="앱 바꾸기">
-    <a class="app-rail__home" href="/" aria-label="모아 홈"><span class="moa-symbol" aria-hidden="true">m.</span></a>
-<?php foreach ($shellApps as $shellRailApp): ?>
-<?php   if (($shellRailApp['status'] ?? '') === 'soon') { continue; } ?>
-    <a class="app-rail__item" href="<?= htmlspecialchars((string) $shellRailApp['path'], ENT_QUOTES, 'UTF-8') ?>"<?= $shellRailApp['key'] === $shellCurrentApp ? ' aria-current="page"' : '' ?>><?php $moaIcon = (string) $shellRailApp['icon']; require __DIR__ . '/moa_icon.php'; ?><span><?= htmlspecialchars((string) $shellRailApp['name'], ENT_QUOTES, 'UTF-8') ?></span></a>
-<?php endforeach; ?>
-<?php if (!empty($shellUser)): ?>
-    <span class="app-rail__divider" aria-hidden="true"></span>
-<?php if ($shellMessenger): ?>
-    <button id="messenger-open" class="app-rail__item app-rail__messenger" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false">
-      <span class="icon" data-icon="messages"></span><span>메신저</span><span class="badge badge--internal" data-message-unread hidden></span>
-    </button>
-<?php else: ?>
-    <a class="app-rail__item app-rail__messenger" href="<?= Http::url('/messages') ?>" aria-label="메신저 이용 안내"><span class="icon" data-icon="messages"></span><span>메신저</span></a>
-<?php endif; ?>
-<?php endif; ?>
-    <span class="app-rail__spacer"></span>
-    <a class="app-rail__me" href="<?= Http::url('/settings') ?>" aria-label="내 계정 — <?= $shellRailMe ?>"><span aria-hidden="true"><?= $shellInitial ?></span></a>
-  </nav>
+  <!-- Q:F-12 U2 (DESIGN 2.18 · WK-23 B) — 왼쪽 앱 아이콘 줄은 없앴다. 앱 바꾸기는 본문 오른쪽 위 ⋮⋮⋮ 격자(아래 앱 격자 줄). -->
   <!-- 좁은 화면(960px 미만)에서만 보이는 상단 바. 메뉴 단추가 좌측 내비를 접었다 편다.
        넓은 화면에서는 CSS 가 이 줄을 감추고 내비를 늘 펼쳐 둔다. -->
   <header class="appbar">
@@ -387,10 +372,10 @@ if ($shellMod === 'community'): ?>
             aria-expanded="false" aria-controls="sidebar" aria-label="메뉴 열기">
       <span class="icon" data-icon="menu"></span>
     </button>
-    <!-- 사용감 라운드 1 UX-12 — 앱 이름이 곧 **앱 전환** 단추다: 누르면 서랍을 열고 그 안의 앱 메뉴(아래 `.appbar__apps`)를 펼쳐
-         다른 앱에 초점을 둔다(app.js initShell). ☰ → 앱 전환 → t-box 세 번이 두 번이 된다. 스크립트가 없으면 아무 일도 하지 않는
-         단추일 뿐이다(서랍의 앱 메뉴는 그대로). 글자는 셸 이름 그대로(동적 값 0). -->
-    <button id="appbar-apps" class="appbar__brand" type="button" aria-controls="sidebar" aria-expanded="false"
+    <!-- 사용감 라운드 1 UX-12 → Q:F-12 U2(DESIGN 2.18 「폰」) — 앱 이름이 곧 **앱 전환** 단추다: 누르면 본문의 앱 격자(`div.shell-tools` 안
+         `details.appbar__apps` — 문서에 하나)를 열고 닫는다(app.js initMobileSidebar — `aria-expanded` 를 함께 맞춘다). 판은 윗줄 바로 아래 전체 폭.
+         스크립트가 없으면 아무 일도 하지 않는 단추일 뿐이다. 글자는 셸 이름 그대로(동적 값 0). -->
+    <button id="appbar-apps" class="appbar__brand" type="button" aria-controls="app-grid" aria-expanded="false"
             aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> — 앱 전환"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?><span class="icon" data-icon="chevron"></span></button>
     <span class="appbar__page"><?= $shellTitle ?></span>
 
@@ -417,74 +402,25 @@ if ($shellMod === 'community'): ?>
     </span>
   </header>
 
+  <!-- 서랍(960px 미만) — ☰ 는 지금 앱의 내비만 연다(Q:F-12 U2 — 「메뉴 / 앱·계정」 전환 단추는 없앴다. 앱·계정은 윗줄 앱 이름 ▾ 의 격자). -->
   <dialog id="mobile-nav-dialog" class="mobile-nav-dialog" aria-label="탐색 메뉴">
     <div class="mobile-nav-dialog__head">
-      <div role="group" aria-label="메뉴 종류">
-        <button class="btn btn--quiet" type="button" data-mobile-nav-mode="nav" aria-pressed="false">메뉴</button>
-        <button class="btn btn--quiet" type="button" data-mobile-nav-mode="apps" aria-pressed="false">앱·계정</button>
-      </div>
       <button id="mobile-nav-close" class="btn btn--icon btn--plain" type="button" aria-label="메뉴 닫기"><span class="icon" data-icon="x"></span></button>
     </div>
   </dialog>
 
   <aside id="sidebar" class="sidebar" hidden>
-    <div class="moa-shell-links"><a href="/">모아 홈</a><a href="<?= Http::url('/welcome') ?>">계정·비서 설정</a></div>
+    <!-- 사이드바 머리 (Q:F-12 U2 · DESIGN 2.19 ① · ⑨) — ☰ 접기 단추 + 브랜드 글자(링크 — 그 앱의 첫 화면)뿐. 앱 바꾸기 · 계정은 본문 오른쪽 위 격자(2.18).
+         ☰(`#sidebar-collapse`)는 ≥960 에서만 보인다(폰 윗줄 `#nav-toggle` 과는 다른 단추). 누르면 app.js 가 `<body data-sidebar="collapsed">` 를 단다 —
+         속성 하나 · 마크업 재생성 0 · 값(참/거짓)은 이 브라우저 localStorage 에만(서버 0). -->
     <div class="brand moa-brand">
+      <button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="메뉴 접기">
+        <span class="icon" data-icon="menu"></span>
+      </button>
       <a class="moa-brand-home" href="<?= $shellBrandHref ?>" aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
         <span class="brand__mark moa-module-mark moa-module-mark--<?= $shellMarkKey ?>"><?php $moaIcon=$shellBrandIcon; require __DIR__.'/moa_icon.php'; ?></span>
         <span class="brand__text"><span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span><span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span></span>
       </a>
-      <!-- ─── 앱 메뉴 (사용자 지시 2026-09-23) ───────────────────────────────────
-           「로그아웃은 Qaredi 홈·t-box·커뮤니티로 전환하는 곳에 — 관리자 페이지·설정도 거기에 —
-           박스가 조그매서 눈에 안 띄니 더 직관적이고 큰 것으로」. 전에는 브랜드 줄 오른쪽의 작은
-           그리드 단추(⋮⋮⋮)가 앱 목록만 열었고, 로그아웃은 사이드바 맨 아래 아이콘이라 툴팁이
-           칸을 밀었다. 이제 **브랜드 덩어리 전체가 단추**이고 한 메뉴에 앱 · 계정 · 관리 · 로그아웃.
-           스크립트 0 으로 열린다(`<details>`), 인라인 style·on* 0 (CSP). 클래스 `appbar__apps` 는
-           시험(Q:T-8)·문서가 쓰는 이름이라 유지한다. 앱 목록은 런처와 **같은** `Apps::all()` 이다.
-           관리자 페이지 줄의 열고 닫음은 사이드바 관리 링크와 같은 표시용 값(`can_admin`)을
-           app.js 가 쓰고, 막는 것은 여전히 라우트 정책·재인증 관문이다 (PRD S-01). -->
-      <!-- Q:F-12 (DESIGN 2.19 ①) — 앱 이름 단추 「업무 ▾」(「이야기 ▾」 · 「자료실 ▾」) = 이 앱 메뉴의 summary. 글자만 앱 이름으로 바뀌었다(전: 「메뉴」).
-           접근 이름은 보이는 글자로 시작한다(보이는 이름이 접근 이름 안에 — WCAG 2.5.3). -->
-      <details class="appbar__apps">
-        <summary class="brand__switch moa-brand-menu" aria-label="<?= htmlspecialchars($shellHereName, ENT_QUOTES, 'UTF-8') ?> 메뉴 — 앱 바꾸기와 계정" title="<?= htmlspecialchars($shellHereName, ENT_QUOTES, 'UTF-8') ?> 메뉴 — 앱 바꾸기와 계정">
-          <span><?= htmlspecialchars($shellHereName, ENT_QUOTES, 'UTF-8') ?></span>
-          <span class="brand__chev icon" data-icon="chevron"></span>
-        </summary>
-        <div class="panel app-menu">
-          <p class="app-menu__label">앱</p>
-          <ul class="app-menu__apps">
-            <li><a class="app-menu__app" href="/"><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">모아 홈</span><span class="app-menu__desc">이야기와 풍경이 모이는 곳</span></span></a></li>
-<?php foreach ($shellApps as $shellApp): ?>
-<?php   $shellAppName = htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8'); ?>
-<?php   $shellAppDesc = htmlspecialchars((string) ($shellApp['desc'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
-<?php   $shellAppIcon = htmlspecialchars((string) ($shellApp['icon'] ?? 'grid'), ENT_QUOTES, 'UTF-8'); ?>
-<?php   if (($shellApp['status'] ?? '') === 'soon'): ?>
-            <li><span class="app-menu__app is-soon"><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?> <span class="badge">준비 중</span></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span></span></li>
-<?php   elseif ($shellApp['key'] === $shellCurrentApp): ?>
-            <li><a class="app-menu__app" href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>" aria-current="page"><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span><span class="app-menu__check icon" data-icon="check"></span></a></li>
-<?php   else: ?>
-            <li><a class="app-menu__app" href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>"><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span></a></li>
-<?php   endif; ?>
-<?php endforeach; ?>
-          </ul>
-          <p class="app-menu__label">계정</p>
-          <!-- 사이드바 아래 `.userchip` 과 클래스를 나눠 쓴다 — 같은 클래스가 두 벌이면 시험·스크립트가
-               닫힌 메뉴 쪽을 먼저 읽는다(stage26 「원래대로 뒤 칩 역할」 실측 2026-09-23). -->
-          <div class="app-menu__me">
-            <span class="app-menu__avatar" aria-hidden="true"><?= $shellInitial ?></span>
-            <span class="app-menu__text">
-              <span class="app-menu__name"><?= $shellName ?></span>
-              <span class="app-menu__desc" title="<?= $shellRoleTitle ?>"><?= $shellRole ?></span>
-            </span>
-          </div>
-          <nav class="nav" aria-label="계정">
-            <a id="menu-settings" class="nav__item" href="<?= Http::url('/settings') ?>"><span class="icon" data-icon="settings"></span><span>내 계정</span></a>
-            <a id="menu-activity" class="nav__item" href="<?= Http::url('/activity') ?>"><span class="icon" data-icon="log"></span><span>내 활동</span></a>
-            <a id="menu-admin" class="nav__item" href="<?= Http::url('/admin') ?>" hidden><span class="icon" data-icon="lock"></span><span>관리자 페이지</span></a>
-            <button id="logout" class="nav__item app-menu__logout" type="button"><span class="icon" data-icon="logout"></span><span>로그아웃</span></button>
-          </nav>
-        </div>
-      </details>
     </div>
 
 <?php if ($shellMod === 'community'): ?>
@@ -496,7 +432,7 @@ if ($shellMod === 'community'): ?>
          (2.15 — 보이는 항목이 하나뿐인 것은 괜찮다). 막는 것은 서버다: `POST /community/api/pages` 는 정책 community.write. -->
 <?php   if ($shellCommunityWrite): ?>
     <details id="nav-new-menu" class="menu">
-      <summary class="btn"><span class="icon" data-icon="plus"></span><span>새로 만들기</span></summary>
+      <summary class="btn" data-tip="새로 만들기"><span class="icon" data-icon="plus"></span><span>새로 만들기</span></summary>
       <div class="menu__list">
         <button id="nav-new-task" class="menu__item" type="button" hidden><span class="icon" data-icon="check"></span><span>작업</span></button>
         <button id="nav-new-project" class="menu__item" type="button" hidden><span class="icon" data-icon="work"></span><span>프로젝트</span></button>
@@ -509,9 +445,9 @@ if ($shellMod === 'community'): ?>
     <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`(editor.js initNotifications).
          누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). Q:F-12 — 이름 「받은 알림」(2.19 ③). -->
     <nav class="nav" aria-label="업무">
-      <a id="nav-work-home" class="<?= $shellNavClass('community-overview') ?>" href="<?= Http::communityUrl('/') ?>"><span class="icon" data-icon="home"></span><span>홈</span></a>
-      <a id="nav-work-my-tasks" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/my-tasks') ?>"><span class="icon" data-icon="check"></span><span>내 작업</span></a>
-      <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog">
+      <a id="nav-work-home" class="<?= $shellNavClass('community-overview') ?>" href="<?= Http::communityUrl('/') ?>" data-tip="홈"><span class="icon" data-icon="home"></span><span>홈</span></a>
+      <a id="nav-work-my-tasks" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/my-tasks') ?>" data-tip="내 작업"><span class="icon" data-icon="check"></span><span>내 작업</span></a>
+      <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog" data-tip="받은 알림">
         <span class="icon" data-icon="bell"></span><span>받은 알림</span>
         <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>
       </button>
@@ -523,14 +459,14 @@ if ($shellMod === 'community'): ?>
          업무 묶음(프로젝트 · 문서 · 팀 · 게시판)은 그리지 않는다. 쓰는 단추(새 이야기 · 여행 계획)는 쓰기 자격이 있을 때만 — 판정 함수 값, 역할 비교 0
          (숨김은 편의 — 쓰기 창구 `POST /community/api/memories` · 여행 창구는 라우트 정책이 다시 막는다). -->
 <?php   if ($shellCommunityWrite): ?>
-    <button id="nav-story-new" class="btn" type="button" data-story-compose aria-haspopup="dialog" aria-controls="compose-dialog"><span class="icon" data-icon="plus"></span><span>새 이야기</span></button>
+    <button id="nav-story-new" class="btn" type="button" data-story-compose aria-haspopup="dialog" aria-controls="compose-dialog" data-tip="새 이야기"><span class="icon" data-icon="plus"></span><span>새 이야기</span></button>
 <?php   endif; ?>
     <nav class="nav" aria-label="이야기">
-      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/memories') ?>"><span class="icon" data-icon="home"></span><span>팔로잉 스레드</span></a>
-      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/memories') ?>?view=mine"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
-      <a class="nav__item" data-thread-nav="discover" href="<?= Http::communityUrl('/memories') ?>?view=discover"><span class="icon" data-icon="search"></span><span>새로운 이야기 발견</span></a>
+      <a class="nav__item" data-thread-nav="feed" href="<?= Http::communityUrl('/memories') ?>" data-tip="팔로잉 스레드"><span class="icon" data-icon="home"></span><span>팔로잉 스레드</span></a>
+      <a class="nav__item" data-thread-nav="mine" href="<?= Http::communityUrl('/memories') ?>?view=mine" data-tip="나의 스레드"><span class="icon" data-icon="users"></span><span>나의 스레드</span></a>
+      <a class="nav__item" data-thread-nav="discover" href="<?= Http::communityUrl('/memories') ?>?view=discover" data-tip="새로운 이야기 발견"><span class="icon" data-icon="search"></span><span>새로운 이야기 발견</span></a>
 <?php   if ($shellCommunityWrite): ?>
-      <a id="nav-story-travel" class="nav__item" href="<?= Http::communityUrl('/memories') ?>?travel=1"><span class="icon" data-icon="log"></span><span>여행 계획</span></a>
+      <a id="nav-story-travel" class="nav__item" href="<?= Http::communityUrl('/memories') ?>?travel=1" data-tip="여행 계획"><span class="icon" data-icon="log"></span><span>여행 계획</span></a>
 <?php   endif; ?>
     </nav>
 <?php endif; ?>
@@ -538,7 +474,7 @@ if ($shellMod === 'community'): ?>
     <!-- 검색 (5-B → Q:F-2 두 앱 공통) — 누르거나 Ctrl+K(⌘K). 창과 동작은 search.js, 무엇이 나오나는 각 앱의 서버
          (커뮤니티 search.php — 페이지·댓글 / t-box files_list.php — 파일 전역 검색). 창에 커뮤니티 기준 주소를 싣는다
          (t-box 화면의 <body> 에는 커뮤니티 기준이 없다). 값은 고정 상수다. -->
-    <button id="nav-search" class="nav__item nav-search" type="button" aria-haspopup="dialog">
+    <button id="nav-search" class="nav__item nav-search" type="button" aria-haspopup="dialog" data-tip="검색">
       <span class="icon" data-icon="search"></span><span>검색</span><kbd class="nav-search__key">Ctrl K</kbd>
     </button>
     <dialog id="search-dialog" class="modal modal--form search-dialog" aria-label="통합 검색" data-community-base="<?= COMMUNITY_BASE ?>">
@@ -555,7 +491,7 @@ if ($shellMod === 'community'): ?>
     <!-- ─── 업무 앱의 사이드바 아래쪽 (커뮤니티 ARCHITECTURE.md 21.3 → Q:F-12 DESIGN 2.19 ④~⑧) ───────────────────
          즐겨찾기 · 최근(있을 때만) → 프로젝트 → 포트폴리오 → 팀 → 문서 → 공유받은 페이지 → 「더보기」(접힘).
          단추에도 같은 `.nav__item` 을 쓴다 — 화면 전용 클래스를 만들지 않는다(DESIGN 원칙 6).
-         t-box 의 파일·설정·관리 묶음과 이야기 묶음은 이 모드에서 **그리지 않는다**: 다른 앱의 내비이고, 앱 사이 이동은 아이콘 줄 · 앱 메뉴가 맡는다. -->
+         t-box 의 파일·설정·관리 묶음과 이야기 묶음은 이 모드에서 **그리지 않는다**: 다른 앱의 내비이고, 앱 사이 이동은 본문 오른쪽 위 앱 격자(2.18)가 맡는다. -->
     <dialog id="notify-dialog" class="modal modal--form modal--stack" aria-labelledby="notify-title">
       <div class="modal__head">
         <h2 id="notify-title" class="modal__title">받은 알림</h2>
@@ -706,7 +642,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
 <?php else: ?>
     <p class="nav-title">파일</p>
     <nav class="nav" aria-label="파일">
-      <a id="nav-files" class="<?= $shellNavClass('files') ?>" href="<?= Http::url('/') ?>">
+      <a id="nav-files" class="<?= $shellNavClass('files') ?>" href="<?= Http::url('/') ?>" data-tip="파일">
         <span class="icon" data-icon="files"></span><span>파일</span>
       </a>
       <!-- Q:F-4 U-2b (PRD 5.4 각주 ¹) — 「내 휴지통」: 내가 올리고 내가 지운 파일을 30일 안에 되살린다.
@@ -820,6 +756,48 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
   </aside>
 
   <main id="main" class="main">
+    <!-- ─── 앱 격자 (사이트 Q:F-12 U2 · WK-23 B · DESIGN 2.18) ────────────────────────────────────────────────────
+         본문 오른쪽 위 ⋮⋮⋮ — 앱 바꾸기 · 계정 · 관리자 · 검색 · 로그아웃을 **한 메뉴**에. 2026-09-23 의 앱 메뉴(`details.appbar__apps` — 클래스 이름은
+         시험 Q:T-8 · 문서가 쓰므로 유지)를 사이드바 브랜드 줄에서 **이 자리로 옮겼다** — 문서에 하나뿐이다(두 벌 금지). 세 앱 셸 모두 이 마크업 한 벌.
+         스크립트 0 으로 열린다(`<details>`) · 바깥 누름 · Esc · 항목 누름으로 닫는 것은 app.js initMenus 한 곳. 960px 미만은 CSS 가 이 줄을 숨기고
+         윗줄 앱 이름 ▾(`#appbar-apps`)가 같은 details 를 연다(판은 윗줄 아래 전체 폭). 앱 목록은 런처와 **같은** `Apps::all()`(soon 은 `.is-soon`).
+         관리자 페이지(`#menu-admin`)는 hidden 으로 나가고 `/api/me` 의 can_admin(표시용) 이 참일 때만 app.js 가 연다 — 막는 것은 라우트 정책 · 재인증 관문(PRD S-01).
+         메신저 타일은 떠 있는 창을 여는 단추(messenger.js 가 모든 `[data-messenger-open]` 을 연다) — 메신저 자격이 없으면(손님 · 역할로 보기) 이용 안내 링크.
+         ⋮⋮⋮ 의 점은 안 읽은 메시지 수(`[data-message-unread]` — messenger.js 의 같은 폴링 한 벌이 숫자를 넣고 CSS 가 점으로 그린다 · 새 요청 0).
+         검색 타일은 사이드바 「검색」(#nav-search)과 같은 창을 연다(app.js — 같은 단추를 누른다 · 창 두 벌 0). 인라인 style·on* 0 (CSP). -->
+    <div class="shell-tools">
+      <details class="appbar__apps" id="app-grid">
+        <summary class="btn btn--icon btn--plain" aria-label="앱 — 앱 바꾸기와 계정" data-tip="앱">
+          <span class="icon" data-icon="grid"></span><span class="badge badge--internal" data-message-unread hidden></span>
+        </summary>
+        <div class="panel app-menu">
+          <ul class="app-menu__apps">
+            <li><a class="app-menu__app" href="/"><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">모아 홈</span><span class="app-menu__desc">이야기와 풍경이 모이는 곳</span></span></a></li>
+<?php foreach ($shellApps as $shellApp): ?>
+<?php   $shellAppName = htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8'); ?>
+<?php   $shellAppDesc = htmlspecialchars((string) ($shellApp['desc'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
+<?php   $shellAppIcon = htmlspecialchars((string) ($shellApp['icon'] ?? 'grid'), ENT_QUOTES, 'UTF-8'); ?>
+<?php   if (($shellApp['status'] ?? '') === 'soon'): ?>
+            <li><span class="app-menu__app is-soon"><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span><span class="badge">준비 중</span></span></li>
+<?php   else: ?>
+            <li><a class="app-menu__app" href="<?= htmlspecialchars((string) $shellApp['path'], ENT_QUOTES, 'UTF-8') ?>"<?= $shellApp['key'] === $shellCurrentApp ? ' aria-current="page"' : '' ?>><span class="app-menu__icon icon" data-icon="<?= $shellAppIcon ?>"></span><span class="app-menu__text"><span class="app-menu__name"><?= $shellAppName ?></span><span class="app-menu__desc"><?= $shellAppDesc ?></span></span></a></li>
+<?php   endif; ?>
+<?php endforeach; ?>
+<?php if ($shellMessenger): ?>
+            <li><button id="messenger-open" class="app-menu__app" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false"><span class="app-menu__icon icon" data-icon="messages"></span><span class="app-menu__text"><span class="app-menu__name">메신저</span><span class="app-menu__desc">떠 있는 창으로 대화</span></span><span class="badge badge--internal" data-message-unread hidden></span></button></li>
+<?php elseif (!empty($shellUser)): ?>
+            <li><a class="app-menu__app" href="<?= Http::url('/messages') ?>"><span class="app-menu__icon icon" data-icon="messages"></span><span class="app-menu__text"><span class="app-menu__name">메신저</span><span class="app-menu__desc">메신저 이용 안내</span></span></a></li>
+<?php endif; ?>
+            <li><a id="menu-settings" class="app-menu__app" href="<?= Http::url('/settings') ?>"><span class="app-menu__icon icon" data-icon="settings"></span><span class="app-menu__text"><span class="app-menu__name">내 계정</span><span class="app-menu__desc"><?= $shellName ?> · <?= $shellRole ?></span></span></a></li>
+            <li><a id="menu-activity" class="app-menu__app" href="<?= Http::url('/activity') ?>"><span class="app-menu__icon icon" data-icon="log"></span><span class="app-menu__text"><span class="app-menu__name">내 활동</span><span class="app-menu__desc">내가 한 일 기록</span></span></a></li>
+            <li><a id="menu-admin" class="app-menu__app" href="<?= Http::url('/admin') ?>" hidden><span class="app-menu__icon icon" data-icon="lock"></span><span class="app-menu__text"><span class="app-menu__name">관리자 페이지</span><span class="app-menu__desc">계정 · 조직 · 감사</span></span></a></li>
+            <li><button class="app-menu__app" type="button" data-search-tile aria-haspopup="dialog" aria-controls="search-dialog"><span class="app-menu__icon icon" data-icon="search"></span><span class="app-menu__text"><span class="app-menu__name">검색</span><span class="app-menu__desc">Ctrl K — 페이지 · 댓글 · 파일</span></span></button></li>
+          </ul>
+          <button id="logout" class="app-menu__logout" type="button"><span class="icon" data-icon="logout"></span><span>로그아웃</span></button>
+        </div>
+      </details>
+      <a class="shell-tools__me" href="<?= Http::url('/settings') ?>" aria-label="내 계정 — <?= $shellMeLabel ?>"><span aria-hidden="true"><?= $shellInitial ?></span></a>
+    </div>
 <?php if ($shellActing): ?>
     <!-- 26단계 「역할로 보기」 띠 (PRD F-39, ARCH 5.20).
          본문(.page-head)보다 **위**에 있어 어느 화면에서든 첫 줄에 보인다. 보는 중에는 사이드바의

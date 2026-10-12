@@ -7,8 +7,8 @@ declare(strict_types=1);
  * 요구사항: 사이트 Q:F-12 WK-7 ② · WK-8 ② · 기획 `../../../../community/work-ux-plan.md` 5.3 (a),
  *           DESIGN.md 2.19 ~ 2.22 · 6장, 커뮤니티 `../../../../community/ARCHITECTURE.md` 23.4 · 23.8.
  *
- * 화면(위에서 아래로): 인사(화면 머리) → 내 작업 요약 세 칸(지난 기한 · 오늘 · 이번 주 — `GET /api/my-tasks`, work.js) →
- * 내 프로젝트(진행률 — 이 파일이 서버에서 그린다) → 안 읽은 공지 한 줄(`GET /api/briefing` 의 `others` 공지, work.js).
+ * 화면(위에서 아래로): 인사(화면 머리) → 업무함 앞 10줄(Q:F-12 U2 · DESIGN 2.20-A — `GET /api/my-tasks` + `GET /api/briefing`, work.js) →
+ * 내 프로젝트(진행률 — 이 파일이 서버에서 그린다) → 안 읽은 공지 한 줄(`GET /api/briefing` 의 `others` 공지, work.js) · 작업 상세 칸(aside — 2.21).
  *
  * ★ 옛 둘러보기(overview_page.php — 없앴다)의 넘김을 **그대로** 이어받는다(WK-15 A — 즐겨찾기·옛 링크 보존):
  *   `?view=mine|feed|shared|discover` → 스레드 화면(이야기 셸) · 문서 공간 꼬리표(`space`·`space_id`·`q`·`trash`·`page`·`database`) → 「내 문서」.
@@ -73,30 +73,19 @@ require __DIR__ . '/../../views/shell_top.php';
 
       <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 
-      <!-- 내 작업 요약 세 칸 (DESIGN 2.20 줄 모양 · 기획 5.3 (a)) — 지난 기한 · 오늘 · 이번 주. 줄은 work.js 가 `GET /api/my-tasks` 의 답(보는 사람의
-           검색 조건절 안 · 담당이 나이거나 담당 없는 내 것)으로 createElement/textContent 로 채운다. 칸마다 다섯 줄까지, 나머지는 「내 작업」 화면. -->
+      <!-- 업무함 앞 10줄 (Q:F-12 U2 · WK-20 C · DESIGN 2.20-A) — 전엔 세 칸(지난 기한 · 오늘 · 이번 주)이던 자리. 중요 순 한 줄 흐름(지난 기한 → 오늘 →
+           검토 요청 · 멘션 → 이번 주 → 나중에 → 기한 없음 · 묶음 안 ★ 먼저)을 work.js 가 `GET /api/my-tasks` + `GET /api/briefing` 두 창구의 답을
+           **잇기만** 해(buildInbox — 보는 사람의 검색 조건절 안 · 화면이 거르거나 더하지 않는다) createElement/textContent 로 채운다. 11번째 줄부터는
+           「모두 보기」(내 작업). 줄을 누르면 ≥1200 은 그 줄 아래 펼침, 그보다 좁으면 아래 작업 상세 칸(aside — 2.21)이 목록을 대신한다. -->
       <section id="work-home-tasks" class="panel" aria-labelledby="work-home-tasks-title">
         <div class="toolbar">
           <h2 id="work-home-tasks-title" class="panel__title">내 작업</h2>
-          <a class="btn btn--quiet btn--small" href="<?= Http::communityUrl('/my-tasks') ?>">모두 보기</a>
+          <a id="work-home-all" class="btn btn--quiet btn--small" href="<?= Http::communityUrl('/my-tasks') ?>">모두 보기</a>
         </div>
-        <div class="work-cols">
-          <section class="task-list task-list--compact" data-home-bucket="overdue" aria-labelledby="work-home-overdue">
-            <p id="work-home-overdue" class="task-group__name task-group--late">지난 기한 <span class="task-group__count" data-home-count></span></p>
-            <ul class="task-list__rows" data-home-rows></ul>
-            <p class="muted" data-home-empty hidden>기한이 지난 작업이 없어요.</p>
-          </section>
-          <section class="task-list task-list--compact" data-home-bucket="today" aria-labelledby="work-home-today">
-            <p id="work-home-today" class="task-group__name">오늘 <span class="task-group__count" data-home-count></span></p>
-            <ul class="task-list__rows" data-home-rows></ul>
-            <p class="muted" data-home-empty hidden>오늘 기한인 작업이 없어요.</p>
-          </section>
-          <section class="task-list task-list--compact" data-home-bucket="this_week" aria-labelledby="work-home-week">
-            <p id="work-home-week" class="task-group__name">이번 주 <span class="task-group__count" data-home-count></span></p>
-            <ul class="task-list__rows" data-home-rows></ul>
-            <p class="muted" data-home-empty hidden>이번 주에 할 작업이 없어요.</p>
-          </section>
-        </div>
+        <section class="task-list task-inbox" aria-label="업무함 — 중요 순">
+          <ul id="work-home-rows" class="task-list__rows"></ul>
+          <p id="work-home-empty" class="muted" hidden></p>
+        </section>
       </section>
 
       <!-- 내 프로젝트 (기획 5.3 (a) · DESIGN 2.22 진행률) — 서버가 그린다: 보는 사람의 검색 조건절 안의 프로젝트만(즐겨찾기 → 최근 본 것 → 최근 고친 것),
@@ -142,6 +131,9 @@ require __DIR__ . '/../../views/shell_top.php';
         <a id="work-home-notice-link" href="<?= Http::communityUrl('/') ?>"></a>
       </p>
     </div>
+    <!-- 작업 상세 칸(DESIGN 2.21 — Q:F-12 U2: 업무함 줄을 1200px 미만에서 누르면 이 칸이 목록을 대신한다 · 내 작업 화면과 같은 aside 한 칸).
+         ≥1200 에서는 줄 아래 펼침이라 쓰지 않는다. 안쪽은 work.js 가 창구 답으로 createElement/textContent 로 그린다. 주소 `?task={public_id}`. -->
+    <aside id="task-pane" class="task-pane" aria-label="작업 상세" hidden></aside>
 <?php
 $pageMsgTop = true;   // 알림 줄(#msg)은 이 화면이 머리 아래에 한 번 놓았다(id 중복 0)
 require __DIR__ . '/../../views/shell_bottom.php';

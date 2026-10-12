@@ -1,5 +1,5 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=3887097e964b';
-import { renderDoc } from './doc-render.js?v=3887097e964b';
+import { drawCalendar, rangeFor } from './calendar.js?v=bd4c73cb5052';
+import { renderDoc } from './doc-render.js?v=bd4c73cb5052';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -58,10 +58,75 @@ function initialOf(name) {
   return /^[a-z]$/.test(c) ? c.toUpperCase() : c;
 }
 
+/* ════════════════ 업무함 합치기 (Q:F-12 U2 · DESIGN 2.20-A · WK-22 ①) ════════════════ */
+
+/** 업무함의 「검토 요청 · 멘션」 묶음 — 「오늘」과 「이번 주」 사이(my-tasks 묶음 키와 겹치지 않는 화면 키) */
+export const INBOX_REVIEW_KEY = 'review_mention';
+const INBOX_REVIEW_NAME = '검토 요청 · 멘션';
+/** briefing 줄 가운데 업무함에 잇는 사유 — 그 밖(기한 · 공지 · 체크 · 파일 …)은 잇지 않는다(기한은 my-tasks 가 이미 준다 · 공지는 홈 한 줄) */
+const INBOX_MARKS = ['review', 'mention'];
+
+/**
+ * 두 창구의 답을 **잇기만** 하는 순수 함수(DOM 0 · 요청 0 — 단위 시험 대상). 화면은 거르지도 더하지도 않는다(0장 1).
+ *   myTasks   `GET /api/my-tasks` 답 그대로 — buckets 순서(overdue → today → this_week → later → no_due)를 지킨다.
+ *   briefing  `GET /api/briefing` 답(없거나 403 · 404 면 null) — top · missed · others 중 page_id 가 있고 사유(kind · reasons[].kind)에
+ *             review · mention 이 있는 줄만 모은다. 같은 page_id 가 my-tasks 에 있으면 **그 줄에 표식만**(marks) 더하고, 없으면
+ *             「검토 요청 · 멘션」 묶음(today 와 this_week 사이)에 한 줄 — briefing 안에 같은 page_id 가 둘이면 하나(표식은 합친다).
+ *   favorites ★ 한 페이지 id(Set 또는 배열 — `/api/me/favorites` 의 답) — 각 묶음 안에서 ★ 먼저, 나머지는 창구 순서 그대로.
+ *   today     날짜(Y-m-d) — 지금은 쓰지 않는다(마감 글자는 그리는 쪽이 만든다). 서명은 지시서 그대로 둔다.
+ * 돌려주는 값: [{ key, name, late, more, items: [줄] }] — 빈 묶음도 남긴다(그 자리 추가 「오늘」 · 「기한 없음」). 줄 =
+ *   { id, title, icon, status, due, project, doc_space, assigned_by, comments_n, sub_done, sub_total, fav, marks: [...], summary, from: 'tasks'|'briefing' }
+ */
+export function buildInbox(myTasks, briefing, favorites, today) {
+  void today;
+  const fav = favorites instanceof Set ? favorites : new Set(Array.isArray(favorites) ? favorites : []);
+  const favFirst = (list) => list.filter((e) => e.fav).concat(list.filter((e) => !e.fav));
+  const index = {};
+  const groups = [];
+  for (const b of (myTasks && Array.isArray(myTasks.buckets) ? myTasks.buckets : [])) {
+    const items = (Array.isArray(b.items) ? b.items : []).map((it) => ({
+      id: it.public_id, title: it.title, icon: it.icon || null, status: it.status, due: it.due, project: it.project || null,
+      doc_space: it.doc_space || null, assigned_by: it.assigned_by || null, comments_n: it.comments_n, sub_done: it.sub_done,
+      sub_total: it.sub_total, fav: fav.has(it.public_id), marks: [], summary: null, from: 'tasks'
+    }));
+    for (const e of items) { if (!index[e.id]) { index[e.id] = e; } }
+    groups.push({ key: b.key, name: b.name, late: b.key === 'overdue', more: b.next_cursor || null, items: favFirst(items) });
+  }
+  const extra = [];
+  const seen = {};
+  const lists = briefing ? [briefing.top, briefing.missed, briefing.others] : [];
+  for (const list of lists) {
+    for (const it of (Array.isArray(list) ? list : [])) {
+      if (!it || typeof it.page_id !== 'string' || it.page_id === '') { continue; }
+      const kinds = [it.kind].concat(Array.isArray(it.reasons) ? it.reasons.map((r) => (r ? r.kind : null)) : []);
+      const marks = INBOX_MARKS.filter((k) => kinds.indexOf(k) !== -1);
+      if (!marks.length) { continue; }
+      const target = index[it.page_id] || seen[it.page_id];
+      if (target) {
+        for (const m of marks) { if (target.marks.indexOf(m) === -1) { target.marks.push(m); } }
+        continue;
+      }
+      const e = { id: it.page_id, title: it.title, icon: null, status: null, due: typeof it.due === 'string' ? it.due : null, project: null,
+        doc_space: null, assigned_by: null, comments_n: 0, sub_done: 0, sub_total: 0, fav: fav.has(it.page_id), marks: marks.slice(),
+        summary: typeof it.summary === 'string' && it.summary !== '' ? it.summary : null, from: 'briefing' };
+      seen[it.page_id] = e;
+      extra.push(e);
+    }
+  }
+  let at = groups.findIndex((g) => g.key !== 'overdue' && g.key !== 'today');
+  if (at === -1) { at = groups.length; }
+  groups.splice(at, 0, { key: INBOX_REVIEW_KEY, name: INBOX_REVIEW_NAME, late: false, more: null, items: favFirst(extra) });
+  return groups;
+}
+
 export function createWork(deps) {
   const { api, base, tboxBase, setText, show, clear, errorMessage, genericError, toLogin, statusLabels, personLabel, shortWhen, makeIcon } = deps;
   const canWrite = typeof deps.canWrite === 'function' ? deps.canWrite : () => false;
   const meName = typeof deps.meName === 'function' ? deps.meName : () => '';
+  /* Q:F-12 U2 — 사이드바 즐겨찾기의 지금 함수(editor.js `navStar` · `favoriteIds` · `favoriteListeners`)를 빌린다 — ★ 토글 창구 · 목록 · 새로 받았을 때 알림.
+     없으면(다른 화면 · 옛 판) ★ 는 표시만 한다(토글 0) */
+  const favs = deps.favorites && typeof deps.favorites === 'object' ? deps.favorites : null;
+  const favIds = () => (favs && typeof favs.ids === 'function' ? favs.ids() : new Set());
   const body = document.body;
   const $ = (id) => document.getElementById(id);
   const msgEl = () => $('msg');
@@ -134,9 +199,10 @@ export function createWork(deps) {
 
   /**
    * 작업 줄 하나 — `li.task-row`: 첫 칸(▸ · 완료 원 · 제목 · 보조 · 맡긴 표시) + 칸(프로젝트 또는 담당) + 마감 (+ 빈 ＋ 칸).
-   * opts: kind('my'|'project'|'compact'|'pane') · today · canCheck · current · onOpen(item) · onCheck(item, done) · expand(true|false|null) · onExpand()
+   * opts: kind('my'|'project'|'compact'|'pane'|'inbox' — inbox 는 inboxRow 갈래, U2) · today · canCheck · current · onOpen(item) · onCheck(item, done) · expand(true|false|null) · onExpand()
    */
   function taskRow(item, opts) {
+    if (opts.kind === 'inbox') { return inboxRow(item, opts); }
     const li = el('li', 'task-row' + (opts.sub ? ' task-row--sub' : '') + (item.status === 'done' ? ' task-row--done' : ''));
     li.setAttribute('data-task', item.id);
     if (opts.current) { li.setAttribute('aria-current', 'true'); }
@@ -218,6 +284,243 @@ export function createWork(deps) {
     });
   }
 
+  /* ════════════════ 업무함 줄 (DESIGN 2.20-A — taskRow 의 kind 'inbox' 갈래) ════════════════ */
+
+  /** 업무함 마감 글자 — 「n일 지남」(--danger) · 「오늘」(--primary) · 「10/15」. 색만으로 가르지 않는다(글자 · 「지난 기한」 꼬리표) */
+  function inboxDue(due, today) {
+    const span = el('span', null);
+    if (typeof due !== 'string' || !DATE_RE.test(due)) { return span; }
+    if (due === today) { span.className = 'task-due--today'; span.textContent = '오늘'; return span; }
+    if (due < today) { span.className = 'task-due--late'; span.textContent = daysBetween(due, today) + '일 지남'; return span; }
+    span.textContent = Number(due.slice(5, 7)) + '/' + Number(due.slice(8, 10));
+    return span;
+  }
+
+  /** ★ — 쓸 수 있으면(`can_community_write`) 사이드바 즐겨찾기의 같은 단추 함수(editor.js `navStar` — PUT/DELETE /api/pages/{id}/favorite ·
+      끝나면 즐겨찾기 목록을 다시 받는다)를 빌려 모양 클래스만 바꾼다. 아니면(손님 · 빌릴 함수 없음) 표시만(★ 한 줄에 찬 별 · 누름 0) */
+  function inboxStar(item) {
+    if (canWrite() && favs && typeof favs.star === 'function') {
+      const b = favs.star({ id: item.id, title: item.title, icon: item.icon || null });
+      b.className = 'task-inbox__star';
+      return b;
+    }
+    const s = el('span', 'task-inbox__star');
+    s.setAttribute('aria-hidden', 'true');
+    if (item.fav) { s.appendChild(icon('star-fill')); }
+    return s;
+  }
+
+  /**
+   * 업무함 한 줄 — `li.task-row.task-inbox__row`: 완료 원(누름은 줄 펼침과 따로 — 형제 단추) · ★ · `button.task-inbox__line`(줄 전체가 누름 자리 —
+   * 출처 · 제목 600 + 보조 글 · 꼬리(댓글 · 하위 · 「@」 · 「검토」) · 마감). Tab 순서: 완료 원 → ★ → 줄.
+   * opts: today · canCheck · expanded · onLine(item) · onDone(item, li, done)
+   * 완료 원은 my-tasks 줄(작업)에만 — briefing 에서 온 줄(검토 · 멘션 — 작업이 아닐 수 있는 문서)은 빈 칸.
+   */
+  function inboxRow(item, opts) {
+    const li = el('li', 'task-row task-inbox__row' + (item.status === 'done' ? ' task-row--done' : ''));
+    li.setAttribute('data-task', item.id);
+    if (opts.expanded) { li.setAttribute('aria-current', 'true'); }
+    if (opts.canCheck && item.from === 'tasks') {
+      const check = el('button', 'task-check');
+      check.type = 'button';
+      const paint = () => {
+        const done = item.status === 'done';
+        check.setAttribute('aria-pressed', done ? 'true' : 'false');
+        check.setAttribute('aria-label', (done ? '완료 취소' : '완료 표시') + ' — ' + item.title);
+      };
+      paint();
+      check.appendChild(icon('check'));
+      check.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const next = item.status !== 'done';
+        check.disabled = true;
+        setDone(item.id, next).then(() => {
+          item.status = next ? 'done' : 'todo';
+          li.classList.toggle('task-row--done', next);
+          paint();
+          if (opts.onDone) { opts.onDone(item, li, next); }
+        }).catch((err) => setText(msgEl(), err && err.message ? err.message : genericError)).finally(() => { check.disabled = false; });
+      });
+      li.appendChild(check);
+    } else {
+      li.appendChild(el('span', 'task-row__spacer'));
+    }
+    li.appendChild(inboxStar(item));
+    const line = el('button', 'task-inbox__line');
+    line.type = 'button';
+    line.setAttribute('aria-expanded', opts.expanded ? 'true' : 'false');
+    // 출처 — 프로젝트(색 네모 + 이름) · 문서(공간) · briefing 줄은 「문서」(창구가 공간 이름을 주지 않는다 — 서버 0)
+    const src = el('span', 'task-row__cell task-row__cell--meta');
+    if (item.project) {
+      src.appendChild(colorBox(item.project.color, 'sm'));
+      src.appendChild(el('span', null, item.project.title));
+    } else {
+      src.appendChild(el('span', null, item.doc_space || '문서'));
+    }
+    line.appendChild(src);
+    // 제목 + 보조 글(「○○ 님이 맡김」 · briefing summary) — 한 줄 줄임. 설명 미리보기는 없다(창구가 주지 않는다)
+    const main = el('span', 'task-row__main');
+    main.appendChild(el('span', 'task-row__title', (item.icon ? item.icon + ' ' : '') + item.title));
+    const sub = item.assigned_by ? item.assigned_by + ' 님이 맡김' : item.summary;
+    if (sub) { main.appendChild(el('span', 'task-row__aux', sub)); }
+    line.appendChild(main);
+    // 꼬리 — 댓글 n · 하위 n/m · 「@」(멘션) · 「검토」(검토 요청)
+    const tail = el('span', 'task-row__aux');
+    const parts = [];
+    if (typeof item.comments_n === 'number' && item.comments_n > 0) { parts.push('댓글 ' + item.comments_n); }
+    if (typeof item.sub_total === 'number' && item.sub_total > 0) { parts.push('하위 ' + item.sub_done + '/' + item.sub_total); }
+    if (parts.length) { tail.appendChild(el('span', null, parts.join(' · '))); }
+    if (item.marks.indexOf('mention') !== -1) { tail.appendChild(el('span', 'badge', '@')); }
+    if (item.marks.indexOf('review') !== -1) { tail.appendChild(el('span', 'badge', '검토')); }
+    line.appendChild(tail);
+    const due = el('span', 'task-row__cell task-row__cell--due');
+    due.appendChild(inboxDue(item.due, opts.today));
+    line.appendChild(due);
+    line.addEventListener('click', () => { if (opts.onLine) { opts.onLine(item); } });
+    li.appendChild(line);
+    return li;
+  }
+
+  /**
+   * 업무함 한 벌(홈 · 내 작업 공용) — 꼬리표 · 줄 · 줄 아래 펼침(≥1200) / `aside#task-pane`(그보다 좁으면 — 2.21 그대로) · ↓↑ · Esc.
+   * cfg: { root, ul, empty, emptyText, aside, limit, addKeys() → [묶음 키], onAdd(group, li), onMore(group, btn), tags() → bool, onChanged() }
+   * draw(groups, today) 로 그린다. 묶음 가르기 · 합치기는 buildInbox(위)가 한다 — 이 함수는 그리기만.
+   */
+  function inboxView(cfg) {
+    const wide = window.matchMedia('(min-width: 1200px)');
+    const inline = el('div', 'task-inbox__pane');
+    inline.setAttribute('role', 'region');
+    inline.hidden = true;
+    let holder = null;     // 줄 아래 펼침이 든 줄의 id
+    let groups = [];
+    let today = seoulToday();
+    let pane = null;
+    const lineOf = (li) => (li ? li.querySelector(':scope > .task-inbox__line') : null);
+    const rowOf = (id) => cfg.ul.querySelector('li.task-inbox__row[data-task="' + id + '"]');
+    function mark(id) {
+      const hold = id !== null && inline.isConnected && !inline.hidden ? inline.closest('li') : null;
+      for (const li of cfg.ul.querySelectorAll('li.task-inbox__row')) {
+        const on = id !== null && (li === hold || (!hold && li.getAttribute('data-task') === id));
+        if (on) { li.setAttribute('aria-current', 'true'); } else { li.removeAttribute('aria-current'); }
+        const ln = lineOf(li);
+        if (ln) { ln.setAttribute('aria-expanded', on ? 'true' : 'false'); }
+      }
+    }
+    pane = createPane((id) => {
+      // 목록이 숨은 때(보드 · 달력 보기)와 1200 미만은 2.21 칸(aside) 그대로
+      if (!wide.matches || cfg.ul.closest('[hidden]')) { return cfg.aside; }
+      const li = rowOf(id);
+      if (li) { holder = id; li.appendChild(inline); return inline; }
+      // 펼친 판 안에서 하위 작업 › 를 누른 것 — 같은 자리에서 칸만 바꾼다(2.21 「칸만 바뀐다」와 같은 뜻)
+      if (inline.isConnected && !inline.hidden && pane && pane.current()) { return inline; }
+      return cfg.aside;
+    }, {
+      onChanged: () => { if (cfg.onChanged) { cfg.onChanged(); } },
+      onMarked: (id) => { if (id === null) { holder = null; } mark(id); }
+    });
+    function draw(nextGroups, nextToday) {
+      groups = nextGroups;
+      today = nextToday || today;
+      const focusId = document.activeElement && cfg.ul.contains(document.activeElement)
+        ? (document.activeElement.closest('li[data-task]') || { getAttribute: () => null }).getAttribute('data-task') : null;
+      clear(cfg.ul);
+      const tags = cfg.tags ? cfg.tags() : true;
+      const addKeys = cfg.addKeys ? cfg.addKeys() : [];
+      const limit = cfg.limit || Infinity;
+      let shown = 0;
+      let total = 0;
+      for (const g of groups) {
+        total += g.items.length;
+        const room = Math.max(0, limit - shown);
+        const items = g.items.slice(0, room);
+        const canAdd = addKeys.indexOf(g.key) !== -1;
+        if (!items.length && !canAdd) { continue; }
+        if (tags) {
+          const tag = el('li', 'task-inbox__tag' + (g.late ? ' task-group--late' : ''), g.name + ' ' + g.items.length + (g.more ? '+' : ''));
+          tag.setAttribute('aria-hidden', 'true');
+          tag.setAttribute('data-bucket', g.key);
+          cfg.ul.appendChild(tag);
+        }
+        for (const it of items) {
+          cfg.ul.appendChild(taskRow(it, {
+            kind: 'inbox', today: today, canCheck: canWrite(), expanded: holder === it.id,
+            onLine: (item) => {
+              if (pane.current() === item.id || (holder === item.id && pane.current())) { pane.close({ push: true }); return; }
+              pane.open(item.id, { push: true });
+            },
+            onDone: (item, li) => {
+              const lines = [...cfg.ul.querySelectorAll('.task-inbox__line')];
+              const at = lines.indexOf(lineOf(li));
+              const next = lines[at + 1] || lines[at - 1];
+              if (next) { next.focus(); }
+            }
+          }));
+        }
+        shown += items.length;
+        if (g.more && cfg.onMore && limit === Infinity) {
+          const li = el('li', 'task-list__actions');
+          const moreBtn = textButton('더 보기', 'btn btn--quiet btn--small task-group__more');
+          moreBtn.setAttribute('data-more-bucket', g.key);
+          moreBtn.addEventListener('click', () => cfg.onMore(g, moreBtn));
+          li.appendChild(moreBtn);
+          cfg.ul.appendChild(li);
+        }
+        if (canAdd && cfg.onAdd) {
+          const li = el('li', 'task-list__actions');
+          const addBtn = textButton('작업 추가', 'btn btn--quiet btn--small', 'plus');
+          addBtn.setAttribute('data-add-bucket', g.key);
+          addBtn.addEventListener('click', () => cfg.onAdd(g, li, addBtn));
+          li.appendChild(addBtn);
+          cfg.ul.appendChild(li);
+        }
+      }
+      // 펼친 줄을 다시 그린 줄에 옮겨 단다 — 그 줄이 사라졌으면(끝난 작업이 빠진 뒤 등) 판을 닫는다
+      if (pane.current() && pane.host() === inline) {
+        const li = holder ? rowOf(holder) : null;
+        if (li) { li.appendChild(inline); mark(pane.current()); } else { pane.close({ push: true }); }
+      } else if (pane.current()) {
+        mark(pane.current());
+      }
+      if (focusId) {
+        const ln = lineOf(rowOf(focusId));
+        if (ln) { ln.focus({ preventScroll: true }); }
+      }
+      if (cfg.empty) {
+        setText(cfg.empty, cfg.emptyText ? cfg.emptyText() : '');
+        show(cfg.empty, total === 0 && addKeys.length === 0);
+      }
+      return { shown: shown, total: total };
+    }
+    // ↓↑ = 줄 이동 · Esc = 펼친 판 접기(열린 메뉴 · 입력 · 편집기 안에서는 그쪽이 먼저)
+    cfg.root.addEventListener('keydown', (e) => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (!t) { return; }
+      if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && t.matches('.task-inbox__line')) {
+        const lines = [...cfg.ul.querySelectorAll('.task-inbox__line')];
+        const at = lines.indexOf(t);
+        const next = lines[at + (e.key === 'ArrowDown' ? 1 : -1)];
+        e.preventDefault();
+        if (next) { next.focus(); }
+        return;
+      }
+      if (e.key !== 'Escape' || e.isComposing || !pane.current() || pane.host() !== inline) { return; }
+      if (document.querySelector('details[open].menu') || t.closest('input, textarea, select, [contenteditable="true"]')) { return; }
+      const li = inline.closest('li');
+      e.preventDefault();
+      pane.close({ push: true });
+      const ln = lineOf(li);
+      if (ln) { ln.focus(); }
+    });
+    // 폭이 1200 을 넘나들면 열린 작업을 같은 id 로 다른 자리에 다시 연다(주소는 그대로)
+    wide.addEventListener('change', () => {
+      const id = pane.current();
+      if (!id) { return; }
+      pane.close({ push: false });
+      pane.open(id, { push: false });
+    });
+    return { pane: pane, draw: draw };
+  }
+
   /**
    * 그 자리 추가 줄(DESIGN 2.20) — Enter = 저장하고 다음 빈 줄 · Esc = 그만 · 빈 칸 Enter = 끝.
    * save(title) → Promise. 끝나면 onEnd().
@@ -262,8 +565,15 @@ export function createWork(deps) {
   /**
    * `aside.task-pane` 하나를 다룬다. 줄을 누르면 칸만 바뀌고 주소에 `?task=` — 뒤로 가기로 앞 작업 · 닫힘(popstate).
    * ctx: { onChanged(id) — 목록 다시 그리기, onMarked(id|null) — 고른 줄 표시 }
+   *
+   * Q:F-12 U2(DESIGN 2.20-A 「펼침」) — 첫 인자를 넓혔다: 요소(지금처럼 `aside#task-pane` — 기본) **또는** `(id) => 요소` 함수.
+   * 함수면 열 때마다 그 작업을 그릴 자리를 묻는다 — 업무함은 ≥1200 에서 그 줄 아래 `div.task-inbox__pane`, 그보다 좁으면 `aside#task-pane` 를 돌려준다.
+   * 안쪽(머리 줄 · 제목 · 속성 · 설명 · 하위 작업 · 활동 · 댓글)은 자리와 상관없이 **같은 draw 한 벌**이다(두 벌 0).
+   * `<body data-task-open>`(칸이 목록 옆/대신 — 2.21 배치)은 자리가 `aside` 일 때만 단다 — 줄 아래 펼침은 목록 배치를 바꾸지 않는다.
    */
-  function createPane(paneEl, ctx) {
+  function createPane(hostArg, ctx) {
+    const resolveHost = typeof hostArg === 'function' ? hostArg : () => hostArg;
+    let paneEl = typeof hostArg === 'function' ? null : hostArg;
     let currentId = null;
     let loadSeq = 0;
     let editor = null;
@@ -279,26 +589,34 @@ export function createWork(deps) {
         return t && UUID_RE.test(t) ? t : null;
       } catch (e) { return null; }
     }
+    function isAside(node) { return !!node && node.tagName === 'ASIDE'; }
+    /** 지금 자리를 비운다(편집 중이면 저장을 마치고 걷는다) — 자리를 바꿀 때 · 닫을 때 */
+    function release() {
+      if (editor) { editor.flush().catch(() => {}); editor.destroy(); editor = null; }
+      if (paneEl) { show(paneEl, false); clear(paneEl); }
+      body.removeAttribute('data-task-open');
+    }
     function open(id, opts) {
       if (!UUID_RE.test(id)) { return; }
       if (opts && opts.push && id !== currentId) {
         try { window.history.pushState({ task: id }, '', urlFor(id)); } catch (e) { /* 주소는 편의 */ }
       }
+      const next = resolveHost(id);
+      if (!next) { return; }
+      if (paneEl && paneEl !== next) { release(); }
+      paneEl = next;
       currentId = id;
-      body.setAttribute('data-task-open', '');
+      if (isAside(paneEl)) { body.setAttribute('data-task-open', ''); } else { body.removeAttribute('data-task-open'); }
       show(paneEl, true);
       ctx.onMarked(id);
       load(id, true);
     }
     function close(opts) {
-      if (editor) { editor.flush().catch(() => {}); editor.destroy(); editor = null; }
       if (opts && opts.push && currentId !== null) {
         try { window.history.pushState({ task: null }, '', urlFor(null)); } catch (e) { /* 편의 */ }
       }
+      release();
       currentId = null;
-      body.removeAttribute('data-task-open');
-      show(paneEl, false);
-      clear(paneEl);
       ctx.onMarked(null);
     }
     window.addEventListener('popstate', () => {
@@ -981,7 +1299,7 @@ export function createWork(deps) {
       return box;
     }
 
-    return { open, close, current: () => currentId, fromUrl: taskFromUrl, reload: () => (currentId ? load(currentId, false) : null) };
+    return { open, close, current: () => currentId, host: () => paneEl, fromUrl: taskFromUrl, reload: () => (currentId ? load(currentId, false) : null) };
   }
 
   /* 공간 트리(하위 작업의 상태 · 기한) — 공간마다 한 번. 공간 관문에 막히면(남의 개인 공간의 공유 페이지) 빈 목록 */
@@ -997,55 +1315,59 @@ export function createWork(deps) {
 
   /* ════════════════ 업무 홈 ════════════════ */
 
+  /** briefing — 실패(403 · 404 · 네트워크)면 null. 업무함의 작업 줄은 그대로 그려진다(검토 · 멘션 묶음만 빠짐 — DESIGN 2.20-A 「데이터」) */
+  function loadBriefing() {
+    return api('GET', '/api/briefing').then((r) => (r.status === 200 && r.data && typeof r.data === 'object' ? r.data : null)).catch(() => null);
+  }
+
   function initHome() {
     const root = $('work-home');
     if (!root) { return; }
     const msg = msgEl();
-    function drawSummary() {
-      return api('GET', '/api/my-tasks').then((r) => {
-        if (r.status === 401) { toLogin(); return; }
-        if (r.status !== 200) { setText(msg, errorMessage(r.data)); return; }
-        const today = typeof r.data.today === 'string' ? r.data.today : seoulToday();
-        for (const col of root.querySelectorAll('[data-home-bucket]')) {
-          const key = col.getAttribute('data-home-bucket');
-          const bucket = (r.data.buckets || []).find((b) => b.key === key) || { items: [] };
-          const rows = col.querySelector('[data-home-rows]');
-          clear(rows);
-          const items = Array.isArray(bucket.items) ? bucket.items : [];
-          for (const it of items.slice(0, 5)) {
-            rows.appendChild(taskRow({ id: it.public_id, title: it.title, status: it.status, due: it.due, assigned_by: it.assigned_by }, {
-              kind: 'compact', today: today, canCheck: canWrite(),
-              href: (item) => base + '/my-tasks?task=' + item.id,
-              onCheck: (item, d) => setDone(item.id, d).then(drawSummary).catch((e) => setText(msg, e.message))
-            }));
-          }
-          const more = items.length - 5 + (bucket.next_cursor ? 1 : 0);
-          if (more > 0) {
-            const li = el('li', 'task-row');
-            const a = el('a', 'btn btn--plain btn--small', items.length > 5 ? (bucket.next_cursor ? '더 있어요 — 내 작업에서 보기' : (items.length - 5) + '개 더 — 내 작업에서 보기') : '더 있어요 — 내 작업에서 보기');
-            a.href = base + '/my-tasks';
-            li.appendChild(a);
-            rows.appendChild(li);
-          }
-          setText(col.querySelector('[data-home-count]'), items.length + (bucket.next_cursor ? '+' : ''));
-          show(col.querySelector('[data-home-empty]'), items.length === 0);
-        }
-      }).catch(() => setText(msg, genericError));
+    const ul = $('work-home-rows');
+    if (!ul) { return; }
+    let tasks = null;
+    let brief = null;
+    // 업무함 앞 10줄(WK-20 C — 묶음 경계를 지나며 센다) · 나머지는 「모두 보기」(→ 내 작업). ≥1200 은 줄 아래 펼침, 그보다 좁으면 2.21 칸(aside)
+    const view = inboxView({
+      root: root, ul: ul, empty: $('work-home-empty'), emptyText: () => '오늘 할 일이 없어요.', aside: $('task-pane'), limit: 10,
+      onChanged: () => { load(); }
+    });
+    function draw() {
+      if (!tasks) { return; }
+      view.draw(buildInbox(tasks, brief, favIds(), tasks.today), typeof tasks.today === 'string' ? tasks.today : seoulToday());
     }
-    drawSummary();
-    // 안 읽은 공지 한 줄 — 「오늘」 요약의 `others` 중 공지(게시판 읽기 판정 그대로 · 서버가 만든 주소만)
-    const notice = $('work-home-notice');
-    const link = $('work-home-notice-link');
-    api('GET', '/api/briefing').then((r) => {
-      if (r.status !== 200 || !notice || !link) { return; }
-      const item = (Array.isArray(r.data.others) ? r.data.others : []).find((i) => i && i.kind === 'notice'
+    function notice() {
+      // 안 읽은 공지 한 줄 — briefing `others` 중 공지(게시판 읽기 판정 그대로 · 서버가 만든 주소만). 업무함에는 섞지 않는다(WK-8 ②)
+      const box = $('work-home-notice');
+      const link = $('work-home-notice-link');
+      if (!brief || !box || !link) { return; }
+      const item = (Array.isArray(brief.others) ? brief.others : []).find((i) => i && i.kind === 'notice'
         && typeof i.url === 'string' && i.url.indexOf(base + '/p/') === 0 && UUID_RE.test(i.url.slice((base + '/p/').length)));
       if (!item) { return; }
       setText(link, item.title);
       link.href = item.url;
-      show(notice, true);
-    }).catch(() => {});
-    window.addEventListener('work:changed', drawSummary);
+      show(box, true);
+    }
+    function load() {
+      const t = api('GET', '/api/my-tasks').then((r) => {
+        if (r.status === 401) { toLogin(); return false; }
+        if (r.status !== 200) { setText(msg, errorMessage(r.data)); return false; }
+        tasks = r.data;
+        return true;
+      }).catch(() => { setText(msg, genericError); return false; });
+      return Promise.all([t, loadBriefing()]).then(([ok, b]) => {
+        brief = b;
+        notice();
+        if (ok) { draw(); }
+      });
+    }
+    if (favs && typeof favs.onChange === 'function') { favs.onChange(draw); }
+    window.addEventListener('work:changed', () => load());
+    load().then(() => {
+      const want = view.pane.fromUrl();
+      if (want) { view.pane.open(want, { push: false }); }
+    });
   }
 
   /* ════════════════ 내 작업 ════════════════ */
@@ -1054,7 +1376,7 @@ export function createWork(deps) {
     const root = $('work-my-tasks');
     if (!root) { return; }
     const msg = msgEl();
-    const groupsEl = $('my-tasks-groups');
+    const rowsEl = $('my-tasks-rows');
     const emptyEl = $('my-tasks-empty');
     const listEl = $('my-tasks-list');
     const boardEl = $('my-tasks-board');
@@ -1063,33 +1385,52 @@ export function createWork(deps) {
     let view = 'list';
     let done = false;
     let data = null;
-    const collapsed = { later: true };
-    let adding = null;   // 그 자리 추가가 열린 묶음 키
+    let brief = null;
     let anchor = seoulToday();
-    const pane = createPane($('task-pane'), {
-      onChanged: () => load(),
-      onMarked: (id) => {
-        for (const r of root.querySelectorAll('.task-row[data-task]')) {
-          if (r.getAttribute('data-task') === id) { r.setAttribute('aria-current', 'true'); } else { r.removeAttribute('aria-current'); }
-        }
+    // 업무함 전체(WK-20 C) — 꼬리표 · 「더 보기」(next_cursor) · 「오늘」 「기한 없음」 꼬리표 뒤 「＋ 작업 추가」 그대로. 끝난 작업은 꼬리표 없이 한 흐름
+    const inbox = inboxView({
+      root: root, ul: rowsEl, empty: emptyEl, aside: $('task-pane'), limit: Infinity,
+      emptyText: () => (done ? '끝난 작업이 없어요.' : '맡은 작업이 없어요. 「작업 추가」로 내 할 일을 적어 보세요.'),
+      tags: () => !done,
+      addKeys: () => (!done && canWrite() ? ADD_BUCKETS : []),
+      onChanged: () => { load(); },
+      onMore: (g, moreBtn) => {
+        moreBtn.disabled = true;
+        const b = (data.buckets || []).find((x) => x.key === g.key);
+        if (!b) { return; }
+        api('GET', '/api/my-tasks?done=' + (done ? '1' : '0') + '&bucket=' + encodeURIComponent(b.key) + '&cursor=' + encodeURIComponent(b.next_cursor)).then((r) => {
+          if (r.status !== 200) { moreBtn.disabled = false; setText(msg, failMessage(r)); return; }
+          const got = (r.data.buckets || [])[0];
+          if (got) { b.items = (b.items || []).concat(got.items || []); b.next_cursor = got.next_cursor; }
+          draw();
+        }).catch(() => { moreBtn.disabled = false; setText(msg, genericError); });
+      },
+      onAdd: (g, li, addBtn) => {
+        const today = data && typeof data.today === 'string' ? data.today : seoulToday();
+        addBtn.hidden = true;
+        addLine(li, g.name + '에 작업 추가', (title) => quickAdd(title, g.key === 'today' ? today : null), (saved) => {
+          if (!saved) { addBtn.hidden = false; return; }
+          load().then(() => {
+            const again = rowsEl.querySelector('[data-add-bucket="' + g.key + '"]');
+            if (again) { again.click(); }
+          });
+        });
       }
     });
-    const rowOpts = (today) => ({
-      kind: 'my', today: today, canCheck: canWrite(),
-      current: false,
-      onOpen: (item) => pane.open(item.id, { push: true }),
-      onCheck: (item, d) => setDone(item.id, d).then(() => load()).catch((e) => setText(msg, e.message))
-    });
-    const toItem = (it) => ({ id: it.public_id, title: it.title, status: it.status, due: it.due, project: it.project, doc_space: it.doc_space,
-      assigned_by: it.assigned_by, comments_n: it.comments_n, sub_done: it.sub_done, sub_total: it.sub_total });
+    const pane = inbox.pane;
 
     function load() {
-      return api('GET', '/api/my-tasks?done=' + (done ? '1' : '0')).then((r) => {
-        if (r.status === 401) { toLogin(); return; }
-        if (r.status !== 200) { setText(msg, errorMessage(r.data)); return; }
-        data = r.data;
+      const t = api('GET', '/api/my-tasks?done=' + (done ? '1' : '0')).then((r) => {
+        if (r.status === 401) { toLogin(); return null; }
+        if (r.status !== 200) { setText(msg, errorMessage(r.data)); return null; }
+        return r.data;
+      }).catch(() => { setText(msg, genericError); return null; });
+      return Promise.all([t, done ? Promise.resolve(null) : loadBriefing()]).then(([d, b]) => {
+        if (!d) { return; }
+        data = d;
+        brief = b;
         draw();
-      }).catch(() => setText(msg, genericError));
+      });
     }
     function draw() {
       if (!data) { return; }
@@ -1099,68 +1440,7 @@ export function createWork(deps) {
       show(calEl, view === 'calendar');
       if (view === 'board') { drawBoard(today); return; }
       if (view === 'calendar') { drawCal(); return; }
-      clear(groupsEl);
-      let total = 0;
-      for (const b of data.buckets || []) {
-        const items = Array.isArray(b.items) ? b.items : [];
-        total += items.length;
-        const canAdd = !done && canWrite() && ADD_BUCKETS.indexOf(b.key) !== -1;
-        if (!items.length && !canAdd) { continue; }
-        const group = el('section', 'task-group');
-        group.setAttribute('data-bucket', b.key);
-        const open = !collapsed[b.key] || adding === b.key;
-        const tog = el('button', 'task-group__toggle' + (b.key === 'overdue' ? ' task-group--late' : ''));
-        tog.type = 'button';
-        tog.setAttribute('aria-expanded', open ? 'true' : 'false');
-        tog.appendChild(icon('chevron'));
-        tog.appendChild(el('span', null, b.name));
-        tog.appendChild(el('span', 'task-group__count', String(items.length) + (b.next_cursor ? '+' : '')));
-        tog.addEventListener('click', () => { collapsed[b.key] = open; draw(); });
-        group.appendChild(tog);
-        if (open) {
-          const ul = el('ul', 'task-list__rows');
-          for (const it of items) {
-            const item = toItem(it);
-            ul.appendChild(taskRow(item, Object.assign(rowOpts(today), { current: item.id === pane.current() })));
-          }
-          group.appendChild(ul);
-          if (b.next_cursor) {
-            const moreBtn = textButton('더 보기', 'btn btn--quiet btn--small task-group__more');
-            moreBtn.addEventListener('click', () => {
-              moreBtn.disabled = true;
-              api('GET', '/api/my-tasks?done=' + (done ? '1' : '0') + '&bucket=' + encodeURIComponent(b.key) + '&cursor=' + encodeURIComponent(b.next_cursor)).then((r) => {
-                if (r.status !== 200) { moreBtn.disabled = false; setText(msg, failMessage(r)); return; }
-                const got = (r.data.buckets || [])[0];
-                if (got) { b.items = items.concat(got.items || []); b.next_cursor = got.next_cursor; }
-                draw();
-              }).catch(() => { moreBtn.disabled = false; setText(msg, genericError); });
-            });
-            group.appendChild(moreBtn);
-          }
-          if (canAdd) {
-            const actions = el('div', 'task-list__actions');
-            const addBtn = textButton('작업 추가', 'btn btn--quiet btn--small', 'plus');
-            addBtn.setAttribute('data-add-bucket', b.key);
-            actions.appendChild(addBtn);
-            group.appendChild(actions);
-            const startAdd = () => {
-              adding = b.key;
-              actions.hidden = true;
-              addLine(group, b.name + '에 작업 추가', (title) => quickAdd(title, b.key === 'today' ? today : null), (saved) => {
-                if (!saved) { adding = null; actions.hidden = false; return; }
-                load().then(() => {
-                  const again = groupsEl.querySelector('[data-add-bucket="' + b.key + '"]');
-                  if (again) { again.click(); }
-                });
-              });
-            };
-            addBtn.addEventListener('click', startAdd);
-          }
-        }
-        groupsEl.appendChild(group);
-      }
-      setText(emptyEl, done ? '끝난 작업이 없어요.' : '맡은 작업이 없어요. 「작업 추가」로 내 할 일을 적어 보세요.');
-      show(emptyEl, total === 0 && !(canWrite() && !done));
+      inbox.draw(buildInbox(data, done ? null : brief, favIds(), today), today);
     }
     function quickAdd(title, due) {
       const payload = { my_tasks: true, title: title };
@@ -1229,9 +1509,14 @@ export function createWork(deps) {
           x.classList.toggle('is-active', on);
           x.setAttribute('aria-pressed', on ? 'true' : 'false');
         }
+        // 열린 작업은 보기를 바꾼 뒤 맞는 자리(목록 = 줄 아래 · 보드/달력 = 칸)에서 다시 연다(주소 그대로)
+        const openId = pane.current();
+        if (openId) { pane.close({ push: false }); }
         draw();
+        if (openId) { pane.open(openId, { push: false }); }
       });
     }
+    if (favs && typeof favs.onChange === 'function') { favs.onChange(() => { if (view === 'list') { draw(); } }); }
     if (doneBtn) {
       doneBtn.addEventListener('click', () => {
         done = !done;
