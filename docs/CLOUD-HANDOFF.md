@@ -136,3 +136,5 @@ php scripts/wiki_check.php
 운영 DB의 일부 표는 postgres, 다른 표는 tbox_owner 소유다. 소유권을 바꾸지 않는다. 격리 DB 모의 적용에서도 원래 owner/ACL을 유지해야 한다. 첫 적용은 이 차이로 트랜잭션에서 중단됐으며 기존 코드/데이터 변경 없이, 실제 소유권을 보존한 사본에서 다시 검증한 뒤 적용했다. 백업 복원이나 재시드는 실행하지 않았다.
 
 2026-10-12 규모A 운영완료: v2.60.2 4e71c9d8dfa06fd74ce39efb62edbf01e7720006. docs/work-items/scale-a.md 및 production-state 참조. B/C 미시작, C는별도세션검토승인전배포금지.
+
+2026-10-12 규모 B 운영 완료: v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`, 실제 HTTPS40/0·92업무표/959원본/ownerACL 보존·조회수 불일치0. 상세 docs/work-items/scale-b.md. C는 아직 미착수이며 다른 세션 독립 검토 승인 전 배포 금지.

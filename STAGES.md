@@ -3055,3 +3055,13 @@ q=회의는구 count6076.951+list7383.320ms(단독재실행)→새SQL3050.851ms�
 보안① 기존권한조건그대로·게시판게이트·암호화커서범위·중복/rollback/앱권한·위동등성증거. ② 카운터색인HOT손실/쓰기비용, 실시간조회/수정중정렬변화는유지. ③ 실물Android/Safari/스크린리더·큰혼합분포·장기동시부하미검증. ④ 코드/도구고정최종독립검토→모의→freshdrift→B배포/실제HTTPS/원본보존확인. C는아직시작하지않았으며별도세션검토승인전반영금지.
 
 암호화백업 /var/backups/tbox-v2/scale-b-20261012: DB·globals·코드/설정·저장소4종 SHA/전체복호화·덤프내용해석·원본959SHA확인. 배포는PG재시작/설정변경없이조회수트리거백필→6CONCURRENTLY→FF→FPMreload순. pages 기존행은view_count만제외하고전필드보존, 원래page_views전행유지·전체집계일치따로검사. 독립도구모의에서pg_get_indexdef가DESC를생략하는검증기오류를발견해indoption별도대조로수정했고둘째모의통과(운영시도아님). 배포도구 deploy-b/, 검토원문 review-b-deploy/.
+
+## B 운영 반영 완료 — 2026-10-12T14:28:44.427618+09:00
+
+v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`. 최종 독립 검토 manifest의 30개 파일/6개 도구 고정, 이전 사본 기록 복구까지 확인했다. 사전 실제 HTTPS7개, archive+patch 모의 적용, fresh 운영/원격/설정/패키지 드리프트 검사 통과. 암호화4종 전체 재복호화와 원본959SHA 확인 → 보존 기준 → 조회수 트리거/백필 → 트랜잭션 밖 6색인 CONCURRENTLY → 코드 FF → FPM reload 순으로 반영했다. PostgreSQL 재시작0, 설정/패키지 변경0, 설정231개 항목 해시 동일.
+
+실제 HTTPS40/0, 변경 정적자산9개 정확한 SHA, 게시판3정렬 첫 목록 68.674~165.888ms(네트워크 포함 단일 요청들). pg_stat_statements5개 정규화 문장 각3회, 평균0.049~0.525ms/임시블록쓰기0. 요청 구간 누적 차이여서 다른 동시 요청 포함 가능하며 합성 대량 DB 성능과 직접 비교하지 않는다. 운영 검토 계정이 읽는3개 게시판에는20건초과 결과가 없어 실제 운영 다음/이전 왕복은 미검증; 격리 DB 실제 브라우저 390px 라이트/다크 왕복과1280 검색/정렬 수락으로 확인한 범위를 구분한다. 운영 새 글/수정/삭제 요청0.
+
+업무92표의 모든 기존 행·page_views 전행·원본959파일·기존 owner/ACL 보존. pages.view_count만 기존행 해시에서 제외하고 전체 실제집계 불일치0을 별도 확인. 동적16표는 행수만 별도 기록하며 기존행 불변으로 과장하지 않는다. 증거 `/home/changkwon/qaredi-scale-results-20261012/deploy-b/`의 apply.log·applied.json·https-results.json·preservation-verified.json, review-b/final-review.txt·final manifest.
+
+보안① 기존 권한 조건절과 게시판 gate 유지, 최종 후보/도구 독립 검토·음성5종/동등성·운영 원본 보존 증거. ② 조회수 색인의 HOT 손실과 쓰기 비용, 읽는 동안 수정/조회에 따른 순서 변동은 남는다. ③ 실물 휴대폰/Safari/스크린리더·큰 게시 갈래 혼합 분포·장기 동시부하·운영 다음/이전 왕복 미검증. ④ B 기록/push 뒤 C 구현과 합성 전수 대조를 진행하며 별도 세션의 독립 검토 통과를 사용자가 알리기 전에는 C를 배포하지 않는다. SR5/SR12와 원래 purge_trash의 모호한 page_id는 후속으로만 남긴다.

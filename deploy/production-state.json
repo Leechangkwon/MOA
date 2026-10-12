@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.61.0",
-  "verified_runtime_commit": "35569143809dd7c5c46998fe1ff5a3fa54828471",
-  "verified_checkout_commit": "35569143809dd7c5c46998fe1ff5a3fa54828471",
-  "verified_tree": "d8f9b52ad52ea841386148a3778e01eec67879fa",
-  "verified_at": "2026-10-12T13:16:23+09:00",
+  "version": "2.62.0",
+  "verified_runtime_commit": "cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe",
+  "verified_checkout_commit": "cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe",
+  "verified_tree": "089107a99d6f2c656738d5d8d261ca4b689a71a2",
+  "verified_at": "2026-10-12T14:28:44.427618+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "35569143809dd7c5c46998fe1ff5a3fa54828471",
+  "release_commit": "cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,36 +15,55 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Per-document and bounded bulk trash in workspace/search/sidebar, capability matching existing server management rules, collapsed sidebar groups with desktop preferences, existing cascade/restore and editor state protection.",
-    "https_integration_pass": 46,
+    "scope": "게시판 세 정렬의 이전/다음 커서, 전체 수 제거, 일별 중복 규칙을 유지한 조회수 집계와 부분 인덱스. 기존 문서 선택 삭제 보존.",
+    "https_pass": 40,
     "https_fail": 0,
+    "exact_assets": 9,
+    "live_pagination": {
+      "new": false,
+      "updated": false,
+      "views": false
+    },
+    "live_pagination_unverified_reason": "읽을 수 있는 운영 게시판에 20건 초과 결과가 없어 해당 왕복 미검증",
     "isolated_cross_regression_pass": 196,
-    "isolated_backend_pass": 307,
-    "independent_api_pass": 158,
-    "prior_frontend_pass": 53,
-    "prior_independent_ui_pass": 80,
-    "merged_frontend_pass": 53,
-    "merged_independent_ui_pass": 48,
-    "merge_base": "e1d0ce80f454d2d048b2cda60e9f51e1d94a4f48",
+    "isolated_scale_a_pass": 25,
+    "isolated_scale_b_pass": 59,
+    "independent_existing_document_ui_pass": 53,
+    "independent_old_new_conditions": 180,
+    "independent_full_rows": 5706,
+    "independent_previous_cases": 240,
+    "performance_merge_append_plans": 15,
+    "performance_row_order_matches": 3,
     "security_lint_violations": 0,
+    "wiki_articles": 69,
     "community_assets_files": 40,
     "community_assets_relative_imports": 71,
-    "wiki_articles": 69,
-    "live_viewports": [
-      390,
-      1280
-    ],
-    "live_js_errors": 0,
-    "live_5xx": 0,
-    "new_reserved_qa_documents": 8,
-    "acceptance_runs": 2,
-    "original_document_mutations": 0,
-    "browser_mutations_restricted_to_new_qa_ids": true,
-    "new_qa_cleanup_soft_trash": true,
-    "exact_live_asset_bytes_verified": true,
+    "runtime_sha256": {
+      "CHANGELOG.json": "b070c66659fb013b6b1e55012e90691686263d8cb07cd0b6bfc97f8a3e1a75c3",
+      "VERSION": "539f856198a2077c50407f3f0a3c37663aa0ada050392721ce085cf883563996",
+      "db/migrations/2026-10-25_scale_board_counts.sql": "7c3a254df89bab5c9e9051f13d0d6941ea6fdfc4c39e327ff853eef846e85ba2",
+      "db/migrations/2026-10-25_scale_board_indexes.sql": "76f95de0ee7ac6fbc37c1be4f6b7e21fa2033bd2dd48ec96909ec36671d4dfb0",
+      "public/assets/community/community.css": "6e1ca56ed6cb9477934305b99dc7f04dfffc3ba7f9e9cd93357430180bf55c7c",
+      "public/assets/community/dashboard.js": "af3ac31350d27e19164ed7fed208aaef691f4537217962ea087cf930d380fc85",
+      "public/assets/community/database.js": "31f8580602cbe4805ff0db96633bf6e0df9a32e5affb5fe06af837264e4150a1",
+      "public/assets/community/editor.js": "faa0484dda6ec3236a7650688a8f8e528c619ac5311b1872f0cd94c1365ad320",
+      "public/assets/community/suggestions.js": "de2508ae68b0f4828953736d5593571c30650b81b3bfd5c9962d7ce8451e5e82",
+      "public/assets/community/table-editor.js": "e4881f72abda20afc2c19b6e7dbc4c391d1b3c578f64cdd8691ecfb515ea9326",
+      "public/assets/community/templates.js": "e4da58fe9abf9c56e20bdd2d203c6bbf9067ad1f1a122ca99105a478ac1456ba",
+      "public/assets/community/work.js": "24873fad81b62a045a09da6c4ad7188a072d566a37728e90140cefdfb5895616",
+      "public/assets/messenger.js": "6bdf82681f49b65e1485f4b4388835e75512961c71639efe15992a511b673c4c",
+      "src/community/BoardCursor.php": "0152b8e29bea76dcc1a8c4703914bb57674cc2853046669191601966a71edaf0",
+      "src/community/handlers/board_pages_list.php": "09eab19b390861e308342d1af363edca029538a1a81b679a51e97a575dc747e4",
+      "src/community/handlers/board_view.php": "c23927d969fe8c798c7ec4a1988de70787ab25c934f1d0c5f397474557bbb7ed",
+      "src/community/routes.php": "399411a03e2f472d3702a5fcd21245b76dadc475e21d2299470d17d7591c5444",
+      "wiki/community/index.json": "eb2b5dea5d75129c458b6507c43c2aa61d5ae897db45899bef6e0f5cf49a1dcf",
+      "wiki/community/stage-5-c.json": "c08d0ba0a97c1a9a2db7cb65a01da1bf7aa0946bcc49c6dcac20e0b1c4c69ef4"
+    },
     "runtime_changed_files": [
-      "public/assets/app.css",
-      "public/assets/app.js",
+      "CHANGELOG.json",
+      "VERSION",
+      "db/migrations/2026-10-25_scale_board_counts.sql",
+      "db/migrations/2026-10-25_scale_board_indexes.sql",
       "public/assets/community/community.css",
       "public/assets/community/dashboard.js",
       "public/assets/community/database.js",
@@ -54,77 +73,108 @@
       "public/assets/community/templates.js",
       "public/assets/community/work.js",
       "public/assets/messenger.js",
-      "src/community/handlers/favorites.php",
-      "src/community/handlers/home_page.php",
-      "src/community/handlers/pages_list.php",
-      "src/community/handlers/recent_list.php",
+      "src/community/BoardCursor.php",
+      "src/community/handlers/board_pages_list.php",
+      "src/community/handlers/board_view.php",
       "src/community/routes.php",
-      "src/views/document_trash.php",
-      "src/views/shell_bottom.php",
-      "src/views/shell_top.php"
+      "wiki/community/index.json",
+      "wiki/community/stage-5-c.json"
     ],
-    "runtime_sha256": {
-      "public/assets/app.css": "3b981f296b2cc405bd787f8a3247dab5a83f8eee7f00d14bc5eec6cd79b87815",
-      "public/assets/app.js": "bd50c6941a7b177333a5848ac5a0721eda1503dd48f644f748d86d16c1bcce67",
-      "public/assets/community/community.css": "664ce6420ef77c844676f8f5fdea4722942628920b014d1dad16a0e76d13de00",
-      "public/assets/community/dashboard.js": "a6c800ba6b2c55b12b122d2bad48ff1fbc25691990d34e2474d61efa2976f445",
-      "public/assets/community/database.js": "d67dbd99503242583a1dec588be90f57b1033b8ad74942944a84f147ed579886",
-      "public/assets/community/editor.js": "7fb7b0b4163dc3e86c2db7f217a0626b953a03a0b72ef49506d041feed45b830",
-      "public/assets/community/suggestions.js": "12099ceef5b86023cb90ee8c7125b2eb7b9151aadba9041f8aded75d43121cb2",
-      "public/assets/community/table-editor.js": "5b9188f545a31ee29d9dc1191cef5200f752776ea93379cf0d7a9176977f6c02",
-      "public/assets/community/templates.js": "6f4e60dc00ad776bc9cb77ca5b18018e58bc4a1deda2115feeccccdc02df453d",
-      "public/assets/community/work.js": "3dca222f0a71e68b9806c071aa67fffd25bb09c03f736d232944e18b11b37f4f",
-      "public/assets/messenger.js": "6747a23581b2e0c5e714b4b540ac57c828e9fd1700522346fc84dbe6768705b8",
-      "src/community/handlers/favorites.php": "11c63bcb440262aede42b8b9a288d643a8cbf8b7a3c15ac0ca8041e4857fcf87",
-      "src/community/handlers/home_page.php": "f6c2089a0ac46a8f05b263f55b788953cf558bfbd9283629ab1a81b63299a30d",
-      "src/community/handlers/pages_list.php": "7c72f605c058dcf5c6894c1ac590d7af049126e2ee6d52b8de0d75316c4d9bb0",
-      "src/community/handlers/recent_list.php": "b64fd23fabda60e56bcffdc5ebfc1c7a822e9ebfed031fed409699ccd88a03c9",
-      "src/community/routes.php": "6b2bc33258f532cd5610fe7cfeb4063d46ea2eae323c9d02a9e82f886a210bc7",
-      "src/views/document_trash.php": "55a4cd01f19a61ade4a0213988f277e0bdafcaf27c4261c0768b8fe8d7277e47",
-      "src/views/shell_bottom.php": "a28c8da0d496e6284dd1a162a2890c3108bd1712bc856ed69d874b8dee399d5c",
-      "src/views/shell_top.php": "21c90b05f2c3fb9ac5f7043f6d1e476a63e9e4383bcd993b54fbc05511f7ff24"
+    "migrations": [
+      "db/migrations/2026-10-25_scale_board_counts.sql",
+      "db/migrations/2026-10-25_scale_board_indexes.sql"
+    ],
+    "concurrent_indexes_valid": 6,
+    "pg_restart_count": 0,
+    "fpm_reload": true,
+    "configuration_files_unchanged": 231,
+    "packages_unchanged": true,
+    "preservation": {
+      "business_tables": 92,
+      "original_files": 959,
+      "existing_rows_preserved": true,
+      "page_views_original_rows_preserved": true,
+      "excluded_columns": {
+        "community.pages": [
+          "view_count"
+        ]
+      },
+      "counter_mismatches": 0,
+      "owners_acl_preserved": true
     },
-    "migrations": [],
-    "deleted_files": 0,
-    "original_legacy_tables_preserved": 14,
-    "product_tables_original_rows_checked": 6,
-    "product_original_rows_preserved": true,
-    "messenger_tables_original_rows_preserved": 5,
-    "preservation_excluded_rows": 0,
-    "original_database_owners_preserved": true,
-    "original_database_acl_preserved": true,
-    "file_records_preserved": 1042,
-    "storage_files_preserved": 959,
-    "storage_total_files": 960,
-    "excluded_volatile_operational_state": [
-      "community-automations.cursor.json"
-    ],
-    "configuration_files_unchanged": 93,
-    "encrypted_backup_decryption_verified": true,
-    "encrypted_storage_original_hashes_verified": true,
+    "dynamic_tables_count_only": 16,
+    "encrypted_backup_full_decryption_verified": true,
+    "encrypted_storage_hashes_verified": true,
+    "backup_directory": "/var/backups/tbox-v2/scale-b-20261012",
     "file_apply_rehearsal": true,
-    "rehearsal_candidate": "4178ecf5dd3294ce5dd68fc1275c6376121266d3",
+    "reviewed_files": 30,
+    "reviewed_tools": 6,
+    "pg_stat_statements_deltas": [
+      {
+        "queryid": "-1628208810558497606",
+        "calls_delta": 3,
+        "total_ms_delta": 1.264,
+        "mean_ms_delta": 0.421,
+        "rows_delta": 6,
+        "temp_blks_written_delta": 0
+      },
+      {
+        "queryid": "-2032229217545409225",
+        "calls_delta": 3,
+        "total_ms_delta": 0.887,
+        "mean_ms_delta": 0.296,
+        "rows_delta": 0,
+        "temp_blks_written_delta": 0
+      },
+      {
+        "queryid": "-375487303699009317",
+        "calls_delta": 3,
+        "total_ms_delta": 1.458,
+        "mean_ms_delta": 0.486,
+        "rows_delta": 6,
+        "temp_blks_written_delta": 0
+      },
+      {
+        "queryid": "-5172478706895698830",
+        "calls_delta": 3,
+        "total_ms_delta": 0.148,
+        "mean_ms_delta": 0.049,
+        "rows_delta": 0,
+        "temp_blks_written_delta": 0
+      },
+      {
+        "queryid": "-7041545986654717447",
+        "calls_delta": 3,
+        "total_ms_delta": 1.576,
+        "mean_ms_delta": 0.525,
+        "rows_delta": 6,
+        "temp_blks_written_delta": 0
+      }
+    ],
+    "https_data_mutation_requests": 0,
     "physical_android_verified": false,
     "safari_verified": false,
     "screenreader_verified": false,
-    "evidence": "docs/work-items/document-bulk-trash.md"
+    "large_mixed_published_population_verified": false,
+    "sustained_concurrency_verified": false,
+    "evidence": "docs/work-items/scale-b.md"
   },
   "previous_verification": {
-    "version": "2.60.2",
-    "runtime_commit": "4e71c9d8dfa06fd74ce39efb62edbf01e7720006",
-    "verified_at": "2026-10-12T12:38:52.187464+09:00",
-    "evidence": "docs/work-items/scale-a.md"
+    "version": "2.61.0",
+    "verified_at": "2026-10-12T13:16:23+09:00",
+    "evidence": "docs/work-items/document-bulk-trash.md",
+    "runtime_commit": "35569143809dd7c5c46998fe1ff5a3fa54828471"
   },
   "evidence": [
+    "docs/work-items/scale-b.md",
     "docs/work-items/document-bulk-trash.md",
     "docs/work-items/scale-a.md"
   ],
   "git_sync": {
-    "status": "synced",
+    "status": "pending_record_push",
     "remote_live_verified": true,
-    "web_branch": "cloud/document-bulk-trash",
-    "last_fetched_origin_main": "9ba9031a708a4f5e3392570975494265b9a0d96a",
-    "reason": "Verified v2.61.0 runtime and deployment evidence atomically pushed with main, work branch and release/baseline tags; this follow-up records confirmed synchronization.",
-    "verified_at": "2026-10-12T13:17:33+09:00"
+    "web_branch": "cloud/scale-b",
+    "last_fetched_origin_main": "c2294ec6da7cc859935b49a9b62084be28fd64b7",
+    "reason": "운영 검증 완료. 배포 기록 커밋 뒤 main/작업 브랜치/릴리스 태그를 함께 동기화한다."
   }
 }
