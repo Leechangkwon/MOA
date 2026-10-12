@@ -482,3 +482,25 @@ dialog.floating[data-view="conversation"] .moa-people { display:none; }
  :root[data-design="moa"] :is(.home-editor,.space-dialog,.q-design-dialog,.modal,.moa-story-dialog,.panel,.space-card,.field select,.input) { background:Canvas; color:CanvasText; border-color:CanvasText; box-shadow:none; }
  :root[data-design="moa"] .space-card>h2 { color:CanvasText; }
 }
+
+/* 떠 있는 AI창은 내용을 읽는 영역을 먼저 확보한다. 전체 메신저 페이지에는 적용하지 않는다. */
+dialog.floating .moa-conversation > header { flex: none; padding: 6px 12px; }
+dialog.floating .moa-chat-heading { gap: 8px; }
+dialog.floating .moa-ai-tools { gap: 8px; margin-top: 4px; }
+dialog.floating .moa-ai-tools select { min-height: 36px; padding-block: 5px; font-size: 14px; }
+dialog.floating .moa-ai-tools > span { font-size: 12px; }
+dialog.floating .moa-ai-notice { display: block; flex: none; padding: 0 12px; font-size: 12px; line-height: 1.5; }
+dialog.floating .moa-ai-notice[hidden] { display: none; }
+dialog.floating .moa-ai-notice > summary { min-height: 36px; padding: 8px 0; cursor: pointer; color: var(--fg); }
+dialog.floating .moa-ai-notice > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; }
+dialog.floating .moa-ai-notice p { margin: 0 0 8px; font-size: 12px; }
+dialog.floating .moa-ai-notice a { display: inline-block; padding-bottom: 8px; }
+dialog.floating .moa-message-list { min-height: 0; padding: 12px; }
+dialog.floating .moa-ai-welcome { padding: 8px 0; }
+dialog.floating .moa-ai-welcome > .moa-ai-orb { width: 28px; height: 28px; font-size: 22px; margin-bottom: 6px; border-radius: 8px; box-shadow: none; }
+dialog.floating .moa-ai-welcome > .moa-kicker { display: none; }
+dialog.floating .moa-ai-welcome h3 { font-size: 16px; margin: 6px 0; }
+dialog.floating .moa-ai-welcome > p { margin: 6px 0; font-size: 13px; line-height: 1.5; }
+dialog.floating .moa-ai-welcome > small { font-size: 12px; margin-top: 8px; line-height: 1.5; }
+dialog.floating .moa-ai-prompts { gap: 6px; }
+dialog.floating .moa-ai-prompts > .btn { padding: 6px 8px; font-size: 12px; }

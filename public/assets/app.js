@@ -11890,6 +11890,7 @@ function clearMessengerState(owner) {
   try {
     window.sessionStorage.removeItem(MESSENGER_STATE_PREFIX + owner);
     window.sessionStorage.removeItem('qaredi-messenger-position:v1:' + owner);
+    window.sessionStorage.removeItem('qaredi-messenger-size:v1:' + owner);
   } catch (e) {
     // 막힌 저장소 — 남은 것이 없다
   }

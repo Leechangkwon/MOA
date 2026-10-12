@@ -1149,16 +1149,47 @@ dialog.floating > .modal__head > .btn--icon:last-child { position: relative; top
 .messenger-move-handle:focus-visible { outline: 2px solid var(--ring); outline-offset: 3px; }
 @media (min-width: 720px) {
   .messenger-move-handle::before { content: '⠿'; color: var(--muted); font-size: 14px; margin-right: 4px; }
-  #messenger-window > .modal__head { cursor: grab; touch-action: none; flex-wrap: wrap; gap: 6px; padding-inline: 12px; }
+  #messenger-window > .modal__head { cursor: grab; touch-action: none; flex-wrap: wrap; gap: 4px; padding: 8px 10px; }
   #messenger-window > .modal__head > .modal__title { min-width: max-content; }
   #messenger-window > .modal__head .btn--small { padding-inline: 8px; }
   #messenger-window.is-moving { user-select: none; }
   #messenger-window.is-moving > .modal__head { cursor: grabbing; }
 }
+/* 크기 조절은 테두리 안쪽에만: 본문 선택/스크롤과 머리 동작을 가리지 않는다. */
+#messenger-window > .modal__head .messenger-help { min-width: 32px; padding-inline: 8px; }
+#messenger-window > .messenger-resize-handle { position: absolute; z-index: 1; display: block; margin: 0; padding: 0; min-width: 0; min-height: 0; border: 0; border-radius: 0; background: transparent; color: var(--muted); touch-action: none; }
+#messenger-window > .messenger-resize-handle::before { content: none; }
+#messenger-window > .messenger-resize-handle:focus-visible { outline: 2px solid var(--ring); outline-offset: -2px; background: var(--accent-soft); }
+#messenger-window > [data-messenger-resize="n"], #messenger-window > [data-messenger-resize="s"] { left: 18px; right: 18px; height: 8px; cursor: ns-resize; }
+#messenger-window > [data-messenger-resize="n"] { top: 0; }
+#messenger-window > [data-messenger-resize="s"] { bottom: 0; }
+#messenger-window > [data-messenger-resize="e"], #messenger-window > [data-messenger-resize="w"] { top: 18px; bottom: 18px; width: 8px; cursor: ew-resize; }
+#messenger-window > [data-messenger-resize="e"] { right: 0; }
+#messenger-window > [data-messenger-resize="w"] { left: 0; }
+#messenger-window > [data-messenger-resize="ne"], #messenger-window > [data-messenger-resize="se"], #messenger-window > [data-messenger-resize="sw"], #messenger-window > [data-messenger-resize="nw"] { width: 18px; height: 18px; }
+#messenger-window > [data-messenger-resize="ne"], #messenger-window > [data-messenger-resize="nw"] { top: 0; }
+#messenger-window > [data-messenger-resize="se"], #messenger-window > [data-messenger-resize="sw"] { bottom: 0; }
+#messenger-window > [data-messenger-resize="ne"], #messenger-window > [data-messenger-resize="se"] { right: 0; }
+#messenger-window > [data-messenger-resize="nw"], #messenger-window > [data-messenger-resize="sw"] { left: 0; }
+#messenger-window > [data-messenger-resize="ne"], #messenger-window > [data-messenger-resize="sw"] { cursor: nesw-resize; }
+#messenger-window > [data-messenger-resize="nw"], #messenger-window > [data-messenger-resize="se"] { cursor: nwse-resize; }
+#messenger-window > [data-messenger-resize="se"]::after { content: '⋱'; position: absolute; right: 2px; bottom: 0; font-size: 20px; line-height: 18px; }
+#messenger-window.is-resizing { user-select: none; }
+#messenger-window.is-short { overflow-y: auto; }
+#messenger-window.is-short > .moa-messenger { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+#messenger-window.is-short .moa-conversation { flex: none; min-height: 200px; }
+#messenger-window.is-tiny > .moa-messenger { flex: none; min-height: 200px; }
+@media (max-width: 719.98px) {
+  #messenger-window > .modal__head { padding: 20px 10px 6px; gap: 4px; flex-wrap: wrap; }
+  #messenger-window > .modal__head .btn--small { padding-inline: 7px; }
+  #messenger-window > .modal__head > .modal__title { min-width: max-content; }
+  #messenger-window > .messenger-resize-handle { display: none; }
+  #messenger-window > [data-messenger-resize="n"] { display: block; left: calc(50% - 36px); right: auto; width: 72px; height: 20px; }
+  #messenger-window > [data-messenger-resize="n"]::after { content: ''; position: absolute; width: 36px; height: 4px; border-radius: 4px; background: var(--muted); left: 18px; top: 7px; }
+}
 #messenger-window-status { flex: none; margin: 0; padding: 8px 16px 0; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
 #messenger-window-status:empty { display: none; }
 @media (max-width: 719.98px) {
-  #messenger-position-reset { display: none; }
   dialog.floating {
     inset: auto 0 0 0;
     width: 100%;

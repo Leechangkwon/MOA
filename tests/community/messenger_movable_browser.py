@@ -136,7 +136,7 @@ with sync_playwright() as pw:
     page.set_viewport_size({'width':390,'height':844});page.wait_for_timeout(50)
     mobile=rect()
     check(abs(mobile['h']-844*.88)<2 and mobile['x']==0 and mobile['w']==390 and mobile['bottom']==844,'mobile keeps existing 88dvh full-width bottom sheet')
-    check(not page.locator('#messenger-position-reset').is_visible() and page.locator('#messenger-move-handle').get_attribute('tabindex')=='-1','mobile hides reset and removes movement keyboard control')
+    check(page.locator('#messenger-position-reset').is_visible() and page.locator('#messenger-move-handle').get_attribute('tabindex')=='-1','mobile retains default-height reset and removes movement keyboard control')
     page.set_viewport_size({'width':1280,'height':900});page.wait_for_timeout(50)
     check(near(rect(),saved) and stored()==saved,'desktop return restores saved coordinates')
     page.locator('#messenger-position-reset').click()

@@ -424,8 +424,8 @@
 |---|---|
 | 요소 | `<dialog class="floating" …>` 를 **`show()`** 로 연다(`showModal` 금지 — 뒤 화면이 `inert` 가 되면 「떠 있는」 뜻이 없다). 머리(`.modal__head` 재사용: 제목 + 보조 링크 「크게 보기」 + ✕ `.btn--icon[aria-label="닫기"]`) / 본문 / 바닥(입력 칸 + 검정 「보내기」 하나). 바닥 단추 규칙은 2.7 표 ①②⑥ 그대로 |
 | 층 | 비모달 `dialog` 는 최상위 층이 아니라 **`z-index` 가 필요**하다. 토큰 **`--z-floating: 60`** 하나(`app.css` `:root` 에 추가 — 사용 안내 단추 45 보다 위, `showModal` 창(최상위 층 — 재인증·확인·AI 도구 창)보다 아래). 다른 값을 숫자로 적지 않는다 |
-| 자리(≥720px) | 최초/기본 위치는 `position: fixed; right: 16px; bottom: 72px; width: 400px; height: min(640px, 100dvh - 96px)`. 머리의 이동 손잡이로 드래그·방향키 이동하며 기본 위치 버튼으로 복귀한다. 숫자 위치는 같은 탭의 사용자별 sessionStorage에 보관하고 로그아웃/계정 전환 때 정리한다. 화면 축소·회전 때 경계 안으로 보정하며 <720 시트에서는 PC 좌표를 적용하지 않는다. 아래 72px 은 「? 사용 안내」 단추(`usage-guide.css` `bottom:16px; right:16px`, 높이 40px) 자리 — **겹치지 않는다**. 창이 열려도 사용 안내 단추는 제자리 |
-| 자리(<720px) | **아래 시트**: `inset: auto 0 0 0; width: 100%; height: 88dvh; max-height: 88dvh; border-radius: var(--r-card) var(--r-card) 0 0`. safe-area 바닥 여백(`env(safe-area-inset-bottom)`). 입력 칸 글자 16px(iOS 확대 방지). 머리에 ✕ · 바닥에 「닫기」(테두리) 둘 다 |
+| 자리(≥720px) | 최초/기본 위치는 `position: fixed; right: 16px; bottom: 72px; width: 400px; height: min(640px, 100dvh - 96px)`. 머리 손잡이로 드래그·방향키 이동하고 네 변/네 모서리에서 크기를 조절한다. 기본 크기·위치로 복귀할 수 있다. 숫자 위치/크기는 같은 탭 사용자별 sessionStorage에 보관하며 로그아웃/계정 전환 때 정리한다. 화면 축소·회전 때 경계 안으로 보정하며 <720 시트에서는 PC 좌표를 적용하지 않는다. 아래 72px 은 「? 사용 안내」 단추(`usage-guide.css` `bottom:16px; right:16px`, 높이 40px) 자리 — **겹치지 않는다**. 창이 열려도 사용 안내 단추는 제자리 |
+| 자리(<720px) | **아래 시트**: `inset: auto 0 0 0; width: 100%; height: 88dvh`가 기본값이고 상단 손잡이로 높이를 조절하며 기본 높이로 복귀할 수 있다. 폭은 화면 전체, PC 크기/위치는 보존하고 높이는 보이는 화면 안으로 제한한다. `border-radius: var(--r-card) var(--r-card) 0 0`. safe-area 바닥 여백(`env(safe-area-inset-bottom)`). 입력 칸 글자 16px(iOS 확대 방지). 머리에 ✕ · 바닥에 「닫기」(테두리) 둘 다 |
 | 창 안 배치 | 좁은 폭 규칙 하나로 — 목록(사람·AI) ↔ 대화 전환(「‹ 목록」 `.btn--quiet.btn--small`). 400px 에 두 열을 넣지 않는다 |
 | 여는 단추 | **떠 있는 단추를 만들지 않는다.** 각 껍데기의 기존 자리에 같은 단추(글자 「메신저」 + 안 읽은 수 `.badge.badge--internal`, 0 이면 `hidden`): 셸 = PC 공통 아이콘줄 `.app-rail__messenger` + 폰 윗줄 `.btn--icon`(종 옆) · 모아 머리 = nav 항목 · 런처 = 바로가기 타일. 안 읽은 수는 **같은 값**을 한 벌의 폴링이 모든 자리에 그린다(DESIGN 2.9 「알림 종」 과 같은 방식). 손님·「역할로 보기」 중에는 단추를 그리지 않는다(`/api/me` 의 `can_community_write`·`acting` — 역할 비교 0) |
 | 초점 | 단추로 열면 입력 칸으로. **복원으로 열릴 때는 초점을 옮기지 않는다**(화면 본문을 읽던 사람을 방해하지 않는다). 닫으면 열었던 단추로(복원 뒤 닫으면 본문 첫 초점으로) |
@@ -868,3 +868,8 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 ## 2026-10-12 메신저 공통 진입·창 이동
 
 사용자 승인: PC 공통 아이콘줄 이야기 아래에 메신저를 두고 내부 사이드바 중복 항목을 없앤다. 모바일 상단 버튼은 유지한다. PC 창은 머리에서 끌기/방향키 이동·기본 위치 복귀·같은탭 사용자별 위치기억, viewport보정과 모바일시트 전환을 지원한다. 기존 고정위치/레일제외 규칙은 이 결정으로 대체하며 인증·초안·대화는 유지한다. docs/messenger-movable-directive.md와 docs/work-items/messenger-movable.md 참조.
+
+
+## 2026-10-12 AI 창 공간·크기 조절과 홈 바로가기
+
+사용자요청: AI메신저상단안내로대화가가려짐, 상하좌우크기조절, 홈업무/내작업구분. 안내를compact/접기로정리하고8방향resize·모바일높이조절·같은탭크기기억을추가한다. 기존고정크기/resize제외범위는이요청으로변경. 실제홈업무와내작업은서로다른경로200확인, 재현위치는확인중. docs/messenger-resize-home-directive.md 및 docs/work-items/messenger-resize-home.md.

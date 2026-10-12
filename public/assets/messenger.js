@@ -34,6 +34,7 @@ import { createDrafts } from './community/drafts.js?v=c481218d6d2c';
 const STATE_PREFIX = 'qaredi-messenger:v1:';
 /** 같은 탭의 창 위치만. 대화 v1 및 암호화 초안과 독립된 숫자 데이터. */
 const POSITION_PREFIX = 'qaredi-messenger-position:v1:';
+const SIZE_PREFIX = 'qaredi-messenger-size:v1:';
 /** 임시저장 접두(drafts.js · app.js clearMyDrafts 와 같은 값) */
 const DRAFT_PREFIX = 'qaredi-draft:v1:';
 /** 대표 탭 잠금 · 탭 사이 통로 이름 접두(B-3) — 뒤에 진짜 아이디. 다른 사람 탭과 섞이지 않는다 */
@@ -134,7 +135,7 @@ function writeState(owner, st) {
 function forgetOthers(owner) {
   const s = sessionArea(), mine = stateKey(owner);
   for (const n of names(s)) { if (n.indexOf(STATE_PREFIX) === 0 && n !== mine) { drop(s, n); } }
-  for (const n of names(s)) { if (n.indexOf(POSITION_PREFIX) === 0 && n !== POSITION_PREFIX + owner) { drop(s, n); } }
+  for (const n of names(s)) { if ((n.indexOf(POSITION_PREFIX) === 0 && n !== POSITION_PREFIX + owner) || (n.indexOf(SIZE_PREFIX) === 0 && n !== SIZE_PREFIX + owner)) { drop(s, n); } }
   const l = localArea();
   for (const n of names(l)) {
     const m = n.match(OTHER_MESSENGER_DRAFT_RE);
@@ -145,57 +146,82 @@ function forgetOthers(owner) {
 /** 로그아웃 — 이 사람의 창 상태와 쓰던 글 접두 전부(app.js clearMyDrafts 와 같은 범위 — 값을 읽지 않는다) */
 function forgetMine(owner) {
   drop(sessionArea(), stateKey(owner));
-  drop(sessionArea(), POSITION_PREFIX + owner);
+  drop(sessionArea(), POSITION_PREFIX + owner); drop(sessionArea(), SIZE_PREFIX + owner);
   const l = localArea(), mine = DRAFT_PREFIX + owner + ':';
   for (const n of names(l)) { if (n.indexOf(mine) === 0) { drop(l, n); } }
 }
 
-/** 떠 있는 창의 표시 위치만 관리한다. 본문/대화/서버 상태에 관여하지 않는다. */
+/** 떠 있는 창의 숫자 위치·크기만 관리한다. 대화/초안/서버 상태와 분리한다. */
 function movableWindow(dialog, owner, available) {
   const head = dialog.querySelector('.modal__head');
   const handle = document.getElementById('messenger-move-handle');
   const reset = document.getElementById('messenger-position-reset');
+  const edges = [...dialog.querySelectorAll('[data-messenger-resize]')];
   const desktop = window.matchMedia('(min-width:720px)');
-  const key = POSITION_PREFIX + owner;
-  const listeners = [];
-  let desired = null, drag = null, dead = false;
-  const valid = (v) => Number.isInteger(v) && v >= 0 && v <= 100000;
-  try {
-    const raw = sessionArea() && sessionArea().getItem(key);
-    if (raw !== null && raw !== undefined) {
+  const key = POSITION_PREFIX + owner, sizeKey = SIZE_PREFIX + owner;
+  const listeners = [], defaults = { w: 400, h: 640, mobileH: 0 };
+  let desired = null, size = { ...defaults }, drag = null, dead = false;
+  const number = (v, min = 0) => Number.isInteger(v) && v >= min && v <= 100000;
+  function read(name, valid) {
+    try {
+      const area = sessionArea(), raw = area && area.getItem(name);
+      if (raw === null || raw === undefined) { return null; }
       const value = JSON.parse(raw);
-      if (plainObject(value) && exactKeys(value, 'v,x,y') && value.v === 1 && valid(value.x) && valid(value.y)) {
-        desired = { x: value.x, y: value.y };
-      } else { drop(sessionArea(), key); }
-    }
-  } catch (e) { drop(sessionArea(), key); }
+      if (valid(value)) { return value; }
+    } catch (e) { /* 잘못된 값은 데이터로만 다룬다 */ }
+    drop(sessionArea(), name); return null;
+  }
+  const saved = read(key, (v) => plainObject(v) && exactKeys(v, 'v,x,y') && v.v === 1 && number(v.x) && number(v.y));
+  if (saved) { desired = { x: saved.x, y: saved.y }; }
+  const savedSize = read(sizeKey, (v) => plainObject(v) && exactKeys(v, 'h,mobileH,v,w') && v.v === 1 && number(v.w, 1) && number(v.h, 1) && number(v.mobileH));
+  if (savedSize) { size = { w: savedSize.w, h: savedSize.h, mobileH: savedSize.mobileH }; }
   function on(target, type, fn, options) {
     target.addEventListener(type, fn, options);
     listeners.push(() => target.removeEventListener(type, fn, options));
   }
-  function modalOpen() {
-    return document.querySelector('dialog:modal') !== null;
-  }
+  const modalOpen = () => document.querySelector('dialog:modal') !== null;
   function viewport() {
     const v = window.visualViewport;
     return { x: v ? v.offsetLeft : 0, y: v ? v.offsetTop : 0, w: v ? v.width : innerWidth, h: v ? v.height : innerHeight };
   }
-  function clearPosition() {
-    for (const property of ['left', 'top', 'right', 'bottom', 'max-width', 'max-height']) { dialog.style.removeProperty(property); }
+  const clamp = (n, min, max) => Math.max(min, Math.min(max, n));
+  function bounds() {
+    const v = viewport(), w = Math.max(1, v.w - 32), h = Math.max(1, v.h - 32);
+    return { left: v.x + 16, top: v.y + 16, right: v.x + v.w - 16, bottom: v.y + v.h - 16, w, h, minW: Math.min(360, w), minH: Math.min(420, h) };
   }
-  function draw(point) {
-    const v = viewport();
-    dialog.style.maxWidth = Math.max(0, v.w - 32) + 'px';
-    dialog.style.maxHeight = Math.max(0, v.h - 32) + 'px';
-    const rect = dialog.getBoundingClientRect();
-    const minX = v.x + 16, minY = v.y + 16;
-    const maxX = Math.max(minX, v.x + v.w - 16 - rect.width);
-    const maxY = Math.max(minY, v.y + v.h - 16 - rect.height);
-    const x = Math.round(Math.max(minX, Math.min(maxX, point ? point.x : v.x + v.w - 16 - rect.width)));
-    const y = Math.round(Math.max(minY, Math.min(maxY, point ? point.y : v.y + v.h - 72 - rect.height)));
-    if (!Number.isFinite(x) || !Number.isFinite(y)) { return; }
-    dialog.style.left = x + 'px'; dialog.style.top = y + 'px';
+  function paint(x, y, w, h) {
+    if (![x, y, w, h].every(Number.isFinite)) { return; }
+    dialog.style.left = Math.round(x) + 'px'; dialog.style.top = Math.round(y) + 'px';
+    dialog.style.width = Math.floor(w) + 'px'; dialog.style.height = Math.floor(h) + 'px';
     dialog.style.right = 'auto'; dialog.style.bottom = 'auto';
+    dialog.style.maxWidth = 'none'; dialog.style.maxHeight = 'none';
+    dialog.classList.toggle('is-short', h < 420);
+    dialog.classList.toggle('is-tiny', h < 260);
+    if (h >= 260) { dialog.scrollTop = 0; }
+    syncEdges();
+  }
+  function draw(point = desired, dimensions = size) {
+    const b = bounds(), w = clamp(dimensions.w, b.minW, b.w);
+    const defaultSize = dimensions.w === defaults.w && dimensions.h === defaults.h;
+    const h = defaultSize ? Math.min(defaults.h, Math.max(1, viewport().h - 96)) : clamp(dimensions.h, b.minH, b.h);
+    const x = clamp(point ? point.x : b.right - w, b.left, b.right - w);
+    const y = clamp(point ? point.y : b.bottom - 56 - h, b.top, b.bottom - h);
+    paint(x, y, w, h);
+  }
+  function drawMobile(height = size.mobileH) {
+    const v = viewport(), max = Math.max(1, v.h - 8), min = Math.min(420, max);
+    const h = Math.floor(clamp(height || innerHeight * .88, min, max));
+    paint(v.x, v.y + v.h - h, v.w, h);
+  }
+  function syncEdges() {
+    const top = dialog.scrollTop;
+    for (const edge of edges) {
+      if (top > 0) { edge.style.translate = '0 ' + top + 'px'; }
+      else { edge.style.removeProperty('translate'); }
+    }
+  }
+  function clearPosition() {
+    for (const p of ['left', 'top', 'right', 'bottom', 'width', 'height', 'max-width', 'max-height']) { dialog.style.removeProperty(p); }
   }
   function apply() {
     if (dead) { return; }
@@ -203,72 +229,103 @@ function movableWindow(dialog, owner, available) {
     handle.tabIndex = enabled ? 0 : -1;
     if (enabled) { handle.setAttribute('role', 'button'); handle.setAttribute('aria-label', '메신저 창 이동'); handle.setAttribute('aria-describedby', 'messenger-move-help'); }
     else { handle.removeAttribute('role'); handle.removeAttribute('aria-label'); handle.removeAttribute('aria-describedby'); }
-    reset.disabled = !enabled;
-    if (!desktop.matches) { clearPosition(); return; }
-    if (dialog.open) { draw(desired); }
-  }
-  function persist() {
-    if (dead || !available() || desired === null) { return; }
-    try { const s = sessionArea(); if (s) { s.setItem(key, JSON.stringify({ v: 1, x: desired.x, y: desired.y })); } } catch (e) { /* 저장이 막혀도 메모리 위치는 유지 */ }
-  }
-  function finish(commit = false) {
-    if (drag === null) { return; }
-    const id = drag.id;
-    drag = null;
-    dialog.classList.remove('is-moving');
-    if (commit && desktop.matches && available() && !modalOpen()) {
-      const rect = dialog.getBoundingClientRect();
-      desired = { x: Math.round(rect.left), y: Math.round(rect.top) };
-      persist();
+    reset.disabled = !available();
+    reset.setAttribute('aria-label', desktop.matches ? '메신저 창을 기본 위치와 크기로' : '메신저 창을 기본 높이로');
+    for (const edge of edges) {
+      const enabledEdge = available() && (desktop.matches || edge.dataset.messengerResize === 'n');
+      edge.disabled = !enabledEdge; edge.tabIndex = enabledEdge ? 0 : -1;
     }
-    // lostpointercapture가 동기로 와도 확정 좌표를 되돌리지 않도록 먼저 기록한다.
-    try { if (head.hasPointerCapture(id)) { head.releasePointerCapture(id); } } catch (e) { /* 이미 끝난 포인터 */ }
+    if (dialog.open) { if (desktop.matches) { draw(); } else { drawMobile(); } }
+  }
+  function storePosition() {
+    if (dead || !available() || desired === null) { return; }
+    try { const s = sessionArea(); if (s) { s.setItem(key, JSON.stringify({ v: 1, x: desired.x, y: desired.y })); } } catch (e) { /* 메모리 위치 유지 */ }
+  }
+  function storeSize() {
+    if (dead || !available()) { return; }
+    if (size.w === defaults.w && size.h === defaults.h && size.mobileH === 0) { drop(sessionArea(), sizeKey); return; }
+    try { const s = sessionArea(); if (s) { s.setItem(sizeKey, JSON.stringify({ v: 1, w: size.w, h: size.h, mobileH: size.mobileH })); } } catch (e) { /* 메모리 크기 유지 */ }
+  }
+  function commit(kind, mobile) {
+    const r = dialog.getBoundingClientRect();
+    if (mobile) { size.mobileH = Math.round(r.height); storeSize(); }
+    else {
+      desired = { x: Math.round(r.left), y: Math.round(r.top) }; storePosition();
+      if (kind !== 'move') { size.w = Math.round(r.width); size.h = Math.round(r.height); storeSize(); }
+    }
+  }
+  function finish(save = false) {
+    if (drag === null) { return; }
+    const ended = drag; drag = null;
+    dialog.classList.remove('is-moving', 'is-resizing');
+    if (save && available() && !modalOpen() && ended.mobile === !desktop.matches) { commit(ended.kind, ended.mobile); }
+    // 확정값을 먼저 기록하여 동기 lostpointercapture도 원복시키지 못한다.
+    try { if (ended.target.hasPointerCapture(ended.id)) { ended.target.releasePointerCapture(ended.id); } } catch (e) { /* 이미 해제된 포인터 */ }
     apply();
   }
   const cancel = () => { finish(false); apply(); };
-  on(head, 'pointerdown', (e) => {
-    if (dead || !available() || !desktop.matches || !dialog.open || modalOpen() || drag !== null || e.button !== 0 || e.isPrimary === false) { return; }
-    if (!(e.target instanceof Element) || e.target.closest('button,a,input,textarea,select,label,[contenteditable="true"]')) { return; }
+  function resize(r, edge, dx, dy, mobile) {
+    if (mobile) { drawMobile(r.height - dy); return; }
+    const b = bounds(); let left = r.left, right = r.right, top = r.top, bottom = r.bottom;
+    if (edge.includes('w')) { left = clamp(left + dx, b.left, right - b.minW); }
+    if (edge.includes('e')) { right = clamp(right + dx, left + b.minW, b.right); }
+    if (edge.includes('n')) { top = clamp(top + dy, b.top, bottom - b.minH); }
+    if (edge.includes('s')) { bottom = clamp(bottom + dy, top + b.minH, b.bottom); }
+    draw({ x: left, y: top }, { w: right - left, h: bottom - top });
+  }
+  function begin(e, kind, target) {
+    const mobile = !desktop.matches;
+    if (dead || !available() || !dialog.open || modalOpen() || drag !== null || e.button !== 0 || e.isPrimary === false || (mobile && kind !== 'n')) { return; }
     if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) { return; }
-    const rect = dialog.getBoundingClientRect();
-    drag = { id: e.pointerId, clientX: e.clientX, clientY: e.clientY, x: rect.left, y: rect.top };
-    try { head.setPointerCapture(e.pointerId); } catch (error) { drag = null; return; }
-    e.preventDefault(); handle.focus({ preventScroll: true }); dialog.classList.add('is-moving');
+    drag = { id: e.pointerId, target, kind, mobile, clientX: e.clientX, clientY: e.clientY, rect: dialog.getBoundingClientRect() };
+    try { target.setPointerCapture(e.pointerId); } catch (error) { drag = null; return; }
+    e.preventDefault(); (kind === 'move' ? handle : target).focus({ preventScroll: true });
+    dialog.classList.add(kind === 'move' ? 'is-moving' : 'is-resizing');
+  }
+  on(head, 'pointerdown', (e) => {
+    if (!(e.target instanceof Element) || e.target.closest('button,a,input,textarea,select,label,summary,[contenteditable="true"]')) { return; }
+    begin(e, 'move', head);
   });
-  on(head, 'pointermove', (e) => {
+  for (const edge of edges) { on(edge, 'pointerdown', (e) => begin(e, edge.dataset.messengerResize, edge)); }
+  on(dialog, 'pointermove', (e) => {
     if (drag === null || drag.id !== e.pointerId) { return; }
-    if (!available() || !desktop.matches || modalOpen()) { cancel(); return; }
-    if (Number.isFinite(e.clientX) && Number.isFinite(e.clientY)) { draw({ x: drag.x + e.clientX - drag.clientX, y: drag.y + e.clientY - drag.clientY }); }
+    if (!available() || drag.mobile !== !desktop.matches || modalOpen()) { cancel(); return; }
+    if (!Number.isFinite(e.clientX) || !Number.isFinite(e.clientY)) { return; }
+    const dx = e.clientX - drag.clientX, dy = e.clientY - drag.clientY;
+    if (drag.kind === 'move') { draw({ x: drag.rect.left + dx, y: drag.rect.top + dy }); }
+    else { resize(drag.rect, drag.kind, dx, dy, drag.mobile); }
   });
-  on(head, 'pointerup', (e) => { if (drag !== null && drag.id === e.pointerId) { finish(true); } });
-  on(head, 'pointercancel', cancel);
-  on(head, 'lostpointercapture', cancel);
-  on(handle, 'keydown', (e) => {
-    if (!desktop.matches || !available() || !dialog.open || modalOpen() || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) { return; }
-    const direction = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
-    if (!direction) { return; }
+  on(dialog, 'pointerup', (e) => { if (drag !== null && drag.id === e.pointerId) { finish(true); } });
+  on(dialog, 'pointercancel', cancel); on(dialog, 'lostpointercapture', cancel);
+  function keyboard(e, kind) {
+    const mobile = !desktop.matches;
+    if (dead || !available() || !dialog.open || modalOpen() || (mobile && kind !== 'n') || e.isComposing || e.ctrlKey || e.metaKey || e.altKey) { return; }
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] }[e.key];
+    if (!d || (mobile && d[0]) || (kind !== 'move' && ((d[0] && !/[we]/.test(kind)) || (d[1] && !/[ns]/.test(kind))))) { return; }
     e.preventDefault(); cancel();
-    const rect = dialog.getBoundingClientRect(), step = e.shiftKey ? 40 : 10;
-    draw({ x: rect.left + direction[0] * step, y: rect.top + direction[1] * step });
-    const moved = dialog.getBoundingClientRect();
-    desired = { x: Math.round(moved.left), y: Math.round(moved.top) }; persist();
-  });
+    const r = dialog.getBoundingClientRect(), step = e.shiftKey ? 40 : 10;
+    if (kind === 'move') { draw({ x: r.left + d[0] * step, y: r.top + d[1] * step }); }
+    else { resize(r, kind, d[0] * step, d[1] * step, mobile); }
+    commit(kind, mobile);
+  }
+  on(handle, 'keydown', (e) => keyboard(e, 'move'));
+  for (const edge of edges) { on(edge, 'keydown', (e) => keyboard(e, edge.dataset.messengerResize)); }
   on(reset, 'click', () => {
-    if (dead || !available() || !desktop.matches || modalOpen()) { return; }
-    finish(false); desired = null; drop(sessionArea(), key); apply();
+    if (dead || !available() || modalOpen()) { return; }
+    finish(false);
+    if (desktop.matches) { desired = null; size.w = defaults.w; size.h = defaults.h; drop(sessionArea(), key); }
+    else { size.mobileH = 0; }
+    storeSize(); apply();
   });
-  on(window, 'resize', cancel);
-  on(window, 'blur', cancel);
-  on(window, 'pagehide', cancel);
-  on(dialog, 'close', cancel);
-  on(desktop, 'change', cancel);
+  on(dialog, 'scroll', syncEdges, { passive: true });
+  on(window, 'resize', cancel); on(window, 'blur', cancel); on(window, 'pagehide', cancel); on(dialog, 'close', cancel); on(desktop, 'change', cancel);
   if (window.visualViewport) { on(window.visualViewport, 'resize', cancel); on(window.visualViewport, 'scroll', cancel); }
   on(document, 'visibilitychange', () => { if (document.hidden) { cancel(); } });
   on(document, 'focusin', () => { if (drag !== null && modalOpen()) { cancel(); } });
   const observer = new MutationObserver(() => { if (drag !== null && (!dialog.open || modalOpen())) { cancel(); } });
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['open'] });
   apply();
-  return { apply, cancel, destroy() { finish(false); dead = true; observer.disconnect(); for (const remove of listeners) { remove(); } clearPosition(); handle.tabIndex = -1; handle.removeAttribute('role'); handle.removeAttribute('aria-label'); handle.removeAttribute('aria-describedby'); reset.disabled = true; } };
+  return { apply, cancel, destroy() { finish(false); dead = true; observer.disconnect(); for (const remove of listeners) { remove(); } clearPosition(); dialog.classList.remove('is-short', 'is-tiny'); handle.tabIndex = -1; handle.removeAttribute('role'); handle.removeAttribute('aria-label'); handle.removeAttribute('aria-describedby'); reset.disabled = true; for (const edge of edges) { edge.disabled = true; edge.tabIndex = -1; edge.style.removeProperty('translate'); } } };
 }
 
 /** 임시저장 열쇠 받기 — drafts.js 가 한 화면에 한 번만 부른다(실패도 기억). 커뮤니티 editor.js 와 같은 요청 모양. */
@@ -644,7 +701,7 @@ async function mount(options) {
   forgetOthers(owner);
   // 쓰기 자격이 없거나 역할로 보기면 붙이지 않고 이 사람의 창 상태를 지운다. 창은 자격이 **참**일 때만(값이 없으면 붙이지 않는다).
   if ((isWindow ? me.can_community_write !== true : me.can_community_write === false) || me.acting === true) {
-    drop(sessionArea(), stateKey(owner)); drop(sessionArea(), POSITION_PREFIX + owner); return null;
+    drop(sessionArea(), stateKey(owner)); drop(sessionArea(), POSITION_PREFIX + owner); drop(sessionArea(), SIZE_PREFIX + owner); return null;
   }
 
   const $ = (id) => document.getElementById(id);
@@ -687,6 +744,7 @@ async function mount(options) {
   const currentMessages = new Map();
   /** 상대를 고르기 전 대화 머리(서버가 그린 글자) — 이어 열 상대가 없어졌을 때 되돌린다(forgetPeer) */
   const idleHead = { name: $('message-peer-name').textContent, meta: $('message-peer-meta').textContent };
+  const metaHome = $('message-peer-meta').parentElement;
   let peerProfile = null;
   const sendingPeers = new Set(), verifying = new Set(), verified = new Set();
   const peerDraft = (id) => store.get('message', id);
@@ -985,6 +1043,8 @@ async function mount(options) {
     if (!isWindow) { return; }
     view = next;
     dialog.setAttribute('data-view', next);
+    const metaParent = ai.active ? $('message-ai-notice-details') : metaHome;
+    if ($('message-peer-meta').parentElement !== metaParent) { metaParent.appendChild($('message-peer-meta')); }
     $('messenger-back').hidden = next !== 'conversation';
   }
   function markOpeners(open) {

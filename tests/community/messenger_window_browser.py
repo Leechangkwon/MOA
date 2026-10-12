@@ -419,7 +419,7 @@ try:
       check(geo['over']<=0,'Q:T-16 '+tag+' '+path+': no horizontal overflow')
       if width<720:
        check(abs(geo['bottom']-geo['vh'])<=1 and abs(geo['left'])<=0.5 and abs(geo['width']-geo['vw'])<=1 and abs(geo['height']-0.88*geo['vh'])<=2,'Q:T-16 '+tag+' '+path+': bottom sheet (left 0, full width, 88dvh, touching bottom)')
-       touch_bad=p.evaluate(TOUCH_JS,'#messenger-window button, #messenger-window a.btn, #messenger-window summary, #appbar-messenger')
+       touch_bad=p.evaluate(TOUCH_JS,'#messenger-window button:not([data-messenger-resize]), #messenger-window a.btn, #messenger-window summary, #appbar-messenger')
        check(touch_bad==[],'Q:T-16 '+tag+' '+path+': every visible button in the sheet has a 44px tap area '+json.dumps(touch_bad,ensure_ascii=False))
        closes=p.evaluate("[...document.querySelectorAll('#messenger-window [data-messenger-close]')].filter(b=>b.getClientRects().length).map(b=>b.textContent.trim()||b.getAttribute('aria-label'))")
        check(sorted(closes)==sorted(['닫기','닫기']),'Q:T-16 '+tag+' '+path+': sheet has both ✕ (head) and 「닫기」 (bottom)')
@@ -611,10 +611,10 @@ try:
    sent0=sent()
    # ① 창 안 「? 이 창 사용 안내」(머리 바로 아래 하나) → 메신저 안내 — 목록 보기
    t.go('/tbox/');t.open()
-   helpbtn=p.locator('#messenger-window > .modal__head + button[data-usage-guide-open]')
+   helpbtn=p.locator('#messenger-window > .modal__head button[data-usage-guide-open]')
    expect(helpbtn).to_have_count(1)
    metrics['c3_help_button']=helpbtn.inner_text()
-   check(p.locator('#messenger-window [data-usage-guide-open]').count()==1,'C-3 one 「'+metrics['c3_help_button']+'」 right under the floating window head')
+   check(p.locator('#messenger-window [data-usage-guide-open]').count()==1,'C-3 one 「'+metrics['c3_help_button']+'」 inside the floating window head')
    helpbtn.click()
    titles,bodies,inside=walk(p)
    metrics['c3_tour_list_view']=[a+' — '+b for a,b in zip(titles,bodies)]
