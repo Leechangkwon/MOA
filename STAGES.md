@@ -3005,3 +3005,6 @@ GPT 간편 연결: 같은 Windows PC의 비서에 로그인한 뒤 웹에서 GPT
 사용자요청: AI메신저상단안내로대화가가려짐, 상하좌우크기조절, 홈업무/내작업구분. 안내를compact/접기로정리하고8방향resize·모바일높이조절·같은탭크기기억을추가한다. 기존고정크기/resize제외범위는이요청으로변경. 실제홈업무와내작업은서로다른경로200·실제클릭구분확인. 중복redirect는미재현이며업무 홈/내 작업의명칭·아이콘·목적설명을구분한다. docs/messenger-resize-home-directive.md 및 docs/work-items/messenger-resize-home.md.
 
 2026-10-12 | 구현·독립검토 | AI 창 공간/8방향크기·모바일높이·홈구분 | 신규190/0·tiny52/0·영향48/0·movable226/0·window215/0·store75/0·logout6/0·홈353/0, 독립90+10+50+27+4/0·초기공통196/0. 실물기기미검증; 운영반영전. docs/work-items/messenger-resize-home.md.
+
+
+운영 최종: v2.60.0 `6fbd01424104` / 2026-10-12T11:15:07+09:00. AI 창 도움말을 머리로 옮기고 긴 모델·전송설명은 접어 대화영역을 확보했다. 같은400×640 창 본문 217.5→351.0px. PC 8방향 드래그·방향키 크기조절, 모바일 위쪽 높이조절, 같은탭 사용자별 PC/모바일 크기기억과 기본복원. 홈 업무 홈/내 작업 이름·기존아이콘·설명 구분; 기존경로는 각각 /community/·/community/my-tasks로 실제클릭200·중복redirect미재현. 고정후보23파일/runtime6 모의·freshdrift·FF/minor/FPM reload, 실제HTTPS80/0·4자산정확바이트·JS/5xx/브라우저쓰기0. 기존14표+제품6표+메신저5표 모든원래행(제외0), 1042파일행·959원본SHA·ownerACL·85설정 보존. 암호화3종checksum/전체복호화 확인. DBmigration/설정/패키지변경0. 실물휴대폰/Safari/스크린리더미검증. 상세 docs/work-items/messenger-resize-home.md.

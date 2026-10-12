@@ -1114,3 +1114,6 @@ v2.54.1 `31848a82c4b5` 실제HTTPS56/0·JS오류/5xx0. 추가된 페이지 라�
 ③ 미검증: 실물Android/iOS·Safari·스크린리더·실물IME. Chromium native touch·visualViewport/CDP확대는모의검증이다. 홈동일redirect주장은실제클릭에서도미재현; 기존서로다른주소를이름/아이콘/설명으로명확히했고라우트버그수정으로주장하지않는다.
 
 ④ 다음 조치: 고정후보모의·freshdrift·서버FF/minor/FPM후실제HTTPS와25표원래행·파일/ownerACL/설정보존을확인하고기록/push한다. 운영전송/AI생성/개인홈설정수정0. docs/work-items/messenger-resize-home.md 및 로컬 outputs/messenger-resize-review/ 참조.
+
+
+운영 최종: v2.60.0 `6fbd01424104` / 2026-10-12T11:15:07+09:00. AI 창 도움말을 머리로 옮기고 긴 모델·전송설명은 접어 대화영역을 확보했다. 같은400×640 창 본문 217.5→351.0px. PC 8방향 드래그·방향키 크기조절, 모바일 위쪽 높이조절, 같은탭 사용자별 PC/모바일 크기기억과 기본복원. 홈 업무 홈/내 작업 이름·기존아이콘·설명 구분; 기존경로는 각각 /community/·/community/my-tasks로 실제클릭200·중복redirect미재현. 고정후보23파일/runtime6 모의·freshdrift·FF/minor/FPM reload, 실제HTTPS80/0·4자산정확바이트·JS/5xx/브라우저쓰기0. 기존14표+제품6표+메신저5표 모든원래행(제외0), 1042파일행·959원본SHA·ownerACL·85설정 보존. 암호화3종checksum/전체복호화 확인. DBmigration/설정/패키지변경0. 실물휴대폰/Safari/스크린리더미검증. 상세 docs/work-items/messenger-resize-home.md.

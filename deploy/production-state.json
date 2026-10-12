@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.59.0",
-  "verified_runtime_commit": "23ea727001d70c4f2c046524dcee7cb2524e7ab8",
-  "verified_checkout_commit": "23ea727001d70c4f2c046524dcee7cb2524e7ab8",
-  "verified_tree": "7f212fdfee9c309f0b1f193f7b58a5a9fda687f6",
-  "verified_at": "2026-10-12T10:39:12+09:00",
+  "version": "2.60.0",
+  "verified_runtime_commit": "6fbd01424104895299fe686b41eb18b18d3629b3",
+  "verified_checkout_commit": "6fbd01424104895299fe686b41eb18b18d3629b3",
+  "verified_tree": "92f1e2a6b825647242b3255800b54acec4880c55",
+  "verified_at": "2026-10-12T11:15:07+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "23ea727001d70c4f2c046524dcee7cb2524e7ab8",
+  "release_commit": "6fbd01424104895299fe686b41eb18b18d3629b3",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,30 +15,20 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Common desktop rail messenger and movable floating window, same-tab per-user position, viewport clamping and mobile sheet; existing messages, encrypted drafts, authorization and APIs unchanged.",
-    "https_integration_pass": 81,
+    "scope": "Compact floating AI header and collapsible explanation, eight-edge/corner desktop resize, mobile height, per-user same-tab size and independent desktop/mobile reset; home labels/icons clarify already distinct routes.",
+    "https_integration_pass": 80,
     "https_fail": 0,
     "isolated_cross_regression_pass": 196,
-    "isolated_cross_regression_scope": "Initial snapshot isolated synthetic DB common harness. Final changes covered by targeted movable-window and rail tests. Production-writing shell wrappers not run.",
-    "synthetic_window_pass": 216,
-    "final_css_delta_pass": 180,
-    "synthetic_rail_pass": 470,
-    "isolated_shell_regression_pass": 173,
-    "store_regression_pass": 75,
-    "native_mobile_regression_pass": 135,
-    "modal_regression_pass": 23,
-    "standalone_logout_cleanup_pass": 5,
-    "independent_movement_pass": 53,
-    "independent_restricted_entry_pass": 57,
-    "independent_final_zoom_pass": 42,
+    "isolated_cross_regression_scope": "Initial isolated synthetic DB; final targeted resize/window/home tests. Production-writing shell wrappers not run.",
+    "default_ai_body_before_px": 217.5,
+    "default_ai_body_after_px": 351,
     "security_lint_violations": 0,
     "community_assets_files": 40,
     "community_assets_relative_imports": 71,
     "wiki_articles": 69,
     "live_viewports": [
       390,
-      820,
-      1440
+      1280
     ],
     "live_js_errors": 0,
     "live_5xx": 0,
@@ -47,26 +37,26 @@
     "runtime_changed_files": [
       "public/assets/app.css",
       "public/assets/app.js",
-      "public/assets/messenger-access.js",
       "public/assets/messenger.js",
-      "src/views/messenger_window.php",
-      "src/views/shell_top.php"
+      "public/assets/moa.css",
+      "src/views/launcher.php",
+      "src/views/messenger_window.php"
     ],
     "runtime_sha256": {
-      "public/assets/app.css": "840185061969321642ce9f70335d4ebe256fe58fc48a7c2bced2822be457d8f1",
-      "public/assets/app.js": "f656bfef84eb1ea99eb4ad6a885b90a8377023546a295a6d2a7eb2ca9a5ac4e8",
-      "public/assets/messenger-access.js": "6ca912c4b2caa7b419d76c94fe8076e1cd960687e381db0eb08cb6b43272661e",
-      "public/assets/messenger.js": "6a3cd615871a5b2b36a23dab894e6dab84826a2dfc0b4ca221fb17a2eb4b9c20",
-      "src/views/messenger_window.php": "c07044e204cb08da619da00b9b0907fddef11378cbcd89045771f2c4da1464e9",
-      "src/views/shell_top.php": "b9701a217ea1fb445a36a5c7bfab9cc2a3f1f3f9631da95742427925d1504134"
+      "public/assets/app.css": "f2338e856c4d0656b826a534b0d13c384ced19f1f0cd97116221ecaddc642f6d",
+      "public/assets/app.js": "c279fb3832dbe7d7a91a58cf4bd2049fc568b62c81022b5197d84aae1641674f",
+      "public/assets/messenger.js": "ba3012a59a0d25b878aecbfde3d3ae6e2400d4bdabd3c8918f716f907c4b90e4",
+      "public/assets/moa.css": "438bc58becaad5bdafcb815cd8337b727ce0c4c931074b7d4ef5b0fdc4aea70b",
+      "src/views/launcher.php": "426d2b46a9b48de008cf85ea7236f70806156b59949a29110e37b848b504653c",
+      "src/views/messenger_window.php": "332530f1c4d76487a7b0421afbb0ab350b8edf826aee1b7fc8252242bdc1baee"
     },
     "migrations": [],
     "deleted_files": 0,
     "original_legacy_tables_preserved": 14,
     "product_tables_original_rows_checked": 6,
-    "product_original_rows_unchanged_except_audited_concurrent_user_save": true,
+    "product_original_rows_preserved": true,
     "messenger_tables_original_rows_preserved": 5,
-    "product_preservation_exception": "One existing user personal dashboard row changed revision 2 to 5 through three audited successful ordinary Windows Chrome browser saves at 10:30:06, 10:30:32 and 10:31:05 KST, before deployment. Encrypted backup row and audit timestamps/revisions matched. Latest user layout retained; all existing QA preferences and other original product rows unchanged.",
+    "preservation_excluded_rows": 0,
     "original_database_owners_preserved": true,
     "original_database_acl_preserved": true,
     "file_records_preserved": 1042,
@@ -79,13 +69,34 @@
     "encrypted_backup_decryption_verified": true,
     "encrypted_storage_original_hashes_verified": true,
     "file_apply_rehearsal": true,
-    "rehearsal_candidate": "5e53299a05a2a6fa9573d46915c662dc0bd40b0d",
+    "rehearsal_candidate": "acab7f5f3a5b78fe60425c55154fb27e889af6b8",
     "physical_android_verified": false,
     "safari_verified": false,
     "screenreader_verified": false,
-    "evidence": "docs/work-items/messenger-movable.md"
+    "evidence": "docs/work-items/messenger-resize-home.md",
+    "synthetic_resize_initial_pass": 190,
+    "synthetic_tiny_delta_pass": 52,
+    "synthetic_resize_final_delta_pass": 48,
+    "synthetic_coarse_final_delta_pass": 22,
+    "existing_movement_pass": 226,
+    "selected_window_regression_pass": 215,
+    "store_regression_pass": 75,
+    "standalone_logout_cleanup_pass": 6,
+    "home_shortcuts_pass": 71,
+    "home_regression_pass": 282,
+    "independent_initial_core_pass": 90,
+    "independent_initial_tight_pass": 10,
+    "independent_final_edge_pass": 27,
+    "independent_final_touch_zoom_pass": 50,
+    "independent_final_tiny_pass": 4,
+    "independent_final_scope": "Core90 and tight10 preceded final tiny changes; final edge27/touch-zoom50/tiny4 cover final byte changes. Runtime6 hashes verified.",
+    "unrelated_parent_document_changes_preserved": [
+      "community/STAGES.md",
+      "docs/scale-review-2026-10-12.md"
+    ]
   },
   "evidence": [
+    "docs/work-items/messenger-resize-home.md",
     "docs/work-items/messenger-movable.md",
     "docs/work-items/neutral-theme-home.md",
     "docs/work-items/community-rich-table.md",
@@ -157,19 +168,19 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "synchronized",
-    "remote_live_verified": true,
-    "last_fetched_origin_main": "564035eac5fd5935ee1e2fc55c12d3207abd51c2",
+    "status": "push_pending",
+    "remote_live_verified": false,
+    "last_fetched_origin_main": "d61c1d8020e532896cf686ffaceebeb3de5419bc",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
-    "web_branch": "cloud/messenger-movable",
-    "reason": "Atomic main/cloud/messenger-movable and release/baseline tags pushed and fetched at 564035eac5fd5935ee1e2fc55c12d3207abd51c2. This metadata-only follow-up uses the same branches. v2.59.0 points to verified runtime 23ea727001d7.",
-    "verified_at": "2026-10-12T10:40:04+09:00"
+    "web_branch": "cloud/messenger-resize-home",
+    "reason": "Runtime and preservation verified; deployment records awaiting atomic push.",
+    "verified_at": "2026-10-12T11:15:07+09:00"
   },
   "previous_verification": {
-    "version": "2.58.2",
-    "runtime_commit": "6559e9749cb9dafbc79f65b034548025f0975f61",
-    "verified_at": "2026-10-12T09:26:42+09:00",
-    "evidence": "docs/work-items/neutral-theme-home.md"
+    "version": "2.59.0",
+    "runtime_commit": "23ea727001d70c4f2c046524dcee7cb2524e7ab8",
+    "verified_at": "2026-10-12T10:39:12+09:00",
+    "evidence": "docs/work-items/messenger-movable.md"
   }
 }
