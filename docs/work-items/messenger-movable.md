@@ -1,6 +1,6 @@
 # 메신저 공통 진입·창 이동
 
-- 상태: 구현·독립 검토 완료, 운영 반영 전
+- 상태: 운영 v2.59.0 검증 완료, 원격 동기화 예정
 - 브랜치: cloud/messenger-movable
 - 기준: 01114a9fd667cfd6c58124a81c8c44d6a10a618d / v2.58.2
 - 담당: Codex root·창구현·레일구현·독립검토
@@ -37,3 +37,11 @@ CDP4배 확대(visual320/layout1280)에서 제목 flex폭이0이 되어 손잡�
 기존 격리 창 t12 39/0(페이지이동/상대404/AIfocus), t14·15 7/0(로그아웃/계정전환 등), 해당 초기 fixture10 통과. 그 뒤 옛 t16 drawer 기대값 실패는 native modal 의미로 정합하여 해당 t16 최종135/0(기능125+fixture10), t17 23/0(모달층/창규칙), 저장·암호화 store75/0. 모듈 없는 app.js cleanup5/0 추가. 운영에 메시지를 보내지 않았으며 이 격리시험의 합성 전송과 구분한다.
 
 최종 독립 검토 완료: 이동53/0·제한진입57/0·최종CSS 2/4배확대42/0, 별도 레일470/0·초기공통196/0. 최종 runtime6 SHA가 root와 정확히 일치했다. 4부보고 outputs/messenger-movable-review/review.md, source-sha256.json. 차단0/추가수정0.
+
+## 운영 최종 결과
+
+운영 최종: v2.59.0 `23ea727001d7` / 2026-10-12T10:39:12+09:00. PC 메신저 진입을 공통 레일로 옮기고 내부 사이드바 중복을 제거했다. 창 제목 드래그·방향키·기본 위치 복귀와 사용자별 같은 탭 위치 기억을 제공한다. 화면 경계 보정·모바일 기존 시트·제한계정 안내 유지. 고정후보 22파일/runtime6 모의 적용·fresh drift·FF/minor/FPM reload. 실제HTTPS81/0, 자료실/업무/이야기 이동·닫기/reload·PC/모바일 왕복·화면경계/원위치 검증. 자산4 정확바이트·JS/5xx/브라우저쓰기0. 기존14표·메신저5표 원래행·제품6표(사용자 동시 대시보드 저장1행 제외)·1042파일행·959원본SHA·ownerACL·85설정 보존, 암호화3종 checksum/전체복호화. 기존 사용자의 10:30~10:31 일반 브라우저 저장3회로 revision2→5, 감사기록 일치 확인·최신 배치 유지. DBmigration/설정/패키지 변경0. 실물휴대폰/Safari/스크린리더 미검증. 상세 docs/work-items/messenger-movable.md.
+
+후보 `5e53299a05a2a6fa9573d46915c662dc0bd40b0d`, 릴리스 `23ea727001d70c4f2c046524dcee7cb2524e7ab8`. 실제운영 로그 outputs/messenger-live.log, 결과/캡처 messenger-movable-live/, 모의 messenger-movable-rehearsal.json·drift messenger-drift.json·보존 messenger-preservation.log/messenger-product-preservation.log. 예약QA claude_admin01 정상인증으로 확인했고 브라우저 비GET/HEAD/OPTIONS를 차단하여 메시지전송/AI생성/기존문서·개인설정 쓰기0.
+
+실운영 첫 하네스는 이야기 본문의 기존 메신저 동작까지 전역 opener로 세어 실패했다. DOM probe로 공통 레일1·본문동작1을 구분하고 검증 범위를 셸의 두 고정 id로 맞춰 전체81/0 완료했다. 런타임 추가수정0. 첫 product hash 비교는 사용자 동시 저장1행을 감지해 멈췄고, 암호화 백업 row의 revision2와 현재5·일반브라우저 감사3건을 대조했다. 그 행만 문서화한 예외로 유지하며 나머지 원래행과 QA취향은 모두 불변. 증거 messenger-live-first.log·messenger-live-entry-probe.log·messenger-concurrent-dashboard.log, 비공개 백업 concurrent-user-dashboard.json.

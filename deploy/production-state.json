@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.58.2",
-  "verified_runtime_commit": "6559e9749cb9dafbc79f65b034548025f0975f61",
-  "verified_checkout_commit": "6559e9749cb9dafbc79f65b034548025f0975f61",
-  "verified_tree": "40b07311b098270d62c648d534d2ce221a3a3e10",
-  "verified_at": "2026-10-12T09:26:42+09:00",
+  "version": "2.59.0",
+  "verified_runtime_commit": "23ea727001d70c4f2c046524dcee7cb2524e7ab8",
+  "verified_checkout_commit": "23ea727001d70c4f2c046524dcee7cb2524e7ab8",
+  "verified_tree": "7f212fdfee9c309f0b1f193f7b58a5a9fda687f6",
+  "verified_at": "2026-10-12T10:39:12+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "6559e9749cb9dafbc79f65b034548025f0975f61",
+  "release_commit": "23ea727001d70c4f2c046524dcee7cb2524e7ab8",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,47 +15,58 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "Neutral visual surfaces for four themes and explicit public home dashboard entry; original document formatting and saved personal layouts unchanged. Original mobile user session/path not observed; no mobile-only route bug reproduced.",
-    "https_integration_pass": 124,
+    "scope": "Common desktop rail messenger and movable floating window, same-tab per-user position, viewport clamping and mobile sheet; existing messages, encrypted drafts, authorization and APIs unchanged.",
+    "https_integration_pass": 81,
     "https_fail": 0,
-    "synthetic_theme_pass": 1594,
-    "design_regression_pass": 1354,
-    "allowlist_pass": 21,
-    "synthetic_mobile_entry_pass": 76,
-    "independent_theme_pass": 1334,
-    "independent_final_entry_pass": 13,
-    "independent_editor_pass": 45,
-    "document_surface_pass": 317,
-    "historical_baseline_density_pass": 391,
     "isolated_cross_regression_pass": 196,
-    "isolated_cross_regression_scope": "Initial snapshot isolated synthetic DB common harness. Final CSS and CTA covered by targeted checks; original production-writing shell wrappers not run.",
+    "isolated_cross_regression_scope": "Initial snapshot isolated synthetic DB common harness. Final changes covered by targeted movable-window and rail tests. Production-writing shell wrappers not run.",
+    "synthetic_window_pass": 216,
+    "final_css_delta_pass": 180,
+    "synthetic_rail_pass": 470,
+    "isolated_shell_regression_pass": 173,
+    "store_regression_pass": 75,
+    "native_mobile_regression_pass": 135,
+    "modal_regression_pass": 23,
+    "standalone_logout_cleanup_pass": 5,
+    "independent_movement_pass": 53,
+    "independent_restricted_entry_pass": 57,
+    "independent_final_zoom_pass": 42,
     "security_lint_violations": 0,
     "community_assets_files": 40,
     "community_assets_relative_imports": 71,
     "wiki_articles": 69,
     "live_viewports": [
       390,
-      1280
+      820,
+      1440
     ],
     "live_js_errors": 0,
     "live_5xx": 0,
     "browser_writes": 0,
     "exact_live_asset_bytes_verified": true,
     "runtime_changed_files": [
-      "public/assets/design.css",
-      "src/views/launcher.php"
+      "public/assets/app.css",
+      "public/assets/app.js",
+      "public/assets/messenger-access.js",
+      "public/assets/messenger.js",
+      "src/views/messenger_window.php",
+      "src/views/shell_top.php"
     ],
     "runtime_sha256": {
-      "public/assets/design.css": "2fd1d43af72893174bc2aa8136cec49982d2df04e42e1fe966f4ff9d4bd27ad1",
-      "src/views/launcher.php": "481f610fd58f1e30ee918ff5eafa149e51e02f2a1d5953f5f45d0d83fbeb3416"
+      "public/assets/app.css": "840185061969321642ce9f70335d4ebe256fe58fc48a7c2bced2822be457d8f1",
+      "public/assets/app.js": "f656bfef84eb1ea99eb4ad6a885b90a8377023546a295a6d2a7eb2ca9a5ac4e8",
+      "public/assets/messenger-access.js": "6ca912c4b2caa7b419d76c94fe8076e1cd960687e381db0eb08cb6b43272661e",
+      "public/assets/messenger.js": "6a3cd615871a5b2b36a23dab894e6dab84826a2dfc0b4ca221fb17a2eb4b9c20",
+      "src/views/messenger_window.php": "c07044e204cb08da619da00b9b0907fddef11378cbcd89045771f2c4da1464e9",
+      "src/views/shell_top.php": "b9701a217ea1fb445a36a5c7bfab9cc2a3f1f3f9631da95742427925d1504134"
     },
     "migrations": [],
     "deleted_files": 0,
-    "original_document_body_format_title_version_unchanged": true,
-    "existing_preferences_and_revisions_unchanged": true,
     "original_legacy_tables_preserved": 14,
-    "product_tables_original_rows_preserved": 6,
-    "product_preservation_exception": "None. No original or existing QA preferences excluded. This task created no content or product fixtures in production.",
+    "product_tables_original_rows_checked": 6,
+    "product_original_rows_unchanged_except_audited_concurrent_user_save": true,
+    "messenger_tables_original_rows_preserved": 5,
+    "product_preservation_exception": "One existing user personal dashboard row changed revision 2 to 5 through three audited successful ordinary Windows Chrome browser saves at 10:30:06, 10:30:32 and 10:31:05 KST, before deployment. Encrypted backup row and audit timestamps/revisions matched. Latest user layout retained; all existing QA preferences and other original product rows unchanged.",
     "original_database_owners_preserved": true,
     "original_database_acl_preserved": true,
     "file_records_preserved": 1042,
@@ -64,18 +75,18 @@
     "excluded_volatile_operational_state": [
       "community-automations.cursor.json"
     ],
-    "prior_storage_count_change": "16 disabled old qa_ account files soft-deleted 2026-09-11 were purged by existing 30-day housekeeping 2026-10-12 04:00, before this task baseline; rows and purged_at verified read-only.",
     "configuration_files_unchanged": 85,
     "encrypted_backup_decryption_verified": true,
     "encrypted_storage_original_hashes_verified": true,
     "file_apply_rehearsal": true,
-    "rehearsal_candidate": "8c94af52e1c6e0e1664ba60c88573f87fb19e269",
+    "rehearsal_candidate": "5e53299a05a2a6fa9573d46915c662dc0bd40b0d",
     "physical_android_verified": false,
     "safari_verified": false,
     "screenreader_verified": false,
-    "evidence": "docs/work-items/neutral-theme-home.md"
+    "evidence": "docs/work-items/messenger-movable.md"
   },
   "evidence": [
+    "docs/work-items/messenger-movable.md",
     "docs/work-items/neutral-theme-home.md",
     "docs/work-items/community-rich-table.md",
     "docs/work-items/community-editor-surface.md",
@@ -146,19 +157,19 @@
     "evidence": "docs/work-items/gpt-easy-connect.md"
   },
   "git_sync": {
-    "status": "synchronized",
-    "remote_live_verified": true,
-    "last_fetched_origin_main": "d6f33758b0d433576a4cffd43728ec732a532d7b",
+    "status": "push_pending",
+    "remote_live_verified": false,
+    "last_fetched_origin_main": "01114a9fd667cfd6c58124a81c8c44d6a10a618d",
     "pc_branch": "cloud/buddy-startup-diagnostic",
     "pc_commit": "7a0ff3f",
-    "web_branch": "cloud/neutral-theme-home",
-    "reason": "Atomic main/cloud/neutral-theme-home and release/baseline tags pushed and fetched at d6f33758b0d433576a4cffd43728ec732a532d7b. This metadata-only follow-up uses the same branches. v2.58.2 points to verified runtime 6559e9749cb9.",
-    "verified_at": "2026-10-12T09:27:25+09:00"
+    "web_branch": "cloud/messenger-movable",
+    "reason": "Runtime and preservation verified; deployment records awaiting atomic push.",
+    "verified_at": "2026-10-12T10:39:12+09:00"
   },
   "previous_verification": {
-    "version": "2.58.1",
-    "runtime_commit": "ac847cec7dcbc97b97aeeb6e95aaa43c8f6efa5c",
-    "verified_at": "2026-10-11T22:29:11+09:00",
-    "evidence": "docs/work-items/community-rich-table.md"
+    "version": "2.58.2",
+    "runtime_commit": "6559e9749cb9dafbc79f65b034548025f0975f61",
+    "verified_at": "2026-10-12T09:26:42+09:00",
+    "evidence": "docs/work-items/neutral-theme-home.md"
   }
 }
