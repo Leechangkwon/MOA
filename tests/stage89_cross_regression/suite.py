@@ -191,6 +191,10 @@ try:
 
     # F66 real issuance+OTP reuse, permissions, redaction and revocation.
     api('DELETE',f"/api/me/api-tokens/{users['employee']['session.open']['id']}",expected=200)
+    # 재사용 시험은 같은 유효 구간 안에서 두 요청을 보낸다. 구간을 넘기면
+    # 제품의 올바른 bad_code 응답을 code_reused 실패로 오판하게 된다.
+    while time.time() % 30 > 18:
+        time.sleep(.2)
     payload={'name':'Cross-new-token','purpose':'Synthetic regression only','scope':'read','password':users['employee']['password'],'otp':otp('employee')}
     issued=api('POST','/api/me/api-tokens',body=payload,expected=201).json()
     issued_token=issued['token'];tokens=api('GET','/api/me/api-tokens',expected=200).json()['tokens']

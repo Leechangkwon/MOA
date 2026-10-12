@@ -98,8 +98,11 @@ final class BoardCursor
                 $filter .= ' AND ('.implode(',',$cols).') '.$op.' ('.implode(',',$slots).')';
             }
             $order = implode(', ', array_map(static fn(string $col): string => $col.' '.$direction, $cols));
+            // 후보 단계는 정렬 색인에 들어 있는 값만 읽는다. 본문/다른 정렬 값은 권한 판정 뒤 가져온다.
+            $projection = $sort === 'updated' ? 'p.updated_at' : $posted . ' AS posted_at';
+            if ($sort === 'views') { $projection .= ', p.view_count AS views'; }
             $branches[] = "(SELECT p.id,
-{$posted} AS posted_at, p.updated_at, p.view_count AS views
+{$projection}
 FROM community.pages p WHERE
 {$scope} AND p.deleted_at IS NULL AND p.hidden_at IS NULL
 {$filter}
@@ -109,12 +112,23 @@ ORDER BY
         $union = implode(' UNION ALL ', $branches);
         $outerCols = $sort === 'views' ? ['h.views','h.posted_at','h.id'] : [$sort === 'updated' ? 'h.updated_at' : 'h.posted_at','h.id'];
         $outerOrder = implode(', ', array_map(static fn(string $col): string => $col.' '.$direction, $outerCols));
+        $select = $sort === 'updated' ? 'h.id, h.updated_at' : 'h.id, h.posted_at';
+        if ($sort === 'views') { $select .= ', h.views'; }
+        $details = $sort === 'views' ? 'p.updated_at,' : 'p.view_count AS views,';
+        if ($sort === 'new') { $details .= 'p.updated_at,'; }
+        if ($sort === 'updated') {
+            $details .= 'CASE WHEN p.space_id=CAST(:return_board AS bigint) THEN p.created_at ELSE p.published_at END AS posted_at,';
+            $bind[':return_board'] = $board;
+        }
         $sql = <<<SQL
-            SELECT h.id, h.posted_at, h.updated_at, h.views, v.*,
+            SELECT
+                   {$select}, v.*,
                    (SELECT json_agg(t.tag ORDER BY t.tag_norm) FROM community.page_tags t WHERE t.page_id=h.id) AS tags
               FROM ({$union}) h
               CROSS JOIN LATERAL (
-                SELECT p.public_id,p.title,p.icon,p.visibility,p.created_at,p.resolved,s.kind AS space_kind,
+                SELECT
+                       {$details}
+                       p.public_id,p.title,p.icon,p.visibility,p.created_at,p.resolved,s.kind AS space_kind,
                        CASE WHEN s.kind='board' THEN au.username ELSE owner.username END AS writer_name,
                        CASE WHEN s.kind='board' THEN au.display_name ELSE owner.display_name END AS writer_display_name,
                        left(p.plain_text,160) AS excerpt
