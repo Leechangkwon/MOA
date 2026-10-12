@@ -16,6 +16,7 @@ declare(strict_types=1);
  *   page   1부터. 한 쪽 20건
  *   status 상태로 좁히기 (4-D) — 다섯 값 또는 `none`(상태 없음). 모르는 값이면 **빈 목록**이다
  *   shared `me` 면 **공유받은 페이지**(5-A — 4-D 의 `assignee=me` 자리). 이때만 공간을 가리지 않는다 — 아래 ★
+ *   view   `projects` 면 사이드바와 같은 현재 볼 수 있는 프로젝트 10개 + more. 다른 거르개는 쓰지 않는다.
  *
  * ★ 범위는 **SQL 이 정한다** (C:S-02 · C:T-37). 관문이 둘이다:
  *     [공간] `community_space_gate()` — 남의 개인 공간은 통째로 403, 남의 팀 공간도 403.
@@ -47,6 +48,13 @@ declare(strict_types=1);
 
 $db = Db::instance();
 $me = (int) $user['id'];
+
+// 편집 중인 화면을 떠나지 않고 사이드바를 갱신한다. SSR과 같은 읽기 전용 helper·고정 한도다.
+if (Http::queryText('view', 20) === 'projects') {
+    $projects = community_work_projects($user, 10);
+    Http::json(['pages' => $projects['items'], 'more' => $projects['more']]);
+    return;
+}
 
 /* ─── [0] 상태 거르개 (4-D) ─────────────────────────────────────
  *
@@ -126,6 +134,7 @@ if (Http::queryText('shared', 8) === 'me') {
                p.created_at, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state, p.published_from,
                s.id AS space_id, s.kind AS space_kind, s.name AS space_name,
                s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
+               p.author_id, s.is_active AS space_is_active,
                owner.username AS owner_name,
                owner.display_name AS owner_display_name,
                parent.public_id AS parent_public_id,
@@ -196,6 +205,7 @@ if (Http::queryText('shared', 8) === 'me') {
             'created_at'  => (string) $r['created_at'],
             'updated_at'  => (string) $r['updated_at'],
             'can_edit'    => $canEditRow && Authz::canCommunityWrite($user),   // S2 — 손님은 쓰기 창구에 닿지 못한다
+            'can_delete'  => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageManage($user, $r)[0],
             // 어느 공간의 페이지인가 — 언제나 남의 공간이므로 화면이 그것을 말해야 한다.
             'space'       => [
                 'id'   => (int) $r['space_id'],
@@ -268,6 +278,14 @@ if (!$mayOpen) {
 ]);
 // 디버깅 묶음 S2 — 손님(Guest)은 자기 공간·팀 공간이어도 쓰기 창구(`community.write`)에 닿지 못한다 — 창구 값도 같게
 $canWrite = $canWrite && Authz::canCommunityWrite($user);
+// 삭제는 편집 공유와 다른 관리 권한이다. 게시판은 작성자도 필요하므로 아래에서 행별로 판정한다.
+$manageSpace = [
+    'deleted_at'          => null,
+    'space_kind'          => (string) $space['kind'],
+    'space_owner_user_id' => $space['owner_user_id'] ?? null,
+    'space_team_id'       => $space['team_id'] ?? null,
+    'space_is_active'     => $space['is_active'] ?? false,
+];
 
 $spaceSummary = [
     'id'        => $spaceId,
@@ -292,6 +310,7 @@ $spaceSummary = [
 if (Http::queryText('tree', 4) === '1') {
     $sqlTree = <<<SQL
         SELECT p.public_id, p.title, p.icon, p.position, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
+               p.author_id,
                parent.public_id AS parent_public_id,
                who.username AS assignee_name, who.role AS assignee_role
           FROM community.pages p
@@ -330,6 +349,7 @@ if (Http::queryText('tree', 4) === '1') {
             'updated_at' => (string) $r['updated_at'],
             // 공간 하나당 한 번 판단한 값이다 (DESIGN 원칙 1 — 화면은 판단하지 않는다).
             'can_edit'   => $canWrite,
+            'can_delete' => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageManage($user, $manageSpace + ['author_id' => $r['author_id']])[0],
         ];
     }
 
@@ -400,7 +420,7 @@ $countRow = $db->run($sqlCount, $bind)->fetch();
 $total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 
 $sqlList = <<<SQL
-    SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version,
+    SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version, p.author_id,
            p.created_at, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
            parent.public_id AS parent_public_id,
            who.username AS assignee_name, who.role AS assignee_role,
@@ -452,6 +472,7 @@ foreach ($rows as $r) {
         // 값을 서버가 내려 주는 이유는 화면이 소유·역할을 스스로 따지지 않게 하려는 것이다
         // (DESIGN 원칙 1). 단추를 되살려 창구를 불러도 서버가 같은 함수로 다시 막는다.
         'can_edit'    => $canWrite,
+        'can_delete'  => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageManage($user, $manageSpace + ['author_id' => $r['author_id']])[0],
     ];
 }
 

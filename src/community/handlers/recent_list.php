@@ -22,7 +22,9 @@ declare(strict_types=1);
 $bind[':rec_me'] = (int) $user['id'];
 
 $sqlHead = <<<'SQL'
-    SELECT p.public_id, p.title, p.icon, s.kind AS space_kind, s.name AS space_name, r.last_viewed_at
+    SELECT p.public_id, p.title, p.icon, s.kind AS space_kind, s.name AS space_name, r.last_viewed_at,
+           p.author_id, s.owner_user_id AS space_owner_user_id, s.team_id AS space_team_id,
+           s.is_active AS space_is_active
       FROM community.page_recent r
       JOIN community.pages p ON p.id = r.page_id
       JOIN community.spaces s ON s.id = p.space_id
@@ -41,6 +43,7 @@ foreach (Db::instance()->run($sqlHead . ' ' . $visible . $sqlTail, $bind)->fetch
         'title'          => (string) $r['title'],
         'icon'           => $r['icon'] === null ? null : (string) $r['icon'],
         'space'          => ['kind' => (string) $r['space_kind'], 'name' => (string) $r['space_name']],
+        'can_delete'     => Authz::canCommunityWrite($user) && CommunityAuthz::decidePageManage($user, $r)[0],
         // 마지막으로 연 때(5분 단위로만 밀린다 — 쓰기를 줄이려고). 서버 값 그대로
         'last_viewed_at' => (string) $r['last_viewed_at'],
     ];

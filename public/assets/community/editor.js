@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=c481218d6d2c';
-import { hydrateDashboard } from './dashboard.js?v=c481218d6d2c';
+import { createTableEditor } from './table-editor.js?v=496fe6f9282c';
+import { hydrateDashboard } from './dashboard.js?v=496fe6f9282c';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,22 +42,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=c481218d6d2c';
-import { renderDoc, embedHost } from './doc-render.js?v=c481218d6d2c';
-import { createDatabaseView } from './database.js?v=c481218d6d2c';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=c481218d6d2c';
-import { bindEmbedAdmin } from './embeds.js?v=c481218d6d2c';
-import { bindPopular } from './popular.js?v=c481218d6d2c';
-import { bindPalettes } from './palettes.js?v=c481218d6d2c';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=c481218d6d2c';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=c481218d6d2c';
-import { drawTrust, bindProcedures } from './procedures.js?v=c481218d6d2c';
-import { createPageExport } from './export.js?v=c481218d6d2c';
-import { createDrafts } from './drafts.js?v=c481218d6d2c';
-import { drawPageAi, bindAiCenter } from './ai.js?v=c481218d6d2c';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=c481218d6d2c';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=496fe6f9282c';
+import { renderDoc, embedHost } from './doc-render.js?v=496fe6f9282c';
+import { createDatabaseView } from './database.js?v=496fe6f9282c';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=496fe6f9282c';
+import { bindEmbedAdmin } from './embeds.js?v=496fe6f9282c';
+import { bindPopular } from './popular.js?v=496fe6f9282c';
+import { bindPalettes } from './palettes.js?v=496fe6f9282c';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=496fe6f9282c';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=496fe6f9282c';
+import { drawTrust, bindProcedures } from './procedures.js?v=496fe6f9282c';
+import { createPageExport } from './export.js?v=496fe6f9282c';
+import { createDrafts } from './drafts.js?v=496fe6f9282c';
+import { drawPageAi, bindAiCenter } from './ai.js?v=496fe6f9282c';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=496fe6f9282c';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=c481218d6d2c';
+import { createWork } from './work.js?v=496fe6f9282c';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -561,15 +561,15 @@ function fillSpaceNav(spaces) {
  */
 /** Q:F-12 D — 이 화면에서 받은 공간 목록(같은 화면에서 다시 묻지 않게 work.js 가 나눠 쓴다) */
 let lastSpaces = null;
-function loadSpaces() {
+function loadSpaces(strict = false) {
   if (lastSpaces) { return lastSpaces; }
-  lastSpaces = api('GET', '/api/spaces').then((result) => {
-    if (result.status !== 200) { return []; }
+  lastSpaces = api('GET', '/api/spaces').then(async (result) => {
+    if (result.status !== 200) { if (strict) throw new Error(errorMessage(result.data)); return []; }
     const spaces = Array.isArray(result.data.spaces) ? result.data.spaces : [];
     fillSpaceNav(spaces);
-    fillSidebarTrees(spaces);
+    await fillSidebarTrees(spaces, strict);
     return spaces;
-  }).catch(() => []);
+  }).catch(error => { if (strict) throw error; return []; });
   return lastSpaces;
 }
 
@@ -617,10 +617,9 @@ function navToggle(label, kids, expanded) {
 /** 평평한 목록(`?tree=1`) → 사이드바 트리. `found` 는 지금 페이지가 이 트리에 있었나 */
 function navTree(pages, activeId) {
   const byParent = new Map();
-  const byId = new Map();
+  const byId = new Map(pages.map(page=>[page.id,page]));
   for (const page of pages) {
-    byId.set(page.id, page);
-    const key = typeof page.parent_id === 'string' ? page.parent_id : '';
+    const key = typeof page.parent_id === 'string' && byId.has(page.parent_id) ? page.parent_id : '';
     if (!byParent.has(key)) { byParent.set(key, []); }
     byParent.get(key).push(page);
   }
@@ -651,7 +650,8 @@ function navTree(pages, activeId) {
       if (node.id === activeId) { link.setAttribute('aria-current', 'page'); }
       row.appendChild(navToggle(title, kids.length > 0, expanded));
       row.appendChild(link);
-      row.appendChild(navStar(node));   // 라운드 B — 트리 항목의 ☆(넣기·빼기)
+      row.appendChild(navStar(node));
+      documentTrashRow(row, node);   // 라운드 B — 트리 항목의 ☆(넣기·빼기)
       li.appendChild(row);
       if (kids.length > 0) {
         const sub = level(node.id, depth + 1);
@@ -665,14 +665,19 @@ function navTree(pages, activeId) {
   return { el: level('', 0), found: byId.has(activeId) };
 }
 
-function spaceTree(space) {
+function spaceTree(space, strict = false) {
   const tail = space.kind === 'personal' ? '' : '&space=' + encodeURIComponent(String(space.id));
-  return api('GET', '/api/pages?tree=1' + tail).then((result) => (
-    result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : []
-  )).catch(() => []);
+  return api('GET', '/api/pages?tree=1' + tail).then((result) => {
+    if (result.status === 200 && Array.isArray(result.data.pages)) return result.data.pages;
+    if (strict) throw new Error(errorMessage(result.data));
+    return [];
+  }).catch(error => { if (strict) throw error; return []; });
 }
 
-function fillSidebarTrees(spaces) {
+let sidebarTreeGeneration = 0;
+function fillSidebarTrees(spaces, strict = false) {
+  const ticket = ++sidebarTreeGeneration;
+  const pendingTrees = [];
   const mineBox = document.getElementById('nav-community-tree');
   const teamBox = document.getElementById('nav-community-teams');
   const sharedBox = document.getElementById('nav-community-shared');
@@ -683,11 +688,12 @@ function fillSidebarTrees(spaces) {
 
   const personal = list.find((s) => s && s.kind === 'personal');
   if (mineBox && personal) {
-    spaceTree(personal).then((pages) => {
+    pendingTrees.push(spaceTree(personal, strict).then((pages) => {
+      if (ticket !== sidebarTreeGeneration) return;
       clear(mineBox);
-      mineBox.appendChild(navTree(pages, activeId).el);
+      mineBox.appendChild(navTree(pages.map(page=>({...page,_trash_space_id:personal.id})), activeId).el);
       markActiveVisible(mineBox);
-    });
+    }));
   }
 
   // 팀 공간 — 팀 이름 줄(공간으로 가는 링크) 밑에 그 팀의 트리. 지금 페이지가 그 안에 있거나
@@ -707,8 +713,9 @@ function fillSidebarTrees(spaces) {
       link.appendChild(name);
       group.appendChild(row);
       teamBox.appendChild(group);
-      spaceTree(space).then((pages) => {
-        const tree = navTree(pages, activeId);
+      pendingTrees.push(spaceTree(space, strict).then((pages) => {
+        if (ticket !== sidebarTreeGeneration) return;
+        const tree = navTree(pages.map(page=>({...page,_trash_space_id:space.id})), activeId);
         const expanded = tree.found || hereSpace === String(space.id);
         row.appendChild(navToggle(space.name, pages.length > 0, expanded));
         row.appendChild(link);
@@ -717,13 +724,14 @@ function fillSidebarTrees(spaces) {
           group.appendChild(tree.el);
         }
         markActiveVisible(group);
-      });
+      }));
     }
   }
 
   // 공유받은 페이지 (5-A) — 공간을 가리지 않는 한 번의 창구 호출. 없으면 제목째 숨는다.
   if (sharedBox) {
-    api('GET', '/api/pages?shared=me').then((result) => {
+    pendingTrees.push(api('GET', '/api/pages?shared=me').then((result) => {
+      if (ticket !== sidebarTreeGeneration) return;
       const pages = result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : [];
       clear(sharedBox);
       const ul = document.createElement('ul');
@@ -739,15 +747,20 @@ function fillSidebarTrees(spaces) {
         link.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
         if (page.id === activeId) { link.setAttribute('aria-current', 'page'); }
         row.appendChild(link);
-        row.appendChild(navStar(page));   // 라운드 B — 트리 항목의 ☆
+        row.appendChild(navStar(page));
+        documentTrashRow(row, page);   // 라운드 B — 트리 항목의 ☆
         li.appendChild(row);
         ul.appendChild(li);
       }
       sharedBox.appendChild(ul);
       show(sharedBox, pages.length > 0);
       show(sharedTitle, pages.length > 0);
-    }).catch(() => {});
+    }).catch(() => {}));
   }
+  return Promise.allSettled(pendingTrees).then(results => {
+    if (strict) { const failed = results.find(result=>result.status==='rejected'); if (failed) throw failed.reason; }
+    return results;
+  });
 }
 
 /** 지금 페이지 줄이 사이드바 칸 밖이면 그 칸 안에서만 보이게 굴린다(본문은 움직이지 않는다) */
@@ -791,7 +804,8 @@ function navPageRow(page, activeId) {
   link.textContent = (page.icon ? page.icon + ' ' : '') + page.title;
   if (page.id === activeId) { link.setAttribute('aria-current', 'page'); }
   row.appendChild(link);
-  row.appendChild(navStar(page));   // 라운드 B — 즐겨찾기·최근 줄에도 같은 ☆(즐겨찾기 줄에서는 누르면 빠진다)
+  row.appendChild(navStar(page));
+  documentTrashRow(row, page);   // 라운드 B — 즐겨찾기·최근 줄에도 같은 ☆(즐겨찾기 줄에서는 누르면 빠진다)
   li.appendChild(row);
   return { li: li, link: link };
 }
@@ -894,8 +908,11 @@ function drawHomeFavorites(pages) {
 }
 
 /** 즐겨찾기를 받아 사이드바를 그리고, 등록된 곳(☆ 메뉴)에 알린다 */
+let favoriteGeneration = 0;
 function loadFavoritesNav() {
+  const ticket = ++favoriteGeneration;
   return api('GET', '/api/me/favorites').then((result) => {
+    if (ticket !== favoriteGeneration) return [];
     if (result.status === 401) { toLogin(); return []; }
     const pages = result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : [];
     favoriteIds = new Set(pages.map((p) => p.id));
@@ -969,8 +986,11 @@ function drawHomeRecent(pages) {
   show(box, pages.length > 0);
 }
 
+let recentGeneration = 0;
 function loadRecentNav() {
+  const ticket = ++recentGeneration;
   return api('GET', '/api/me/recent').then((result) => {
+    if (ticket !== recentGeneration) return [];
     if (result.status === 401) { toLogin(); return []; }
     recentPages = result.status === 200 && Array.isArray(result.data.pages) ? result.data.pages : [];
     drawRecentNav(recentPages);
@@ -1377,6 +1397,10 @@ function createBulkRunner(el, hooks) {
   return {
     start: start,
     busy: busy,
+    current: () => job,
+    cancelPaused() {
+      if (job && job.paused !== null) { job = null; hideUndo(); show(el.panel, false); changed(); }
+    },
     /** 창을 다시 열 때 — **끝난** 작업의 진행 표를 치운다(도는 중이거나 멈춘 작업은 남은 줄과 함께 그대로 둔다) */
     reset() {
       if (busy()) { return; }
@@ -1393,17 +1417,27 @@ function bulkTreeItems(pickedIds, pages) {
   const byParent = new Map();
   const byId = new Map();
   for (const page of pages) {
-    byId.set(page.id, page);
+    const old = byId.get(page.id);
+    byId.set(page.id, {...old, ...page, parent_id: Object.prototype.hasOwnProperty.call(page,'parent_id') ? page.parent_id : old?.parent_id ?? null});
+  }
+  for (const page of byId.values()) {
     const key = typeof page.parent_id === 'string' ? page.parent_id : '';
-    if (!byParent.has(key)) { byParent.set(key, []); }
+    if (!byParent.has(key)) byParent.set(key, []);
     byParent.get(key).push(page);
   }
   const order = [];
+  const visited = new Set();
   const walk = (key, depth) => {
     if (depth > 16) { return; }
-    for (const node of byParent.get(key) || []) { order.push(node); walk(node.id, depth + 1); }
+    for (const node of byParent.get(key) || []) { if (visited.has(node.id)) continue; visited.add(node.id); order.push(node); walk(node.id, depth + 1); }
   };
   walk('', 0);
+  for (const node of byId.values()) {
+    if (!visited.has(node.id) && !byId.has(node.parent_id)) { visited.add(node.id); order.push(node); walk(node.id, 1); }
+  }
+  for (const node of byId.values()) {
+    if (!visited.has(node.id)) { visited.add(node.id); order.push(node); walk(node.id, 1); }
+  }
   const items = [];
   const itemOf = new Map();
   for (const node of order) {
@@ -1419,6 +1453,313 @@ function bulkTreeItems(pickedIds, pages) {
     items.push(item);
   }
   return items;
+}
+
+// UUID selection is shared by every sidebar appearance. Capabilities come only from list responses.
+let documentTrashGuard = async () => () => {
+};
+let documentTrashHomeRefresh = null;
+let documentTrashHomeBusy = () => false;
+let documentTrashRestoreBusy = () => false;
+let documentTrashController = null;
+let documentTrashAfterClose = () => {
+};
+let documentTrashAfterRestore = () => {
+};
+function documentTrashRow(row, page) {
+  if (!documentTrashController || !page || typeof page.id !== 'string') return;
+  documentTrashController.attach(row, page);
+}
+function initDocumentTrash() {
+  const get = (name) => document.getElementById('document-trash-' + name);
+  const dialog = get('dialog'), results = get('results');
+  if (!dialog || !results || documentTrashController) return;
+  let selected = new Map(), selecting = false, pending = [], confirming = false, opener = null;
+  let release = null;
+  let activeJob = null;
+  let reauthClosing = false;
+  const pages = new Map();
+  const tools = (name) => document.getElementById('sidebar-document-' + name);
+  const runner = createBulkRunner({
+    panel:get('panel'),title:get('progress-title'),body:get('body'),stop:get('stop'),stopText:get('stop-text'),login:get('login'),resume:get('resume'),summary:get('summary'),undo:get('undo'),close:get('close')
+  }, {
+    onChange:sync,beforeReauth:()=>{
+      if(results.open){
+        reauthClosing=true;
+        results.close();
+      }
+    },afterReauth:()=>{
+      if(!results.open)results.showModal();
+    }
+  });
+  function sync() {
+    const sidebar = document.getElementById('nav-community-tree')?.closest('aside') || document.querySelector('.sidebar');
+    for (const check of document.querySelectorAll('[data-sidebar-document-check]')) {
+      check.hidden = !selecting;
+      if (check.parentElement.classList.contains('document-select-hit')) check.parentElement.hidden = !selecting;
+      check.checked = selected.has(check.dataset.sidebarDocumentCheck);
+      check.disabled = check.dataset.canDelete !== 'true' || runner.busy() || confirming;
+    }
+    if(tools('selection')) tools('selection').hidden = !selecting;
+    if(tools('select')) {
+      tools('select').setAttribute('aria-pressed',String(selecting));
+      tools('select').disabled=runner.busy() || confirming;
+    }
+    if(tools('count')) tools('count').textContent=selected.size+'개 선택';
+    if(tools('trash')) tools('trash').disabled=selected.size===0 || runner.busy() || confirming;
+    for(const key of ['all','clear','done']) if(tools(key)) tools(key).disabled=runner.busy() || confirming;
+    if(sidebar) sidebar.classList.toggle('is-document-selecting',selecting);
+  }
+  function attach(row,page) {
+    const existing=pages.get(page.id);
+    // Unknown parents from recent/favorites must not erase a known tree relationship.
+    pages.set(page.id,{
+      ...existing,...page,parent_id:Object.prototype.hasOwnProperty.call(page,'parent_id') ? page.parent_id : existing?.parent_id ?? null
+    });
+    if (page.can_delete !== true) selected.delete(page.id);
+    else if (selected.has(page.id)) selected.set(page.id,pages.get(page.id));
+    row.dataset.documentId=page.id;
+    const check=document.createElement('input');
+    check.type='checkbox';
+    check.dataset.sidebarDocumentCheck=page.id;
+    check.dataset.canDelete=String(page.can_delete===true);
+    check.hidden=!selecting;
+    check.checked=selected.has(page.id);
+    check.disabled=page.can_delete!==true;
+    check.setAttribute('aria-label',page.title+' 선택');
+    if(page.can_delete!==true) check.title='이 문서를 휴지통으로 옮길 권한이 없습니다.';
+    check.addEventListener('click',e=>e.stopPropagation());
+    check.addEventListener('change',()=>{
+      if(check.checked){
+        if(selected.size>=BULK_PICK_MAX){
+          check.checked=false;
+          note('한 번에 100개까지 선택합니다.');
+        }else selected.set(page.id,pages.get(page.id));
+      }else selected.delete(page.id);
+      sync();
+    });
+    const hit = document.createElement('label');
+    hit.className = 'document-select-hit';
+    hit.hidden = !selecting;
+    hit.appendChild(check);
+    hit.addEventListener('click',event=>event.stopPropagation());
+    row.prepend(hit);
+    if(page.can_delete===true){
+      const trash=document.createElement('button');
+      trash.type='button';
+      trash.className='document-row-trash btn btn--icon';
+      trash.dataset.documentTrash=page.id;
+      trash.setAttribute('aria-label',page.title+' 휴지통으로 옮기기');
+      trash.appendChild(makeIcon('trash'));
+      trash.addEventListener('click',e=>{
+        e.preventDefault();
+        e.stopPropagation();
+        open([pages.get(page.id)],trash);
+      });
+      row.appendChild(trash);
+    }
+    sync();
+  }
+  function note(text){
+    if(tools('note'))tools('note').textContent=text;
+  }
+  async function refresh(){
+    selected.clear();
+    pages.clear();
+    sync();
+    lastSpaces = null;
+    await Promise.allSettled([loadSpaces(),loadFavoritesNav(),loadRecentNav(),documentTrashHomeRefresh?.()]);
+    if(documentTrashController.refreshProjects) await documentTrashController.refreshProjects();
+  }
+  function restoreFocus(){
+    if(opener?.isConnected && !opener.disabled)opener.focus();
+    else tools('select')?.focus();
+  }
+  function open(items,trigger){
+    if(runner.busy() || confirming || documentTrashHomeBusy() || documentTrashRestoreBusy())return;
+    pending=items.filter(p=>p.can_delete===true).slice(0,BULK_PICK_MAX);
+    if(!pending.length)return;
+    opener=trigger;
+    setText(get('msg'),'');
+    setText(get('lead'),'고른 '+items.length+'개 중 삭제 가능한 '+pending.length+'개를 휴지통으로 옮깁니다.'+(items.length>pending.length?' 권한 없는 '+(items.length-pending.length)+'개는 제외됩니다.':''));
+    clear(get('items'));
+    for(const page of pending){
+      const li=document.createElement('li');
+      li.textContent=page.title;
+      get('items').appendChild(li);
+    }
+    if(!dialog.open)dialog.showModal();
+  }
+  async function confirm(){
+    if(confirming || runner.busy() || !pending.length)return;
+    confirming=true;
+    get('confirm').disabled=true;
+    get('cancel').disabled=true;
+    sync();
+    try{
+      // Refresh complete existing sidebar trees, including team spaces, before deriving cascade roots.
+      lastSpaces = null;
+      await loadSpaces(true);
+      pending = pending.map(page => pages.get(page.id) || page);
+      if (pending.some(page=>page.can_delete !== true)) throw new Error('문서의 삭제 권한이 바뀌었습니다. 목록을 확인한 뒤 다시 선택하세요.');
+      release=await documentTrashGuard(pending);
+      const items=bulkTreeItems(new Set(pending.map(p=>p.id)),Array.from(pages.values()));
+      dialog.close();
+      selected.clear();
+      sync();
+      results.showModal();
+      const finish=async(job)=>{
+        if(release){
+          const done=release;
+          release=null;
+          done(job);
+        }
+        await refresh();
+      };
+      activeJob = {
+        title:'휴지통으로 옮기기',items,okText:'휴지통으로 옮김',withParentText:'부모와 함께 휴지통으로 옮김',parentFailText:'부모를 옮기지 못해 그대로 유지',send:item=>api('DELETE','/api/pages/'+item.id,{
+        }, {
+          sessionRetry:false
+        }),done:finish,
+        undo:done=>({
+          title:'되돌리기',items:done.map(p=>({
+            ...p,parent:null
+          })),okText:data=>data?.moved_to_root?'되살림 — 맨 위로 이동':'되살림',send:item=>api('POST','/api/pages/'+item.id+'/restore',{
+          }, {
+            sessionRetry:false
+          }),done:job=>{
+            documentTrashAfterRestore(job);
+            return refresh();
+          }
+        })
+      };
+      runner.start(activeJob);
+      pending=[];
+    }catch(e){
+      if(release){
+        release();
+        release=null;
+      }setText(get('msg'),e.message || GENERIC_ERROR);
+    }
+    finally{
+      confirming=false;
+      get('confirm').disabled=false;
+      get('cancel').disabled=false;
+      sync();
+    }
+  }
+  get('confirm').addEventListener('click',confirm);
+  get('cancel').addEventListener('click',()=>dialog.close());
+  dialog.addEventListener('cancel',e=>{
+    if(confirming)e.preventDefault();
+  });
+  dialog.addEventListener('close',()=>{
+    if(!confirming){
+      pending=[];
+      restoreFocus();
+    }
+  });
+  results.addEventListener('cancel',e=>{
+    if(runner.busy() && !runner.current()?.paused)e.preventDefault();
+  });
+  get('close').addEventListener('click',()=>{
+    if(!runner.busy() || runner.current()?.paused){
+      results.close();
+    }
+  });
+  results.addEventListener('close',()=>{
+    if (reauthClosing) {
+      reauthClosing=false;
+      return;
+    }
+    const job = runner.current() || activeJob;
+    if (release) {
+      const done=release;
+      release=null;
+      done(job);
+    }
+    runner.cancelPaused();
+    runner.reset();
+    activeJob=null;
+    restoreFocus();
+    documentTrashAfterClose();
+  });
+  tools('select')?.addEventListener('click',()=>{
+    selecting=!selecting;
+    selected.clear();
+    sync();
+  });
+  tools('done')?.addEventListener('click',()=>{
+    selecting=false;
+    selected.clear();
+    sync();
+    tools('select').focus();
+  });
+  tools('clear')?.addEventListener('click',()=>{
+    selected.clear();
+    sync();
+  });
+  tools('trash')?.addEventListener('click',()=>open(Array.from(selected.keys()).map(id=>pages.get(id)).filter(Boolean),tools('trash')));
+  tools('all')?.addEventListener('click',()=>{
+    selected.clear();
+    const visible=new Map();
+    for(const check of document.querySelectorAll('[data-sidebar-document-check]')) if(check.dataset.canDelete==='true' && check.checkVisibility() && check.closest('aside'))visible.set(check.dataset.sidebarDocumentCheck,pages.get(check.dataset.sidebarDocumentCheck));
+    for(const [id,page]of visible){
+      if(selected.size>=BULK_PICK_MAX)break;
+      selected.set(id,page);
+    }
+    note('현재 보이는 허용 문서 '+visible.size+'개 중 '+selected.size+'개 선택'+(visible.size>BULK_PICK_MAX?' — 나머지는 다음 작업에서 선택하세요.':''));
+    sync();
+  });
+  documentTrashController={
+    attach,open,busy:()=>runner.busy() || confirming,register:page=>{
+      const old=pages.get(page.id);
+      pages.set(page.id,{
+        ...old,...page,parent_id:Object.prototype.hasOwnProperty.call(page,'parent_id') ? page.parent_id : old?.parent_id ?? null
+      });
+    },refresh
+  };
+  documentTrashController.refreshProjects = async () => {
+    const nav = document.getElementById('nav-work-projects');
+    if (!nav) return;
+    const response = await api('GET','/api/pages?view=projects');
+    if (response.status !== 200 || !Array.isArray(response.data.pages)) return;
+    for (const row of nav.querySelectorAll('.document-project-row')) row.remove();
+    const fixed = nav.querySelector('#nav-work-all-projects,#nav-work-new-project');
+    for (const page of response.data.pages) {
+      const row=document.createElement('div');
+      row.className='nav-tree__row document-project-row';
+      const link=document.createElement('a');
+      link.className='nav-tree__link';
+      link.href=COMMUNITY_BASE+'/p/'+page.id;
+      link.dataset.projectId=page.id;
+      link.dataset.projectPurpose=page.purpose;
+      link.textContent=(page.icon ? page.icon+' ' : '')+page.title;
+      const icon=document.createElement('span');
+      icon.className='work-dot';
+      if(page.color)icon.dataset.color=page.color;
+      icon.setAttribute('aria-hidden','true');
+      link.prepend(icon);
+      row.appendChild(link);
+      row.appendChild(navStar(page));
+      attach(row,page);
+      nav.insertBefore(row,fixed);
+    }
+    sync();
+  };
+  for(const anchor of document.querySelectorAll('#nav-work-projects a[data-project-id]')){
+    const row=document.createElement('div');
+    row.className='nav-tree__row document-project-row';
+    anchor.before(row);
+    row.appendChild(anchor);
+    anchor.classList.add('nav-tree__link');
+    row.appendChild(navStar({
+      id:anchor.dataset.projectId,title:anchor.textContent.trim()
+    }));
+    attach(row,{
+      id:anchor.dataset.projectId,title:anchor.textContent.trim(),can_delete:anchor.dataset.canDelete==='true'
+    });
+  }
 }
 
 /* ─── 내 공간 (community-home) ───────────────────────────────── */
@@ -1486,6 +1827,21 @@ function initHome() {
   // 지금 보고 있는 공간의 종류. 창구가 준 값이고 화면이 정하지 않는다.
   let spaceKind = 'personal';
 
+  function homeTrashButton(page) {
+    const button = document.createElement('button');
+    button.type = 'button'; button.className = 'btn btn--icon document-row-trash';
+    button.dataset.homeDocumentTrash = page.id;
+    button.setAttribute('aria-label', page.title + ' 휴지통으로 옮기기');
+    button.appendChild(makeIcon('trash'));
+    button.addEventListener('click', event => { event.preventDefault(); event.stopPropagation(); documentTrashController?.open([page], button); });
+    return button;
+  }
+  function drawSearch() {
+    clear(list);
+    for (const page of resultPages) list.appendChild(card(page));
+    syncSel();
+  }
+
   function card(page) {
     const a = document.createElement('a');
     a.className = 'card card--link';
@@ -1514,7 +1870,13 @@ function initHome() {
     const st = statusBadge(page.status);
     if (st) { a.appendChild(st); }
     a.appendChild(when);
-    return a;
+    const wrap = document.createElement('div');
+    wrap.className = 'document-search-row';
+    if (sel.on) wrap.appendChild(selCheck(page));
+    wrap.appendChild(a);
+    if (page.can_delete === true) wrap.appendChild(homeTrashButton(page));
+    documentTrashController?.register(page);
+    return wrap;
   }
 
   /** 「공유받은 페이지」 줄 하나 — 누구의 공간인지와 받은 권한을 함께 보인다 (5-A).
@@ -1573,6 +1935,7 @@ function initHome() {
   function treeRow(node, kidCount) {
     const row = document.createElement('span');
     row.className = 'page-tree__row';
+    documentTrashController?.register(node);
     // 라운드 B — 「선택」 모드면 줄 맨 앞에 체크(`<summary>` 안이어도 체크를 누르면 접힘·펼침은 일어나지 않는다 — 체크가 누름의 대상)
     if (sel.on) { row.appendChild(selCheck(node)); }
 
@@ -1631,6 +1994,7 @@ function initHome() {
       row.appendChild(badge);
     }
     if (add) { row.appendChild(add); }
+    if (node.can_delete === true) row.appendChild(homeTrashButton(node));
     return row;
   }
 
@@ -1669,8 +2033,9 @@ function initHome() {
     return box;
   }
 
-  function loadTree() {
+  function loadTree(ticket) {
     return api('GET', listPath('tree=1')).then((result) => {
+      if (ticket !== listGeneration) return;
       if (result.status === 401) { toLogin(); return; }
       if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
       setText(msg, '');
@@ -1691,7 +2056,7 @@ function initHome() {
     const pages = treePages;
     const byParent = new Map();
     for (const page of pages) {
-      const key = typeof page.parent_id === 'string' ? page.parent_id : '';
+      const key = typeof page.parent_id === 'string' && pages.some(item=>item.id===page.parent_id) ? page.parent_id : '';
       if (!byParent.has(key)) { byParent.set(key, []); }
       byParent.get(key).push(page);
     }
@@ -1710,6 +2075,8 @@ function initHome() {
    */
   let treePages = [];
   let treeTotal = 0;
+  let resultPages = [];
+  let listGeneration = 0;
   const sel = { on: false, picked: new Map(), full: false };
   const selButton = document.getElementById('community-select');
   const selLabel = document.getElementById('community-select-label');
@@ -1740,6 +2107,7 @@ function initHome() {
     check.setAttribute('data-bulk-page', node.id);
     check.setAttribute('aria-label', '「' + (node.icon ? node.icon + ' ' : '') + node.title + '」 고르기');
     check.checked = sel.picked.has(node.id);
+
     check.addEventListener('click', (event) => {
       event.stopPropagation();   // 줄(요약) 누름으로 번지지 않게 — 체크 자체의 켜고 끄기는 그대로
       sel.full = false;
@@ -1755,12 +2123,14 @@ function initHome() {
       }
       syncSel();
     });
-    return check;
+    const hit = document.createElement('label'); hit.className = 'document-select-hit';
+    hit.appendChild(check); hit.addEventListener('click',event=>event.stopPropagation());
+    return hit;
   }
 
   /** 체크·막대·「선택」 단추를 지금 상태에 맞춘다 */
   function syncSel() {
-    for (const check of treeBox.querySelectorAll('input[data-bulk-page]')) {
+    for (const check of document.querySelectorAll('#community-tree input[data-bulk-page], #community-list input[data-bulk-page]')) {
       check.checked = sel.picked.has(check.getAttribute('data-bulk-page'));
     }
     if (selButton) {
@@ -1768,7 +2138,7 @@ function initHome() {
       setText(selLabel, sel.on ? '선택 끝내기' : '선택하기');
     }
     const n = sel.picked.size;
-    const running = runner.busy();
+    const running = runner.busy() || documentTrashController?.busy() || documentTrashRestoreBusy();
     setText(bulkCount, String(n) + '개 선택됨');
     // 안내는 막대 아래 한 줄(막대는 폰 폭에서도 한 줄 — 개수 + 아이콘 단추)
     let note = '줄 앞의 체크로 고르세요 — 한 번에 ' + String(BULK_PICK_MAX) + '개까지 · Esc 로 끝냅니다.';
@@ -1778,7 +2148,8 @@ function initHome() {
       note = '앞 작업이 끝나면 고른 페이지로 할 수 있습니다.';
     }
     setText(bulkNote, note);
-    for (const b of [bulkMoveBtn, bulkFavBtn, bulkTrashBtn]) { if (b) { b.disabled = n === 0 || running; } }
+    for (const b of [bulkMoveBtn, bulkFavBtn]) { if (b) b.disabled = n === 0 || running; }
+    if (bulkTrashBtn) bulkTrashBtn.disabled = !Array.from(sel.picked.values()).some(page=>page.can_delete===true) || running;
     show(bulkBar, sel.on);
     show(bulkNote, sel.on);
   }
@@ -1787,28 +2158,35 @@ function initHome() {
     sel.on = on;
     sel.picked.clear();
     sel.full = false;
-    if (treeBox.hidden && on) {
-      // 찾기 결과(카드)를 보고 있었다면 트리로 돌아간다 — 모드는 트리에서만 쓴다
-      if (search) { search.value = ''; }
-      load('').catch(() => setText(msg, GENERIC_ERROR));
-    } else {
-      drawTree();
-    }
+    if (treeBox.hidden) { drawSearch(); } else { drawTree(); }
     syncSel();
   }
 
   function selItems() {
-    return bulkTreeItems(new Set(sel.picked.keys()), treePages);
+    return bulkTreeItems(new Set(sel.picked.keys()), treeBox.hidden ? resultPages : treePages);
   }
+
+  documentTrashHomeRefresh = () => load(search ? search.value : '');
+  documentTrashHomeBusy = () => runner.busy();
+  document.getElementById('community-bulk-all')?.addEventListener('click', () => {
+    sel.picked.clear();
+    const eligible = treeBox.hidden ? resultPages : treePages;
+    for (const page of eligible) { if (sel.picked.size >= BULK_PICK_MAX) break; sel.picked.set(page.id, page); }
+    syncSel();
+    setText(bulkNote, '현재 목록 문서 ' + eligible.length + '개 중 ' + sel.picked.size + '개 선택' + (eligible.length > BULK_PICK_MAX ? ' — 나머지는 다음 작업에서 선택하세요.' : ''));
+  });
+  document.getElementById('community-bulk-clear')?.addEventListener('click', () => { sel.picked.clear(); sel.full = false; syncSel(); });
 
   function afterBulk() {
     // 고른 것은 시작할 때 풀렸다(startBulk) — 도는 동안 새로 고른 것은 남기고, 트리에서 사라진 줄은 loadTree 가 뺀다
+    lastSpaces = null;
     loadSpaces();   // 사이드바 트리도 창구의 새 답으로(옮기거나 지운 페이지가 그 자리에 남지 않게)
     return load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR));
   }
 
   /** 작업을 시작한다 — 고른 것은 작업으로 넘어가며 풀린다(t-box 파일 화면과 같다 · 도는 동안 새로 고르면 다음 작업 몫) */
   function startBulk(next) {
+    if (documentTrashController?.busy() || documentTrashRestoreBusy()) return;
     if (!runner.start(next)) { return; }
     sel.picked.clear();
     sel.full = false;
@@ -1822,6 +2200,8 @@ function initHome() {
   const bulkMoveMeta = document.getElementById('bulk-move-meta');
   const bulkMoveConfirm = document.getElementById('bulk-move-confirm');
   let bulkMovePick = null;
+  let movePages = [];
+  let moveLoading = false;
   let bulkMovePicked = false;
 
   function bulkMoveButton(label, id) {
@@ -1863,15 +2243,22 @@ function initHome() {
     return box;
   }
 
-  function openBulkMove() {
-    if (!bulkMoveDialog || sel.picked.size === 0) { return; }
+  async function openBulkMove() {
+    if (!bulkMoveDialog || sel.picked.size === 0 || moveLoading || runner.busy() || documentTrashController?.busy() || documentTrashRestoreBusy()) return;
+    moveLoading = true;
+    try {
+      const response = await api('GET','/api/pages?tree=1'+(spaceId ? '&space='+encodeURIComponent(spaceId) : ''));
+      if (response.status !== 200) { setText(msg,errorMessage(response.data)); return; }
+      movePages = Array.isArray(response.data.pages) ? response.data.pages : [];
+    } finally { moveLoading = false; }
+    if (!sel.picked.size) return;
     bulkMovePick = null;
     bulkMovePicked = false;
     setText(bulkMoveMsg, '');
     setText(bulkMoveMeta, '고른 페이지 ' + String(sel.picked.size) + '개');
     clear(bulkMoveTree);
     const byParent = new Map();
-    for (const page of treePages) {
+    for (const page of movePages) {
       const k = typeof page.parent_id === 'string' ? page.parent_id : '';
       if (!byParent.has(k)) { byParent.set(k, []); }
       byParent.get(k).push(page);
@@ -1884,10 +2271,10 @@ function initHome() {
   function runBulkMove() {
     if (!bulkMovePicked) { setText(bulkMoveMsg, '새 상위 페이지를 고르세요'); return; }
     const target = bulkMovePick;
-    const targetNode = target === null ? null : treePages.find((p) => p.id === target);
+    const targetNode = target === null ? null : movePages.find((p) => p.id === target);
     const where = targetNode ? (targetNode.icon ? targetNode.icon + ' ' : '') + targetNode.title : '맨 위';
     bulkMoveDialog.close();
-    const items = selItems();
+    const items = bulkTreeItems(new Set(sel.picked.keys()),movePages);
     startBulk({
       title: '「' + where + '」 아래로 옮기기',
       items: items,
@@ -1911,34 +2298,8 @@ function initHome() {
     });
   }
 
-  const bulkDeleteDialog = document.getElementById('bulk-delete-dialog');
   function openBulkDelete() {
-    if (!bulkDeleteDialog || sel.picked.size === 0) { return; }
-    setText(document.getElementById('bulk-delete-lead'),
-      '고른 페이지 ' + String(sel.picked.size) + '개와 그 하위 페이지가 목록에서 사라집니다. 하나씩 차례로 지웁니다.');
-    if (!bulkDeleteDialog.open) { bulkDeleteDialog.showModal(); }
-  }
-
-  function runBulkDelete() {
-    bulkDeleteDialog.close();
-    const items = selItems();
-    startBulk({
-      title: '휴지통으로 옮기기',
-      items: items,
-      okText: '휴지통으로 옮김',
-      withParentText: '부모와 함께 지워짐',
-      parentFailText: '지우지 않음 — 부모를 지우지 못했습니다',
-      send: (item) => api('DELETE', '/api/pages/' + item.id, {}, { sessionRetry: false }),
-      // M-7 — 커뮤니티는 바로: 10초 동안 「되돌리기」 = 지운 페이지마다 되살리기(하위는 함께 돌아온다)
-      undo: (done) => ({
-        title: '되돌리기 — 휴지통에서 되살리기',
-        items: done.map((d) => ({ id: d.id, name: d.name, parent: null })),
-        okText: (data) => (data && data.moved_to_root === true ? '되살림 — 맨 위로 올렸습니다' : '되살림'),
-        send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}, { sessionRetry: false }),
-        done: () => { afterBulk(); }
-      }),
-      done: () => { afterBulk(); loadFavoritesNav(); }
-    });
+    if (sel.picked.size) documentTrashController?.open(Array.from(sel.picked.values()), bulkTrashBtn);
   }
 
   if (selButton) {
@@ -1959,13 +2320,6 @@ function initHome() {
     }
     if (bulkMoveConfirm) { bulkMoveConfirm.addEventListener('click', runBulkMove); }
   }
-  if (bulkDeleteDialog) {
-    for (const close of bulkDeleteDialog.querySelectorAll('[data-bulk-delete-close]')) {
-      close.addEventListener('click', () => bulkDeleteDialog.close());
-    }
-    const confirmButton = document.getElementById('bulk-delete-confirm');
-    if (confirmButton) { confirmButton.addEventListener('click', runBulkDelete); }
-  }
   document.addEventListener('keydown', (event) => {
     // Esc — 「선택」 모드를 끝낸다. 창·메뉴가 열려 있으면 그쪽이 먼저 닫힌다(DESIGN 2.7 · 2.15)
     if (event.key !== 'Escape' || !sel.on) { return; }
@@ -1975,18 +2329,22 @@ function initHome() {
   });
 
   function load(q) {
+    const ticket = ++listGeneration;
+    sel.picked.clear(); sel.full = false; syncSel();
     // 「공유받은 페이지」는 공간·찾기와 상관없이 늘 같은 자리에 있다 (5-A).
     loadShared();
     // 찾기를 껐으면 트리로 돌아간다 — 트리 안에서 찾는 것은 뜻이 없다.
-    if (!q || q === '') { return loadTree(); }
+    if (!q || q === '') { return loadTree(ticket); }
     return api('GET', listPath('q=' + encodeURIComponent(q))).then((result) => {
+      if (ticket !== listGeneration) return;
       if (result.status === 401) { toLogin(); return; }
       if (result.status !== 200) { setText(msg, errorMessage(result.data)); return; }
       setText(msg, '');
       if (result.data.space) { spaceKind = result.data.space.kind; drawSpaceHead(result.data.space); }
       clear(list);
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
-      for (const page of pages) { list.appendChild(card(page)); }
+      resultPages = pages;
+      drawSearch();
       show(treeBox, false);
       show(list, true);
       show(empty, pages.length === 0);
@@ -2046,6 +2404,8 @@ function initHome() {
 
   if (search) {
     search.addEventListener('input', () => {
+      ++listGeneration;
+      sel.picked.clear(); sel.full = false; syncSel();
       // 라운드 B — 찾기(카드 목록)를 시작하면 「선택」 모드가 끝난다(모드는 트리에서만 — 고른 것이 화면에서 사라진 채 남지 않게)
       if (sel.on && search.value !== '') {
         sel.on = false;
@@ -2068,7 +2428,7 @@ function initHome() {
   }
 
   // 휴지통 (4-C) — 되살린 뒤에는 트리를 다시 받는다(화면이 카드를 지어내지 않는다).
-  bindTrash(() => { load(search ? search.value : '').catch(() => setText(msg, GENERIC_ERROR)); });
+  bindTrash(() => { documentTrashController?.refresh(); });
   // 7-B — 「템플릿에서」 창. 만든 페이지는 지금 보고 있는 공간에 생긴다(「새 페이지」와 같은 규칙 — 창구가 다시 판단한다)
   bindTemplateGallery({
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
@@ -2196,6 +2556,8 @@ function bindTrash(onRestored) {
     beforeReauth: () => { if (dialog.open) { dialog.close(); } },
     afterReauth: () => { if (!dialog.open) { dialog.showModal(); } }
   });
+  let restoring = 0;
+  documentTrashRestoreBusy = () => trashRunner.busy() || restoring > 0;
   let full = false;
 
   function syncPicked() {
@@ -2252,6 +2614,7 @@ function bindTrash(onRestored) {
   }
   if (bulkRestore) {
     bulkRestore.addEventListener('click', () => {
+      if (documentTrashController?.busy() || documentTrashHomeBusy()) return;
       const items = Array.from(picked.values()).map((p) => ({ id: p.id, name: (p.icon ? p.icon + ' ' : '') + p.title, parent: null }));
       if (items.length === 0) { return; }
       setText(msg, '');
@@ -2264,6 +2627,7 @@ function bindTrash(onRestored) {
         send: (item) => api('POST', '/api/pages/' + item.id + '/restore', {}, { sessionRetry: false }),
         done: () => {
           // 고른 것은 시작할 때 풀렸다 — 도는 동안 새로 고른 것은 남기고, 목록에서 사라진 줄은 load 가 뺀다
+          lastSpaces = null;
           loadSpaces();   // 사이드바 트리도 새 답으로
           load().then(() => { if (typeof onRestored === 'function') { onRestored(); } }).catch(() => setText(msg, GENERIC_ERROR));
         }
@@ -2301,6 +2665,8 @@ function bindTrash(onRestored) {
     back.className = 'btn btn--small btn--quiet';
     back.textContent = '되살리기';
     back.addEventListener('click', () => {
+      if (documentTrashController?.busy() || documentTrashHomeBusy() || documentTrashRestoreBusy()) return;
+      restoring += 1;
       back.disabled = true;
       api('POST', '/api/pages/' + page.id + '/restore', {})
         .then((result) => {
@@ -2317,7 +2683,7 @@ function bindTrash(onRestored) {
             : (TRASH_MOVE_REASONS[result.data.moved_reason] || '되살렸습니다. 원래 자리로 돌아갈 수 없어 맨 위로 올렸습니다'));
           return load().then(() => { if (typeof onRestored === 'function') { onRestored(); } });
         })
-        .catch(() => { setText(msg, GENERIC_ERROR); back.disabled = false; });
+        .catch(() => { setText(msg, GENERIC_ERROR); back.disabled = false; }).finally(() => { restoring -= 1; });
     });
     actions.appendChild(back);
     tr.appendChild(actions);
@@ -4572,6 +4938,43 @@ function initPage() {
   let heartbeat = null;
   let pendingConflict = null;
   let proposal = null;
+  let documentDeletionLocked = false;
+  let documentPageReady = false;
+  let documentPageRemoved = false;
+  let documentAncestorIds = new Set([pageId]);
+  documentTrashGuard = async (items) => {
+    if (!documentPageReady || documentPageRemoved) throw new Error('문서 불러오기가 끝난 뒤 다시 정리하세요.');
+    if (todoBusy) throw new Error('문서 변경을 저장하는 중입니다. 저장이 끝난 뒤 다시 정리하세요.');
+    if (proposal) throw new Error('수정 제안을 먼저 보내거나 취소한 뒤 문서를 정리하세요.');
+    if (pendingConflict) throw new Error('저장 충돌을 먼저 해결하세요. 쓰던 내용은 그대로 보존됩니다.');
+    const currentIncluded = items.some(item => documentAncestorIds.has(item.id));
+    const editingView = view;
+    const oldTitleDisabled = titleInput?.disabled;
+    if (currentIncluded) { documentDeletionLocked = true; if (view) view.setProps({editable: () => false}); if (titleInput) titleInput.disabled = true; }
+    const unlock = (job) => {
+      const removed = job?.items.some(item => item.result === 'ok' && !item.parent && documentAncestorIds.has(item.id));
+      if (removed) {
+        documentPageRemoved = true;
+        window.clearTimeout(saveTimer); clearPageDraft(); leavingOnPurpose = true;
+        if (view) { view.destroy(); view = null; }
+        const read = document.getElementById('page-doc'); if (read) { clear(read); read.hidden = true; }
+        if (editorEl) { clear(editorEl); editorEl.hidden = true; }
+        state.editing = false; state.canEdit = false; serial = savedSerial;
+        setText(msg,'이 문서가 휴지통으로 이동했습니다. 결과 창에서 되돌릴 수 있습니다.');
+        documentTrashAfterClose = () => window.location.assign(crumbRoot().href || COMMUNITY_BASE + '/workspace');
+        documentTrashAfterRestore = restored => { if (restored.items.some(item=>item.result==='ok' && documentAncestorIds.has(item.id))) { documentTrashAfterClose=()=>{}; window.location.assign(COMMUNITY_BASE+'/p/'+pageId); } };
+        return;
+      }
+      documentDeletionLocked = false;
+      if (view && view === editingView) view.setProps({editable: () => true});
+      if (titleInput) titleInput.disabled = oldTitleDisabled === true;
+    };
+    try {
+      await flushSave();
+      if (serial !== savedSerial || pendingConflict || saving) throw new Error('문서를 저장하지 못했습니다. 저장 또는 충돌 해결 후 다시 정리하세요.');
+      return unlock;
+    } catch (error) { unlock(); throw error; }
+  };
   const proposalButton=document.createElement('button'), proposalsButton=document.createElement('button'), proposalCancel=document.createElement('button');
   for (const [button,id,text] of [[proposalButton,'page-suggest','수정 제안'],[proposalsButton,'page-suggestions','제안'],[proposalCancel,'page-suggestion-cancel','취소']]) {
     button.type='button';button.id=id;button.className='btn btn--quiet btn--small';button.textContent=text;button.hidden=true;
@@ -4962,6 +5365,8 @@ function initPage() {
       drawIntegrations(result.data,pageId,api,load);
       drawPageAi(result.data,pageId,api,load,()=>state.editing);
       drawAutomationPage(result.data, pageId, api, load);
+      if (documentPageRemoved) return;
+      documentPageReady = true;
       state.procedureCount = result.data.procedures_in_branch || 0;
       state.doc = page.doc;
       state.version = page.doc_version;
@@ -5020,6 +5425,7 @@ function initPage() {
       setText(titleEl, page.title);
       document.title = page.title + ' · 커뮤니티';
       setText(subEl, result.data.form_response && result.data.form_response.hidden ? '익명 응답' : (page.parent ? '상위: ' + page.parent.title : ''));
+      documentAncestorIds = new Set([pageId, ...(Array.isArray(result.data.breadcrumb) ? result.data.breadcrumb.map(item => item.id) : [])]);
       drawCrumb(result.data.breadcrumb);
       drawRead();
       state.database = result.data.database || null;
@@ -6668,6 +7074,7 @@ function initPage() {
         return true;
       },
       dispatchTransaction(tr) {
+        if (documentDeletionLocked && tr.docChanged) return;
         const next = view.state.apply(tr);
         view.updateState(next);
         if (toolbar) { toolbar.refresh(); }
@@ -7415,6 +7822,7 @@ function boot() {
           genericError: GENERIC_ERROR, toLogin: toLogin, statusLabels: STATUS_LABELS, personLabel: personLabel, shortWhen: shortWhen,
           makeIcon: makeIcon, canWrite: () => meCanWrite, meName: () => meUsername || '', loadSpaces: loadSpaces, mountEditor: mountPaneEditor
         });
+        initDocumentTrash();
         work.bindShell();
         bindNewPage();
         bindIntegrations(api).catch(() => {});

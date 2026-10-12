@@ -1,0 +1,39 @@
+# 내 문서·업무 사이드바 선택 삭제
+
+- 상태: 구현·독립 검토 완료, 운영 반영 전
+- 기준 main: `e618320c6297843dd9367971849593b4e49c5db8` / v2.60.0
+- 작업 브랜치: `cloud/document-bulk-trash`
+- 담당 환경: 서버의 격리 worktree. Codex root, 백엔드·프런트 구현 담당, 별도 컨텍스트 독립 검토 담당.
+
+## 목적과 범위
+
+업무 사이드바의 최근·프로젝트·문서를 기본으로 접고 직접 여닫은 PC 상태를 사용자별로 기억한다. 내 문서의 일반 목록·검색 결과와 사이드바의 문서 행에서 개별·부분·현재 목록 전체선택 휴지통 이동을 제공한다. 선택 상한은 기존 100개이며, 중복 UUID는 한 번만 처리한다. 부모의 선택하지 않은 하위 문서도 함께 이동하는 점을 확인창에 표시한다.
+
+기존 순차 실행기와 DELETE/restore API, 항목별 실패·재인증·10초 되돌리기·30일 휴지통 복원을 재사용한다. 작성 중인 글은 저장 실패나 충돌 상태에서 삭제하지 않는다. 목록의 `can_delete`는 편집 공유와 구분되는 실제 관리 권한이다. 프로젝트 목록 갱신을 위해 기존 GET `/api/pages?view=projects` 읽기 갈래만 추가한다. 새 라우트·DB migration·패키지·운영 설정 변경은 없다.
+
+변경 범위는 목록 읽기 handlers 세 곳과 프로젝트 helper, editor/sidebar/home UI, 공통 확인·결과 view, CSS, 자산 버전, 문서·위키다. 자세한 동작과 파일 소유권은 `docs/document-bulk-trash-directive.md`를 따른다.
+
+## 검사
+
+- 테스트 전 기준 태그 `selftest-base/document-bulk-trash`, `review-base/document-bulk-trash`와 별도 bundle 생성.
+- 빈 합성 DB 초기 공통 회귀: 196/0. 출력 `outputs/document-trash-review/cross/`.
+- 실제 PHP/SQL 백엔드 자체 검사: 307/0. `python3 tests/community/memories_harness.py --port 8818 --suite document_trash_api.py`를 전용 출력 경로와 함께 실행. 보고서 `outputs/document-trash-backend.md`, 결과 `outputs/document-trash-api/document-trash-api-results.json`.
+- 독립 API 검사: 최초 80/0, 후속 78/0. 일반·트리 목록의 게시판 작성자 `can_delete` 불일치 1건을 별도 재현한 뒤 보정 검증했다. 최종 PHP 네 파일 해시 `outputs/document-trash-review/backend-final-sha256.json`. 최초 fixture 오류와 외부 테스트 DB 연결 종료는 앱 결함과 구분해 백엔드 보고서에 기록했다.
+- 기존 `qf3b.sh`는 운영 DB dump를 사용하고 옛 stage4 wrappers는 운영 포트를 대상으로 하므로 실행하지 않았다. 필요한 권한·연쇄삭제·복원·감사·원문 보존을 빈 합성 DB에서 검사했다.
+- UI, 최종 린트·자산·위키, 실제 HTTPS 검증은 완료 후 아래에 기록한다. 실물 휴대폰·Safari·스크린리더·실물 IME는 미검증이다.
+
+## 서버 적용
+
+- 별도 백업: `/var/backups/tbox-v2/product-spaces-document-trash-20261012`. DB·코드·설정/저장소 암호화 세 묶음의 checksum과 전체 복호화, 원본 저장 파일 959개 SHA 대조 완료.
+- 기존 14개 표와 제품 6개·메신저 5개 표의 모든 원래 행, 파일 1042행, owner/ACL, 설정 85개의 보존 기준을 기록했다. 기존 QA 행도 제외하지 않는다. 운영 worker cursor 한 파일만 일시 상태로 제외한다.
+- 고정 후보 → 파일 적용 모의 → 운영/원격/부모 문서 drift 확인 → FF/minor 릴리스/FPM reload → 실제 HTTPS → 원본 보존 → 배포 기록·원격 동기화 순서.
+- 운영 시험은 새 예약 QA 문서만 생성·삭제·복원한다. 원래 사용자 글은 삭제하거나 수정하지 않는다. 시험 후 새 QA 문서만 정상 API로 휴지통 처리한다.
+- 실패 시 원인을 보정한다. 사용자 최신 데이터나 다른 작업을 덮어쓰지 않고 운영 DB를 복원·재시드하지 않는다. 코드 복귀가 필요하면 이번 변경에는 스키마 변경이 없음을 확인하고 이전 코드를 사용한다.
+
+화면 자체 검증: 실제 PHP view와 운영용 JS를 읽고 합성 API 응답으로 브라우저 최종 53/0 통과. 검색 유지·필터의 부모 없는 자식·100개 한도·중복 UUID·연쇄 처리·권한 실패·되돌리기·401 후 닫기·복원 중 세션 만료·재인증·dirty 저장 선행/409 차단·현재 조상 삭제 시 본문 정리와 되돌리기·모바일 native 메뉴 위 확인을 검사했다. `tests/community/document_trash_browser.py`, `outputs/document-bulk-trash/frontend/results.json`. 실제 DB API와는 구분한다.
+
+최종 정적 검사: 보안 린트 금지 패턴 0, 변경 PHP/JS 문법·diff 검사 통과, 자산 40파일/상대 import 71개 정합, 위키 69편/문제0. community 모듈 버전 `496fe6f9282c`, ProseMirror `5823578fa61a`. editor를 제외한 dashboard/database/suggestions/table-editor/templates/work/messenger JS 변경은 생성된 import 버전만이다. 최종 독립 UI는 이 생성 결과로 실행한다.
+
+독립 UI 최종: 실제 격리 PHP·PostgreSQL·브라우저의 의미 검사를 중복 제거하고 최신 증거로 합쳐 80/0. 같은 계정 재개, 현재 문서 조상 삭제 전 저장·삭제 후 본문 정리·되돌리기, 무관한 삭제의 동일 편집 DOM·URL·입력 유지, 프로젝트 10개/더보기/생성 진입·복원 갱신을 확인했다. `outputs/document-trash-review/final-review.json`에 실행별 결과와 미검증 범위를 기록했다. UI 시험의 CSP 문자열 평가·편집 URL 정리·중단 문구의 완료 오인 세 종류는 하네스만 고쳐 해당 경우를 다시 확인했고 런타임은 변경하지 않았다. 첫 API의 게시판 capability 실제 결함은 보정 후 검증했다. 미해결 제품 결함 0.
+
+최종 런타임은 19파일이며 네 번의 독립 UI 시험과 현재 SHA가 같다. 그중 7파일은 import 버전 생성 변경뿐이다. root의 `outputs/document-trash-source-freeze.json`과 독립 `runtime-final.sha256`를 함께 확인했다. 모바일 360/390px 화면 및 44px 터치 영역을 Chromium에서 확인했으며 실물 기기 검증으로 표현하지 않는다.

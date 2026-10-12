@@ -11975,12 +11975,38 @@ function paintAccessRequestsNav(count, inGate) {
 }
 
 /** 모바일 서랍의 두 입구와 접이식 목록. 권한/목록 데이터는 기존 서버 판정을 쓴다. */
-function initMobileSidebar(sidebar, navToggle) {
+function initMobileSidebar(sidebar, navToggle, owner) {
   if (!sidebar || !navToggle) { return; }
   var media = window.matchMedia('(max-width: 959.98px)');
   var appsButton = document.getElementById('appbar-apps');
   var appsBox = sidebar.querySelector('details.appbar__apps');
   var groups = Array.from(sidebar.querySelectorAll('details[data-sidebar-group]'));
+  var foldIds = ['nav-community-recent-group','nav-work-projects-group','nav-community-documents-box'];
+  var foldKey = typeof owner === 'string' && owner.length <= 64 && owner !== '' ? 'qaredi-sidebar-folds:v1:' + owner : null;
+  var foldValues = {};
+  try {
+    var stored = foldKey ? JSON.parse(localStorage.getItem(foldKey) || 'null') : null;
+    if (stored && stored.v === 1 && stored.groups && typeof stored.groups === 'object' && !Array.isArray(stored.groups)
+      && Object.keys(stored).sort().join(',') === 'groups,v'
+      && Object.keys(stored.groups).every(function (id) { return foldIds.includes(id) && typeof stored.groups[id] === 'boolean'; })) foldValues = stored.groups;
+    else if (stored && foldKey) localStorage.removeItem(foldKey);
+  } catch (_) {}
+  groups.forEach(function (group) {
+    if (Object.prototype.hasOwnProperty.call(foldValues, group.id)) group.open = foldValues[group.id];
+    if (!foldIds.includes(group.id)) return;
+    // Only direct desktop summary activation writes preferences; automatic mobile collapse never does.
+    function remember(event) {
+      if (media.matches || event.target.closest('button,a,input') || event.target.closest('summary')?.parentElement !== group) return;
+      if (event.type === 'keydown' && !['Enter',' '].includes(event.key)) return;
+      requestAnimationFrame(function () {
+        if (media.matches) return;
+        foldValues[group.id] = group.open;
+        try { if (foldKey) localStorage.setItem(foldKey, JSON.stringify({v:1,groups:foldValues})); } catch (_) {}
+      });
+    }
+    group.addEventListener('click', remember);
+    group.addEventListener('keydown', remember);
+  });
   var desktopOpen = groups.map(function (group) { return group.open; });
   var opener = navToggle;
   var modal = document.getElementById('mobile-nav-dialog');
@@ -12156,7 +12182,7 @@ function initShell(me, csrfToken) {
   }
 
   // 모바일은 현재 앱 내비와 앱·계정 메뉴 중 하나만 연다.
-  initMobileSidebar(sidebar, navToggle);
+  initMobileSidebar(sidebar, navToggle, me.username);
 
   /* 사이트 Q:F-12 C-2 (DESIGN 2.19 「이야기」) — 이야기 사이드바의 「＋ 새 이야기」는 스레드 화면이 내놓은 쓰기 창 창구
      (`window.MemoryComposer.open` — memories.js, 화면 안 「지금 어떤 이야기를…」 단추와 같은 함수)를 부른다. 쓸 수 있는지는

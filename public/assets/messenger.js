@@ -28,7 +28,7 @@
  *   · PC 도우미(내 PC 의 loopback 주소)는 `/messages` 에서만 — 이 파일에는 그 주소가 없다(member-assist.js 가 창에서는 안내만 보인다).
  *   · 역할 비교 0 — `/api/me` 의 `can_community_write`·`acting` 만 본다(근거는 서버 `Member::requireMessenger`).
  */
-import { createDrafts } from './community/drafts.js?v=c481218d6d2c';
+import { createDrafts } from './community/drafts.js?v=496fe6f9282c';
 
 /** 창 상태 열쇠 접두 — 뒤에 진짜 사용자 아이디(`/api/me` 의 username — 역할로 보기 중에도 실제 계정) */
 const STATE_PREFIX = 'qaredi-messenger:v1:';

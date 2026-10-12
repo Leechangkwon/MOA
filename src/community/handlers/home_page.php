@@ -142,7 +142,7 @@ require __DIR__ . '/../../views/shell_top.php';
       <span id="community-count" class="muted"></span>
       <!-- 개발 대기열 6 · Q:F-3a 라운드 B — 「선택」 모드(지시서 1.3). 누르면 트리 줄마다 체크가 붙고(누른 상태 aria-pressed), 다시 누르거나
            Esc 면 끝난다. 찾기(카드 목록)에서는 쓰지 않는다 — 찾기를 시작하면 모드가 끝난다. 공간을 바꾸면 화면이 다시 열려 풀린다(M-4). -->
-      <button id="community-select" class="btn btn--quiet" type="button" aria-pressed="false" aria-controls="community-tree"<?= $homeWriteHidden ?>>
+      <button id="community-select" class="btn btn--quiet" type="button" aria-pressed="false" aria-controls="community-tree community-list"<?= $homeWriteHidden ?>>
         <span class="icon" data-icon="check"></span><span id="community-select-label">선택하기</span>
       </button>
     </div>
@@ -152,6 +152,8 @@ require __DIR__ . '/../../views/shell_top.php';
          새 서버 창구 0, 판정·감사·거부 문장은 한 건과 같다. 공개 범위 일괄 바꾸기는 1차에 없다(결정 M-6). -->
     <div class="toolbar" id="community-bulk-bar" role="group" aria-label="고른 페이지로 할 일" hidden>
       <span id="community-bulk-count" aria-live="polite"></span>
+      <button id="community-bulk-all" class="btn btn--small btn--quiet" type="button">현재 목록 전체 선택</button>
+      <button id="community-bulk-clear" class="btn btn--small btn--quiet" type="button">선택 해제</button>
       <button id="community-bulk-move" class="btn btn--icon" type="button" aria-label="옮기기" aria-haspopup="dialog">
         <span class="icon" data-icon="files"></span>
       </button>
