@@ -336,12 +336,14 @@ if [ -n "$EMP_CSRF" ]; then
   sub "Q:T-8 — 셸 화면의 앱 그리드 단추"
   for pg in "" /settings /activity; do
     curl -s -b "$EMP_JAR" -A "$UA" "$BASE/${pg#/}" -o "$WORK/shell.html"
-    expect "GET /tbox/${pg#/} 에 appbar__apps 1개 (사이드바 brand 줄)" "1" "$(grep -c 'details class="appbar__apps"' "$WORK/shell.html" | tr -d ' ')"
+    # Q:F-12 U2 (DESIGN 2.18) — 앱 메뉴는 본문 오른쪽 위 격자(div.shell-tools > details.appbar__apps#app-grid) 한 벌. 왼쪽 아이콘 줄은 없앴다
+    expect "GET /tbox/${pg#/} 에 appbar__apps 1개 (본문 오른쪽 위 앱 격자)" "1" "$(grep -c 'details class="appbar__apps"' "$WORK/shell.html" | tr -d ' ')"
     # 원래 어긋남(Q:F-12 C 에서 함께 고침) — 앱 메뉴의 첫 줄 이름은 「모아 홈」(모아 디자인 2026-10-02)
     expect "GET /tbox/${pg#/} 항목 모아 홈" "1" "$(grep -c '>모아 홈<' "$WORK/shell.html" | tr -d ' ')"
-    # Q:F-12 C (DESIGN 2.18) — 앱 아이콘 줄 하나 · 자료실 · 업무 · 이야기 순 · 자료실 켜짐
-    expect "GET /tbox/${pg#/} 앱 아이콘 줄 1개" "1" "$(grep -c '<nav class="app-rail" aria-label="앱 바꾸기">' "$WORK/shell.html" | tr -d ' ')"
-    expect "GET /tbox/${pg#/} 아이콘 줄 지금 앱 = 자료실" "1" "$(grep -c '<a class="app-rail__item" href="/tbox/" aria-current="page">' "$WORK/shell.html" | tr -d ' ')"
+    expect "GET /tbox/${pg#/} 격자 줄(shell-tools) 1개" "1" "$(grep -c '<div class="shell-tools">' "$WORK/shell.html" | tr -d ' ')"
+    expect "GET /tbox/${pg#/} 앱 격자 details#app-grid 1개" "1" "$(grep -c 'details class="appbar__apps" id="app-grid"' "$WORK/shell.html" | tr -d ' ')"
+    expect "GET /tbox/${pg#/} 격자 지금 앱 = 자료실" "1" "$(grep -c '<a class="app-menu__app" href="/tbox/" aria-current="page">' "$WORK/shell.html" | tr -d ' ')"
+    expect "GET /tbox/${pg#/} 옛 앱 아이콘 줄 0개" "0" "$(grep -c '<nav class="app-rail"' "$WORK/shell.html" | tr -d ' ')"
     expect "GET /tbox/${pg#/} 아이콘 단추의 title 0건 (D-3)" "0" \
       "$(grep -cE 'btn--icon[^>]*title=' "$WORK/shell.html" | tr -d ' ')"
     expect "GET /tbox/${pg#/} 의 /tbox 밖 절대 경로 (Qaredi 홈 제외) 0건" "0" "$(bad_links "$WORK/shell.html")"

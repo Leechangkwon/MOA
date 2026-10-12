@@ -80,3 +80,54 @@
 - `tests/q_launcher.sh`(운영을 치는 시험)의 Q:T-8 줄 343 · 344 가 아이콘 줄(`nav.app-rail`)을 기대한다 — 반영 뒤 실패한다(수정 파일 목록 밖이라 고치지 않음). 같은 이유로 `tests/community/messenger_rail_browser.py`(아이콘 줄 메신저 시험 전체) · `messenger_window_browser.py:735`(아이콘 줄 글자 읽기)도 기대값을 바꿔야 한다. `details.appbar__apps > summary` → `#logout` 를 누르는 시험(messenger_window · messenger_store · qf13h_privacy)은 그대로 맞는다.
 - `public/assets/moa.css` 의 `.moa-shell-links` · `.moa-brand .appbar__apps` · `.moa-brand-menu` · `.moa-brand .app-menu` 규칙과 `public/assets/messenger-access.js` 의 `.app-rail__messenger` 선택자는 이제 닿는 요소가 없다(죽은 규칙 — 해 없음). 메신저 자격이 없는 사람의 격자 「메신저」 타일에는 messenger-access.js 가 「이용 제한」 작은 글자를 붙인다.
 - `app.css` 의 `.work-cols` · `.task-list--compact` 와 work.js taskRow 의 `'compact'` 갈래는 이제 쓰는 곳이 없다(남겨 둠).
+
+## 8. RV-U2-1 — 옛 아이콘 줄을 기대하던 시험 셋 · 죽은 선택자 정리 (2026-10-12)
+
+메인 세션 검토 시험(`review/summary.txt` 마지막 줄 `DONE`)과 포트 8768 이 빈 것을 확인한 뒤에 고쳤다. 앱 동작 변경 0(시험 기대값 · 죽은 CSS 규칙 · 죽은 선택자뿐). 결과 폴더 `/home/changkwon/qaredi-qf12u2-results-20261012/RV1/`.
+
+### 8.1 변경 파일
+
+| 파일 | 내용 |
+|---|---|
+| `tests/q_launcher.sh` | Q:T-8 — 설명 글자 「사이드바 brand 줄」 → 「본문 오른쪽 위 앱 격자」 · 「앱 아이콘 줄 1개」 · 「아이콘 줄 지금 앱 = 자료실」 두 expect 를 격자 넷으로: `<div class="shell-tools">` 1 · `details class="appbar__apps" id="app-grid"` 1 · `<a class="app-menu__app" href="/tbox/" aria-current="page">` 1 · `<nav class="app-rail"` 0 |
+| `tests/community/messenger_rail_browser.py` | 아이콘 줄 메신저 시험 → 격자 메신저 타일 시험(같은 3 셸 × 직원 · 손님 · 역할로 보기 × 1280 · 960 · 959 · 390). 잰 성질: 사이드바 중복 0 · 옛 줄 0 · 격자 1벌 · 보이는 공통 입구 1(넓으면 ⋮⋮⋮ · 폰은 윗줄 말풍선) · 타일 `button#messenger-open[data-messenger-open]` 이 격자 안에 1 · 앱 타일 바로 뒤 · 배지 `[data-message-unread]` 타일 + ⋮⋮⋮ summary 둘 다 「3」 · 누르면 떠 있는 창(비모달) · 타일 누르면 격자 닫힘 · Esc 닫힘 · 초점 · 자격 없는 사람: 타일 `a[href=/tbox/messages]` + 「이용 제한」 작은 글자 · 안내 창(모달) · 메신저 창구 요청 0. 실패는 적고 계속 잰다(끝에 `RESULT pass= fail=` · 실패 있으면 종료 1) · results.json 에 실패 이름 · 초점 자리 metrics |
+| `tests/community/messenger_window_browser.py` | ① C-6(735행) `rail:` 읽기 → 격자 타일 이름(`grid`) · 격자 안 창 여는 단추 수(`gridOpeners`) · 옛 줄 수 — 단언을 「사이드바 글자 · 단추 0 · 옛 줄 0 · 격자 「메신저」 1 · 여는 단추 1」로 ② 아래 8.4 의 이유로 **735행 밖 넷**: `Tab.reveal()`(닫힌 격자 안 `#messenger-open` 이면 ⋮⋮⋮ 를 먼저 누름) — `Tab.open()` · Q:T-11 여는 단추 누름이 씀 / Q:T-11 손님 · 역할로 보기 「opener 0」 문자열 검사에서 HTML 주석을 뺌 / Q:T-13 배지 읽기 `inner_text` → `text_content` / Q:T-16 폰 「서랍이 시트 위」 → 「앱 이름 ▾ 로 연 격자가 시트 위(로그아웃 누를 수 있음)」 · 닫기 = Esc |
+| `public/assets/moa.css` | 삭제만: `.moa-shell-links` · `.moa-shell-links a` · `.moa-shell-links a:hover`(85행 안) · `.moa-brand .appbar__apps` · `.moa-brand .moa-brand-menu` · `.moa-brand .app-menu` · `@media(max-width:959.98px)` 한 줄(안의 세 규칙 모두 `.moa-brand .appbar__apps`/`.app-menu` — 닿는 요소 0). 다른 규칙 0 |
+| `public/assets/messenger-access.js` | `link.matches('.app-rail__messenger, #appbar-messenger')` → `link.matches('#appbar-messenger')` + 주석 2줄(8.4 ⑤) |
+| `docs/qf12-u2-report.md` | 이 절 |
+
+`tests/catalog.json` 은 바꾸지 않았다 — `messenger_rail_browser.py` 는 카탈로그 항목이 없고, `launcher.q_launcher` · `tbox.messenger_window_browser` 의 notes · covers 에는 아이콘 줄 낱말이 없다. U2 본체(shell_top.php · app.css · app.js · work.js) 0.
+
+### 8.2 실행한 명령과 결과(원문은 결과 폴더)
+
+| 명령 | 결과 | 폴더/로그 |
+|---|---|---|
+| `python3 tests/community/memories_harness.py --suite messenger_rail_browser.py --output …/RV1/rail` (지시서 그대로) | **못 돎** — rc 2 `argument --suite: invalid choice: 'messenger_rail_browser.py'`(하네스 선택지에 없다 · 이 시험은 DB · 서버 없이 PHP fixture + 가로챈 합성 창구만 쓴다) | `rail-harness.log` |
+| `MESSENGER_RAIL_RESULTS=…/RV1/rail python3 tests/community/messenger_rail_browser.py` | **pass 602 · fail 12** (rc 1) — 12 = 아래 8.3 ① | `rail.log` · `rail/results.json` |
+| 같은 새 시험을 **고치기 전**(작업 트리 = `1a15bb4`, 시험 파일만 scratch 사본) | pass 602 · fail 12 — 같은 12건(내 변경과 무관 증거) | `rail-dryrun-before-edits.log` · `.results.json` |
+| 기준 판 `8c36f8b`(git archive 사본)의 **옛** rail 시험 | 470 checks passed · rc 0 — 옛 「restricted information focus returns」 24건 통과 | `rail-base-8c36f8b.log` · `rail-base-8c36f8b/` |
+| `… --suite messenger_window_browser.py --output …/RV1/window` (전체 · 기본) | **pass 138 · fail 17 + 중단**(Q:T-11 「런처 타일」 `/` 의 `a#messenger-open` 이 안 보여 click 30초 초과) | `window.log` · `window/` |
+| 기준 판 `8c36f8b` 같은 명령 | **pass 138 · fail 17 + 같은 자리 중단** — 이름 단위로 위와 같음 | `window-base-8c36f8b.log` · `window-base-8c36f8b/` |
+| `QF11B_ONLY=t12,t13,t14,t16,t17,t18,t20,c3,c5,c6,snap` 같은 명령(중단 뒤 묶음들) → `…/RV1/window-rest` | **pass 275 · fail 26** = snap 16(기준 판 같음) + Q:T-16 10(아래 8.3 ②) · C-6 6건 통과 | `window-rest.log` · `window-rest/` |
+| 기준 판 `8c36f8b` 같은 묶음 | pass 282 · fail 19 = snap 16 + **C-6 「메신저」 text once 3**(기준 판에서부터 실패 — 이번에 고침) | `window-rest-base-8c36f8b.log` |
+| `bash -n tests/q_launcher.sh` · `node --check public/assets/messenger-access.js` · `bash scripts/security_lint.sh` · `git diff --check` | 0 · 0 · 0(「결과: 통과 (금지 패턴 0건)」) · 0 | `static.log` |
+| `grep -rn "moa-shell-links\|moa-brand-menu" src public` | 1줄 — `src/views/shell_top.php:59` 의 **PHP 문서 주석**(「…`.moa-shell-links` 를 없앴다」 이력 글 · 화면 출력 0). CSS · 마크업 · JS 참조 0. shell_top.php 는 이번 수정 파일 밖이라 그대로 | `static.log` |
+| `php scripts/community_asset_version.php --check` | rc 0(moa.css · messenger-access.js 는 filemtime 버전) | — |
+
+중간 실행(덮어쓴 것 포함): `window-run1.log`(Tab.reveal 뒤 · Q:T-13/16 고치기 전 전체) · `window-rest-run1.log`(pass 69 · fail 1 Q:T-13 배지 + Q:T-16 `details.appbar__apps > summary` click 중단) · `window-c6.log`(C-6 만 16/0 뒤 `Tab.open` 「no visible messenger opener」 중단 — reveal 넣기 전). 가장 첫 전체 실행(reveal 넣기 전: pass 118 · fail 25 · 「셸 사이드바」 click 중단)의 로그는 다시 돌리며 지웠다(수치만 이 줄에 남김).
+
+q_launcher.sh 는 writes_prod(운영 8082) 시험이라 **실행하지 않았다** — `bash -n` 과, 기대 문자열 넷을 `src/views/shell_top.php` 소스 마크업과 맞춰 봄(768 `<div class="shell-tools">` · 769 `<details class="appbar__apps" id="app-grid">` · 783 타일 `href` = `config/apps.json` 의 `"/tbox/"` + 지금 앱 `' aria-current="page"'` · `<nav class="app-rail"` 0)만.
+
+### 8.3 실패로 남은 것 — U2 가 바꾼 동작(기준 판에서는 통과) · 앱 고침은 U2 본체 몫이라 손대지 않음
+
+① **넓은 화면 · 자격 없는 사람(손님 · 역할로 보기)**: 격자 「메신저」 타일(`/tbox/messages` 링크)을 눌러 「메신저 이용 안내」 창을 열고 Esc 로 닫으면 **초점이 `<body>` 로 떨어진다**(rail 12건 = 3 셸 × 2 × 1280 · 960 · 측정 `{"tag":"BODY"}`). 타일을 누르면 app.js 가 격자를 먼저 닫아 타일이 안 보이고, messenger-access.js 의 `opener.focus()` 는 안 보이는 요소라 듣지 않는다. 기준 판(아이콘 줄 — 늘 보임)에서는 24건 통과. 고칠 자리 후보: messenger-access.js close 처리에서 opener 가 안 보이면 ⋮⋮⋮(`#app-grid > summary`, 폰은 `#appbar-apps`)로 — 앱 동작 변경이라 이번엔 하지 않았다.
+② **폰(390 · 412 · 412 터치) · 메신저 아래 시트가 열린 채**: 윗줄 앱 이름 ▾ 를 눌러도 앱 격자에 닿지 못한다 — 실제 셸(window Q:T-16 10건)에서는 `grid.open` 거짓 · 로그아웃 누름 자리 0, 합성 fixture(probe)에서는 격자는 열리지만 **시트 아래**에 깔린다(격자 판 z 40 < 시트 z 60 · 로그아웃 가운데를 누르면 시트의 `.moa-people`). 기준 판은 서랍이 모달(top layer)이라 시트 위였다(10건 통과). 이어지는 「닫으면 시트가 다시 보인다」 5건은 격자가 안 열린 채 Esc 가 시트를 닫은 결과다. 고칠 자리: app.css(격자 판 z) · app.js(시트가 열렸을 때 ▾) — U2 본체.
+③ 참고(통과): 넓은 화면 직원이 격자 타일로 연 창을 Esc 로 닫으면 초점은 ⋮⋮⋮ 가 아니라 옆 아바타 `a.shell-tools__me` 로 간다(messenger.js `firstFocusable(main)` — 선택자에 `summary` 가 없다). 시험은 「격자 줄(.shell-tools) 안」으로 잰다 — ⋮⋮⋮ 로 돌려야 하면 messenger.js 몫.
+
+**기준 판에서부터 실패하던 것(이번 변경과 무관 · 고치지 않음)**: Q:T-19 「GPT/OpenAI 글자 0」 17건(셸 변경 이력 「GPT 간편 연결」 · 메신저 창 「GPT · 내 ChatGPT」 등 — metrics `gpt-*`) · Q:T-11 「런처 타일」 `/` 의 `a#messenger-open` 안 보임 → 기본 전체 실행이 그 자리에서 멈춤(그래서 뒤 묶음은 `QF11B_ONLY` 로 따로 돌렸다) · snap AUDIT_JS 16건(`span#messenger-move-help.sr-only` 등 sr-only 글이 「clipped」로 잡힘) · (기준 판의 C-6 3건은 이번에 기대값을 고쳐 통과).
+
+### 8.4 지시서와 다르게 · 넘어서 한 것(이유)
+
+④ messenger_window_browser.py 를 735행 밖 넷 더 고쳤다 — 모두 「옛 아이콘 줄(늘 보이는 `#messenger-open`) · 옛 서랍」을 기대하던 자리다. 안 고치면 Q:T-11 첫 「셸 사이드바」 click 에서 시험 전체가 멈춰 C-6 까지 가지 못한다(첫 실행 118/25 + 중단). 손님 · 역할로 보기 8건은 U2 셸의 **HTML 주석**(`<!-- … [data-messenger-open] … -->`, shell_top.php 765행 — 브라우저로 나가는 주석)이 문자열 검사에 걸린 것이라 주석을 빼고 센다(마크업 속성은 그대로 0 확인).
+⑤ messenger-access.js: 지시서 「선택자 → 격자 메신저 타일을 가리키게」와 「격자 타일에 작은 글자가 붙는 지금 동작 유지」는 함께 될 수 없다 — 그 선택자는 **글자를 붙이지 않을** 요소 목록이라, 격자 타일을 넣으면 「이용 제한」이 사라진다. 지금 동작 유지를 따르고 죽은 `.app-rail__messenger` 만 뺐다(격자 타일은 주석에 이름으로 적음). rail 시험이 「격자 타일에 `small.messenger-access-note` 「이용 제한」 1 · `#appbar-messenger` 0」을 잰다(전부 통과).
+⑥ rail 시험의 check 를 「실패 적고 계속」으로 바꿨다 — 첫 실패에서 멈추면 ①이 뒤 단언 수백 개를 가린다. 종료 코드는 실패가 있으면 1 그대로.

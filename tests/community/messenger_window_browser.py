@@ -106,8 +106,17 @@ class Tab:
  def go(self,path):
   self.page.goto(site+path,wait_until='networkidle');self.page.wait_for_timeout(250)
  def is_open(self):return self.page.evaluate("(()=>{const d=document.getElementById('messenger-window');return !!(d&&d.open);})()")
+ def reveal(self,sel):
+  # Q:F-12 U2 (DESIGN 2.18) — 넓은 화면의 셸 #messenger-open 은 오른쪽 위 앱 격자(⋮⋮⋮ details#app-grid) 안의 타일이다.
+  # 격자가 닫혀 있어 안 보이면 ⋮⋮⋮ 를 눌러 연다(옛 아이콘 줄에서는 늘 보였다). 시작 안내 · 런처의 같은 id 단추는 격자 밖이라 그대로.
+  p=self.page;loc=p.locator(sel).first
+  if loc.count() and not loc.is_visible() and loc.evaluate('(n)=>!!n.closest("details#app-grid:not([open])")'):
+   summary=p.locator('#app-grid > summary')
+   if summary.is_visible():summary.click();expect(loc).to_be_visible()
+  return loc
  def open(self):
   p=self.page
+  self.reveal('#messenger-open')
   for sel in ('#messenger-open','#appbar-messenger'):
    loc=p.locator(sel)
    if loc.count() and loc.first.is_visible():loc.first.click();break
@@ -199,7 +208,9 @@ try:
   for who,label,token in (('guest','손님',users['guest']['session']),('admin','역할로 보기',acting)):
    for path in ('/tbox/','/tbox/settings','/community/','/community/memories','/'):
     r=requests.get(site+path,headers={'User-Agent':UA,'Cookie':'__Host-tbox_session='+token},timeout=35,allow_redirects=False)
-    check(r.status_code in (200,302,303) and 'data-messenger-open' not in r.text and 'id="messenger-window"' not in r.text and '/assets/messenger.js' not in r.text,
+    # U2 — 셸의 HTML 주석(앱 격자 설명)이 「[data-messenger-open]」 글자를 담는다: 주석을 빼고 마크업만 센다
+    markup=re.sub(r'<!--.*?-->','',r.text,flags=re.S)
+    check(r.status_code in (200,302,303) and 'data-messenger-open' not in markup and 'id="messenger-window"' not in markup and '/assets/messenger.js' not in markup,
           'Q:T-11 '+label+' '+path+': no opener, no window, no module script ('+str(r.status_code)+')')
   r=tb('POST','/api/messages/'+str(pa),{'text':'손님','request_id':str(uuid.uuid4())},user='guest')
   check(r.status_code==403,'Q:T-11 guest POST /api/messages/{n} still 403')
@@ -245,7 +256,7 @@ try:
     metrics['community_base-'+path]=p.evaluate("document.body.getAttribute('data-community-base')")   # B-7 2 — 없으면 messenger.js 가 '/community' 를 쓴다
     check(len(me)<=me_max,'Q:T-11 '+label+': /api/me requests on this screen '+str(len(me))+' (≤'+str(me_max)+' — one more at most, shell reuses app.js)')
     check(len(badge)==1 and all(r[3]=='1' for r in badge),'Q:T-11 '+label+': one background badge request on load')
-    before=p.url;p.locator(opener).first.click();expect(p.locator('#messenger-window')).to_be_visible();p.wait_for_timeout(300)
+    before=p.url;t.reveal(opener).click();expect(p.locator('#messenger-window')).to_be_visible();p.wait_for_timeout(300)
     check(p.url==before and t.is_open() and p.locator(opener).first.get_attribute('aria-expanded')=='true','Q:T-11 '+label+': opener opens the floating window in place (no navigation, aria-expanded)')
     p.locator('#messenger-window [data-messenger-close].btn--icon').click();p.wait_for_timeout(200)
     check(not t.is_open(),'Q:T-11 '+label+': ✕ closes')
@@ -355,7 +366,8 @@ try:
    sql("INSERT INTO member_messages(sender_id,recipient_id,body) VALUES("+str(pa)+","+str(emp)+",'다중 배지 확인')")
    mark=time.time()
    for t in (t1,t2):expect(t.page.locator('#messenger-open [data-message-unread]')).to_have_text('1',timeout=40000)
-   b1=t1.page.locator('#messenger-open [data-message-unread]').inner_text();b2=t2.page.locator('#messenger-open [data-message-unread]').inner_text()
+   # U2 — #messenger-open 은 닫힌 앱 격자 안 타일이라 innerText 가 빈 글자다: 배지 글자(textContent)를 읽는다
+   b1=t1.page.locator('#messenger-open [data-message-unread]').text_content();b2=t2.page.locator('#messenger-open [data-message-unread]').text_content()
    check(b1==b2=='1','Q:T-13 unread badge equal in both tabs ('+b1+'/'+b2+')')
    def polls(t,since):return [r for r in t.requests if r[0]>=since and r[1]=='GET' and r[2]=='/tbox/api/messages?q=']
    t1.page.wait_for_timeout(32000)
@@ -424,14 +436,15 @@ try:
        closes=p.evaluate("[...document.querySelectorAll('#messenger-window [data-messenger-close]')].filter(b=>b.getClientRects().length).map(b=>b.textContent.trim()||b.getAttribute('aria-label'))")
        check(sorted(closes)==sorted(['닫기','닫기']),'Q:T-16 '+tag+' '+path+': sheet has both ✕ (head) and 「닫기」 (bottom)')
        if path=='/tbox/' and not contrast:
-        # 시트가 열린 채 ☰(서랍)를 열면 메뉴가 시트 위에 — 로그아웃까지 누를 수 있다
+        # 시트가 열린 채 앱 메뉴를 열면 메뉴가 시트 위에 — 로그아웃까지 누를 수 있다.
+        # Q:F-12 U2 (DESIGN 2.18 「폰」) — 윗줄 앱 이름 ▾(#appbar-apps)는 서랍(앱·계정 모드) 대신 같은 앱 격자 details#app-grid 를 연다(윗줄 아래 전체 폭).
         p.locator('#appbar-apps').click();p.wait_for_timeout(200)
-        if not p.locator('#logout').is_visible():p.locator('details.appbar__apps > summary').click()
-        p.locator('#logout').scroll_into_view_if_needed();p.wait_for_timeout(200)
-        hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);const d=document.getElementById('messenger-window');const m=document.getElementById('mobile-nav-dialog');return !!(e&&e.closest('#logout'))&&d.open&&m.matches(':modal')&&m.contains(e);})()")
-        check(hit,'Q:T-16 '+tag+': native drawer sits above the sheet (logout hit-testable, window state still open)')
-        p.locator('#mobile-nav-close').click();p.wait_for_timeout(300)
-        check(p.locator('#messenger-window').is_visible() and t.is_open(),'Q:T-16 '+tag+': closing the drawer shows the sheet again')
+        if p.locator('#logout').is_visible():p.locator('#logout').scroll_into_view_if_needed();p.wait_for_timeout(200)
+        hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);const d=document.getElementById('messenger-window');const g=document.getElementById('app-grid');return {hit:!!(e&&e.closest('#logout')),window:d.open,grid:g.open,on:e?(e.id||String(e.className)||e.tagName):null,on_sheet:!!(e&&e.closest('#messenger-window'))};})()")
+        metrics['t16-grid-over-sheet-'+tag]=hit
+        check(hit['hit'] and hit['window'] and hit['grid'],'Q:T-16 '+tag+': app grid sits above the sheet (logout hit-testable, window state still open) '+json.dumps(hit,ensure_ascii=False))
+        p.keyboard.press('Escape');p.wait_for_timeout(300)
+        check(p.locator('#messenger-window').is_visible() and t.is_open() and not p.locator('#app-grid').evaluate('(n)=>n.open'),'Q:T-16 '+tag+': closing the app grid shows the sheet again')
       else:
        g=geo['guide']
        overlap=0 if g is None else max(0,min(geo['right'],g['right'])-max(geo['left'],g['left']))*max(0,min(geo['bottom'],g['bottom'])-max(geo['top'],g['top']))
@@ -732,10 +745,13 @@ try:
     side=p.evaluate("""(()=>{const s=document.getElementById('sidebar');const links=[...s.querySelectorAll('a[href]')].filter(a=>new URL(a.href,location.href).pathname.replace(/\\/$/,'')==='/tbox/messages').length;
       // Q:F-12 D — 업무 홈(/community/)도 이제 사이드바의 트리 · 최근 · 프로젝트 목록을 채운다(전엔 개요 화면이 채우지 않았다) — 사람이 붙인 제목(「메신저 창 시험 페이지」)은 세지 않는다
       const ui=s.cloneNode(true);ui.querySelectorAll('#nav-community-tree,#nav-community-fav,#nav-community-recent,#nav-work-projects,#nav-community-shared,#nav-community-boards,#nav-community-teams').forEach(n=>n.remove());
-      return {links:links,text:(ui.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,rail:[...document.querySelectorAll('nav.app-rail a.app-rail__item')].map(a=>a.textContent.replace(/\\s+/g,' ').trim())};})()""")
+      return {links:links,text:(ui.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,
+      // Q:F-12 U2 (DESIGN 2.18) — 옛 아이콘 줄(nav.app-rail) 대신 본문 오른쪽 위 앱 격자(#app-grid)의 타일 이름 · 창 여는 단추 수
+      grid:[...document.querySelectorAll('#app-grid .app-menu__apps .app-menu__name')].map(n=>n.textContent.replace(/\\s+/g,' ').trim()),gridOpeners:document.querySelectorAll('#app-grid [data-messenger-open]').length,rail:document.querySelectorAll('nav.app-rail').length};})()""")
     metrics['c6_sidebar'+path.replace('/','_')]=side
     check(side['links']==0,'C-6 '+path+' sidebar: /messages link 0 '+json.dumps(side,ensure_ascii=False))
-    check(side['text']==1 and side['openers']==1,'C-6 '+path+' sidebar: 「메신저」 text once — the floating window opener')
+    # U2 — 「메신저」 는 사이드바가 아니라 앱 격자의 타일 하나(떠 있는 창을 여는 단추). 사이드바에는 글자 · 단추 0(두 벌 금지)
+    check(side['text']==0 and side['openers']==0 and side['rail']==0 and side['grid'].count('메신저')==1 and side['gridOpeners']==1,'C-6 '+path+' 「메신저」 once — the floating window opener tile in the app grid (sidebar 0 · old rail 0)')
    t.open();p.locator('#messenger-window .modal__head a').filter(has_text='크게 보기').click();p.wait_for_url('**/tbox/messages',timeout=10000)
    check(p.url.endswith('/tbox/messages') and p.locator('#message-form').count()==1,'C-6 full screen is reached from the window head 「크게 보기」 (/messages)')
    check(t.clean('c6'),'C-6 no page errors / 5xx / script console output')
