@@ -103,3 +103,84 @@ U3-2(화면)는 하지 않았다. push · 발행 · main 합치기 안 함. 커�
 7. **공개 링크 문구** — 자료실 그림은 지금처럼 「로그인이 필요한 파일」, `att:` 만 「볼 수 없는 파일」(지시서 글자)
 8. 400 응답에 `reason` 코드를 함께 실음(화면 U3-2 가 문장을 고르지 않고 그대로 보이되 갈래를 알 수 있게) · 표 열을 NOT NULL + CHECK 로 더 좁힘 · `Http.php` 사유 표에 `bad_attachment_ref` 를 더하지 않음(그 표는 ARCH 5.30 과 글자 대조되는 표라 — 문장은 routes.php 상수)
 9. Storage 는 `putLocal` 이 아니라 `put`(HTTP 업로드 · `move_uploaded_file`)을 같은 함수로 재사용 — 첨부는 HTTP 업로드라 `putLocal`(가져오기 임시 폴더 전용)의 출처 검사와 맞지 않는다. routes.php 의 「일일 총량 합산 도우미」는 만들지 않았다(합산이 `Upload::checkDailyQuota` 한 곳이라 감싸는 함수가 필요 없다)
+
+## 2부 — U3-2 화면: 칸 넓히기 · 칸 편집기 · 오른쪽 칸 하나로 · 바로 올리기
+
+구현: Opus 에이전트 · worktree `/home/changkwon/qaredi-qf12u3s-20261013`(브랜치 `feat/qf12-u3-screen` — U3-1 `9703afe` + 지시 `fe2305f` 위) · 결과 폴더 `/home/changkwon/qaredi-qf12u3-results-20261013/U3-2/`.
+서버 PHP(화면 PHP 둘의 주석 말고) · db · scripts 0. push · 발행 · 합치기 안 함. 커밋 해시는 이 파일이 든 커밋 — 마지막 답에 적는다.
+
+### 1. 변경 파일
+
+| 파일 | 내용 |
+|---|---|
+| `public/assets/community/work.js` | **WK-26**: `inboxView` 가 `createPane(aside)` 한 벌만 쓴다 — `div.task-inbox__pane` · 1200 넘나들기 다시 열기 · 함수 자리(`createPane((id)=>…)`) 갈래 삭제. 줄 = aria-current · aria-expanded, Esc 는 목록 · 칸 안에서 칸 닫기(입력 · 편집기 · 메뉴 · 창 안 제외) + 초점은 그 줄. 보기(목록 · 보드 · 달력)를 바꿔도 칸 그대로. **폭 조절** `paneSizer` — 손잡이 `div.task-pane__resize`(role=separator · aria-orientation · aria-label 「작업 상세 폭」 · aria-valuemin/max/now) 끌기(pointer capture) · ←/→ 16 · Home · 두 번 누르기 = 기본 폭 · 머리 줄 「넓게 보기」(`[data-pane-wide]` · aria-pressed · 켜면 위 끝, 끄면 앞 폭) · 폭은 `<body>` CSS 변수 `--task-pane-w` 하나(기본 폭이면 지움) · localStorage `qaredi-task-pane-w:v1:<아이디>` · 화면 폭 · 사이드바 접기(`data-sidebar`)가 바뀌면 같은 고른 값을 새 범위로. **알림 색** `say(node, text, ok)` — 「링크를 복사했어요」만 `.msg--ok`(그 밖 알림 줄은 그대로 오류 색). **파일 첨부** 목록 = 자료실 파일 + `attachment_titles`(clean = 받기 링크 · pending 「검사 중」 배지 · 그 밖 「받을 수 없음」 배지). 칸 읽기 ctx 에 `attachment_titles` · `attachment_page` |
+| `public/assets/community/editor.js` | **창 한 벌**: `blockDialogFor` · `atomDialogFor` — `createBlockDialog` · `createAtomDialog` 를 화면에 한 번만 만들고 연 쪽 편집기(getView · hooks)로 묶어 연다(페이지 편집기 · 칸 편집기 공용). `ensureEditorDialogs` — 창 마크업이 없는 화면(업무 홈 · 내 작업)에 page_view.php 와 **같은 id · 클래스**로 createElement(구조 지문 시험으로 같음 확인). `blockKeymapFor` · `atomEditCommand` 를 모듈 함수로(페이지 편집기도 이것을 부른다). **도구줄** `createToolbar(view, {wrap, addBlock, paper:false})` — 칸 편집기가 같은 함수로 「블록 추가 · 색 · 배경 · 링크 · 멘션」을 단다(칸 줄은 id 0 — 페이지 편집기와 겹치지 않게). **`mountPaneEditor`** — 도구줄 · 블록 추가(같은 `BLOCK_TYPES` 목록) · 블록 고치기 창 · Ctrl+Alt+숫자 · 덩어리 Enter/두 번 누르기 · 할 일 상자 · 목차 · 「하위 페이지」 블록 · 붙여넣기 · 끌어놓기. 걷은 뒤에도 마지막 저장은 그대로(`gone` 표시) · 「편집 마침」은 올리던 것이 들어간 뒤 저장. **바로 올리기** `createUploads` 한 벌(입구 셋 공용): XHR multipart `POST /api/pages/{id}/attachments`(진행률 · 같은 CSRF) · 자리표시는 ProseMirror 장식(본문에 저장 0) · 차례로 한 번에 하나 · 취소 · 실패면 자리표시 지우고 창구 `error` 그대로 · 401 → 로그인 · 413 → 「파일이 100MB 를 넘습니다」. 붙여넣기는 **파일만**(글이 함께 든 붙여넣기 · HTML 의 외부 그림은 지금처럼) · 끌어놓기는 파일만(편집기 안 블록 옮기기 그대로). **「이 문서에 올리기」 탭** — 그림 · 파일 창 `#atom-file` 에 탭 둘(`.toolbar.db-viewbar` + `.db-type` 단추 · role=tablist/tab/tabpanel · ←/→) · 파일 고르기 `.btn--quiet`(aria-label 「이 문서에 그림/파일 올리기」) · 넣기 = 창 닫고 커서 자리 자리표시(창의 설명 · 그림 폭 반영) · 고치기 = 창 안에서 올리고 「고치기」로 바꿈 · 올릴 수 없는 편집기(제안 중 등)면 탭 줄을 숨기고 자료실만. 페이지 편집기: `state.attachmentTitles` · 읽기 ctx · fromDoc ctx · 붙여넣기 · 끌어놓기 플러그인(고칠 수 있고 제안 중이 아닐 때만) |
+| `public/assets/community/editor-schema.js` | `fromDoc` — `att:` 이름은 `attachment_titles` 에서 · `toDoc` — `att:` 그림 · 파일 블록도 저장(전엔 `tbox:` 만 남기고 버렸다 — 1부 「못 한 것」) |
+| `public/assets/community/doc-render.js` | `renderAttachmentBlock` — `att:` → `ctx.base + /api/pages/{문서}/attachments/{첨부}/raw|download`. 지도 · 문서 id 없으면 「볼 수 없는 파일」(서버와 같은 문구) · clean 그림만 `<img>` · **pending 그림 = 「검사 중이에요」 회색 상자(`.doc-upload[data-kind=image]`) · pending 파일 = 이름 + 「검사 중」 배지(링크 0)** · 그 밖은 서버와 같은 받기 카드 |
+| `public/assets/app.css` | `.msg--ok`(`--ok-fg`) · 칸 폭 = `max(400px, min(var(--task-pane-w, clamp(400px, 34vw, 480px)), 70vw))` 를 칸 · 목록 여백 · 손잡이 자리에 · `.task-pane__resize`(fixed · 8px · col-resize · 올리면 2px `--primary` · 초점 고리) · `body[data-task-resizing]` · `[data-pane-wide]` 아이콘 돌림 · <1200 손잡이 · 넓게 보기 숨김 · 칸 안 `.editor-toolbar` 폭 · 색/링크/멘션 줄은 툴바 아래로 · `.doc-upload` · `__name` · `__progress` · `.task-inbox__pane` 규칙 삭제(`:is(.task-pane, .task-inbox__pane)` → `.task-pane`). 새 색값 0 |
+| `src/community/handlers/work_home_page.php` · `my_tasks_page.php` | 주석만(「줄 아래 펼침」 → 오른쪽 칸 하나) — 마크업 · 로직 0 |
+| `public/assets/community/{dashboard,database,suggestions,table-editor,templates}.js` · `public/assets/messenger.js` | `php scripts/community_asset_version.php` 가 고친 import 버전 줄뿐 |
+| `tests/community/qf12_work_browser.py` | U2 「줄 아래 펼침」 단언을 WK-26(aside 하나 · 줄 아래 판 0)로 고침 + U3 묶음(`QF12D_ONLY=u3`) |
+| `tests/catalog.json` | `community.qf12_work_browser` covers(editor-schema.js · community.css · guide-work.json) · notes(U3 · QF12D_ONLY u3) |
+| `wiki/community/guide-work.json` | 업무 홈 · 내 작업의 「줄 아래 펼침」 → 「오른쪽 칸」 · 프로젝트 절에 폭 조절 · 칸 편집기 한 줄 · 첨부 사용법 한 단락(callout how) |
+
+### 2. 실행한 명령과 출력 (원문 = 결과 폴더 `U3-2/`)
+
+| 명령 | 결과 | 원문 |
+|---|---|---|
+| `QF12D_ONLY=u3 memories_harness.py --suite qf12_work_browser.py`(개발 중 iter1~3) | iter3 **pass 228 · fail 0** | `iter3.log` · `iter3/` |
+| `memories_harness.py --suite qf12_work_browser.py`(전체 — 바뀐 판) | **pass 1586 · fail 0** (rc 0 · 기준 판 1387/0 + U3 단언 · U2 펼침 단언은 WK-26 로 고침) | `work-final.log` · `work-final/qf12-work-browser-results.json` · `metrics.json` · `shots/` |
+| 같은 명령 — 기준 판 `fe2305f` | pass 1387 · fail 0 | `baseline-qf12_work_browser.log` |
+| `--suite qf12_shell_browser.py` | pass 611 · fail 13 — **기준 판도 611 / 13, 실패 단언 이름 13개 글자까지 같음**(Q:T-38 런처 타일 5 · Q:T-39 돌아갈 주소 3 · 폰 서랍 360/412 등 — 이번 변경 밖, `diff` 0) | `shell-final.log` · `baseline-qf12_shell_browser.log` |
+| `--suite messenger_store_browser.py` | pass 75 · fail 0 (기준 75/0) | `messenger-store-final.log` · `baseline-messenger_store_browser.log` |
+| `python3 tests/community/messenger_rail_browser.py` | pass 614 · fail 0 (기준 614/0) | `messenger-rail-final.log` · `baseline-messenger_rail.log` |
+| 정적: `php -l`(PHP 2) · `node --check`(커뮤니티 JS 전부 + messenger.js) · `community_asset_version.php --check` · `tests/community/asset_version.sh` · `git diff --check` · `security_lint.sh` · `tests/wiki_check.sh` · `tests/lib/contrast.py` · innerHTML 류 grep · 새 `.style` grep | 전부 0 / 통과(asset_version 37/0 · 금지 패턴 0 · wiki 69편 · CONTRAST_FAIL=0 · 새 `.style` 는 `--task-pane-w` set/remove 한 줄뿐) | `static.log` |
+
+기준 판은 이 브랜치 시작 HEAD `fe2305f` 를 `git archive` 로 결과 폴더에 풀어 같은 harness 로 돌렸다(끝난 뒤 지움). 격리 틀 포트 8768 은 상대 에이전트(U3-1b)와 한 번 겹쳤다 — 그 회(iter1 첫 회)는 내 harness 의 php 가 포트를 못 잡아 401 만 나고 끝났다(상대 서버에 보낸 것은 내 합성 세션 쿠키뿐 · 200 0). 그 뒤 실행기에 「harness 프로세스가 없고 포트가 빌 때까지」 기다리기를 넣었다.
+
+수락 시험(U3 묶음)이 실제로 확인한 것 — 단언 이름은 결과 JSON 원문:
+
+- **WK-26** — 1440 업무함 줄 → `aside#task-pane`(목록 오른쪽 · 2.21 요소 전부) · `.task-inbox__pane` 0 · 줄 aria-current/expanded 한 줄 · 다른 줄 → 같은 칸 내용만 바뀜 · 같은 줄 다시 · ✕ · Esc(초점 그 줄) · 뒤로 가기 → 닫힘 · 홈도 같은 칸
+- **A 폭 조절** — 손잡이 role=separator · vertical · 「작업 상세 폭」 · valuemin 400 · valuemax(위 끝) · valuenow · 폭 8 · 높이 900 · 왼쪽 경계 위 / 끌기 120px → 600 · 목록 여백 = 폭 + 32 · localStorage 숫자 하나 · 인라인 style 은 `<body>` 의 `--task-pane-w` 하나 / ← +16 · → −16 · Home 기본 480(기억 · body style 지움) / 끝까지 끌기 = 위 끝 · 반대 400 · 위 끝에서 목록 ≥ 480 · 넘침 0 / 두 번 누르기 480 / 넓게 보기 → 위 끝 · aria-pressed true · 끄면 앞 폭 560 / 새로고침 뒤 560 · 홈에서도 560 / 사이드바 접으면 위 끝 832 · 넓게 보기 = 832 · 넘침 0 / 1199 · 412: 손잡이 · 넓게 보기 숨음 · 기억 700 무시 · 넘침 0
+- **알림 색** — 「링크를 복사했어요.」 `.msg--ok` rgb(21,128,61) ≠ `--danger` rgb(220,38,38) · 오류(합성 400)는 `--danger` · `.msg--ok` 0
+- **B 칸 편집기** — 칸 도구줄 = 전체 편집기 도구줄 `["블록 추가","색","배경","링크","멘션"]` · 「블록 추가」 목록 22개 = 전체 편집기 목록(종류 · 번호 · 이름 같은 순서) · 창 한 벌 · 내 작업 화면이 지은 두 창의 id · 클래스 지문 = 페이지 화면 마크업 지문 · 「블록 추가 › 표」 → 같은 블록 고치기 창 → 표 블록
+- **C 바로 올리기** — 붙여넣기(합성 png 240×120 클립보드 · ClipboardEvent) → 201 · 자리표시(`.doc-upload` · role=status · aria-live polite · 이름 · 「올리는 중 n%」 · 「취소」) → 그림 블록 · 글이 함께 든 붙여넣기는 올리지 않음 · 서버 첨부 행 1(clean) · 저장된 본문 `file_ref` = `att:<그 첨부>` · 읽기 화면 `<img src=/community/api/pages/{id}/attachments/{att}/raw>` 실제로 그려짐(naturalWidth > 0) · 「파일 첨부 1」 = 받기 주소 / 끌어놓기(txt · DragEvent) → 201 → 파일 블록 · 서버 행 1 · 본문 att: / 허용 밖(.exe) → 400 `ext_not_allowed` · 알림 줄 = 창구 `error` 글자 그대로 · 오류 색 · 자리표시 사라짐 · 블록 0 / 「블록 추가 › 그림」 창 탭 「이 문서에 올리기」(첫 탭 · aria-selected) · 「자료실에서 고르기」(지금 찾기 칸) · 파일 고르기 aria-label 「이 문서에 그림 올리기」 · 파일 고르면 창 닫힘 → 201 → 그림 블록 / SCAN_ENABLED=1(시험이 임시 .env 를 잠깐) → pending 201 → 읽기 화면 「검사 중이에요」 상자 · clean 그림은 그대로 · 「파일 첨부」 pending = 이름 + 「검사 중」 · 받기 링크 0 / 전체 화면 편집기에서도 붙여넣기 → att: 그림 → 읽기 화면에 그려짐
+- **입구 셋 0** — 보기 공유(다른 팀 직원) · 손님: 칸 설명 누르기 · 편집기 · 도구줄 · 올리기 단추 0 · 전체 화면 「편집」 0 · 그래도 문서를 볼 수 있으니 첨부 그림 · 「파일 첨부 1」은 보임
+- **폭 여섯 × 밝게 · 어둡게 · 고대비** — 360 · 412(터치) · 820 · 1199 · 1280 · 1440 × 읽기 · 편집(멘션 줄 열고) · 넓게(≥1200): 가로 넘침 0 · 누름 자리 < 44 0(폰 폭 · 터치) · 인라인 style 0(CSSOM `--task-pane-w` 제외) · 멘션 줄이 칸 안 · 콘솔 0 · 페이지 오류 0 · 5xx 0
+
+스크린샷(직접 열어 봄): `work-final/shots/u3-wide-image-1440.png`(넓힌 칸 656 + 그림이 든 설명 — 목록 480 남음 · 최종 실행). 같은 시험의 앞 실행(`iter3/shots/` — 지운 뒤 다시 찍지 않음) `u3-pane-412.png`(412 칸 — 「‹ 목록」 · 전체 폭) · `u3-412t-light-edit.png` · `u3-1440-dark-edit.png`(칸 편집기 도구줄 · 표 · 그림 카드)도 열어 봤다. `u3-wide-collapsed-1440.png`(사이드바 접고 832)는 열어 보지 않았다(단언만).
+
+### 3. 못 한 것과 이유 (미검증 포함)
+
+| 항목 | 상태 · 이유 |
+|---|---|
+| 서버 렌더러(`DocRender.php`)의 pending 그림 | 화면(doc-render.js)은 DESIGN 2.24 대로 「검사 중이에요」 상자인데, 서버 렌더러는 pending 그림을 받기 카드로 그린다(1부 그대로 — 서버 PHP 는 이번 범위 밖). 두 렌더러 같음 시험(stage3 의 C:T-19)은 att: 를 쓰지 않아 지금은 걸리지 않는다. 맞출지는 메인 판단 |
+| 칸을 닫는 중에 올리던 파일 | 「편집 마침」은 올리던 것이 블록으로 들어간 뒤 저장한다. 칸을 ✕ · 다른 줄로 **닫으면** 올리던 것은 서버에 첨부로 남지만 본문 블록은 들어가지 않는다(「블록에서 지워도 첨부는 남는다」와 같은 상태) — 미검증(시험 없음) |
+| 「취소」 단추 | 자리표시 · 취소 단추가 서는 것은 시험했지만, 진행 중 실제로 눌러 XHR 이 끊기는 것은 합성 파일이 작아(곧 끝남) 시험하지 않았다 — 미검증 |
+| 여러 파일 한 번에(차례로) | 코드는 줄을 세워 한 번에 하나지만 두 개 이상 놓기는 시험하지 않았다 — 미검증 |
+| nginx 413(100MB 넘음) 문장 | 격리 틀은 php -S 라 nginx 413 길을 탈 수 없다 — 미검증(화면은 413 이면 서버 too_large 와 같은 문장) |
+| 프로젝트 화면(page_view)의 칸 편집기 | 같은 함수 · 같은 창(page_view.php 마크업)이라 따로 시험하지 않았다 — 전체 편집기 쪽 붙여넣기만 시험 |
+| 다른 회귀(stage7d4 · browser_7d4 · stage89_ui · dbg_u*_ui · ux_r1_ui …) | 카탈로그 `covers` 가 editor.js · app.css 와 겹치지만 지시서 완료 기준 밖 — 묶음 끝 회귀(메인) 몫. 돌리지 않음 |
+| ui_snapshot | qf12_work_browser `snap` 묶음(1440 · 1280) 그대로 통과 — 기준 판과 결함 수 대조는 하지 않았다 |
+| qf12_shell_browser 13건 | 기준 판에서도 같은 13건(위 표) — 고치지 않았다(범위 밖). 메인 지시대로 다시 돌리지 않음 |
+| 목록 480px 에서 업무함 줄 | 위 끝 폭(목록 480)일 때 업무함 줄은 제목이 줄임표(「U2 …」)가 되고, 꼬리(「댓글 1 @」)가 있는 줄은 마감 「3일 지남」이 패널 오른쪽 안쪽 여백까지 밀린다(문서 가로 넘침은 0 — `work-final/shots/u3-wide-image-1440.png`). 업무함 줄의 좁은 폭 모양은 손대지 않았다 |
+
+### 4. 확정한 값
+
+- **폭 범위**: 아래 끝 400px · 위 끝 = `min(화면 폭 70%, 보이는 폭 − 본문 왼쪽(사이드바 · 아이콘 줄) − 본문 여백 64 − 480)` — 1440 사이드바 펼침 656 · 접음 832 · 1280 펼침 496 · 1200 펼침 416. 기본 = `clamp(400px, 34vw, 480px)`(지금 값). 키보드 한 칸 16px
+- **기억**: localStorage `qaredi-task-pane-w:v1:<아이디>` = 사람이 고른 폭 숫자 하나(기본 폭이면 지움) · 화면 폭 · 사이드바가 바뀌면 그 값을 새 범위로 묶어 그린다(값은 그대로)
+- **CSSOM**: `<body style="--task-pane-w: Npx">` 하나(기본이면 style 속성째 없음) — 칸 · 목록 여백 · 손잡이가 CSS 한 식
+- **새 클래스**: `.task-pane__resize` · `.msg--ok` · `.doc-upload` · `__name` · `__progress`(DESIGN 2.21 · 2.24 에 적힌 것만). 상태는 속성으로 — `[data-pane-wide]` · `body[data-task-resizing]` · `.doc-upload[data-kind=image|file]` · `[data-atom-tab]` · `[data-atom-upload]` · `[data-atom-upload-input]` · `li[data-attachment]`
+- **문구**: 「작업 상세 폭」 · 「넓게 보기」/「넓게 보기 끄기」 · 「올리는 중 n%」 · 「취소」 · 「이 문서에 올리기」 · 「자료실에서 고르기」 · 「파일 고르기」 · 「이 문서에 그림 올리기」/「…파일 올리기」 · 「검사 중이에요」 · 「검사 중」 · 「받을 수 없음」(감염 등 clean 아닌 첨부) · 「올렸어요 — 「고치기」를 누르면 이 파일로 바뀌어요.」
+- **올리기 응답 처리**: 201 `{id,name,size,image,scan_status}` → `image` 참이면 그림 블록, 아니면 파일 블록(사용자가 「그림」 창에서 골라도 서버가 그림 아님이면 파일) · 400/403/404 → `error` 그대로 · 401 → 로그인 · 413 → 「파일이 100MB 를 넘습니다」
+
+### 5. DESIGN · 지시서와 다르게 한 것 (이유)
+
+1. **위 끝을 「70%」 대신 `min(70%, 목록 480 남김)`** — DESIGN 2.21 「범위 400px ~ 화면 폭 70%(목록이 480px 아래로 줄지 않게)」의 두 조건이 1440 에서 어긋난다(70% = 1008 이면 사이드바 240 을 빼고 목록이 ~130px — 처음 구현의 스크린샷에서 업무함 줄이 칸 밑으로 잘려 쓸 수 없었다). 괄호 조건(기획 15.4 「목록이 최소 480px 남게」)을 지켜 위 끝을 둘 중 작은 값으로 했다. 「넓게 보기」도 이 위 끝. 70% 를 그대로 원하면 업무함 줄의 좁은 폭 모양이 따로 필요하다 — **메인 · 사용자 확인 필요**
+2. **창 마크업을 JS 로 한 벌 더 지음** — 업무 홈 · 내 작업 화면에는 「블록 추가」 · 「블록 고치기」 창 마크업이 없고(page_view.php 에만) page_view.php 는 허용 목록 밖이다. 편집기 함수는 한 벌이고, 마크업은 `ensureEditorDialogs` 가 없을 때만 같은 id · 클래스로 짓는다(지문 같음을 시험이 본다). 마크업 원본이 PHP · JS 둘이 된 것은 남는 부채 — 다음에 page_view.php 의 두 창을 지우고 JS 한 곳으로 모으면 한 벌이 된다(메인 판단)
+3. **「넓게 보기」 아이콘** — 셸 아이콘 모음에 넓히기 아이콘이 없고(shell_bottom.php 밖) 새로 그리지 않았다. 내림 꺾쇠(`chevron`)를 CSS 로 돌려 ‹(넓히기) · ›(되돌리기)로 쓴다
+4. **용지 고르개 · 블록 손잡이(⋮⋮)는 칸에 넣지 않음** — 「같은 꾸밈 도구줄 · 블록 넣기」는 같은 함수로 붙였지만, 용지(A4 …)는 전체 화면 편집기 판 크기 설정이고 블록 손잡이는 블록 왼쪽 바깥(−1.5rem)에 그려져 칸에서 잘린다. 칸 도구줄은 단추 다섯이라 360 에서도 줄바꿈으로 들어가 「더보기」로 접을 단추가 없었다(DESIGN 「덜 쓰는 단추는 더보기」 — 필요 없음)
+5. **칸 도구줄 id 0** — 페이지 편집기 줄(`#tool-color` · `#mention-row` …)과 한 화면에 함께 있을 수 있어(프로젝트 화면) 칸 쪽은 id 를 달지 않는다. 그 때문에 community.css 의 `#mention-row` · `#mention-list` 규칙(넓은 화면 폭 상한 · 한 줄 줄임)은 칸에 적용되지 않고, 칸은 app.css 의 「툴바 아래로」 규칙을 쓴다
+6. **Esc** — DESIGN 「Esc 는 2.21 그대로」인데 2.21 aside 에는 Esc 가 없었다. 업무함(홈 · 내 작업)에서는 목록 · 칸 안의 Esc 가 칸을 닫고 그 줄로 초점을 돌린다(U2 의 줄 아래 펼침 Esc 를 옮긴 것). 프로젝트 화면 칸은 지금처럼 Esc 없음
+7. **파일 첨부 목록의 감염 · 그 밖** — DESIGN 에 없어 「받을 수 없음」 배지(링크 0)로 했다
+8. **`toDoc` 의 `att:`** — 모양 검사는 하지 않고 접두사만 본다(전의 `tbox:` 와 같은 태도 — 모양 · 「이 문서 첨부인가」는 서버 Doc.php · SaveDoc.php)

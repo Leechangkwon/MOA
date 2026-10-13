@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=bd4c73cb5052';
-import { hydrateDashboard } from './dashboard.js?v=bd4c73cb5052';
+import { createTableEditor } from './table-editor.js?v=ddfabe5d21e6';
+import { hydrateDashboard } from './dashboard.js?v=ddfabe5d21e6';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -33,7 +33,7 @@ import { hydrateDashboard } from './dashboard.js?v=bd4c73cb5052';
  *     서버 `Doc::validate` 가 다시 검사한다(서버 검증이 진실이다).
  */
 
-import { EditorState, TextSelection, NodeSelection, Plugin } from './vendor/pm/prosemirror-state.js?v=5823578fa61a';
+import { EditorState, TextSelection, NodeSelection, Plugin, PluginKey } from './vendor/pm/prosemirror-state.js?v=5823578fa61a';
 import { EditorView, Decoration, DecorationSet } from './vendor/pm/prosemirror-view.js?v=5823578fa61a';
 import { keymap } from './vendor/pm/prosemirror-keymap.js?v=5823578fa61a';
 import { history, undo, redo } from './vendor/pm/prosemirror-history.js?v=5823578fa61a';
@@ -42,22 +42,22 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=bd4c73cb5052';
-import { renderDoc, embedHost } from './doc-render.js?v=bd4c73cb5052';
-import { createDatabaseView } from './database.js?v=bd4c73cb5052';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=bd4c73cb5052';
-import { bindEmbedAdmin } from './embeds.js?v=bd4c73cb5052';
-import { bindPopular } from './popular.js?v=bd4c73cb5052';
-import { bindPalettes } from './palettes.js?v=bd4c73cb5052';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=bd4c73cb5052';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=bd4c73cb5052';
-import { drawTrust, bindProcedures } from './procedures.js?v=bd4c73cb5052';
-import { createPageExport } from './export.js?v=bd4c73cb5052';
-import { createDrafts } from './drafts.js?v=bd4c73cb5052';
-import { drawPageAi, bindAiCenter } from './ai.js?v=bd4c73cb5052';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=bd4c73cb5052';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=ddfabe5d21e6';
+import { renderDoc, embedHost } from './doc-render.js?v=ddfabe5d21e6';
+import { createDatabaseView } from './database.js?v=ddfabe5d21e6';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=ddfabe5d21e6';
+import { bindEmbedAdmin } from './embeds.js?v=ddfabe5d21e6';
+import { bindPopular } from './popular.js?v=ddfabe5d21e6';
+import { bindPalettes } from './palettes.js?v=ddfabe5d21e6';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=ddfabe5d21e6';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=ddfabe5d21e6';
+import { drawTrust, bindProcedures } from './procedures.js?v=ddfabe5d21e6';
+import { createPageExport } from './export.js?v=ddfabe5d21e6';
+import { createDrafts } from './drafts.js?v=ddfabe5d21e6';
+import { drawPageAi, bindAiCenter } from './ai.js?v=ddfabe5d21e6';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=ddfabe5d21e6';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=bd4c73cb5052';
+import { createWork } from './work.js?v=ddfabe5d21e6';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -4076,6 +4076,79 @@ function createAtomDialog(getView, hooks) {
   const uploadLink = $('atom-file-upload');
   if (uploadLink) { uploadLink.setAttribute('href', APP_BASE + '/'); }
 
+  /* Q:F-12 U3 C(DESIGN 2.24 ③) — 그림 · 파일 창의 탭 둘: 「이 문서에 올리기」(첫 탭 · 기본 — 파일 고르기) · 「자료실에서 고르기」(지금 창 그대로).
+     올리기는 연 편집기가 준 `hooks.upload()`(그 문서의 createUploads — 고칠 수 있고 제안 중이 아닐 때만)가 있을 때만 보인다.
+     넣기: 고르면 창을 닫고 커서 자리에 자리표시 → 블록(붙여넣기 · 끌어놓기와 같은 길 — 설명 · 그림 폭은 이 창의 값) /
+     고치기: 창 안에서 올리고(진행률 한 줄) 그 첨부를 고른 파일로 둔다 — 「고치기」를 눌러야 바뀐다. */
+  const filePane = panes.file;
+  const captionField = fileCaption.closest('label');
+  const libPanel = elt('div', { role: 'tabpanel', 'aria-label': '자료실에서 고르기' });
+  while (filePane.firstChild && filePane.firstChild !== captionField) { libPanel.appendChild(filePane.firstChild); }
+  const tabBar = elt('div', { class: 'toolbar db-viewbar', role: 'tablist', 'aria-label': '파일을 가져올 곳' });
+  const tabUp = elt('button', { class: 'btn btn--quiet btn--small db-type', type: 'button', role: 'tab', 'data-atom-tab': 'upload', text: '이 문서에 올리기' });
+  const tabLib = elt('button', { class: 'btn btn--quiet btn--small db-type', type: 'button', role: 'tab', 'data-atom-tab': 'library', text: '자료실에서 고르기' });
+  tabBar.append(tabUp, tabLib);
+  const picker = elt('input', { type: 'file', hidden: true, 'data-atom-upload-input': true });
+  const uploadPick = elt('button', { class: 'btn btn--quiet', type: 'button', 'data-atom-upload': true });
+  uploadPick.append(makeIcon('upload'), elt('span', { text: '파일 고르기' }));
+  const upState = elt('p', { class: 'help', role: 'status', 'aria-live': 'polite' });
+  const upPanel = elt('div', { role: 'tabpanel', 'aria-label': '이 문서에 올리기' }, [
+    elt('div', { class: 'toolbar' }, [uploadPick, picker]),
+    elt('p', { class: 'help', text: '올린 파일은 이 문서에만 딸려요 — 이 문서를 볼 수 있는 사람만 받을 수 있고, 자료실 목록에는 나오지 않아요. 붙여넣기(Ctrl+V)나 끌어놓기로도 넣을 수 있어요.' }),
+    upState
+  ]);
+  filePane.insertBefore(libPanel, captionField);
+  filePane.insertBefore(upPanel, libPanel);
+  filePane.insertBefore(tabBar, upPanel);
+  let fileTab = 'library';
+  function setFileTab(which) {
+    fileTab = which;
+    for (const [b, on] of [[tabUp, which === 'upload'], [tabLib, which === 'library']]) {
+      b.classList.toggle('is-active', on);
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+    }
+    show(upPanel, which === 'upload');
+    show(libPanel, which === 'library');
+  }
+  tabUp.addEventListener('click', () => setFileTab('upload'));
+  tabLib.addEventListener('click', () => setFileTab('library'));
+  tabBar.addEventListener('keydown', (e) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') { return; }
+    e.preventDefault();
+    const next = fileTab === 'upload' ? tabLib : tabUp;
+    next.click();
+    next.focus();
+  });
+  uploadPick.addEventListener('click', () => picker.click());
+  picker.addEventListener('change', () => {
+    const file = picker.files && picker.files[0] ? picker.files[0] : null;
+    picker.value = '';
+    const up = hooks.upload ? hooks.upload() : null;
+    const view = getView();
+    if (!file || !up || !view) { return; }
+    if (pos === null) {
+      const extra = { caption: fileCaption.value, width: widthSelect.value };
+      dialog.close();
+      const $from = view.state.selection.$from;
+      up.insert(view, [file], $from.depth >= 1 ? $from.after(1) : view.state.doc.content.size, extra);
+      view.focus();
+      return;
+    }
+    uploadPick.disabled = true;
+    setText(msgEl, '');
+    setText(upState, '올리는 중 0%');
+    up.send(file, (n) => setText(upState, '올리는 중 ' + n + '%')).promise.then((data) => {
+      cur.file_ref = 'att:' + data.id;
+      cur.name = data.name || '';
+      setText(upState, '올렸어요 — 「고치기」를 누르면 이 파일로 바뀌어요.');
+    }).catch((err) => {
+      setText(upState, '');
+      if (err && err.status === 401) { toLogin(); return; }
+      if (!(err && err.aborted)) { setText(msgEl, err && err.message ? err.message : GENERIC_ERROR); }
+    }).finally(() => { uploadPick.disabled = false; });
+  });
+
   let type = null;
   let pos = null;
   let cur = {};
@@ -4254,6 +4327,14 @@ function createAtomDialog(getView, hooks) {
       fileCaption.value = cur.caption || '';
       show(widthField, type === 'image');
       widthSelect.value = cur.width || 'normal';
+      // U3 C — 올리기 탭(올릴 수 있는 편집기일 때만 · 첫 탭 · 기본). 자료실 파일(tbox:)을 고치는 중이면 자료실 탭부터
+      const canUpload = !!(hooks.upload && hooks.upload());
+      show(tabBar, canUpload);
+      setText(upState, '');
+      picker.setAttribute('accept', type === 'image' ? UPLOAD_IMAGE_MIMES.join(',') : '');
+      if (!picker.getAttribute('accept')) { picker.removeAttribute('accept'); }
+      uploadPick.setAttribute('aria-label', type === 'image' ? '이 문서에 그림 올리기' : '이 문서에 파일 올리기');
+      setFileTab(canUpload && !(typeof cur.file_ref === 'string' && cur.file_ref.slice(0, 5) === 'tbox:') ? 'upload' : 'library');
       searchFiles();
     }
     drawChosen();
@@ -4363,6 +4444,330 @@ function atomAt(state) {
   return null;
 }
 
+/* ─── Q:F-12 U3 — 창 한 벌 나눠 쓰기 · 문서에 바로 올리기 (DESIGN 2.21 「칸 편집기」 · 2.24) ─────────────
+ *
+ * 「블록 추가」 · 「블록 고치기」 창은 화면에 **한 벌**이다. 페이지 화면 편집기와 작업 상세 칸 편집기(mountPaneEditor)가 같은 함수
+ * (`createBlockDialog` · `createAtomDialog`)로 만든 같은 창을 나눠 쓰고, 연 쪽의 편집기(getView)로 넣는다 — 편집기 두 벌 0.
+ * 창 마크업은 페이지 화면(page_view.php)에 있고, 그 마크업이 없는 화면(업무 홈 · 내 작업 — 칸 편집기만 있는 화면)에서는
+ * `ensureEditorDialogs` 가 **같은 id · 같은 클래스**로 createElement 해 둔다(글자는 textContent — HTML 문자열 0).
+ */
+
+const ATT_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+
+/** 요소 하나 — attrs: class · id · text(글자) · 그 밖은 setAttribute. kids 는 요소 배열 */
+function elt(tag, attrs, kids) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs || {})) {
+    if (v === null || v === undefined || v === false) { continue; }
+    if (k === 'class') { node.className = v; } else if (k === 'text') { node.textContent = v; } else { node.setAttribute(k, v === true ? '' : String(v)); }
+  }
+  for (const kid of kids || []) { if (kid) { node.appendChild(kid); } }
+  return node;
+}
+
+function ensureEditorDialogs() {
+  const host = document.querySelector('main.main') || document.querySelector('.main') || body;
+  if (!host) { return; }
+  // 아이콘 자리는 서버 마크업과 같은 모양 — `span.icon[data-icon]` 안에 셸(app.js)이 채우는 것과 같은 `makeIcon` 한 벌
+  const closeIcon = (attr) => elt('button', { class: 'btn btn--icon btn--plain', type: 'button', [attr]: true, 'aria-label': '닫기' },
+    [elt('span', { class: 'icon', 'data-icon': 'x' }, [makeIcon('x')])]);
+  if (!document.getElementById('block-dialog')) {
+    host.appendChild(elt('dialog', { id: 'block-dialog', class: 'modal', 'aria-labelledby': 'block-dialog-title' }, [
+      elt('div', { class: 'modal__head' }, [elt('h2', { id: 'block-dialog-title', class: 'modal__title', text: '블록 추가' }), closeIcon('data-block-close')]),
+      elt('div', { class: 'modal__body block-picker' }, [
+        elt('ul', { id: 'block-list', class: 'list', role: 'listbox', 'aria-label': '블록 종류' }),
+        elt('div', { class: 'block-picker__detail' }, [
+          elt('p', { id: 'block-preview-name', class: 'panel__title' }), elt('p', { id: 'block-desc', class: 'muted' }),
+          elt('p', { id: 'block-keys', class: 'block-picker__keys' }), elt('div', { id: 'block-sample', class: 'block-picker__sample' })
+        ])
+      ]),
+      elt('div', { class: 'form-actions' }, [
+        elt('button', { class: 'btn btn--quiet', type: 'button', 'data-block-close': true, text: '닫기' }),
+        elt('button', { id: 'block-insert', class: 'btn', type: 'button', text: '넣기' })
+      ])
+    ]));
+  }
+  if (!document.getElementById('atom-dialog')) {
+    const field = (label, control, extra) => elt('label', Object.assign({ class: 'field field--full' }, extra || {}), [elt('span', { class: 'field__label', text: label }), control]);
+    const check = (id, label) => elt('label', { class: 'field field--full' }, [elt('span', { class: 'field__label' }, [elt('input', { id: id, type: 'checkbox' }), document.createTextNode(' ' + label)])]);
+    const small = (id, text) => elt('button', { id: id, class: 'btn btn--quiet btn--small', type: 'button', text: text });
+    const opt = (value, text) => elt('option', { value: value, text: text });
+    host.appendChild(elt('dialog', { id: 'atom-dialog', class: 'modal modal--form', 'aria-labelledby': 'atom-dialog-title' }, [
+      elt('div', { class: 'modal__head' }, [elt('h2', { id: 'atom-dialog-title', class: 'modal__title', text: '블록 고치기' }), closeIcon('data-atom-close')]),
+      elt('div', { class: 'modal__body form' }, [
+        elt('p', { id: 'atom-msg', class: 'msg', role: 'alert', 'aria-live': 'polite' }),
+        elt('div', { id: 'atom-toggle', class: 'atom-pane', hidden: true }, [
+          field('제목 줄 (누르면 펼쳐진다)', elt('input', { id: 'atom-toggle-summary', type: 'text', maxlength: '500', autocomplete: 'off', spellcheck: 'false' })),
+          field('펼치면 보이는 내용 — 한 줄이 한 문단', elt('textarea', { id: 'atom-toggle-body', rows: '6', spellcheck: 'false' }))
+        ]),
+        elt('div', { id: 'atom-table', class: 'atom-pane', hidden: true }, [
+          check('atom-table-hrow', '첫 행을 머리로'), check('atom-table-hcol', '첫 열을 머리로'),
+          elt('div', { class: 'doc-table-wrap' }, [elt('table', { class: 'doc-table atom-grid' }, [elt('tbody', { id: 'atom-table-grid' })])]),
+          elt('div', { class: 'toolbar' }, [small('atom-row-add', '행 더하기'), small('atom-row-del', '마지막 행 빼기'), small('atom-col-add', '열 더하기'), small('atom-col-del', '마지막 열 빼기')]),
+          elt('div', { class: 'toolbar atom-merge' }, [
+            elt('label', { class: 'atom-merge__field' }, [document.createTextNode('가로 '), elt('input', { id: 'atom-merge-cols', class: 'input', type: 'number', min: '1', max: '20', value: '2' })]),
+            elt('label', { class: 'atom-merge__field' }, [document.createTextNode('세로 '), elt('input', { id: 'atom-merge-rows', class: 'input', type: 'number', min: '1', max: '20', value: '1' })]),
+            small('atom-merge', '고른 칸부터 합치기'), small('atom-unmerge', '고른 칸 풀기')
+          ]),
+          elt('p', { class: 'help', text: '합칠 칸이 비어 있어야 합칩니다. 칸을 선택하면 아래에서 글자와 서식을 고칠 수 있습니다.' })
+        ]),
+        elt('div', { id: 'atom-columns', class: 'atom-pane', hidden: true }, [
+          elt('label', { class: 'field' }, [elt('span', { class: 'field__label', text: '단 수' }), elt('select', { id: 'atom-columns-n' }, [opt('2', '2단'), opt('3', '3단')])]),
+          elt('div', { class: 'atom-columns' }, [0, 1, 2].map((i) => elt('label', Object.assign({ class: 'field' }, i === 2 ? { id: 'atom-col-2-field' } : {}), [
+            elt('span', { class: 'field__label', text: (i + 1) + '단' }), elt('textarea', { id: 'atom-col-' + i, rows: '6', spellcheck: 'false' })])))
+        ]),
+        elt('div', { id: 'atom-link', class: 'atom-pane', hidden: true }, [
+          field('걸 페이지 찾기', elt('input', { id: 'atom-link-q', type: 'search', maxlength: '200', autocomplete: 'off', spellcheck: 'false', placeholder: '제목이나 본문의 낱말' })),
+          elt('p', { id: 'atom-link-chosen', class: 'help' }), elt('ul', { id: 'atom-link-list', class: 'list', 'aria-label': '찾은 페이지' })
+        ]),
+        elt('div', { id: 'atom-embed', class: 'atom-pane', hidden: true }, [
+          field('주소 (https)', elt('input', { id: 'atom-embed-url', class: 'input', type: 'url', maxlength: '2048', autocomplete: 'off', spellcheck: 'false', placeholder: 'https://' })),
+          elt('p', { id: 'atom-embed-hosts', class: 'help' }),
+          field('설명 (선택)', elt('input', { id: 'atom-embed-caption', class: 'input', type: 'text', maxlength: '2000', autocomplete: 'off' }))
+        ]),
+        elt('div', { id: 'atom-file', class: 'atom-pane', hidden: true }, [
+          field('내 t-box 파일에서 고르기', elt('input', { id: 'atom-file-q', type: 'search', maxlength: '200', autocomplete: 'off', spellcheck: 'false', placeholder: '파일 이름 (비우면 맨 위 폴더)' })),
+          elt('p', { id: 'atom-file-chosen', class: 'help' }), elt('ul', { id: 'atom-file-list', class: 'list', 'aria-label': '고를 수 있는 파일' }),
+          elt('div', { class: 'toolbar' }, [
+            elt('a', { id: 'atom-file-upload', class: 'btn btn--quiet btn--small', href: '#', target: '_blank', rel: 'noopener', text: 't-box 에 올리기' }),
+            small('atom-file-refresh', '목록 새로 고침')
+          ]),
+          elt('p', { class: 'help', text: '페이지를 읽는 사람이 모두 볼 수 있는 등급의 파일만 붙습니다. 좁으면 저장할 때 알려 드립니다.' }),
+          field('설명 (선택)', elt('input', { id: 'atom-file-caption', type: 'text', maxlength: '500', autocomplete: 'off', spellcheck: 'false' })),
+          elt('label', { id: 'atom-image-width-field', class: 'field' }, [elt('span', { class: 'field__label', text: '그림 폭' }),
+            elt('select', { id: 'atom-image-width' }, [opt('small', '작게'), opt('normal', '보통'), opt('wide', '넓게'), opt('full', '꽉 차게')])])
+        ])
+      ]),
+      elt('div', { class: 'form-actions' }, [
+        elt('button', { class: 'btn btn--quiet', type: 'button', 'data-atom-close': true, text: '닫기' }),
+        elt('button', { id: 'atom-commit', class: 'btn', type: 'button', text: '넣기' })
+      ])
+    ]));
+  }
+}
+
+/* 창 한 벌 + 지금 연 편집기(bind) — 페이지 화면 · 칸 편집기가 같은 창을 쓴다. 여는 순간 그 편집기로 묶는다 */
+let sharedBlockDialog;
+let sharedAtomDialog;
+let blockBind = null;
+let atomBind = null;
+
+/** 「블록 추가」 창 — `createBlockDialog` 한 벌을 그 편집기(getView · hooks)로 묶어 연다 */
+function blockDialogFor(getView, hooks) {
+  if (sharedBlockDialog === undefined) {
+    ensureEditorDialogs();
+    sharedBlockDialog = createBlockDialog(() => (blockBind ? blockBind.getView() : null), {
+      createChildPage: () => (blockBind && typeof blockBind.hooks.createChildPage === 'function' ? blockBind.hooks.createChildPage() : Promise.resolve(null)),
+      editAtom: (type, attrs, pos) => { if (blockBind && typeof blockBind.hooks.editAtom === 'function') { blockBind.hooks.editAtom(type, attrs, pos); } },
+      suggestionMode: () => !!(blockBind && typeof blockBind.hooks.suggestionMode === 'function' && blockBind.hooks.suggestionMode())
+    });
+  }
+  if (!sharedBlockDialog) { return null; }
+  const mine = { getView: getView, hooks: hooks || {} };
+  return {
+    open: (kind, pos) => { blockBind = mine; sharedBlockDialog.open(kind, pos); },
+    close: () => { if (blockBind === mine) { sharedBlockDialog.close(); } },
+    changeTo: (entry, pos) => { blockBind = mine; sharedBlockDialog.changeTo(entry, pos); }
+  };
+}
+
+/** 「블록 고치기」 창(토글 · 표 · 페이지 링크 · 그림 · 파일 …) — `createAtomDialog` 한 벌을 그 편집기로 묶어 연다 */
+function atomDialogFor(getView, hooks) {
+  if (sharedAtomDialog === undefined) {
+    ensureEditorDialogs();
+    const call = (name, fallback) => (...args) => (atomBind && typeof atomBind.hooks[name] === 'function' ? atomBind.hooks[name](...args) : fallback);
+    sharedAtomDialog = createAtomDialog(() => (atomBind ? atomBind.getView() : null), {
+      selfId: call('selfId', ''), context: call('context', {}), rememberLink: call('rememberLink'), rememberFile: call('rememberFile'), upload: call('upload', null)
+    });
+  }
+  if (!sharedAtomDialog) { return null; }
+  const mine = { getView: getView, hooks: hooks || {} };
+  return {
+    open: (type, attrs, pos) => { atomBind = mine; sharedAtomDialog.open(type, attrs, pos); },
+    close: () => { if (atomBind === mine) { sharedAtomDialog.close(); } }
+  };
+}
+
+/** Ctrl+Alt+숫자 — 커서가 있는 블록을 그 종류로 바꾼다(`BLOCK_TYPES[].key`, 창의 「바꾸기」와 같다). 페이지 · 칸 편집기 공용 */
+function blockKeymapFor(getDialog) {
+  const bindings = {};
+  for (const entry of BLOCK_TYPES) {
+    if (!entry.key || entry.makesPage) { continue; }
+    bindings[entry.key] = (pmState) => {
+      const $from = pmState.selection.$from;
+      const dialog = getDialog();
+      if ($from.depth < 1 || !dialog) { return false; }
+      dialog.changeTo(entry, $from.before(1));
+      return true;
+    };
+  }
+  return keymap(bindings);
+}
+
+/** 덩어리 카드를 골라 둔 채 Enter → 「블록 고치기」 창(페이지 · 칸 편집기 공용) */
+function atomEditCommand(editAtom) {
+  return (pmState) => {
+    const hit = atomAt(pmState);
+    if (!hit) { return false; }
+    editAtom(hit.node.type.name, hit.node.attrs, hit.pos);
+    return true;
+  };
+}
+
+/* ── 문서에 바로 올리기 (U3 C · DESIGN 2.24 · 커뮤니티 ARCH 24장) ──
+ * 입구 셋(붙여넣기 · 끌어놓기 · 「이 문서에 올리기」 탭)이 **한 함수**(`createUploads`)를 지난다. 올린 것은 그 문서 전용 첨부
+ * (`POST /api/pages/{id}/attachments` — 판정 · 검사 · 총량 · 민감정보는 서버가 한다)이고 본문에는 `att:<uuid>` 그림 · 파일 블록이 들어간다.
+ * 붙여넣기 · 끌어놓기는 **파일만** 받는다 — 붙여넣은 HTML 의 외부 `<img src>` 는 지금처럼 버린다(스키마에 parseDOM 0 · 이 함수는 파일만 본다).
+ * 올리는 동안 그 자리에 자리표시(ProseMirror 장식 — 본문에 저장되지 않는다)가 서고, 끝나면 그 자리에 블록이 들어간다. 여러 개는 차례로(한 번에 하나).
+ * 실패하면 자리표시가 사라지고 창구가 준 이유 문장(F-68)을 알림 줄에 — 「다시 시도」 0. 입구는 편집기가 있을 때만(편집기 = 고칠 수 있는 사람) —
+ * 막는 것은 서버다.
+ */
+const uploadKey = new PluginKey('qaredi-doc-upload');
+const UPLOAD_IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/gif'];
+const UPLOAD_TOO_LARGE = '파일이 100MB 를 넘습니다';
+
+/** 첨부 하나를 올린다(진행률이 필요해 XHR — 같은 CSRF 토큰 · 같은 출처). → { promise: 201 답, abort() } */
+function sendAttachment(pageId, file, onProgress) {
+  let xhr = null;
+  const promise = new Promise((resolve, reject) => {
+    if (tabHalted) { reject(new Error(HALT_TEXT)); return; }
+    if (csrfToken === null || !ATT_UUID_RE.test(String(pageId))) { reject(new Error(GENERIC_ERROR)); return; }
+    xhr = new XMLHttpRequest();
+    xhr.open('POST', COMMUNITY_BASE + '/api/pages/' + pageId + '/attachments');
+    xhr.setRequestHeader('X-CSRF-Token', csrfToken);
+    xhr.setRequestHeader('Accept', 'application/json');
+    xhr.upload.addEventListener('progress', (e) => { if (e.lengthComputable && onProgress) { onProgress(Math.min(100, Math.floor((e.loaded * 100) / Math.max(1, e.total)))); } });
+    xhr.addEventListener('load', () => {
+      let data = {};
+      try { data = JSON.parse(xhr.responseText); } catch (e) { data = {}; }
+      if (xhr.status === 201 && data && typeof data.id === 'string' && ATT_UUID_RE.test(data.id)) { resolve(data); return; }
+      const err = new Error(xhr.status === 413 ? UPLOAD_TOO_LARGE : errorMessage(data));
+      err.status = xhr.status;
+      reject(err);
+    });
+    xhr.addEventListener('error', () => reject(new Error(GENERIC_ERROR)));
+    xhr.addEventListener('abort', () => { const err = new Error(''); err.aborted = true; reject(err); });
+    const form = new FormData();
+    form.append('file', file, typeof file.name === 'string' && file.name !== '' ? file.name : 'file');
+    xhr.send(form);
+  });
+  return { promise: promise, abort: () => { if (xhr) { xhr.abort(); } } };
+}
+
+/**
+ * 한 문서의 올리기 한 벌. cfg: { pageId() → 문서 id, onError(글자), remember(첨부 id, {name,size,image,scan_status}) — 이름 지도에 넣기 }
+ * → { plugin() — 붙여넣기 · 끌어놓기 · 자리표시, insert(view, files, at, extra) — 그 자리에 자리표시 → 블록, send(file, onProgress), remember }
+ */
+function createUploads(cfg) {
+  let queue = Promise.resolve();
+  let seq = 0;
+  const remember = (data) => { cfg.remember(data.id, { name: data.name || '', size: Number(data.size) || 0, image: data.image === true, scan_status: data.scan_status || 'clean' }); };
+  function placeholder(kind, name, onCancel) {
+    const box = elt('div', { class: 'doc-upload', 'data-kind': kind, role: 'status', 'aria-live': 'polite', contenteditable: 'false' });
+    const progress = elt('span', { class: 'doc-upload__progress', text: '올리는 중 0%' });
+    const cancel = elt('button', { class: 'btn btn--quiet btn--small', type: 'button', text: '취소' });
+    cancel.addEventListener('mousedown', (e) => e.preventDefault());
+    cancel.addEventListener('click', onCancel);
+    box.append(elt('span', { class: 'doc-upload__name', text: name }), progress, cancel);
+    return { box: box, progress: progress };
+  }
+  function where(view, id) {
+    const set = uploadKey.getState(view.state);
+    const found = set ? set.find(undefined, undefined, (spec) => spec.uploadId === id) : [];
+    return found.length ? found[0].from : null;
+  }
+  function drop(view, id) {
+    if (!view.isDestroyed && where(view, id) !== null) { view.dispatch(view.state.tr.setMeta(uploadKey, { remove: id })); }
+  }
+  function place(view, id, data, extra) {
+    remember(data);
+    if (view.isDestroyed) { return; }
+    const at = where(view, id);
+    if (at === null) { return; }
+    const type = data.image === true ? 'image' : 'file';
+    const attrs = { id: uuid4(), file_ref: 'att:' + data.id, caption: extra && typeof extra.caption === 'string' ? extra.caption : '', name: data.name || '' };
+    if (type === 'image') { attrs.width = extra && ['full', 'wide', 'normal', 'small'].indexOf(extra.width) !== -1 ? extra.width : 'normal'; }
+    view.dispatch(view.state.tr.insert(at, schema.nodes[type].create(attrs)).setMeta(uploadKey, { remove: id }).scrollIntoView());
+  }
+  function insert(view, files, at, extra) {
+    for (const file of files) {
+      const id = 'up-' + String(++seq);
+      const kind = UPLOAD_IMAGE_MIMES.indexOf(file.type) !== -1 ? 'image' : 'file';
+      let job = null;
+      let cancelled = false;
+      const ph = placeholder(kind, typeof file.name === 'string' && file.name !== '' ? file.name : (kind === 'image' ? '그림' : '파일'), () => {
+        cancelled = true;
+        if (job) { job.abort(); }
+        drop(view, id);
+      });
+      view.dispatch(view.state.tr.setMeta(uploadKey, { add: { id: id, pos: at, dom: ph.box, side: seq } }));
+      queue = queue.then(() => {
+        if (cancelled || view.isDestroyed) { return null; }
+        job = sendAttachment(cfg.pageId(), file, (n) => setText(ph.progress, '올리는 중 ' + n + '%'));
+        return job.promise.then((data) => place(view, id, data, extra), (err) => {
+          drop(view, id);
+          if (err && err.aborted) { return; }
+          if (err && err.status === 401) { toLogin(); return; }
+          cfg.onError(err && err.message ? err.message : GENERIC_ERROR);
+        });
+      });
+    }
+  }
+  function plugin() {
+    return new Plugin({
+      key: uploadKey,
+      state: {
+        init: () => DecorationSet.empty,
+        apply(tr, set) {
+          let next = set.map(tr.mapping, tr.doc);
+          const meta = tr.getMeta(uploadKey);
+          if (meta && meta.add) {
+            next = next.add(tr.doc, [Decoration.widget(meta.add.pos, meta.add.dom, { uploadId: meta.add.id, side: meta.add.side, ignoreSelection: true, key: meta.add.id })]);
+          }
+          if (meta && meta.remove) { next = next.remove(next.find(undefined, undefined, (spec) => spec.uploadId === meta.remove)); }
+          return next;
+        }
+      },
+      props: {
+        decorations: (state) => uploadKey.getState(state),
+        // 붙여넣기 — 파일(캡처 그림)만. 글이 함께 든 붙여넣기(표 칸 · 문서 복사)는 지금처럼 글로(그 안의 외부 그림 주소는 버린다)
+        handlePaste(view, event) {
+          const data = event && event.clipboardData;
+          const files = data ? Array.from(data.files || []) : [];
+          if (!files.length || String(data.getData('text/plain') || '').trim() !== '') { return false; }
+          const $from = view.state.selection.$from;
+          insert(view, files, $from.depth >= 1 ? $from.after(1) : view.state.doc.content.size, null);
+          return true;
+        },
+        // 끌어놓기 — 파일만(편집기 안에서 블록을 옮기는 끌기는 지금 그대로). 놓은 자리에서 가까운 블록 경계에
+        handleDrop(view, event, slice, moved) {
+          if (moved) { return false; }
+          const files = event && event.dataTransfer ? Array.from(event.dataTransfer.files || []) : [];
+          if (!files.length) { return false; }
+          const hit = view.posAtCoords({ left: event.clientX, top: event.clientY });
+          let at = view.state.doc.content.size;
+          if (hit) {
+            const $p = view.state.doc.resolve(hit.pos);
+            at = $p.depth >= 1 ? (hit.pos - $p.start(1) <= $p.end(1) - hit.pos ? $p.before(1) : $p.after(1)) : hit.pos;
+          }
+          insert(view, files, at, null);
+          return true;
+        }
+      }
+    });
+  }
+  return {
+    plugin: plugin,
+    insert: insert,
+    /** 차례를 기다리는 올리기가 다 끝나면(성공 · 실패 · 취소 모두) */
+    idle: () => queue.then(() => null, () => null),
+    send: (file, onProgress) => {
+      const job = sendAttachment(cfg.pageId(), file, onProgress);
+      return { promise: job.promise.then((data) => { remember(data); return data; }), abort: job.abort };
+    }
+  };
+}
+
 /* ─── 인라인 툴바 — 「색」 「배경」 「링크」 셋 (지시서 1장) + 7-D4 「멘션」 ───── */
 
 /**
@@ -4386,14 +4791,19 @@ function loadPaletteNames() {
 }
 
 function createToolbar(view, opts) {
-  const wrap = document.getElementById('inline-toolbar');
+  /* Q:F-12 U3 B(DESIGN 2.21 「칸 편집기」) — 작업 상세 칸 편집기도 **이 함수**로 같은 도구줄을 단다: `opts.wrap`(칸 안 줄) ·
+     `opts.addBlock`(그 칸의 「블록 추가」 단추) · `opts.paper: false`(용지 고르개는 전체 화면 편집기 몫). 칸 줄은 id 를 달지 않는다
+     (페이지 편집기와 한 화면에 함께 있어도 id 가 겹치지 않게 — 모양 · 클래스 · 동작은 같다). */
+  const own = !!(opts && opts.wrap);
+  const wrap = own ? opts.wrap : document.getElementById('inline-toolbar');
   if (!wrap) { return null; }
+  const setId = (node, id) => { if (!own) { node.id = id; } };
   const pageId = opts && typeof opts.pageId === 'string' ? opts.pageId : '';
   const rememberMention = opts && typeof opts.rememberMention === 'function' ? opts.rememberMention : () => {};
   loadPaletteNames();   // 7-D2 — 편집기를 만들 때 한 번(색 줄은 열 때 짓는다 — 그때까지 오면 이름 견본이 함께)
   // 「블록 추가」는 마크업에서 이 줄 안에 있다. 비우기 전에 붙잡아 두었다가 줄 맨 앞에 다시 놓는다
   // (단추의 click 은 initPage 가 걸어 두었으므로 요소를 새로 만들지 않는다).
-  const addBlock = document.getElementById('page-add-block');
+  const addBlock = own ? (opts.addBlock || null) : document.getElementById('page-add-block');
 
   clear(wrap);
   let fgPanel = null;
@@ -4414,7 +4824,7 @@ function createToolbar(view, opts) {
   function labelButton(id, text, onClick) {
     const button = document.createElement('button');
     button.type = 'button';
-    button.id = id;
+    setId(button, id);
     button.className = 'btn btn--small btn--quiet';
     button.textContent = text;   // 글자 단추에는 툴팁을 달지 않는다 (DESIGN 2.8)
     button.addEventListener('mousedown', (event) => { event.preventDefault(); onClick(); });
@@ -4514,7 +4924,7 @@ function createToolbar(view, opts) {
 
     linkInput = document.createElement('input');
     linkInput.type = 'text';
-    linkInput.id = 'link-input';
+    setId(linkInput, 'link-input');
     linkInput.setAttribute('placeholder', 'https://…');
     linkInput.setAttribute('maxlength', '2048');
     linkInput.setAttribute('spellcheck', 'false');
@@ -4522,18 +4932,18 @@ function createToolbar(view, opts) {
 
     const apply = document.createElement('button');
     apply.type = 'button';
-    apply.id = 'link-apply';
+    setId(apply, 'link-apply');
     apply.className = 'btn btn--small';
     apply.textContent = '걸기';
 
     const drop = document.createElement('button');
     drop.type = 'button';
-    drop.id = 'link-drop';
+    setId(drop, 'link-drop');
     drop.className = 'btn btn--small btn--quiet';
     drop.textContent = '빼기';
 
     linkNote = document.createElement('span');
-    linkNote.id = 'link-note';
+    setId(linkNote, 'link-note');
     linkNote.className = 'muted';
     linkNote.setAttribute('role', 'status');
 
@@ -4670,11 +5080,11 @@ function createToolbar(view, opts) {
   function buildMentionRow() {
     const row = document.createElement('div');
     row.className = 'editor-palette__row';
-    row.id = 'mention-row';
+    setId(row, 'mention-row');
     row.hidden = true;
 
     mentionKind = document.createElement('select');
-    mentionKind.id = 'mention-kind';
+    setId(mentionKind, 'mention-kind');
     mentionKind.className = 'input';
     mentionKind.setAttribute('aria-label', '멘션 종류');
     for (const [value, text] of [['user', '사람'], ['page', '페이지'], ['date', '날짜']]) {
@@ -4686,7 +5096,7 @@ function createToolbar(view, opts) {
 
     mentionQ = document.createElement('input');
     mentionQ.type = 'search';
-    mentionQ.id = 'mention-q';
+    setId(mentionQ, 'mention-q');
     mentionQ.className = 'input';
     mentionQ.setAttribute('maxlength', '64');
     mentionQ.setAttribute('autocomplete', 'off');
@@ -4695,7 +5105,7 @@ function createToolbar(view, opts) {
 
     mentionDate = document.createElement('input');
     mentionDate.type = 'date';
-    mentionDate.id = 'mention-date';
+    setId(mentionDate, 'mention-date');
     mentionDate.className = 'input';
     mentionDate.setAttribute('min', '1900-01-01');
     mentionDate.setAttribute('max', '2100-12-31');
@@ -4703,12 +5113,12 @@ function createToolbar(view, opts) {
 
     mentionDateApply = document.createElement('button');
     mentionDateApply.type = 'button';
-    mentionDateApply.id = 'mention-date-apply';
+    setId(mentionDateApply, 'mention-date-apply');
     mentionDateApply.className = 'btn btn--small';
     mentionDateApply.textContent = '넣기';
 
     mentionList = document.createElement('ul');
-    mentionList.id = 'mention-list';
+    setId(mentionList, 'mention-list');
     mentionList.className = 'list list--scroll';
     mentionList.setAttribute('aria-label', '멘션 후보');
     mentionList.hidden = true;
@@ -4813,14 +5223,14 @@ function createToolbar(view, opts) {
     try { return localStorage.getItem('community-editor-paper') || 'a4'; } catch (_) { return 'a4'; }
   })();
   paperSelect.value = ['a4', 'a3', 'letter', 'wide'].includes(savedPaper) ? savedPaper : 'a4';
-  const editorPanel = document.getElementById('page-editor');
+  const editorPanel = opts && opts.paper === false ? null : document.getElementById('page-editor');
   if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
   paperSelect.addEventListener('change', () => {
     if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
     try { localStorage.setItem('community-editor-paper', paperSelect.value); } catch (_) {}
   });
   paperLabel.append(paperText, paperSelect);
-  row.appendChild(paperLabel);
+  if (!(opts && opts.paper === false)) { row.appendChild(paperLabel); }
   const tools = [
     labelButton('tool-color', '색', () => togglePanel('fg')),
     labelButton('tool-bg', '배경', () => togglePanel('bg')),
@@ -4942,6 +5352,8 @@ function initPage() {
     childTitles: {},
     // 5-E — 페이지 링크 · 붙인 파일의 제목 지도(창구가 **보는 사람 권한으로** 거른 것).
     linkTitles: {}, fileTitles: {}, embeds: { hosts: [], frames: false },
+    // Q:F-12 U3 C — 이 문서 전용 첨부(`att:`)의 이름 지도(창구 `attachment_titles` — 받을 수 있는 사람에게만 준 것)
+    attachmentTitles: {},
     // 7-D4 — 글 안 멘션의 이름 지도(창구가 **보는 사람 기준으로** 거른 것 — 볼 수 있는 것만)
     mentionLabels: {},
     // 4-B — 지금의 공개 범위와 이 페이지가 든 공간. 둘 다 창구가 준 값이다.
@@ -5128,6 +5540,7 @@ function initPage() {
   function readCtx() {
     return {
       child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles,
+      attachment_titles: state.attachmentTitles, attachment_page: pageId,
       synced: state.synced, embeds: state.embeds, base: COMMUNITY_BASE, tbox_base: APP_BASE, mention_labels: state.mentionLabels, db_views: state.dbViews, buttons: state.buttons, pressButton: async (id, button) => {
         button.disabled=true;
         try { const result=await api('POST','/api/automations/'+id+'/run',{page_id:pageId});
@@ -5409,6 +5822,8 @@ function initPage() {
         : {};
       state.linkTitles = result.data.link_titles && typeof result.data.link_titles === 'object' ? result.data.link_titles : {};
       state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
+      state.attachmentTitles = result.data.attachment_titles && typeof result.data.attachment_titles === 'object' && !Array.isArray(result.data.attachment_titles)
+        ? result.data.attachment_titles : {};
       state.synced = result.data.synced || {};
       state.buttons = result.data.buttons || {};
       state.dbViews = result.data.db_views || {};
@@ -6953,22 +7368,26 @@ function initPage() {
 
   /* 5-E — 고른 페이지·파일의 이름을 제목 지도에 넣어 두면 저장 뒤 읽기 화면이 곧바로 이름을 그린다.
      지도는 다음 `load()` 에서 서버 것으로 바뀐다(서버가 **보는 사람 권한으로** 다시 거른다). */
-  const atomDialog = createAtomDialog(() => view, {
+  /* Q:F-12 U3 — 창 둘(블록 추가 · 블록 고치기)은 화면에 한 벌 — 칸 편집기(mountPaneEditor)와 **같은 함수 · 같은 창**을 나눠 쓴다
+     (`atomDialogFor` · `blockDialogFor` — 연 쪽의 편집기로 넣는다). `upload` 는 「이 문서에 올리기」 탭(U3 C — 고칠 수 있고 제안 중이 아닐 때만) */
+  const atomDialog = atomDialogFor(() => view, {
     selfId: () => pageId,
     context: () => ({mention_labels:state.mentionLabels}),
     rememberLink: (id, entry) => { state.linkTitles[id] = entry; },
-    rememberFile: (id, entry) => { state.fileTitles[id] = entry; }
+    rememberFile: (id, entry) => { state.fileTitles[id] = entry; },
+    upload: () => (view !== null && state.canEdit && !proposal ? pageUploads : null)
   });
   function editAtom(type, attrs, pos) {
     if(proposal && !suggestionTypeAllowed(type)){setText(msg,'제안에서는 글 블록만 넣거나 바꿀 수 있습니다.');return;} if (atomDialog) { atomDialog.open(type, attrs, pos); } }
-  function commandAtomEdit(pmState) {
-    const hit = atomAt(pmState);
-    if (!hit) { return false; }
-    editAtom(hit.node.type.name, hit.node.attrs, hit.pos);
-    return true;
-  }
+  const commandAtomEdit = atomEditCommand(editAtom);
 
-  const blockDialog = createBlockDialog(() => view, { createChildPage: createChildPage, editAtom: editAtom, suggestionMode:()=>proposal!==null });
+  const blockDialog = blockDialogFor(() => view, { createChildPage: createChildPage, editAtom: editAtom, suggestionMode:()=>proposal!==null });
+  /* U3 C — 이 문서에 바로 올리기(붙여넣기 · 끌어놓기 · 「이 문서에 올리기」 탭)의 한 벌. 칸 편집기와 같은 함수다 */
+  const pageUploads = createUploads({
+    pageId: () => pageId,
+    onError: (t) => setText(msg, t),
+    remember: (id, entry) => { state.attachmentTitles[id] = entry; }
+  });
 
   /* ── 편집 모드 ── */
 
@@ -7029,19 +7448,7 @@ function initPage() {
   if (starterApply) { starterApply.addEventListener('click', applyStarter); }
 
   /** Ctrl+Alt+숫자 — 커서가 있는 블록을 그 종류로 바꾼다(`BLOCK_TYPES[].key`, 창의 「바꾸기」와 같다) */
-  function blockKeymap() {
-    const bindings = {};
-    for (const entry of BLOCK_TYPES) {
-      if (!entry.key || entry.makesPage) { continue; }
-      bindings[entry.key] = (pmState) => {
-        const $from = pmState.selection.$from;
-        if ($from.depth < 1 || !blockDialog) { return false; }
-        blockDialog.changeTo(entry, $from.before(1));
-        return true;
-      };
-    }
-    return keymap(bindings);
-  }
+  function blockKeymap() { return blockKeymapFor(() => blockDialog); }
 
   function startEditing() {
     // ★ 편집기는 **한 번만** 만든다 (지시서 4장) — 두 벌이 겹치면 친 글자가 사라진다.
@@ -7050,7 +7457,7 @@ function initPage() {
     let pmDoc;
     try {
       // 하위 페이지 카드에 제목을 보여 주려고 지도를 함께 넘긴다 (4-A).
-      pmDoc = fromDoc(state.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles, mention_labels: state.mentionLabels });
+      pmDoc = fromDoc(state.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles, attachment_titles: state.attachmentTitles, mention_labels: state.mentionLabels });
       if(proposal)proposal.original=toDoc(pmDoc); // Compare the editor's canonical round trip; untouched atoms remain untouched.
     } catch (e) {
       setText(msg, e && e.message ? e.message : GENERIC_ERROR);
@@ -7083,7 +7490,9 @@ function initPage() {
         uniqueBlockIds,
         blockHandles,
         ...(proposal ? [proposalPlugin()] : [todoToggle]),
-        liveToc
+        liveToc,
+        // U3 C — 붙여넣기 · 끌어놓기로 이 문서에 바로 올리기(고칠 수 있고 제안 중이 아닐 때만 — 막는 것은 서버)
+        ...(state.canEdit && !proposal ? [pageUploads.plugin()] : [])
       ]
     });
 
@@ -7160,7 +7569,7 @@ function initPage() {
   function applyPageDraft(data) {
     let node;
     try {
-      const pmDoc = fromDoc(data.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles, mention_labels: state.mentionLabels });
+      const pmDoc = fromDoc(data.doc, { child_titles: state.childTitles, link_titles: state.linkTitles, file_titles: state.fileTitles, attachment_titles: state.attachmentTitles, mention_labels: state.mentionLabels });
       node = schema.nodeFromJSON(pmDoc);
     } catch (e) {
       return false;
@@ -7752,31 +8161,77 @@ let meCanWrite = true;
 let work = null;
 
 /**
- * Q:F-12 D — 작업 상세 칸 안에서 본문을 고치는 작은 편집기(DESIGN 2.21 「설명 — 읽기 기본, 누르면 편집」).
+ * Q:F-12 D — 작업 상세 칸 안에서 본문을 고치는 편집기(DESIGN 2.21 「설명 — 읽기 기본, 누르면 편집」).
  * 페이지 화면 편집기와 **같은 스키마 · 같은 키 동작 · 같은 저장 창구**(`PATCH /api/pages/{id}` — `doc_version` 으로 409)를 쓴다.
- * 문자 꾸미기 · 블록 추가 창 · 아톰 고치기 · 임시저장은 없다(전체 화면에서). 409 면 멈추고 「전체 화면에서 열어 확인」을 알린다.
+ * Q:F-12 U3 B(DESIGN 2.21 「칸 편집기」) — 전체 편집기와 **같은 함수**로 같은 도구를 단다: 꾸밈 도구줄(`createToolbar` — 「블록 추가」 · 색 ·
+ * 배경 · 링크 · 멘션), 「블록 추가」 창(`blockDialogFor` — 같은 목록 `BLOCK_TYPES`), 「블록 고치기」 창(`atomDialogFor` — 그림 · 파일 · 표 · 토글 …),
+ * Ctrl+Alt+숫자 바꾸기 · 덩어리 카드 Enter/두 번 누르기 · 할 일 상자 · 목차. U3 C(DESIGN 2.24) — 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」 탭
+ * (`createUploads` — 전체 편집기와 같은 함수). 용지 고르개 · 블록 손잡이 · 임시저장 · 제안은 전체 화면 몫이다. 409 면 멈추고 「전체 화면에서 열어 확인」을 알린다.
  *
  * @param {HTMLElement} mount
  * @param {{pageId:string, doc:Object, version:number, titles:Object, onState:Function, onSaved:Function, onError:Function}} opts
+ *        titles = 칸의 읽기 지도(child · link · file · attachment_titles · mention_labels) — 이 편집기가 고르거나 올린 것의 이름을 여기 더해 둔다
+ *        (편집을 마친 뒤 읽기 렌더러가 곧바로 그리게 · 다음 GET 에서 서버 것으로 바뀐다)
  * @return {{flush:Function, destroy:Function, focus:Function}|null}
  */
 function mountPaneEditor(mount, opts) {
+  const titles = opts.titles;
+  for (const k of ['child_titles', 'link_titles', 'file_titles', 'attachment_titles', 'mention_labels']) {
+    if (!titles[k] || typeof titles[k] !== 'object' || Array.isArray(titles[k])) { titles[k] = {}; }
+  }
   let pmDoc;
-  try { pmDoc = fromDoc(opts.doc, { child_titles: opts.titles.child_titles, link_titles: opts.titles.link_titles, file_titles: opts.titles.file_titles, mention_labels: opts.titles.mention_labels }); }
+  try { pmDoc = fromDoc(opts.doc, { child_titles: titles.child_titles, link_titles: titles.link_titles, file_titles: titles.file_titles, attachment_titles: titles.attachment_titles, mention_labels: titles.mention_labels }); }
   catch (e) { opts.onError(e && e.message ? e.message : GENERIC_ERROR); return null; }
   let version = opts.version;
   let dirty = false;
   let stopped = false;
   let timer = null;
   let inFlight = Promise.resolve();
+  let view = null;
+  let gone = false;     // 걷은 뒤에도 마지막 저장(flush)은 view.state 로 보낸다 — 창 · 올리기만 끊는다
+  let toolbar = null;
+  const getView = () => (gone ? null : view);
+  const uploads = createUploads({
+    pageId: () => opts.pageId,
+    onError: (t) => opts.onError(t),
+    remember: (id, entry) => { titles.attachment_titles[id] = entry; }
+  });
+  // 「하위 페이지」 블록 — 페이지 화면과 같은 창구(이 작업 아래 새 페이지 = 하위 작업)
+  function createChildPage() {
+    return api('POST', '/api/pages', { parent_id: opts.pageId }).then((result) => {
+      if (result.status === 401) { toLogin(); return null; }
+      if (result.status !== 201 || !result.data.page || typeof result.data.page.id !== 'string') { opts.onError(errorMessage(result.data)); return null; }
+      const made = { id: result.data.page.id, title: result.data.page.title || '제목 없는 페이지' };
+      titles.child_titles[made.id] = { title: made.title, icon: null };
+      return made;
+    });
+  }
+  const atomDialog = atomDialogFor(getView, {
+    selfId: () => opts.pageId,
+    context: () => ({ mention_labels: titles.mention_labels }),
+    rememberLink: (id, entry) => { titles.link_titles[id] = entry; },
+    rememberFile: (id, entry) => { titles.file_titles[id] = entry; },
+    upload: () => (view !== null && !gone && !stopped ? uploads : null)
+  });
+  const editAtom = (type, attrs, pos) => { if (atomDialog) { atomDialog.open(type, attrs, pos); } };
+  const blockDialog = blockDialogFor(getView, { createChildPage: createChildPage, editAtom: editAtom, suggestionMode: () => false });
+  // 도구줄 자리 — 페이지 화면의 `#inline-toolbar` 와 같은 모양(.panel.editor-toolbar · role=toolbar)과 같은 「블록 추가」 단추. 줄 안은 createToolbar 가 채운다
+  const bar = elt('div', { class: 'panel editor-toolbar', role: 'toolbar', 'aria-label': '블록 추가와 글자 꾸미기' });
+  const addBlock = elt('button', { class: 'btn btn--small btn--quiet', type: 'button' });
+  addBlock.append(makeIcon('plus'), document.createTextNode('블록 추가'));
+  addBlock.addEventListener('click', () => { if (blockDialog && view !== null && !gone) { blockDialog.open('insert', null); } });
+  bar.appendChild(addBlock);
+  if (mount.parentNode) { mount.parentNode.insertBefore(bar, mount); }
   const pmState = EditorState.create({
     schema: schema,
     doc: schema.nodeFromJSON(pmDoc),
     plugins: [
       buildInputRules(),
-      keymap({ 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo, Enter: chainCommands(commandCodeEnter, commandEnter),
+      blockKeymapFor(() => blockDialog),
+      keymap({ 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo, Enter: chainCommands(atomEditCommand(editAtom), commandCodeEnter, commandEnter),
         'Shift-Enter': commandShiftEnter, Backspace: commandBackspace, Tab: () => true, 'Shift-Tab': () => true }),
-      keymap(baseKeymap), history(), dropCursor(), gapCursor(), uniqueBlockIds
+      keymap(baseKeymap), history(), dropCursor(), gapCursor(), uniqueBlockIds, todoToggle, liveToc,
+      uploads.plugin()
     ]
   });
   function save() {
@@ -7792,13 +8247,19 @@ function mountPaneEditor(mount, opts) {
     }).catch(() => { opts.onState('저장 못 함'); opts.onError(GENERIC_ERROR); });
     return inFlight;
   }
-  const view = new EditorView(mount, {
+  view = new EditorView(mount, {
     state: pmState,
     attributes: { class: 'doc editor', 'aria-label': '작업 설명' },
     domParser: editorDomParser,
     clipboardParser: clipboardDomParser,
+    handleDoubleClickOn(v, p, node, nodePos, event, direct) {
+      if (!direct || ATOM_TYPES.indexOf(node.type.name) === -1) { return false; }
+      editAtom(node.type.name, node.attrs, nodePos);
+      return true;
+    },
     dispatchTransaction(tr) {
       view.updateState(view.state.apply(tr));
+      if (toolbar) { toolbar.refresh(); }
       if (tr.docChanged && !stopped) {
         dirty = true;
         opts.onState('저장 중…');
@@ -7807,10 +8268,22 @@ function mountPaneEditor(mount, opts) {
       }
     }
   });
+  toolbar = createToolbar(view, {
+    pageId: opts.pageId, wrap: bar, addBlock: addBlock, paper: false,
+    rememberMention: (key, entry) => { titles.mention_labels[key] = entry; }
+  });
   return {
-    flush: () => { window.clearTimeout(timer); return inFlight.then(save); },
-    destroy: () => { window.clearTimeout(timer); view.destroy(); },
-    focus: () => view.focus()
+    // 「편집 마침」 — 올리던 것이 블록으로 들어간 뒤에 저장한다(걷기 전에 기다리는 쪽만 — 칸을 닫으며 걷으면 올리던 것은 문서 첨부로만 남는다)
+    flush: () => { window.clearTimeout(timer); return uploads.idle().then(() => inFlight).then(save); },
+    destroy: () => {
+      window.clearTimeout(timer);
+      if (blockDialog) { blockDialog.close(); }
+      if (atomDialog) { atomDialog.close(); }
+      if (!gone) { gone = true; view.destroy(); }
+      toolbar = null;
+      bar.remove();
+    },
+    focus: () => { if (!gone) { view.focus(); } }
   };
 }
 

@@ -1,5 +1,5 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=bd4c73cb5052';
-import { renderDoc } from './doc-render.js?v=bd4c73cb5052';
+import { drawCalendar, rangeFor } from './calendar.js?v=ddfabe5d21e6';
+import { renderDoc } from './doc-render.js?v=ddfabe5d21e6';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -19,6 +19,7 @@ import { renderDoc } from './doc-render.js?v=bd4c73cb5052';
  *   · 요소는 createElement, 글자는 textContent 로만 넣는다(HTML 문자열 0). 인라인 style 0 — 진행 폭은 CSSOM `--pct` 하나.
  *   · 절대 경로는 `<body data-community-base>`·`data-base` 에서만 만든다(이 파일에 `/community/…` 글자 0).
  *   · 작업 상세 칸은 dialog 가 아니라 `aside.task-pane`(화면의 한 칸) — 주소 `?task={public_id}` 가 연다, 뒤로 가기로 앞 작업 · 닫힘.
+ *     업무함(홈 · 내 작업)도 같은 칸 하나(U3 · WK-26). 칸 폭은 CSS 변수 `--task-pane-w` 하나(CSSOM — 진행 폭 `--pct` 와 같은 예외).
  *
  * editor.js 가 `createWork(deps)` 로 한 번 만들고 화면 키에 따라 initHome · initMyTasks · initPortfolio 를, 페이지 화면에서는
  * database.js 에 넘기는 프로젝트 고리(`projectHooks()`)와 페이지 고리(`pageLoaded`)를 쓴다. 본문 편집은 editor.js 의 `mountEditor` 를 빌린다.
@@ -193,6 +194,11 @@ export function createWork(deps) {
   function failMessage(r) {
     if (r.status === 401) { toLogin(); return ''; }
     return errorMessage(r.data);
+  }
+  /** 알림 줄(.msg) 한 줄 — 오류는 기본(--danger), 성공 안내만 `ok` 로 성공 모양(.msg--ok · DESIGN 2.21 「알림 색」 U3-4) */
+  function say(node, text, ok) {
+    setText(node, text);
+    if (node && node.classList) { node.classList.toggle('msg--ok', !!ok && String(text || '') !== ''); }
   }
 
   /* ════════════════ 작업 줄 (DESIGN 2.20) ════════════════ */
@@ -382,41 +388,28 @@ export function createWork(deps) {
   }
 
   /**
-   * 업무함 한 벌(홈 · 내 작업 공용) — 꼬리표 · 줄 · 줄 아래 펼침(≥1200) / `aside#task-pane`(그보다 좁으면 — 2.21 그대로) · ↓↑ · Esc.
+   * 업무함 한 벌(홈 · 내 작업 공용) — 꼬리표 · 줄 · 오른쪽 작업 상세 칸(`aside#task-pane` — 2.21 그대로) · ↓↑ · Esc.
+   * Q:F-12 U3(WK-26 ② — DESIGN 2.20-A 「펼침」): 줄을 누르면 폭과 상관없이 **오른쪽 칸 하나**(프로젝트 · 보드 · 달력과 같은 자리 · 같은 createPane).
+   * 줄 아래 펼침(U2 의 `div.task-inbox__pane`)은 없앴다 — 칸 폭은 2.21 「폭 조절」.
    * cfg: { root, ul, empty, emptyText, aside, limit, addKeys() → [묶음 키], onAdd(group, li), onMore(group, btn), tags() → bool, onChanged() }
    * draw(groups, today) 로 그린다. 묶음 가르기 · 합치기는 buildInbox(위)가 한다 — 이 함수는 그리기만.
    */
   function inboxView(cfg) {
-    const wide = window.matchMedia('(min-width: 1200px)');
-    const inline = el('div', 'task-inbox__pane');
-    inline.setAttribute('role', 'region');
-    inline.hidden = true;
-    let holder = null;     // 줄 아래 펼침이 든 줄의 id
     let groups = [];
     let today = seoulToday();
-    let pane = null;
     const lineOf = (li) => (li ? li.querySelector(':scope > .task-inbox__line') : null);
     const rowOf = (id) => cfg.ul.querySelector('li.task-inbox__row[data-task="' + id + '"]');
     function mark(id) {
-      const hold = id !== null && inline.isConnected && !inline.hidden ? inline.closest('li') : null;
       for (const li of cfg.ul.querySelectorAll('li.task-inbox__row')) {
-        const on = id !== null && (li === hold || (!hold && li.getAttribute('data-task') === id));
+        const on = id !== null && li.getAttribute('data-task') === id;
         if (on) { li.setAttribute('aria-current', 'true'); } else { li.removeAttribute('aria-current'); }
         const ln = lineOf(li);
         if (ln) { ln.setAttribute('aria-expanded', on ? 'true' : 'false'); }
       }
     }
-    pane = createPane((id) => {
-      // 목록이 숨은 때(보드 · 달력 보기)와 1200 미만은 2.21 칸(aside) 그대로
-      if (!wide.matches || cfg.ul.closest('[hidden]')) { return cfg.aside; }
-      const li = rowOf(id);
-      if (li) { holder = id; li.appendChild(inline); return inline; }
-      // 펼친 판 안에서 하위 작업 › 를 누른 것 — 같은 자리에서 칸만 바꾼다(2.21 「칸만 바뀐다」와 같은 뜻)
-      if (inline.isConnected && !inline.hidden && pane && pane.current()) { return inline; }
-      return cfg.aside;
-    }, {
+    const pane = createPane(cfg.aside, {
       onChanged: () => { if (cfg.onChanged) { cfg.onChanged(); } },
-      onMarked: (id) => { if (id === null) { holder = null; } mark(id); }
+      onMarked: (id) => mark(id)
     });
     function draw(nextGroups, nextToday) {
       groups = nextGroups;
@@ -443,9 +436,9 @@ export function createWork(deps) {
         }
         for (const it of items) {
           cfg.ul.appendChild(taskRow(it, {
-            kind: 'inbox', today: today, canCheck: canWrite(), expanded: holder === it.id,
+            kind: 'inbox', today: today, canCheck: canWrite(), expanded: pane.current() === it.id,
             onLine: (item) => {
-              if (pane.current() === item.id || (holder === item.id && pane.current())) { pane.close({ push: true }); return; }
+              if (pane.current() === item.id) { pane.close({ push: true }); return; }
               pane.open(item.id, { push: true });
             },
             onDone: (item, li) => {
@@ -474,13 +467,8 @@ export function createWork(deps) {
           cfg.ul.appendChild(li);
         }
       }
-      // 펼친 줄을 다시 그린 줄에 옮겨 단다 — 그 줄이 사라졌으면(끝난 작업이 빠진 뒤 등) 판을 닫는다
-      if (pane.current() && pane.host() === inline) {
-        const li = holder ? rowOf(holder) : null;
-        if (li) { li.appendChild(inline); mark(pane.current()); } else { pane.close({ push: true }); }
-      } else if (pane.current()) {
-        mark(pane.current());
-      }
+      // 열린 작업의 줄 표시(aria-current · aria-expanded)를 다시 그린 줄에 옮긴다 — 줄이 빠져도 칸은 그대로(프로젝트 화면과 같다)
+      if (pane.current()) { mark(pane.current()); }
       if (focusId) {
         const ln = lineOf(rowOf(focusId));
         if (ln) { ln.focus({ preventScroll: true }); }
@@ -491,8 +479,8 @@ export function createWork(deps) {
       }
       return { shown: shown, total: total };
     }
-    // ↓↑ = 줄 이동 · Esc = 펼친 판 접기(열린 메뉴 · 입력 · 편집기 안에서는 그쪽이 먼저)
-    cfg.root.addEventListener('keydown', (e) => {
+    // ↓↑ = 줄 이동 · Esc = 칸 닫기(목록 · 칸 안에서 — 열린 메뉴 · 입력 · 편집기 · 창 안에서는 그쪽이 먼저) · 초점은 그 줄로
+    const onKey = (e) => {
       const t = e.target instanceof Element ? e.target : null;
       if (!t) { return; }
       if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && t.matches('.task-inbox__line')) {
@@ -503,21 +491,17 @@ export function createWork(deps) {
         if (next) { next.focus(); }
         return;
       }
-      if (e.key !== 'Escape' || e.isComposing || !pane.current() || pane.host() !== inline) { return; }
-      if (document.querySelector('details[open].menu') || t.closest('input, textarea, select, [contenteditable="true"]')) { return; }
-      const li = inline.closest('li');
+      if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented || !pane.current()) { return; }
+      if (document.querySelector('details[open].menu') || document.querySelector('dialog[open]')
+        || t.closest('input, textarea, select, [contenteditable="true"], .editor-toolbar, [role="separator"]')) { return; }
+      const id = pane.current();
       e.preventDefault();
       pane.close({ push: true });
-      const ln = lineOf(li);
+      const ln = lineOf(rowOf(id));
       if (ln) { ln.focus(); }
-    });
-    // 폭이 1200 을 넘나들면 열린 작업을 같은 id 로 다른 자리에 다시 연다(주소는 그대로)
-    wide.addEventListener('change', () => {
-      const id = pane.current();
-      if (!id) { return; }
-      pane.close({ push: false });
-      pane.open(id, { push: false });
-    });
+    };
+    cfg.root.addEventListener('keydown', onKey);
+    if (cfg.aside) { cfg.aside.addEventListener('keydown', onKey); }
     return { pane: pane, draw: draw };
   }
 
@@ -562,21 +546,137 @@ export function createWork(deps) {
 
   /* ════════════════ 작업 상세 칸 (DESIGN 2.21) ════════════════ */
 
+  /** 칸 폭 범위(DESIGN 2.21 「폭 조절」 — 400px ~ 화면 폭 70%, 목록이 480px 아래로 줄지 않게) · 기본 폭은 지금 CSS 의 clamp(400px, 34vw, 480px) 와 같은 값 */
+  const PANE_MIN = 400;
+  const PANE_STEP = 16;
+  const LIST_MIN = 480;
+  const viewW = () => document.documentElement.clientWidth || window.innerWidth;
+  /** 위 끝 = min(화면 폭 70%, 목록 480px 이 남는 폭) — 목록 자리 = 보이는 폭 − 본문 왼쪽(사이드바) − 본문 여백 32 · 32 − 칸 */
+  function paneMax() {
+    const main = document.querySelector('.main');
+    const left = main ? Math.max(0, Math.round(main.getBoundingClientRect().left)) : 0;
+    return Math.max(PANE_MIN, Math.min(Math.round(window.innerWidth * 0.7), viewW() - left - 64 - LIST_MIN));
+  }
+  const paneDefault = () => Math.max(PANE_MIN, Math.min(480, Math.round(window.innerWidth * 0.34)));
+  const paneKey = () => 'qaredi-task-pane-w:v1:' + meName();
+
+  /**
+   * U3 A — 칸 폭 손잡이 · 넓게 보기. 폭은 `<body>` 의 CSS 변수 `--task-pane-w` 하나(CSSOM — 인라인 style 은 이 변수뿐 ·
+   * 기본 폭이면 지운다)이고 칸 폭 · 목록 여백 · 손잡이 자리를 CSS 가 같은 변수로 정한다(app.css). 저장은 이 브라우저 localStorage
+   * (숫자 하나 = 사람이 고른 폭 — 아이디가 없으면 저장하지 않는다). 화면 폭 · 사이드바 접기가 바뀌면 고른 폭을 새 범위로 다시 묶는다(고른 값은 그대로).
+   * 1200 미만에서는 CSS 가 손잡이 · 「넓게 보기」를 숨기고 칸이 목록을 대신한다(폭 조절 0).
+   */
+  function paneSizer(aside) {
+    if (!aside || aside.tagName !== 'ASIDE') { return null; }
+    let wanted = null;     // 사람이 고른 폭(null = 기본 폭)
+    let before = null;     // 넓게 보기 전 고른 폭
+    let wideBtn = null;    // 지금 칸의 「넓게 보기」(칸을 다시 그릴 때마다 새 단추)
+    const handle = el('div', 'task-pane__resize');
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.setAttribute('aria-label', '작업 상세 폭');
+    handle.tabIndex = 0;
+    const clampW = (w) => Math.max(PANE_MIN, Math.min(paneMax(), Math.round(w)));
+    const now = () => (wanted === null ? paneDefault() : clampW(wanted));
+    function paint() {
+      const w = now();
+      if (wanted === null || w === paneDefault()) { body.style.removeProperty('--task-pane-w'); } else { body.style.setProperty('--task-pane-w', w + 'px'); }
+      if (body.getAttribute('style') === '') { body.removeAttribute('style'); }
+      handle.setAttribute('aria-valuemin', String(PANE_MIN));
+      handle.setAttribute('aria-valuemax', String(paneMax()));
+      handle.setAttribute('aria-valuenow', String(w));
+      if (wideBtn) {
+        const wide = w >= paneMax();
+        wideBtn.setAttribute('aria-pressed', wide ? 'true' : 'false');
+        wideBtn.setAttribute('aria-label', wide ? '넓게 보기 끄기' : '넓게 보기');
+      }
+    }
+    function apply(next, save) {
+      wanted = next === null ? null : clampW(next);
+      if (wanted !== null && wanted === paneDefault()) { wanted = null; }
+      if (save && meName() !== '') {
+        try { if (wanted === null) { window.localStorage.removeItem(paneKey()); } else { window.localStorage.setItem(paneKey(), String(wanted)); } } catch (e) { /* 기억은 편의 */ }
+      }
+      paint();
+    }
+    // 처음 — 이 사람의 기억(숫자 하나 · 지금 범위 밖이면 범위 안으로 그리되 고른 값은 그대로 둔다)
+    try {
+      const saved = meName() !== '' ? Number.parseInt(window.localStorage.getItem(paneKey()) || '', 10) : NaN;
+      if (Number.isFinite(saved) && saved >= PANE_MIN) { wanted = saved; }
+    } catch (e) { /* 기억 없음 */ }
+    paint();
+    // 끌기 — 칸은 화면 오른쪽 끝(스크롤 막대 안쪽)에 붙어 있으니 폭 = 보이는 폭 − 누른 x
+    let dragging = false;
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) { return; }
+      e.preventDefault();
+      dragging = true;
+      try { handle.setPointerCapture(e.pointerId); } catch (err) { /* 끌기는 그대로 */ }
+      body.setAttribute('data-task-resizing', '');
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!dragging) { return; }
+      apply(viewW() - e.clientX, false);
+    });
+    const endDrag = (e) => {
+      if (!dragging) { return; }
+      dragging = false;
+      try { handle.releasePointerCapture(e.pointerId); } catch (err) { /* 이미 풀림 */ }
+      body.removeAttribute('data-task-resizing');
+      before = null;
+      apply(wanted, true);
+    };
+    handle.addEventListener('pointerup', endDrag);
+    handle.addEventListener('pointercancel', endDrag);
+    // 키보드 — ←(왼쪽으로 = 넓게) · →(좁게) 16px · Home = 기본 폭
+    handle.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        before = null;
+        apply(now() + (e.key === 'ArrowLeft' ? PANE_STEP : -PANE_STEP), true);
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        before = null;
+        apply(null, true);
+      }
+    });
+    handle.addEventListener('dblclick', () => { before = null; apply(null, true); });
+    // 화면 폭 · 사이드바 접기(☰ — `<body data-sidebar>`)가 바뀌면 같은 고른 폭을 새 범위로 다시 그린다
+    window.addEventListener('resize', paint);
+    try { new MutationObserver(paint).observe(body, { attributes: true, attributeFilter: ['data-sidebar'] }); } catch (e) { /* 없으면 다음 resize 때 */ }
+    return {
+      handle: handle,
+      /** 머리 줄 「넓게 보기」 단추(칸을 다시 그릴 때마다 새로 — 상태는 paint 가 칠한다). 켜면 위 끝까지 · 끄면 앞 폭 */
+      wideButton: () => {
+        const b = iconButton('chevron', '넓게 보기');
+        b.setAttribute('data-pane-wide', '');
+        b.addEventListener('click', () => {
+          if (now() >= paneMax()) { const back = before; before = null; apply(back, true); return; }
+          before = wanted;
+          apply(paneMax(), true);
+        });
+        wideBtn = b;
+        paint();
+        return b;
+      }
+    };
+  }
+
   /**
    * `aside.task-pane` 하나를 다룬다. 줄을 누르면 칸만 바뀌고 주소에 `?task=` — 뒤로 가기로 앞 작업 · 닫힘(popstate).
    * ctx: { onChanged(id) — 목록 다시 그리기, onMarked(id|null) — 고른 줄 표시 }
    *
-   * Q:F-12 U2(DESIGN 2.20-A 「펼침」) — 첫 인자를 넓혔다: 요소(지금처럼 `aside#task-pane` — 기본) **또는** `(id) => 요소` 함수.
-   * 함수면 열 때마다 그 작업을 그릴 자리를 묻는다 — 업무함은 ≥1200 에서 그 줄 아래 `div.task-inbox__pane`, 그보다 좁으면 `aside#task-pane` 를 돌려준다.
-   * 안쪽(머리 줄 · 제목 · 속성 · 설명 · 하위 작업 · 활동 · 댓글)은 자리와 상관없이 **같은 draw 한 벌**이다(두 벌 0).
-   * `<body data-task-open>`(칸이 목록 옆/대신 — 2.21 배치)은 자리가 `aside` 일 때만 단다 — 줄 아래 펼침은 목록 배치를 바꾸지 않는다.
+   * Q:F-12 U3(WK-26 ②) — 자리는 `aside#task-pane` 하나(프로젝트 · 업무함 · 보드 · 달력 모두). U2 의 「줄 아래 펼침」 갈래(함수 자리)는 없앴다.
+   * 안쪽(머리 줄 · 제목 · 속성 · 설명 · 하위 작업 · 활동 · 댓글)은 **같은 draw 한 벌**이다(두 벌 0).
+   * U3 A(DESIGN 2.21 「폭 조절 · 넓게 보기」) — 왼쪽 경계 손잡이 `.task-pane__resize`(끌기 · ←/→ 16px · Home · 두 번 누르기 = 기본 폭) ·
+   * 머리 줄 「넓게 보기」(aria-pressed — 켜면 화면 폭 70%, 끄면 앞 폭). 폭은 CSS 변수 `--task-pane-w` 하나(CSSOM — `<body>` 에만 ·
+   * 기본 폭이면 지운다) · 기억은 localStorage `qaredi-task-pane-w:v1:<아이디>`(숫자 하나 · 서버 0). 1200 미만은 CSS 가 손잡이 · 단추를 숨긴다.
    */
-  function createPane(hostArg, ctx) {
-    const resolveHost = typeof hostArg === 'function' ? hostArg : () => hostArg;
-    let paneEl = typeof hostArg === 'function' ? null : hostArg;
+  function createPane(paneEl, ctx) {
     let currentId = null;
     let loadSeq = 0;
     let editor = null;
+    const sizer = paneSizer(paneEl);
 
     function urlFor(id) {
       const u = new URL(window.location.href);
@@ -589,24 +689,24 @@ export function createWork(deps) {
         return t && UUID_RE.test(t) ? t : null;
       } catch (e) { return null; }
     }
-    function isAside(node) { return !!node && node.tagName === 'ASIDE'; }
-    /** 지금 자리를 비운다(편집 중이면 저장을 마치고 걷는다) — 자리를 바꿀 때 · 닫을 때 */
+    /** 칸을 비운다(폭 손잡이는 남긴다 — 안쪽을 다시 그릴 때마다) */
+    function fresh() {
+      clear(paneEl);
+      if (sizer) { paneEl.appendChild(sizer.handle); }
+    }
+    /** 칸을 걷는다(편집 중이면 저장을 마치고 걷는다) — 닫을 때 */
     function release() {
       if (editor) { editor.flush().catch(() => {}); editor.destroy(); editor = null; }
       if (paneEl) { show(paneEl, false); clear(paneEl); }
       body.removeAttribute('data-task-open');
     }
     function open(id, opts) {
-      if (!UUID_RE.test(id)) { return; }
+      if (!UUID_RE.test(id) || !paneEl) { return; }
       if (opts && opts.push && id !== currentId) {
         try { window.history.pushState({ task: id }, '', urlFor(id)); } catch (e) { /* 주소는 편의 */ }
       }
-      const next = resolveHost(id);
-      if (!next) { return; }
-      if (paneEl && paneEl !== next) { release(); }
-      paneEl = next;
       currentId = id;
-      if (isAside(paneEl)) { body.setAttribute('data-task-open', ''); } else { body.removeAttribute('data-task-open'); }
+      body.setAttribute('data-task-open', '');
       show(paneEl, true);
       ctx.onMarked(id);
       load(id, true);
@@ -628,7 +728,7 @@ export function createWork(deps) {
       const seq = ++loadSeq;
       return api('GET', '/api/pages/' + id).then((r) => {
         if (seq !== loadSeq || id !== currentId) { return; }
-        clear(paneEl);
+        fresh();
         if (r.status === 401) { toLogin(); return; }
         if (r.status !== 200) {
           const head = el('div', 'task-pane__head');
@@ -645,7 +745,7 @@ export function createWork(deps) {
           return;
         }
         draw(id, r.data, focusHead);
-      }).catch(() => { if (seq === loadSeq) { clear(paneEl); paneEl.appendChild(el('p', 'msg', genericError)); } });
+      }).catch(() => { if (seq === loadSeq) { fresh(); paneEl.appendChild(el('p', 'msg', genericError)); } });
     }
 
     function changed(id) {
@@ -654,12 +754,12 @@ export function createWork(deps) {
     }
 
     function patchProps(id, payload, msg) {
-      setText(msg, '');
+      say(msg, '');
       return api('PATCH', '/api/pages/' + id + '/properties', payload).then((r) => {
-        if (r.status !== 200) { setText(msg, failMessage(r)); return false; }
+        if (r.status !== 200) { say(msg, failMessage(r)); return false; }
         changed(id);
         return true;
-      }).catch(() => { setText(msg, genericError); return false; });
+      }).catch(() => { say(msg, genericError); return false; });
     }
 
     function draw(id, data, focusHead) {
@@ -693,11 +793,14 @@ export function createWork(deps) {
       const copy = iconButton('link', '링크 복사');
       copy.addEventListener('click', () => {
         const link = new URL(urlFor(id), window.location.origin).href;
-        const done = () => setText(msg, '링크를 복사했어요.');
-        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(link).then(done).catch(() => setText(msg, link)); }
-        else { setText(msg, link); }
+        // U3-4(DESIGN 2.21 「알림 색」) — 성공 안내는 성공 모양(.msg--ok), 오류만 --danger
+        const done = () => say(msg, '링크를 복사했어요.', true);
+        if (navigator.clipboard && navigator.clipboard.writeText) { navigator.clipboard.writeText(link).then(done).catch(() => say(msg, link, true)); }
+        else { say(msg, link, true); }
       });
       tools.appendChild(copy);
+      // U3 A — 넓게 보기(≥1200 에서만 보인다 — CSS). 켜면 화면 폭 70%, 끄면 앞 폭
+      if (sizer) { tools.appendChild(sizer.wideButton()); }
       const full = el('a', 'btn btn--icon btn--plain');
       full.href = pageUrl(id);
       full.setAttribute('aria-label', '전체 화면으로 열기');
@@ -755,9 +858,9 @@ export function createWork(deps) {
             const next = input.value.trim();
             if (!save || next === '' || next === page.title) { input.replaceWith(title); return; }
             api('PATCH', '/api/pages/' + id, { doc_version: page.doc_version, title: next }).then((r) => {
-              if (r.status !== 200) { input.replaceWith(title); setText(msg, failMessage(r)); return; }
+              if (r.status !== 200) { input.replaceWith(title); say(msg, failMessage(r)); return; }
               changed(id);
-            }).catch(() => { input.replaceWith(title); setText(msg, genericError); });
+            }).catch(() => { input.replaceWith(title); say(msg, genericError); });
           };
           input.addEventListener('keydown', (e) => {
             if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); end(true); }
@@ -882,8 +985,10 @@ export function createWork(deps) {
           docBox.removeAttribute('aria-label');
         }
       };
+      // U3 C — 문서 전용 첨부(`att:`)의 이름 지도(창구가 받을 수 있는 사람에게만 준 것)와 그 문서 id — 렌더러가 첨부 창구 주소를 만든다
       const readCtx = {
         child_titles: data.child_titles || {}, link_titles: data.link_titles || {}, file_titles: data.file_titles || {},
+        attachment_titles: data.attachment_titles && typeof data.attachment_titles === 'object' ? data.attachment_titles : {}, attachment_page: id,
         synced: data.synced || {}, embeds: data.embeds || { hosts: [], frames: false }, base: base, tbox_base: tboxBase,
         mention_labels: data.mention_labels || {}, db_views: data.db_views || {}, buttons: {}
       };
@@ -914,11 +1019,12 @@ export function createWork(deps) {
         docBox.appendChild(mount);
         const endBtn = textButton('편집 마침', 'btn btn--quiet btn--small');
         docSec.firstChild.appendChild(endBtn);
+        say(msg, '');
         editor = deps.mountEditor(mount, {
           pageId: id, doc: page.doc, version: page.doc_version, titles: readCtx,
           onState: (t) => { setText(editState, t); show(editState, t !== ''); },
           onSaved: (doc, version) => { page.doc = doc; page.doc_version = version; },
-          onError: (t) => setText(msg, t)
+          onError: (t) => say(msg, t)
         });
         if (!editor) { drawDoc(); endBtn.remove(); setDocEditable(true); return; }
         editor.focus();
@@ -991,14 +1097,14 @@ export function createWork(deps) {
           const next = input.value.trim();
           if (!save || next === '' || next === c.title) { back(byKey); return; }
           input.disabled = true;
-          setText(msg, '');
+          say(msg, '');
           api('GET', '/api/pages/' + c.id).then((g) => (g.status !== 200 ? g
             : api('PATCH', '/api/pages/' + c.id, { doc_version: g.data.page.doc_version, title: next }))).then((r) => {
-            if (r.status !== 200) { back(byKey); setText(msg, failMessage(r)); return; }
+            if (r.status !== 200) { back(byKey); say(msg, failMessage(r)); return; }
             forgetTree(data.space ? data.space.id : null);
             // 설명을 고치던 중이면 그 저장을 먼저 마친 뒤 다시 그린다(다시 읽은 본문이 옛 판이 되지 않게)
             Promise.resolve(editor ? editor.flush() : null).catch(() => {}).then(() => changed(id));
-          }).catch(() => { back(byKey); setText(msg, genericError); });
+          }).catch(() => { back(byKey); say(msg, genericError); });
         };
         input.addEventListener('keydown', (e) => {
           if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); end(true, true); }
@@ -1018,7 +1124,7 @@ export function createWork(deps) {
           const editable = canEdit && !!byId[c.id];
           const row = taskRow(item, {
             kind: 'pane', today: today, canCheck: editable,
-            onCheck: (it, d) => setDone(it.id, d).then(() => changed(id)).catch((e) => setText(msg, e.message))
+            onCheck: (it, d) => setDone(it.id, d).then(() => changed(id)).catch((e) => say(msg, e.message))
           });
           // 제목 — 고칠 수 있으면 단추(글자 모양), 아니면 글자. 여는 길은 줄 끝 › 하나
           const label = (item.icon ? item.icon + ' ' : '') + item.title;
@@ -1075,17 +1181,33 @@ export function createWork(deps) {
       subItem.addEventListener('click', addSub);
       paneEl.appendChild(subSec);
 
-      /* 파일 첨부(본문에 붙인 파일 — 보는 사람이 자료실에서 볼 수 있는 것만 창구가 준다) */
+      /* 파일 첨부 — 본문에 붙인 자료실 파일(보는 사람이 자료실에서 볼 수 있는 것만 창구가 준다) + 이 문서 전용 첨부
+         (U3 C — `attachment_titles`: 창구가 이 문서의 첨부를 받을 수 있는 사람에게만 준 것). 검사가 끝나지 않은 첨부는 이름 + 배지(받기 0) */
       const files = data.file_titles && typeof data.file_titles === 'object' ? Object.keys(data.file_titles).filter((k) => UUID_RE.test(k)) : [];
-      if (files.length) {
+      const atts = Object.keys(readCtx.attachment_titles).filter((k) => UUID_RE.test(k));
+      if (files.length || atts.length) {
         const fileSec = el('section', 'task-pane__section');
-        fileSec.appendChild(el('h3', 'task-pane__section-head', '파일 첨부 ' + files.length));
+        fileSec.appendChild(el('h3', 'task-pane__section-head', '파일 첨부 ' + (files.length + atts.length)));
         const ul = el('ul', 'task-list__rows');
         for (const f of files) {
           const li = el('li', 'task-event');
           const a = el('a', null, data.file_titles[f].name || '파일');
           a.href = tboxBase + '/api/files/' + f + '/download';
           li.appendChild(a);
+          ul.appendChild(li);
+        }
+        for (const f of atts) {
+          const ent = readCtx.attachment_titles[f] || {};
+          const li = el('li', 'task-event');
+          li.setAttribute('data-attachment', f);
+          if (ent.scan_status === 'clean') {
+            const a = el('a', null, ent.name || '파일');
+            a.href = base + '/api/pages/' + id + '/attachments/' + f + '/download';
+            li.appendChild(a);
+          } else {
+            li.appendChild(el('span', null, ent.name || '파일'));
+            li.appendChild(el('span', 'badge', ent.scan_status === 'pending' ? '검사 중' : '받을 수 없음'));
+          }
           ul.appendChild(li);
         }
         fileSec.appendChild(ul);
@@ -1195,10 +1317,10 @@ export function createWork(deps) {
           send.disabled = true;
           api('POST', '/api/pages/' + id + '/comments', { body: text }).then((r) => {
             send.disabled = false;
-            if (r.status !== 201 && r.status !== 200) { setText(msg, failMessage(r)); return; }
+            if (r.status !== 201 && r.status !== 200) { say(msg, failMessage(r)); return; }
             ta.value = '';
             loadComments();
-          }).catch(() => { send.disabled = false; setText(msg, genericError); });
+          }).catch(() => { send.disabled = false; say(msg, genericError); });
         });
         paneEl.appendChild(foot);
       }
@@ -1206,10 +1328,10 @@ export function createWork(deps) {
       /* 지우기 — 확인 창(공용 openConfirm) 뒤 `DELETE /api/pages/{id}`(휴지통 30일) */
       delItem.addEventListener('click', () => {
         const yes = () => api('DELETE', '/api/pages/' + id).then((r) => {
-          if (r.status !== 200) { setText(msg, failMessage(r)); return; }
+          if (r.status !== 200) { say(msg, failMessage(r)); return; }
           close({ push: true });
           if (ctx.onChanged) { ctx.onChanged(id); }
-        }).catch(() => setText(msg, genericError));
+        }).catch(() => say(msg, genericError));
         if (typeof window.qarediOpenConfirm === 'function') {
           window.qarediOpenConfirm({ title: '작업을 지울까요?', lead: '「' + (page.title || '') + '」과 하위 작업이 목록에서 사라집니다.', note: '30일 안에는 「내 휴지통」에서 되살릴 수 있습니다.', okLabel: '휴지통으로 옮기기' }, yes);
         }
@@ -1328,7 +1450,7 @@ export function createWork(deps) {
     if (!ul) { return; }
     let tasks = null;
     let brief = null;
-    // 업무함 앞 10줄(WK-20 C — 묶음 경계를 지나며 센다) · 나머지는 「모두 보기」(→ 내 작업). ≥1200 은 줄 아래 펼침, 그보다 좁으면 2.21 칸(aside)
+    // 업무함 앞 10줄(WK-20 C — 묶음 경계를 지나며 센다) · 나머지는 「모두 보기」(→ 내 작업). 줄을 누르면 오른쪽 작업 상세 칸(2.21 aside — WK-26)
     const view = inboxView({
       root: root, ul: ul, empty: $('work-home-empty'), emptyText: () => '오늘 할 일이 없어요.', aside: $('task-pane'), limit: 10,
       onChanged: () => { load(); }
@@ -1352,10 +1474,10 @@ export function createWork(deps) {
     function load() {
       const t = api('GET', '/api/my-tasks').then((r) => {
         if (r.status === 401) { toLogin(); return false; }
-        if (r.status !== 200) { setText(msg, errorMessage(r.data)); return false; }
+        if (r.status !== 200) { say(msg, errorMessage(r.data)); return false; }
         tasks = r.data;
         return true;
-      }).catch(() => { setText(msg, genericError); return false; });
+      }).catch(() => { say(msg, genericError); return false; });
       return Promise.all([t, loadBriefing()]).then(([ok, b]) => {
         brief = b;
         notice();
@@ -1399,11 +1521,11 @@ export function createWork(deps) {
         const b = (data.buckets || []).find((x) => x.key === g.key);
         if (!b) { return; }
         api('GET', '/api/my-tasks?done=' + (done ? '1' : '0') + '&bucket=' + encodeURIComponent(b.key) + '&cursor=' + encodeURIComponent(b.next_cursor)).then((r) => {
-          if (r.status !== 200) { moreBtn.disabled = false; setText(msg, failMessage(r)); return; }
+          if (r.status !== 200) { moreBtn.disabled = false; say(msg, failMessage(r)); return; }
           const got = (r.data.buckets || [])[0];
           if (got) { b.items = (b.items || []).concat(got.items || []); b.next_cursor = got.next_cursor; }
           draw();
-        }).catch(() => { moreBtn.disabled = false; setText(msg, genericError); });
+        }).catch(() => { moreBtn.disabled = false; say(msg, genericError); });
       },
       onAdd: (g, li, addBtn) => {
         const today = data && typeof data.today === 'string' ? data.today : seoulToday();
@@ -1422,9 +1544,9 @@ export function createWork(deps) {
     function load() {
       const t = api('GET', '/api/my-tasks?done=' + (done ? '1' : '0')).then((r) => {
         if (r.status === 401) { toLogin(); return null; }
-        if (r.status !== 200) { setText(msg, errorMessage(r.data)); return null; }
+        if (r.status !== 200) { say(msg, errorMessage(r.data)); return null; }
         return r.data;
-      }).catch(() => { setText(msg, genericError); return null; });
+      }).catch(() => { say(msg, genericError); return null; });
       return Promise.all([t, done ? Promise.resolve(null) : loadBriefing()]).then(([d, b]) => {
         if (!d) { return; }
         data = d;
@@ -1509,11 +1631,8 @@ export function createWork(deps) {
           x.classList.toggle('is-active', on);
           x.setAttribute('aria-pressed', on ? 'true' : 'false');
         }
-        // 열린 작업은 보기를 바꾼 뒤 맞는 자리(목록 = 줄 아래 · 보드/달력 = 칸)에서 다시 연다(주소 그대로)
-        const openId = pane.current();
-        if (openId) { pane.close({ push: false }); }
+        // 열린 작업 칸은 보기를 바꿔도 그대로(WK-26 — 목록 · 보드 · 달력 모두 같은 오른쪽 칸)
         draw();
-        if (openId) { pane.open(openId, { push: false }); }
       });
     }
     if (favs && typeof favs.onChange === 'function') { favs.onChange(() => { if (view === 'list') { draw(); } }); }
@@ -1596,9 +1715,9 @@ export function createWork(deps) {
   function useAs(dbId, to) {
     const msg = msgEl();
     return api('PATCH', '/api/databases/' + dbId + '/schema', { use_as: to }).then((r) => {
-      if (r.status !== 200) { setText(msg, failMessage(r)); return; }
+      if (r.status !== 200) { say(msg, failMessage(r)); return; }
       window.location.reload();
-    }).catch(() => setText(msg, genericError));
+    }).catch(() => say(msg, genericError));
   }
 
   /** 보기 탭에 「규칙(= 자동 작업)」 링크와 「＋」(보기 더하기 — 지금 「폼 · 일정 · 차트 추가」 단추)를 옮겨 둔다 — 한 번만 */
@@ -1738,7 +1857,7 @@ export function createWork(deps) {
     if (!btn || !dialog || !form) { return; }
     btn.addEventListener('click', () => {
       if (btn.disabled) { return; }
-      setText(msg, '');
+      say(msg, '');
       note.value = '';
       const current = projectStatusData ? projectStatusData.current : null;
       for (const r of form.querySelectorAll('input[name="project-status"]')) { r.checked = !!current && r.value === current.status; }
@@ -1761,15 +1880,15 @@ export function createWork(deps) {
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const picked = form.querySelector('input[name="project-status"]:checked');
-      if (!picked) { setText(msg, '상태를 고르세요.'); return; }
+      if (!picked) { say(msg, '상태를 고르세요.'); return; }
       const save = $('project-status-save');
       save.disabled = true;
       api('POST', '/api/projects/' + project.db.page_id + '/status', { status: picked.value, note: note.value.trim() }).then((r) => {
         save.disabled = false;
-        if (r.status !== 200) { setText(msg, failMessage(r)); return; }
+        if (r.status !== 200) { say(msg, failMessage(r)); return; }
         dialog.close();
         loadProjectStatus();
-      }).catch(() => { save.disabled = false; setText(msg, genericError); });
+      }).catch(() => { save.disabled = false; say(msg, genericError); });
     });
   }
 
@@ -1855,7 +1974,7 @@ export function createWork(deps) {
               expand: kids.length ? expanded : null,
               onExpand: () => { projectExpanded[r.id] = !expanded; drawProjectList(host, ctx); },
               onOpen: (it) => projectPane.open(it.id, { push: true }),
-              onCheck: (it, d) => setDone(it.id, d).then(() => ctx.reload()).catch((e) => setText(msg, e.message))
+              onCheck: (it, d) => setDone(it.id, d).then(() => ctx.reload()).catch((e) => say(msg, e.message))
             }));
             if (expanded) {
               for (const k of kids) {
@@ -1864,7 +1983,7 @@ export function createWork(deps) {
                   kind: 'project', sub: true, today: today, canCheck: db.can_edit_values === true,
                   current: projectPane && projectPane.current() === k.id,
                   onOpen: (it) => projectPane.open(it.id, { push: true }),
-                  onCheck: (it, d) => setDone(it.id, d).then(() => { forgetTree(spaceId); ctx.reload(); }).catch((e) => setText(msg, e.message))
+                  onCheck: (it, d) => setDone(it.id, d).then(() => { forgetTree(spaceId); ctx.reload(); }).catch((e) => say(msg, e.message))
                 }));
               }
             }
@@ -1923,9 +2042,9 @@ export function createWork(deps) {
             if (name === '') { line.remove(); tail.hidden = false; return; }
             input.disabled = true;
             api('PATCH', '/api/databases/' + db.id + '/schema', { options: { key: gp.key, options: gp.options.concat([name]) } }).then((r) => {
-              if (r.status !== 200) { input.disabled = false; setText(msg, failMessage(r)); return; }
+              if (r.status !== 200) { input.disabled = false; say(msg, failMessage(r)); return; }
               ctx.reload();
-            }).catch(() => { input.disabled = false; setText(msg, genericError); });
+            }).catch(() => { input.disabled = false; say(msg, genericError); });
           });
         });
       }
@@ -1975,7 +2094,7 @@ export function createWork(deps) {
         if (r.status === 401) { toLogin(); return; }
         if (r.status !== 200) {
           setText(title, '포트폴리오');
-          setText(msg, errorMessage(r.data));
+          say(msg, errorMessage(r.data));
           show(root.querySelector('.table-wrap'), false);
           show($('portfolio-info'), false);
           return;
@@ -2041,9 +2160,9 @@ export function createWork(deps) {
             out.addEventListener('click', () => {
               out.disabled = true;
               api('DELETE', '/api/portfolios/' + id + '/items/' + p.id).then((x) => {
-                if (x.status !== 200) { out.disabled = false; setText(msg, failMessage(x)); return; }
+                if (x.status !== 200) { out.disabled = false; say(msg, failMessage(x)); return; }
                 load();
-              }).catch(() => { out.disabled = false; setText(msg, genericError); });
+              }).catch(() => { out.disabled = false; say(msg, genericError); });
             });
             tdAct.appendChild(out);
           }
@@ -2051,9 +2170,9 @@ export function createWork(deps) {
           rowsEl.appendChild(tr);
         }
         show(emptyEl, items.length === 0);
-        setText(msg, '');
+        say(msg, '');
         markNav();
-      }).catch(() => setText(msg, genericError));
+      }).catch(() => say(msg, genericError));
     }
     function markNav() {
       for (const a of document.querySelectorAll('#nav-work-portfolios a[data-portfolio-id]')) {
@@ -2107,9 +2226,9 @@ export function createWork(deps) {
     if (deleteBtn) {
       deleteBtn.addEventListener('click', () => {
         const yes = () => api('DELETE', '/api/portfolios/' + id).then((r) => {
-          if (r.status !== 200) { setText(msg, failMessage(r)); return; }
+          if (r.status !== 200) { say(msg, failMessage(r)); return; }
           window.location.assign(base + '/');
-        }).catch(() => setText(msg, genericError));
+        }).catch(() => say(msg, genericError));
         if (typeof window.qarediOpenConfirm === 'function') {
           window.qarediOpenConfirm({ title: '포트폴리오를 지울까요?', lead: '「' + (current && current.portfolio ? current.portfolio.name : '') + '」 묶음이 사라집니다.', note: '넣어 둔 프로젝트와 작업은 그대로 남아요.', okLabel: '포트폴리오 지우기' }, yes);
         }
