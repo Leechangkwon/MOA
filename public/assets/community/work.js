@@ -1,6 +1,6 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=a58804fa4b68';
-import { renderDoc } from './doc-render.js?v=a58804fa4b68';
-import { createMentionInput } from './mention-input.js?v=a58804fa4b68';
+import { drawCalendar, rangeFor } from './calendar.js?v=1623c3625c33';
+import { renderDoc } from './doc-render.js?v=1623c3625c33';
+import { createMentionInput } from './mention-input.js?v=1623c3625c33';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -1717,6 +1717,11 @@ export function createWork(deps) {
 
   let headDrawn = false;
   let taskFull = null;          // U4-2 — 작업 전체 화면 칸(한 번만 만든다)
+  /** Q:F-12 U5-1(DESIGN 2.28 「첫 화면 뼈대」) — 서버가 project · task 첫 화면에만 그린 회색 막대(`.skeleton`)를 화면이 선 뒤 걷는다.
+   *  CSS 도 `data-project-view` 뒤에는 뼈대를 보이지 않지만, 요소째 지워 화면 읽기 · 점검 도구에 남지 않게 한다 */
+  function dropSkeleton() {
+    for (const s of document.querySelectorAll('.main .skeleton')) { s.remove(); }
+  }
   function pageLoaded(pageId, data) {
     pageData = data;
     headDrawn = false;
@@ -1738,6 +1743,7 @@ export function createWork(deps) {
         }
       });
       taskFull.showFull(pageId, data);
+      dropSkeleton();   // U5-1 — showFull 이 칸을 비우며 이미 걷었다(남은 것이 있으면 여기서)
     }
   }
 
@@ -1762,6 +1768,8 @@ export function createWork(deps) {
     if (!asDoc) { body.setAttribute('data-project-view', ''); }
     if (!headDrawn) { drawProjectHead(); }
     moveViewExtras();
+    // U5-1 — 프로젝트 화면이 섰다(같은 흐름에서 database.js 가 곧바로 목록을 그린다 — 그 사이 그리기 0): 뼈대를 걷는다
+    dropSkeleton();
   }
 
   /** 행 목록 창구 답마다(database.js) — 쓰임에 따라 프로젝트 화면 · 「프로젝트로 쓰기」 항목 */
@@ -1784,6 +1792,7 @@ export function createWork(deps) {
       if (project) { project = null; body.removeAttribute('data-project-view'); }
       // U4-1 — 첫 화면 종류가 「프로젝트」였는데 창구 답의 쓰임이 아니면(그사이 「표로 쓰기」) 표식을 떼고 일반 화면으로
       if (body.getAttribute('data-page-kind') === 'project') { body.removeAttribute('data-page-kind'); }
+      dropSkeleton();
     }
   }
 

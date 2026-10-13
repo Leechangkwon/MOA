@@ -2314,9 +2314,17 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 .app-menu__logout:hover { background: var(--muted-bg); color: var(--fg); }
 .app-menu__logout:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
 .app-menu__logout .icon { display: inline-flex; color: var(--muted); }
-/* 오른쪽 아바타 — 「내 계정」(이니셜 32px 원) */
-.shell-tools__me { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--muted-bg); color: var(--fg); font-size: 13px; font-weight: 600; text-decoration: none; }
-.shell-tools__me:hover { background: var(--line); color: var(--fg); text-decoration: none; }
+/* Q:F-12 U5-2(DESIGN 2.28 「앱 단추」) — ⋮⋮⋮ 에 글자 「앱」: 아이콘 20 + 14px 500 · 높이 40 · 안 여백 0 12px · `.btn--quiet` 테두리(--line).
+   판 · 타일 · 닫기는 위 그대로. 안 읽은 점은 details 오른쪽 위(위 규칙)에 그대로 붙는다 */
+.shell-tools > .appbar__apps > summary { height: 40px; padding: 0 12px; gap: 6px; font-size: 14px; font-weight: 500; }
+.shell-tools > .appbar__apps > summary svg { width: 20px; height: 20px; }
+/* 오른쪽 사용자 칩 — 「내 계정」: 아바타 32(이니셜 원) + 표시 이름 + 「님」 14px · 높이 40 · 이름이 길면 말줄임(최대 14자 폭) · 모아 홈 머리 「이름 님」 칩과 같은 둥근 테두리 */
+.shell-tools__me { display: inline-flex; align-items: center; gap: 8px; flex: 0 1 auto; min-width: 0; max-width: 100%; box-sizing: border-box; height: 40px; padding: 0 14px 0 3px; border: 1px solid var(--line); border-radius: 20px; background: var(--surface); color: var(--fg); font-size: 14px; font-weight: 500; text-decoration: none; }
+.shell-tools__me > span:first-child { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--muted-bg); color: var(--fg); font-size: 13px; font-weight: 600; }
+.shell-tools__name { display: flex; align-items: center; gap: 4px; min-width: 0; white-space: nowrap; }
+.shell-tools__name > span { min-width: 0; max-width: 14em; overflow: hidden; text-overflow: ellipsis; }
+.shell-tools__me:hover { background: var(--muted-bg); color: var(--fg); text-decoration: none; }
+.shell-tools__me:hover > span:first-child { background: var(--line); }
 .shell-tools__me:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
 /* 폰(960px 미만) — 줄은 숨는다. 윗줄 앱 이름 ▾(#appbar-apps)가 같은 details 를 열면 그때만 판이 윗줄(52px) 바로 아래 전체 폭으로 뜬다(세로 스크롤).
    닫힌 동안에는 줄째 display:none(화면 읽기에 같은 메뉴가 두 번 나오지 않게) — summary · 아바타는 열려도 그리지 않는다(윗줄 단추가 그 자리다). */
@@ -2606,6 +2614,20 @@ body[data-project-view] #project-title { min-width: 0; overflow: hidden; text-ov
 body[data-page-kind="task"] .main > :not(#task-full):not(#msg):not(#page-crumb):not(dialog):not(.act-banner):not(.shell-tools) { display: none !important; }
 /* 폭은 정해진 100%(최대 960) — `margin: auto` 만 두면 본문 칸(flex 세로)에서 안쪽 최소 폭(그림 · 도구줄)만큼 늘어 좁은 폭에서 넘쳤다 */
 .task-pane.task-pane--full { position: static; box-sizing: border-box; width: 100%; max-width: 960px; min-width: 0; margin: 0 auto; padding: 0 0 72px; overflow: visible; border-left: 0; background: transparent; }
+
+/* Q:F-12 U5-1(DESIGN 2.28 「첫 화면 뼈대」 · 기획 17.2) — U4 의 위 숨김은 `#db-wrap`(프로젝트 목록이 그려질 자리)을 남겨 두어, 스크립트가 프로젝트 목록을
+   그리기 전 그 안의 일반 부품(「폼 · 일정 · 차트 추가」 `#db-add-view` · 일반 표 · 빈 위젯 상자)이 한순간 보였다. 프로젝트 화면이 서기 전
+   (`data-project-view` 전)에는 `#db-wrap` 안에서 뼈대(page_view.php 가 project · task 일 때만 그린 `.skeleton`)와 알림 줄만 남긴다.
+   작업은 `#task-full` 안 뼈대 — 칸 부품이 서면(work.js showFull) 칸째 비워진다. 위 U4 규칙은 그대로(이 규칙은 더할 뿐). 새 색값 0 · 움직임 0 */
+body[data-page-kind="project"]:not([data-project-view]) #db-wrap > :not(.skeleton):not(#db-msg) { display: none !important; }
+.skeleton { display: none; }
+body[data-page-kind="project"]:not([data-project-view]) #db-wrap > .skeleton,
+body[data-page-kind="task"] #task-full > .skeleton { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+body[data-page-kind="task"] #task-full > .skeleton { padding-top: 8px; }
+.skeleton__bar { display: block; width: 100%; height: 20px; border-radius: var(--r-ctl); background: var(--surface-2); }
+.skeleton__bar--head { width: 40%; height: 32px; margin-bottom: 8px; }
+.skeleton__bar:nth-child(3) { width: 92%; }
+.skeleton__bar:nth-child(4) { width: 84%; }
 
 /* 포트폴리오 표(2.4 폭 규칙 — 그 표의 thead 순서) · 이름(색 네모) · 상태 · 진행률 · 담당 · 마감 · 최근 상태 글(한 줄 줄임) */
 #portfolio-rows td:nth-child(1) { min-width: 12rem; overflow-wrap: anywhere; }

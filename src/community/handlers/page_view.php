@@ -75,7 +75,11 @@ unset($viewShellTop);
     <!-- Q:F-12 U4-2 (DESIGN 2.25 「작업 전체 화면」) — 오른쪽 작업 칸(2.21)과 **같은 부품 한 벌**을 본문 폭으로 그리는 빈 칸.
          안쪽(머리 줄 · 제목 · 속성 · 맡김 안내 · 설명 · 하위 작업 · 파일 첨부 · 댓글 · 모든 활동)은 work.js `createPane(…, {mode:'full'})` 가 createElement 로.
          읽기 판정을 지난 사람에게만 나간다(위 `$viewKind`) — 일반 문서 부품은 CSS(`body[data-page-kind=task]`)가 처음부터 숨긴다. -->
-    <section id="task-full" class="task-pane task-pane--full" aria-label="작업"></section>
+    <section id="task-full" class="task-pane task-pane--full" aria-label="작업">
+      <!-- Q:F-12 U5-1 (DESIGN 2.28 「첫 화면 뼈대」) — 칸 부품이 서기 전 회색 막대(머리 한 줄 + 줄 셋). 고정 마크업 · 동적 값 0 ·
+           work.js `createPane(…).showFull` 이 칸을 비우며 함께 걷는다. 움직임 없음 -->
+      <div class="skeleton" aria-hidden="true"><span class="skeleton__bar skeleton__bar--head"></span><span class="skeleton__bar"></span><span class="skeleton__bar"></span><span class="skeleton__bar"></span></div>
+    </section>
 <?php endif; ?>
 
     <header class="page-head">
@@ -331,7 +335,16 @@ unset($viewShellTop);
          목록은 있을 때만 보인다. 카드는 editor.js 가 `.card--link` 로 만든다. -->
     <!-- 6-A 데이터베이스 표 — DB 페이지에서만 보인다. 열 = 제목·상태·속성들·소유자, 칸을 누르면 그 자리에서 고친다.
          거르기는 조건 하나(창구는 열까지 받는다) · 정렬 하나. 속성 더하기·고치기는 아래 창(관리 자격만). -->
+    <!-- Q:F-12 U5-1 (DESIGN 2.28 「첫 화면 뼈대」 · 기획 17.2) — 첫 화면 종류가 「프로젝트」(읽기 판정을 지난 사람에게만 — 위 `$viewKind`)면
+         이 칸을 처음부터 열어 두고 맨 앞에 뼈대(회색 막대 — 프로젝트 머리 자리 + 목록 줄 셋)를 그린다. 프로젝트 화면이 서기 전
+         (`data-project-view` 전) 일반 데이터베이스 부품(「폼 · 일정 · 차트 추가」 · 일반 표 · 빈 위젯 상자)은 CSS 가 숨기고 뼈대만 보인다 —
+         프로젝트 화면이 서면 work.js 가 뼈대를 걷는다. 그 밖의 페이지는 지금처럼 hidden · 뼈대 0. 고정 마크업 · 동적 값 0 -->
+<?php if ($viewKind === 'project'): ?>
+    <section id="db-wrap" class="panel" aria-labelledby="db-title">
+      <div class="skeleton" aria-hidden="true"><span class="skeleton__bar skeleton__bar--head"></span><span class="skeleton__bar"></span><span class="skeleton__bar"></span><span class="skeleton__bar"></span></div>
+<?php else: ?>
     <section id="db-wrap" class="panel" aria-labelledby="db-title" hidden>
+<?php endif; ?>
       <div class="toolbar">
         <p id="db-title" class="nav-title">데이터베이스</p>
         <span id="db-count" class="muted"></span>

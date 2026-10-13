@@ -764,11 +764,14 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
          관리자 페이지(`#menu-admin`)는 hidden 으로 나가고 `/api/me` 의 can_admin(표시용) 이 참일 때만 app.js 가 연다 — 막는 것은 라우트 정책 · 재인증 관문(PRD S-01).
          메신저 타일은 떠 있는 창을 여는 단추(messenger.js 가 모든 `[data-messenger-open]` 을 연다) — 메신저 자격이 없으면(손님 · 역할로 보기) 이용 안내 링크.
          ⋮⋮⋮ 의 점은 안 읽은 메시지 수(`[data-message-unread]` — messenger.js 의 같은 폴링 한 벌이 숫자를 넣고 CSS 가 점으로 그린다 · 새 요청 0).
-         검색 타일은 사이드바 「검색」(#nav-search)과 같은 창을 연다(app.js — 같은 단추를 누른다 · 창 두 벌 0). 인라인 style·on* 0 (CSP). -->
+         검색 타일은 사이드바 「검색」(#nav-search)과 같은 창을 연다(app.js — 같은 단추를 누른다 · 창 두 벌 0). 인라인 style·on* 0 (CSP).
+         Q:F-12 U5-2(DESIGN 2.28) — ⋮⋮⋮ 에 글자 「앱」(아이콘 20 + 14px · 높이 40 · 테두리 단추)을 보이고, 이니셜 원은 **사용자 칩**(아바타 32 + 표시 이름 + 「님」 ·
+         최대 폭 넘으면 말줄임 · 누르면 내 계정)으로. 이름은 위 `$shellMeLabel`(이스케이프 한 번) 그대로 — 새 동적 값 0 · 판정 0. 접근 이름은 aria-label 그대로라
+         보이는 글자는 aria-hidden(두 번 읽히지 않게). 폰(<960)은 이 줄을 지금처럼 숨긴다. -->
     <div class="shell-tools">
       <details class="appbar__apps" id="app-grid">
-        <summary class="btn btn--icon btn--plain" aria-label="앱 — 앱 바꾸기와 계정" data-tip="앱">
-          <span class="icon" data-icon="grid"></span><span class="badge badge--internal" data-message-unread hidden></span>
+        <summary class="btn btn--quiet" aria-label="앱 — 앱 바꾸기와 계정">
+          <span class="icon" data-icon="grid"></span><span aria-hidden="true">앱</span><span class="badge badge--internal" data-message-unread hidden></span>
         </summary>
         <div class="panel app-menu">
           <ul class="app-menu__apps">
@@ -796,7 +799,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
           <button id="logout" class="app-menu__logout" type="button"><span class="icon" data-icon="logout"></span><span>로그아웃</span></button>
         </div>
       </details>
-      <a class="shell-tools__me" href="<?= Http::url('/settings') ?>" aria-label="내 계정 — <?= $shellMeLabel ?>"><span aria-hidden="true"><?= $shellInitial ?></span></a>
+      <a class="shell-tools__me" href="<?= Http::url('/settings') ?>" aria-label="내 계정 — <?= $shellMeLabel ?>"><span aria-hidden="true"><?= $shellInitial ?></span><span class="shell-tools__name" aria-hidden="true"><span><?= $shellMeLabel ?></span>님</span></a>
     </div>
 <?php if ($shellActing): ?>
     <!-- 26단계 「역할로 보기」 띠 (PRD F-39, ARCH 5.20).

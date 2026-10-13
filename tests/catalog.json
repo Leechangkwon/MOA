@@ -5770,6 +5770,40 @@
       "notes": "사이트 Q:F-12 U4 화면 수락(docs/qf12-u4-directive.md ② · DESIGN 2.25 ~ 2.27) — memories_harness.py 격리 틀(합성 DB · 임시 복사본 · php -S 8768) + Chromium(env.sh 의 CHROMIUM_EXECUTABLE) · fixture claude_ 계정 · UA tbox-review/<날짜>. [first] 1440 · 412: 페이지 창구를 막은 채(스크립트가 화면을 못 바꾸는 상태) 연 직후 DOM + 스크린샷에 프로젝트 · 작업의 일반 문서 부품 0 · 보통 로드 매 프레임(requestAnimationFrame) 관찰 0 · 일반 문서 대조. [full] 작업 전체 화면 = 오른쪽 칸과 같은 지문(속성 이름표 · 맡김 안내 · 설명 · 하위 작업 · 파일 첨부 · 댓글/모든 활동 · 멘션 칸) · 폭 ≤ 960 가운데 · ?task= · data-task-open · ✕ · 전체 화면 · 폭 손잡이 0 · 「‹ 프로젝트」 · 하위 작업 › 주소 · 「문서로 보기」 → 옛 모양 · 412 넘침 0. [image] 칸 편집기 · 전체 편집기에서 tbox: · att: 그림 img · 검사 중 상자 · 설명 안내 줄 · 손잡이(role=slider) 끌기 p50 → p70 · Alt+→ p75 · 저장 width_pct · 다시 열어 같은 폭 · 옛 폭 Alt+← · 두 번 누르기 창의 「끌어서 맞춘 폭」. [mention] 전체 화면 댓글 · 오른쪽 칸 · 작업 전체 화면: @ → 목록 = 창구 빈 q · 좁힘 = 창구 q · ↑↓ Enter · 확인 파랑(--accent-soft) · 없음 빨강(--danger-soft) · 아래 줄 · 보내기 옆 안내 · 그림자 층 정렬 · 토큰 안 캐럿 → 목록 다시 → 바꿔 넣기 · 빈 후보 문장 · Esc · 보내기 201 · 비움 · 412 목록 화면 안. [readers] 보기 공유 직원 · 손님 손잡이 · 편집기 0 · 댓글 칸 = can_comment. [matrix] 360 · 412(터치) · 820 · 1199 · 1280 · 1440 × 밝게 · 어둡게 · 고대비 × (읽기 · @ 목록 · 그림 고른 편집) 넘침 0 · 누름 자리 44 · 인라인 style 0 · 콘솔 0. QF12U4_ONLY=first,full,image,mention,readers,matrix 로 묶음만(기본 전부) · QF12U4_WIDTHS · QF12U4_MODES 는 고치는 동안 좁히기용. 결과 qf12-u4-browser-results.json · metrics.json · shots/."
     },
     {
+      "id": "community.qf12_u5_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite qf12_u5_browser.py --output /tmp/qaredi-qf12-u5-browser-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/page_view.php",
+        "src/views/shell_top.php",
+        "src/views/launcher.php",
+        "src/views/moa_icon.php",
+        "src/Apps.php",
+        "public/assets/app.css",
+        "public/assets/dashboard-widgets.css",
+        "public/assets/home-dashboard.js",
+        "public/assets/community/work.js",
+        "public/assets/community/database.js",
+        "public/assets/community/editor.js",
+        "tests/community/qf12_u5_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        ".env.example"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-12 U5 화면 수락(docs/qf12-u5-directive.md 완료 기준 ①~③ · DESIGN 2.28 · 기획 work-ux-plan.md 17.2) — memories_harness.py 격리 틀(합성 DB · 임시 복사본 · php -S 8768) + Chromium(env.sh 의 CHROMIUM_EXECUTABLE) · fixture claude_ 계정 · UA tbox-review/<날짜>. 1440 · 412(터치) × 밝게 · 어둡게. [first] 서버 HTML 의 .skeleton = project · task 1 · 일반 문서 0 · 인라인 style 0 · 행 목록 창구(프로젝트) · 페이지 창구(작업)를 막은 채 = 화면이 서기 전: 뼈대(머리 + 줄 셋 · 움직임 0)만 · 일반 부품(#db-add-view · 일반 표 · 빈 위젯 상자 · 일반 문서 부품) 0 · 보통 로드 매 프레임(requestAnimationFrame) 일반 부품 0 · 뼈대가 보였다가 화면이 서기 전 사라짐 · 끝에 DOM .skeleton 0 · 일반 문서는 매 프레임 뼈대 0. [shell] /community/ · /tbox/: 앱 단추 「앱」 · 높이 40 · 14px 500 · 아이콘 20 · 사용자 칩(아바타 32 + 표시 이름 + 「님」 · 높이 40 · aria-label 「내 계정 — 이름」) · 누르면 /tbox/settings · 긴 이름 말줄임(1440 · 960 — 합성 DB 표시 이름만 잠시 바꾸고 되돌림) · 넘침 0 · 412: 줄 숨김 · 앱 이름 ▾ 가 같은 격자 전체 폭. [home] /: 바로가기 줄 가운데(왼쪽 · 오른쪽 여백 차 ≤ 2px) · 「내 작업」 타일 0 · 「업무 홈」 하나 + work 아이콘 → /community/ · 「우리 공간」 spaces 아이콘(Apps::ICON_PATHS) · 전체 서비스 메뉴 「내 작업」 0 · 홈 편집의 바로가기 설정 「내 작업」 줄 0 · 열고 취소 = 쓰기 0 · 넘침 0 · 콘솔 0. QF12U5_ONLY=first,shell,home 으로 묶음만. 결과 qf12-u5-browser-results.json · metrics.json · shots/."
+    },
+    {
       "id": "community.qf12_shell_browser",
       "cmd": "python3 tests/community/memories_harness.py --suite qf12_shell_browser.py --output /tmp/qaredi-qf12-shell-results",
       "module": "community",
