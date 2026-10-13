@@ -79,3 +79,27 @@
               qf12_shell_browser · messenger_store_browser · messenger_rail_browser 지금 수 그대로 · 정적 전부 0. 스크린샷(1440 넓힌 칸 + 그림이 든 설명 · 412 칸)을 직접 열어 본 뒤 통과라고 쓴다.
 보고 형식   : docs/qf12-u3-report.md 2부 — 1부와 같은 형식.
 ```
+
+## U3-1b 바닥 후속 — 메인 독립 검토에서 나온 것 (2026-10-13)
+
+U3-1(`9703afe`) 보고서 「못 한 것」과 메인 검토 결과. **운영 반영 전에 모두 닫는다.** 같은 worktree · 같은 브랜치(`feat/qf12-u3`)에서. U3-2(화면)는 다른 worktree 에서 동시에 진행되므로 그 파일(`public/assets/**` · `work_home_page.php` · `my_tasks_page.php` · `qf12_work_browser.py` · 위키)은 건드리지 않는다.
+
+```
+목표        : 첨부가 정합성 검사 · 탈퇴 파기 · 내보내기 · 다른 쓰기 입구에서도 문서와 한 몸으로 다뤄지게 한다.
+요구사항    : 커뮤니티 ARCH 24장 · U3-1 보고서 「못 한 것」 · 아래 표.
+수정 파일   : scripts/consistency_check.php(첨부 구역: 표의 stored_name ↔ STORAGE_DIR/attachments 대조 — 자료실과 같은 세 갈래(누락 · 해시 불일치 · 고아) · 영구 삭제 대기열 행은 고아로 세지 않음) ·
+              db/migrations/2026-10-13_community_page_attachments.sql(같은 파일 끝에 — 아직 운영 미적용이므로 새 파일을 만들지 않는다) 안에서
+                community.privacy_purge_pages 를 첨부까지 지우도록 다시 정의(지금 정의는 2026-10-21_privacy_retention.sql — 같은 서명 · 같은 권한 · 첨부 행은 영구 삭제 대기열로) ·
+              탈퇴 파기 스크립트(privacy_purge_pages 를 부르는 cron 스크립트 — 조사해 보고서에 이름)가 대기열의 디스크 파일도 지우게(community_purge.php 와 같은 함수 재사용) ·
+              src/community/export_helpers.php(내보내기 · 인쇄 ctx: att: → 로그인 필요한 창구 주소 링크 · 그림은 그 raw 주소 — 자료실 file_href 와 같은 방식) ·
+              다른 쓰기 입구: src/community/handlers/pages_create.php · templates_create.php · (게시판 새 글 · AI 초안 · MCP/어시스턴트 쓰기 — 조사해 목록) —
+                새 문서는 아직 첨부가 없으므로 att: 이 하나라도 있으면 400 bad_attachment_ref(자료실 파일 거부와 같은 자리) · 기존 문서를 고치는 입구는 SaveDoc 경유인지 확인하고 아니면 같은 검사 ·
+              tests/community/qf12_u3_attach_http.py(새 단언) · tests/catalog.json · docs/qf12-u3-report.md(1부 뒤에 「1b」)
+금지 패턴   : U3-1 과 같음.
+완료 기준   : ① consistency_check — 첨부 정상 → 불일치 0(--strict rc 0) · 첨부 디스크 파일 지움 → 누락 1 · 바이트 바꿈 → 해시 불일치 1 · DB 에 없는 파일을 attachments/ 에 둠 → 고아 1 · 대기열 행 → 고아 아님
+              ② 탈퇴 파기: 합성 사용자의 개인 공간 문서에 첨부 → 파기 함수 · 스크립트 → 첨부 행 0 · 디스크 파일 0 · 그 사용자가 팀 공간 문서에 올린 첨부는 남는다(문서가 팀 것이므로 — 파기 규칙 문서와 대조해 보고)
+              ③ 내보내기: att: 그림 · 파일 블록이 「볼 수 없는 파일」이 아니라 링크로 나온다 · 공개 링크(/pub/)는 그대로 「볼 수 없는 파일」
+              ④ 새 문서 · 템플릿 · 게시판 새 글 · AI · MCP 쓰기에 att: → 400(입구마다 하나씩)
+              ⑤ qf12_u3_attach_http 지금 175 + 새 단언 전부 · qf12_floor_http · qf12_server_http 지금 수 · 정적 전부 0
+보고 형식   : docs/qf12-u3-report.md 「1b」 — 1부와 같은 형식.
+```
