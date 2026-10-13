@@ -18,6 +18,5 @@
 .home-compact .moa-nav.home-nav .moa-account{display:block;min-width:0;min-height:44px;line-height:26px;padding-top:8px;padding-bottom:8px}
 .home-shortcut-setting-row .btn{min-width:52px}
 /* Q:F-12 U5-3(DESIGN 2.28 「모아 홈 바로가기」) — 바로가기 줄을 가운데로: 줄 폭을 내용만큼(최대 100%)으로 두고 좌우 auto 여백. 넘치면 지금처럼 가로 밀기(폭 100%) — 왼쪽이 잘리지 않는다.
-   「내 작업」(tasks)은 업무 홈과 같은 기능이라 타일을 없앴다 — 옛 · 기본 구성의 tasks id 는 틀의 숨은 항목으로만 남고(launcher.php), 홈 편집의 그 줄도 그리지 않는다 */
+   「내 작업」(tasks)은 업무 홈과 같은 기능이라 타일을 없앴다(launcher.php 틀 · home-dashboard.js 가 틀에 없는 id 를 건너뛴다) */
 .home-shortcuts.dashboard-service-nav{width:fit-content;max-width:100%;box-sizing:border-box;margin-left:auto;margin-right:auto}
-.home-shortcut-setting-row[data-shortcut-row="tasks"]{display:none}

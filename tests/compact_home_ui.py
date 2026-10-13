@@ -59,29 +59,29 @@ with sync_playwright()as pw:
  def finish(label='취소'):
   if page.locator('.dashboard-inspector-dialog[open]').count():page.locator('.dashboard-inspector-close:visible').click()
   page.get_by_role('button',name=label,exact=True).click();page.wait_for_timeout(100)
- default=['spaces','work','library','tasks','messages','assistant']
+ default=['spaces','work','library','messages','assistant']   # Q:F-12 U5-3 — 「내 작업」(tasks)은 업무 홈과 같은 기능이라 기본에서 뺐다(사용자 결정 2026-10-13)
  for width in [1280,1440,1920,820,390,360]:
   for design in ['moa','aurora']:
    for theme in ['light','dark']:
     visit(width);page.evaluate('(v)=>{document.documentElement.dataset.design=v[0];document.documentElement.dataset.theme=v[1]}',[design,theme]);page.wait_for_timeout(350)
-    check(shortcuts()==default,'default six shortcuts '+str(width)+design+theme)
+    check(shortcuts()==default,'default five shortcuts (내 작업 0) '+str(width)+design+theme)
     print('GEOMETRY first_widget_y',width,design,theme,page.locator('.dashboard-card').first.bounding_box()['y'],flush=True)
     check(page.locator('.dashboard-card').first.bounding_box()['y']<=(300 if width>=1100 else 340),'first widget within compact target '+str(width)+design+theme)
     check(not page.locator('.dashboard-guide').evaluate('(n)=>n.open'),'guide closed '+str(width)+design+theme)
     check(page.locator('#home-edit').count()==1 and page.get_by_role('button',name='홈 구성하기').count()==0,'single home edit entry '+str(width)+design+theme)
     check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'page no horizontal overflow '+str(width)+design+theme)
     check(page.locator('#dashboard-services a').evaluate_all('(ns)=>ns.every(n=>n.getBoundingClientRect().height>=44&&n.querySelector("svg"))'),'accessible icon touch areas '+str(width)+design+theme)
-    page.locator('#home-all-services').click();check(page.locator('.home-services-menu a').count()==8,'all services eight real routes '+str(width)+design+theme);page.locator('#home-all-services').click()
+    page.locator('#home-all-services').click();check(page.locator('.home-services-menu a').count()==7,'all services seven real routes (내 작업 0) '+str(width)+design+theme);page.locator('#home-all-services').click()
     if design=='aurora'and theme=='dark':page.screenshot(path=str(OUT/('compact-'+str(width)+'.png')))
  for width in [1280,1440,1920,820,390,360]:
   visit(width);page.evaluate("document.documentElement.dataset.contrast='high'");page.wait_for_timeout(100);check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'high contrast no overflow '+str(width));check(page.locator('.dashboard-card').first.bounding_box()['y']<=(300 if width>=1100 else 340),'high contrast compact position '+str(width));check(page.locator('.moa-account').evaluate('(n)=>getComputedStyle(n).textOverflow==="ellipsis"&&n.title===n.textContent'),'account ellipsis and accessible full name '+str(width))
  visit(1440);original=json.dumps(layout,sort_keys=True);page.locator('#home-edit').click();settings();before=len([x for x in calls if x[0]=='PATCH'])
- page.get_by_label('자료실 앞으로',exact=True).click();check(shortcuts()==['spaces','library','work','tasks','messages','assistant'],'draft reorder visible immediately')
+ page.get_by_label('자료실 앞으로',exact=True).click();check(shortcuts()==['spaces','library','work','messages','assistant'],'draft reorder visible immediately')
  page.get_by_label('이야기',exact=True).focus();page.keyboard.press('Space');check(page.get_by_label('이야기',exact=True).evaluate('(n)=>n===document.activeElement'),'checkbox Space retains keyboard focus');check(shortcuts()[-1]=='story','draft optional shortcut added')
  check(len([x for x in calls if x[0]=='PATCH'])==before,'draft shortcut changes no HTTP write');finish();check(shortcuts()==default and json.dumps(layout,sort_keys=True)==original,'whole cancel restores original server shortcut absence')
  page.locator('#home-edit').click();settings()
- for label in ['우리 공간','업무 홈','내 작업','자료실','메신저','AI 비서']:page.get_by_label(label,exact=True).uncheck()
- check(shortcuts()==[],'all hidden draft');finish('배치 저장·완료');check(layout['shortcuts']==[],'empty array explicitly saved');page.reload(wait_until='networkidle');check(shortcuts()==[],'all hidden reload');page.locator('#home-all-services').click();check(page.locator('.home-services-menu a').count()==8,'all hidden retains complete service access');page.locator('#home-all-services').click()
+ for label in ['우리 공간','업무 홈','자료실','메신저','AI 비서']:page.get_by_label(label,exact=True).uncheck()
+ check(shortcuts()==[],'all hidden draft');finish('배치 저장·완료');check(layout['shortcuts']==[],'empty array explicitly saved');page.reload(wait_until='networkidle');check(shortcuts()==[],'all hidden reload');page.locator('#home-all-services').click();check(page.locator('.home-services-menu a').count()==7,'all hidden retains complete service access');page.locator('#home-all-services').click()
  page.locator('#home-edit').click();settings();page.get_by_role('button',name='기본 바로가기 복원',exact=True).click();check(shortcuts()==default,'explicit default restore preview');check(page.get_by_role('button',name='기본 바로가기 복원',exact=True).evaluate('(n)=>n===document.activeElement'),'default restore focus retained');conflict=True;finish('배치 저장·완료');check(page.locator('.dashboard-editor').is_visible()and shortcuts()==default,'409 retains shortcut draft');check(layout['shortcuts']==[],'409 leaves server unchanged');finish();conflict=False
  page.locator('#home-edit').click();settings();page.get_by_label('계정',exact=True).check();page.locator('.dashboard-batch summary').click();page.get_by_role('button',name='추천 구성 미리보기',exact=True).click();check(shortcuts()==['account'],'recommendation retains current draft shortcuts');finish();check(shortcuts()==[],'preview whole cancel restores server shortcut state')
  page.locator('#home-edit').click();settings();page.get_by_role('button',name='기본 바로가기 복원',exact=True).click();canonical=True;finish('배치 저장·완료');check(shortcuts()==['account','library'],'server canonical response adopted');canonical=False;page.reload(wait_until='networkidle');check(shortcuts()==['account','library'],'canonical persisted reload');second=browser.new_page();second.route('**/*',route);second.goto('https://moa.example/',wait_until='networkidle');check(second.locator('#dashboard-services a').evaluate_all('(ns)=>ns.map(n=>n.dataset.homeShortcut)')==['account','library'],'other browser context loads account shortcuts');second.close()

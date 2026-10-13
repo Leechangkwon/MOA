@@ -21,8 +21,11 @@
 - 프로젝트 뼈대는 `main` 의 형제가 아니라 `#db-wrap` 안 — U4 의 `.main > :not(…)` 숨김(바꾸기 금지)이 새 형제를 숨기기 때문. 그래서 project 일 때만 `#db-wrap` 을 처음부터 연다(그 밖 페이지는 hidden 그대로). 알림 줄 `#db-msg` 는 숨기지 않는다(창구 실패 문구가 보이게).
 - 「앱」 글자가 보이므로 CSS 툴팁 `data-tip="앱"` 은 뺐다(접근 이름은 aria-label 그대로 · 보이는 글자는 aria-hidden).
 - 「최대 14자」는 이름 칸 `max-width: 14em`(한글 14자 · 영문은 더 많이)로 했다.
-- **「내 작업」 id 는 지우지 않았다**: `home-dashboard.js`(허용 목록 밖)가 기본 바로가기에 `tasks` 를 갖고, 홈 편집 설정이 틀에서 각 id 의 이름을 찾는다(없으면 설정을 열 때 오류). 그래서 틀에 `hidden` 항목 하나로 남기고(화면 · 전체 서비스 메뉴 0) 설정의 그 줄은 CSS 로 숨겼다. 저장된 구성 · 서버 허용 목록(ProductSpaces · dashboard-canvas.js)은 그대로. 남는 흠: 기본 구성에서 「메신저 앞으로」를 처음 누르면 숨은 tasks 와 자리를 바꿔 화면이 한 번 그대로다. 깔끔히 하려면 home-dashboard.js 의 기본값에서 tasks 를 빼고 설정이 틀에 없는 id 를 건너뛰게(다음 지시).
+- 「내 작업」: 1차의 숨김 항목 우회는 2차에서 걷어 냈다(아래 「2차」).
 
 ## 못 한 것
-- 다른 회귀는 지시대로 돌리지 않음. 카탈로그 **밖** 옛 시험 셋은 옛 결정(업무 홈 · 내 작업 따로 — 2026-10-12)을 단언해 이번 결정과 어긋난다 — 고치지도 돌리지도 않음: `tests/home_shortcuts_browser.py`(「clear separate names」 · 내 작업 클릭 · 전체 서비스 내 작업) · `tests/compact_home_ui.py`(「all services eight」 → 이제 7 · 아이콘 타일 높이 every(숨은 tasks 0 높이) · 설정에서 「내 작업」 해제) · `tests/compact_home_legacy_auth.py`(같은 틀).
+- 다른 회귀는 지시대로 돌리지 않음(카탈로그 밖 옛 시험 셋은 2차에서 고치고 한 번 돌림).
 - DESIGN 2.28 표에 「확인 결과」 줄은 넣지 않음(DESIGN.md 는 허용 목록 밖).
+
+## 2차 (2026-10-14 · 메인 지시 — 숨김 우회 대신 원인 수정)
+`public/assets/home-dashboard.js` 의 기본 바로가기에서 `tasks` 를 빼고, 화면 · 홈 편집 설정은 **서버가 그린 틀에 있는 id 만** 쓴다(틀을 한 번 읽은 `Map` — 없는 id 는 건너뜀 · 저장된 옛 구성 `['tasks','work','account']` 도 오류 · 빈 칸 0). 그래서 launcher.php 의 숨은 tasks 항목과 설정 줄을 숨기던 CSS 를 걷어 냈다. 저장 검증 허용 목록(dashboard-canvas.js · ProductSpaces)은 옛 구성 저장이 깨지지 않게 tasks 를 그대로 둔다. 옛 결정을 단언하던 `tests/home_shortcuts_browser.py`(옛 구성 tasks 건너뜀 · 업무 홈 하나 + work 아이콘 · 설명 한 문장 · 전체 서비스 7 · 내 작업 클릭 단계 뺌) · `tests/compact_home_ui.py`(기본 다섯 · 전체 서비스 7 · 순서 바꾸기 기대값 · 해제 목록) · `tests/compact_home_legacy_auth.py`(쓰이지 않는 기본값 변수만)는 단언만 고쳤다. 시험: `qf12_u5_browser` 모아 홈 묶음(`QF12U5_ONLY=home`, 「메신저 앞으로」 첫 누름이 곧바로 순서를 바꾸는 단언 · 틀에도 tasks 0 · 기본 다섯 더함) **46/0** — `run2-home/` · 운영을 치지 않는 고정 화면 시험 셋 한 번: home_shortcuts_browser **65/0** · compact_home_ui **212/0** · compact_home_legacy_auth **7/0** — `run2-old/` · 정적 `static-2.log` 통과.

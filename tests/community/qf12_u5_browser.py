@@ -13,7 +13,7 @@
   [shell]  1440 × 밝게 · 어둡게 — div.shell-tools: 앱 단추 글자 「앱」 · 높이 40 · 아이콘 20 · 사용자 칩(아바타 32 + 표시 이름 + 「님」 · 높이 40) ·
            누르면 /tbox/settings · 긴 이름 말줄임 · 넘침 0 / 412: 줄 숨김 · 윗줄 앱 이름 ▾ 가 같은 격자(지금 그대로)
   [home]   1440 · 412 × 밝게 · 어둡게 — 모아 홈(/): 바로가기 줄 가운데(왼쪽 · 오른쪽 여백 차 ≤ 2px) · 「내 작업」 타일 0 · 「업무 홈」 하나 + work 아이콘 ·
-           「우리 공간」 spaces 아이콘 · 넘침 0 · 전체 서비스 메뉴에도 「내 작업」 0 · 홈 편집의 바로가기 설정이 열리고 「내 작업」 줄 0
+           「우리 공간」 spaces 아이콘 · 넘침 0 · 전체 서비스 메뉴에도 「내 작업」 0 · 홈 편집의 바로가기 설정이 열리고 「내 작업」 줄 0 · 「메신저 앞으로」 첫 누름이 곧바로 순서를 바꿈
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -309,7 +309,9 @@ try:
                     st = p.evaluate(HOME_JS)
                     summary[tag] = {k: st[k] for k in ('ids', 'names', 'all', 'nav', 'navScroll', 'gapL', 'gapR', 'overflow', 'menu')}
                     p.screenshot(path=str(shots / ('home-%s.png' % tag)))
-                    check('tasks' not in st['ids'] and '내 작업' not in st['names'], 'home %s: 「내 작업」 tile 0 (visible %s)' % (tag, json.dumps(st['names'], ensure_ascii=False)))
+                    check('tasks' not in st['all'] and '내 작업' not in st['names'] and p.locator('#home-shortcut-template [data-shortcut="tasks"]').count() == 0,
+                          'home %s: 「내 작업」 tile 0 (not in the row or the template · visible %s)' % (tag, json.dumps(st['names'], ensure_ascii=False)))
+                    check(st['ids'] == ['spaces', 'work', 'library', 'messages', 'assistant'], 'home %s: default shortcuts = 우리 공간 · 업무 홈 · 자료실 · 메신저 · AI 비서 %s' % (tag, st['ids']))
                     check(st['names'].count('업무 홈') == 1 and st['paths'].get('work') == icons['work'] and st['hrefs'].get('work') == '/community/',
                           'home %s: one 「업무 홈」 tile with the work icon → /community/' % tag)
                     check('우리 공간' in st['names'] and st['paths'].get('spaces') == icons['spaces'], 'home %s: 「우리 공간」 uses the spaces icon' % tag)
@@ -328,7 +330,17 @@ try:
                         p.wait_for_timeout(200)
                         rows = p.evaluate("[...document.querySelectorAll('.home-shortcut-setting-row')].filter(r => getComputedStyle(r).display !== 'none').map(r => r.querySelector('label').textContent.trim())")
                         summary['settings-rows'] = rows
-                        check('내 작업' not in rows and rows.count('업무 홈') == 1 and '우리 공간' in rows, 'home settings: shortcut rows show 업무 홈 once · 내 작업 0 %s' % json.dumps(rows, ensure_ascii=False))
+                        check('내 작업' not in rows and rows.count('업무 홈') == 1 and '우리 공간' in rows and p.locator('[data-shortcut-row="tasks"]').count() == 0,
+                              'home settings: shortcut rows show 업무 홈 once · 내 작업 row 0 (not even hidden) %s' % json.dumps(rows, ensure_ascii=False))
+                        # 기본 구성에서 「메신저 앞으로」 첫 누름이 곧바로 순서를 바꾼다(숨은 tasks 와 자리를 바꾸느라 한 번 헛도는 일 0)
+                        order = lambda: p.locator('#dashboard-services a').evaluate_all('(ns) => ns.map(n => n.dataset.homeShortcut)')
+                        before_order = order()
+                        p.get_by_label('메신저 앞으로', exact=True).click()
+                        p.wait_for_timeout(150)
+                        after_order = order()
+                        summary['reorder'] = {'before': before_order, 'after': after_order}
+                        check(before_order == ['spaces', 'work', 'library', 'messages', 'assistant'] and after_order == ['spaces', 'work', 'messages', 'library', 'assistant'],
+                              'home settings: first 「메신저 앞으로」 press moves 메신저 before 자료실 at once %s → %s' % (before_order, after_order))
                         if p.locator('.dashboard-inspector-dialog[open]').count():
                             p.locator('.dashboard-inspector-close:visible').click()
                         p.get_by_role('button', name='취소', exact=True).click()
