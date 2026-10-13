@@ -559,6 +559,17 @@ final class Doc
                 }
                 return;
 
+            /*
+             * `pct5` — Q:F-12 U4-3 (WK-28 자유 크기) 그림 블록의 `width_pct`: 본문 폭의 백분율 **정수 10~100 · 5의 배수**(19값).
+             * 선택 칸이다(`?`) — 없으면 옛 `width`(넷)를 그대로 읽는다. 정수가 아니면(문자열 · 실수 · 참거짓) · 범위 밖 · 5의 배수가 아니면 400.
+             * 렌더러는 이 값을 정해진 19 클래스(`doc-image--p{N}`) 중 하나로만 바꾼다(인라인 style 0 — 저장형 XSS 길 0).
+             */
+            case 'pct5':
+                if (!is_int($value) || $value < 10 || $value > 100 || $value % 5 !== 0) {
+                    $add($p, 'bad_value');
+                }
+                return;
+
             // `int[]` — 5-E 표의 `col_widths`. 열 수와 같은 길이인지는 블록을 다 본 뒤(위 `walk`) 가른다.
             case 'int[]':
                 if (!self::isList($value) || count($value) > (int) $limits['table_cols']) {

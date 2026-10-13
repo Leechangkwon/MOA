@@ -25,6 +25,27 @@ pre { white-space:pre-wrap; overflow-wrap:anywhere; padding:16px; background:var
 th { background:var(--surface-2); text-align:left; }
 .doc-columns { display:flex; gap:24px; } .doc-column { flex:1; min-width:0; }
 .doc-image { margin:16px 0; } .doc-image__img { max-width:100%; height:auto; }
+/* Q:F-12 U4-3 (WK-28) — 그림 폭 width_pct → 서버 렌더러가 붙인 정해진 19 클래스(인라인 style 0). 그림은 그 폭 안에서 꽉 차게 */
+.doc-image--p10 { max-width:10%; }
+.doc-image--p15 { max-width:15%; }
+.doc-image--p20 { max-width:20%; }
+.doc-image--p25 { max-width:25%; }
+.doc-image--p30 { max-width:30%; }
+.doc-image--p35 { max-width:35%; }
+.doc-image--p40 { max-width:40%; }
+.doc-image--p45 { max-width:45%; }
+.doc-image--p50 { max-width:50%; }
+.doc-image--p55 { max-width:55%; }
+.doc-image--p60 { max-width:60%; }
+.doc-image--p65 { max-width:65%; }
+.doc-image--p70 { max-width:70%; }
+.doc-image--p75 { max-width:75%; }
+.doc-image--p80 { max-width:80%; }
+.doc-image--p85 { max-width:85%; }
+.doc-image--p90 { max-width:90%; }
+.doc-image--p95 { max-width:95%; }
+.doc-image--p100 { max-width:100%; }
+[class*="doc-image--p"] .doc-image__img { width:100%; }
 .al-center { text-align:center; } .al-right { text-align:right; }
 .sz-small { font-size:.85em; } .sz-large { font-size:1.2em; } .sz-xlarge { font-size:1.5em; }
 .doc-print-actions button { padding:10px 24px; border:1px solid var(--line); border-radius:8px; color:var(--fg); background:var(--surface-2); font:inherit; cursor:pointer; }

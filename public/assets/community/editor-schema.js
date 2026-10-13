@@ -27,6 +27,9 @@
 
 import { Schema, DOMParser } from './vendor/pm/prosemirror-model.js?v=5823578fa61a';
 
+/** Q:F-12 U4-3(WK-28) — 그림 `width_pct` 모양: 정수 10~100 · 5의 배수(doc-schema.json `pct5` · Doc.php 와 같은 조건) */
+export function widthPctOk(v) { return Number.isInteger(v) && v >= 10 && v <= 100 && v % 5 === 0; }
+
 /** 기본 색 9 — 배경은 `_bg` 를 붙인 값이다 (doc-schema.json 과 같은 목록) */
 export const COLORS = ['gray', 'brown', 'orange', 'yellow', 'green', 'blue', 'purple', 'pink', 'red'];
 
@@ -333,7 +336,9 @@ export const schema = new Schema({
     },
     image: {
       group: 'block', atom: true, selectable: true,
-      attrs: { id: { default: null }, file_ref: { default: null }, caption: { default: '' }, width: { default: 'normal' }, name: { default: '' } },
+      // Q:F-12 U4-3(WK-28) — `width_pct`(정수 10~100 · 5의 배수 · 없으면 null = 옛 `width` 넷). 편집기 안 그림은 editor.js 의 표시 부품(NodeView)이
+      // 그림 자체로 그린다 — 아래 toDOM 은 그 부품이 없는 자리(복사 HTML 등)의 요약 카드
+      attrs: { id: { default: null }, file_ref: { default: null }, caption: { default: '' }, width: { default: 'normal' }, width_pct: { default: null }, name: { default: '' } },
       toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'image' },
         ['span', { class: 'card__title' }, '🖼 ' + (node.attrs.name || '그림')],
         ['span', { class: 'card__meta' }, (node.attrs.caption || '설명 없음') + ' · 두 번 눌러 고치기']]
@@ -700,7 +705,10 @@ export function fromDoc(doc, ctx) {
       const fid = ref && ref.slice(0, 5) === 'tbox:' ? ref.slice(5) : (isAtt ? ref.slice(4) : '');
       const ent = fid !== '' && Object.prototype.hasOwnProperty.call(fmap, fid) ? fmap[fid] : null;
       const a2 = { id: attrs.id, file_ref: ref, caption: plainOf(b.caption), name: ent && typeof ent.name === 'string' ? ent.name : '볼 수 없는 파일' };
-      if (b.type === 'image') { a2.width = ['full', 'wide', 'normal', 'small'].indexOf(b.width) !== -1 ? b.width : 'normal'; }
+      if (b.type === 'image') {
+        a2.width = ['full', 'wide', 'normal', 'small'].indexOf(b.width) !== -1 ? b.width : 'normal';
+        a2.width_pct = widthPctOk(b.width_pct) ? b.width_pct : null;
+      }
       content.push({ type: b.type, attrs: a2 });
       continue;
     }
@@ -891,7 +899,11 @@ export function toDoc(pmDoc) {
       block.file_ref = a.file_ref;
       const cap = richOf(a.caption);
       if (cap.length > 0) { block.caption = cap; }
-      if (ourType === 'image') { block.width = ['full', 'wide', 'normal', 'small'].indexOf(a.width) !== -1 ? a.width : 'normal'; }
+      if (ourType === 'image') {
+        block.width = ['full', 'wide', 'normal', 'small'].indexOf(a.width) !== -1 ? a.width : 'normal';
+        // U4-3 — 끌어서 맞춘 폭(있을 때만). 모양은 서버 검증기(`pct5`)가 다시 본다
+        if (widthPctOk(a.width_pct)) { block.width_pct = a.width_pct; }
+      }
       blocks.push(block);
       continue;
     }
@@ -1089,7 +1101,7 @@ export const BLOCK_TYPES = [
   },
   {
     type: 'image', label: '그림', editsAtom: true,
-    desc: 't-box 에 올린 그림을 보여 줍니다. 페이지를 읽는 사람이 모두 볼 수 있는 등급의 파일만 붙습니다.',
+    desc: '이 문서에 올리거나 t-box 에서 고른 그림을 보여 줍니다. 편집 중에도 그림이 보이고, 고른 뒤 오른쪽 손잡이를 끌거나 Alt+←/→ 로 폭(10~100%)을 바꿉니다. 그림 옆에 글을 나란히 두려면 「단 나누기」(2단) 블록을 쓰세요.',
     sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c6', type: 'file', file_ref: 'tbox:00000000-0000-4000-8000-0000000000c7' }] },
     sampleCtx: { base: '', tbox_base: '', file_titles: { '00000000-0000-4000-8000-0000000000c7': { name: '그림.png', size: 184320, image: false } } }
   },

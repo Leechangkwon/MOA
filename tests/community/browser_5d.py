@@ -89,8 +89,9 @@ with sync_playwright() as pw:
     page.locator("#comment-input").press("End")
     page.keyboard.type("1")
     page.wait_for_selector('#comment-mentions [data-mention="claude_employee01"]', timeout=5000)
-    step("1 @ 후보에 페이지 주인 · 칸 안에서 펼침(떠 있지 않음)",
-         page.evaluate("() => getComputedStyle(document.getElementById('comment-mentions')).position") == "static")
+    # Q:F-12 U4-4(DESIGN 2.27) — 후보 목록은 입력 칸 바로 아래 **떠 있는** 목록(멘션 입력 부품 · id 는 그대로)으로 바뀌었다(옛 단언: 칸 안 static)
+    step("1 @ 후보에 페이지 주인 · 입력 칸 아래 떠 있는 목록(U4-4)",
+         page.evaluate("() => getComputedStyle(document.getElementById('comment-mentions')).position") in ("fixed", "absolute"))
     page.click('#comment-mentions [data-mention="claude_employee01"]')
     step("1 후보를 누르면 @아이디 가 들어간다", "@claude_employee01 " in page.input_value("#comment-input"))
     # 인용 — 본문 첫 블록의 글자를 고른다

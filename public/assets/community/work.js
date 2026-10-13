@@ -1,5 +1,6 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=ddfabe5d21e6';
-import { renderDoc } from './doc-render.js?v=ddfabe5d21e6';
+import { drawCalendar, rangeFor } from './calendar.js?v=a58804fa4b68';
+import { renderDoc } from './doc-render.js?v=a58804fa4b68';
+import { createMentionInput } from './mention-input.js?v=a58804fa4b68';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -671,14 +672,22 @@ export function createWork(deps) {
    * U3 A(DESIGN 2.21 「폭 조절 · 넓게 보기」) — 왼쪽 경계 손잡이 `.task-pane__resize`(끌기 · ←/→ 16px · Home · 두 번 누르기 = 기본 폭) ·
    * 머리 줄 「넓게 보기」(aria-pressed — 켜면 화면 폭 70%, 끄면 앞 폭). 폭은 CSS 변수 `--task-pane-w` 하나(CSSOM — `<body>` 에만 ·
    * 기본 폭이면 지운다) · 기억은 localStorage `qaredi-task-pane-w:v1:<아이디>`(숫자 하나 · 서버 0). 1200 미만은 CSS 가 손잡이 · 단추를 숨긴다.
+   *
+   * Q:F-12 U4-2(DESIGN 2.25 「작업 전체 화면」) — `ctx.mode === 'full'` 이면 같은 draw 한 벌을 페이지 화면의 `section#task-full` 에 본문 폭으로 그린다:
+   * 주소 `?task=` 0 · `data-task-open` 0 · 폭 손잡이 · 넓게 보기 · 「전체 화면으로 열기」 · 닫기 ✕ 0 · 머리 줄 맨 앞 「‹ 프로젝트」(그 프로젝트 주소) ·
+   * 더보기에 「문서로 보기」(`ctx.onAsDoc` — 옛 일반 문서 모양) · 하위 작업 › 는 그 작업의 전체 화면 주소 · 지우면 그 프로젝트로.
+   * 댓글 칸은 전체 화면 댓글과 같은 멘션 입력 부품(`createMentionInput` — U4-4, 두 벌 0).
    */
   function createPane(paneEl, ctx) {
     let currentId = null;
     let loadSeq = 0;
     let editor = null;
-    const sizer = paneSizer(paneEl);
+    const full = ctx.mode === 'full';
+    const sizer = full ? null : paneSizer(paneEl);
+    let projectHref = base + '/';
 
     function urlFor(id) {
+      if (full) { return pageUrl(id); }
       const u = new URL(window.location.href);
       if (id) { u.searchParams.set('task', id); } else { u.searchParams.delete('task'); }
       return u.pathname + u.search + u.hash;
@@ -698,10 +707,19 @@ export function createWork(deps) {
     function release() {
       if (editor) { editor.flush().catch(() => {}); editor.destroy(); editor = null; }
       if (paneEl) { show(paneEl, false); clear(paneEl); }
-      body.removeAttribute('data-task-open');
+      if (!full) { body.removeAttribute('data-task-open'); }
+    }
+    /** U4-2 — 전체 화면: 이미 받은 페이지 답(editor.js 가 넘긴 것)으로 곧바로 그린다(창구를 한 번 더 부르지 않는다) */
+    function showFull(id, data) {
+      if (!UUID_RE.test(id) || !paneEl) { return; }
+      currentId = id;
+      show(paneEl, true);
+      fresh();
+      draw(id, data, false);
     }
     function open(id, opts) {
       if (!UUID_RE.test(id) || !paneEl) { return; }
+      if (full) { window.location.assign(pageUrl(id)); return; }
       if (opts && opts.push && id !== currentId) {
         try { window.history.pushState({ task: id }, '', urlFor(id)); } catch (e) { /* 주소는 편의 */ }
       }
@@ -712,6 +730,7 @@ export function createWork(deps) {
       load(id, true);
     }
     function close(opts) {
+      if (full) { window.location.assign(projectHref); return; }
       if (opts && opts.push && currentId !== null) {
         try { window.history.pushState({ task: null }, '', urlFor(null)); } catch (e) { /* 편의 */ }
       }
@@ -719,10 +738,12 @@ export function createWork(deps) {
       currentId = null;
       ctx.onMarked(null);
     }
-    window.addEventListener('popstate', () => {
-      const want = taskFromUrl();
-      if (want) { open(want, { push: false }); } else if (currentId !== null) { close({ push: false }); }
-    });
+    if (!full) {
+      window.addEventListener('popstate', () => {
+        const want = taskFromUrl();
+        if (want) { open(want, { push: false }); } else if (currentId !== null) { close({ push: false }); }
+      });
+    }
 
     function load(id, focusHead) {
       const seq = ++loadSeq;
@@ -732,14 +753,16 @@ export function createWork(deps) {
         if (r.status === 401) { toLogin(); return; }
         if (r.status !== 200) {
           const head = el('div', 'task-pane__head');
-          const back = textButton('‹ 목록', 'btn btn--quiet btn--small task-pane__back');
-          back.addEventListener('click', () => close({ push: true }));
-          head.appendChild(back);
-          const tools = el('span', 'task-pane__tools');
-          const x = iconButton('x', '닫기');
-          x.addEventListener('click', () => close({ push: true }));
-          tools.appendChild(x);
-          head.appendChild(tools);
+          if (!full) {
+            const back = textButton('‹ 목록', 'btn btn--quiet btn--small task-pane__back');
+            back.addEventListener('click', () => close({ push: true }));
+            head.appendChild(back);
+            const tools = el('span', 'task-pane__tools');
+            const x = iconButton('x', '닫기');
+            x.addEventListener('click', () => close({ push: true }));
+            tools.appendChild(x);
+            head.appendChild(tools);
+          }
           paneEl.appendChild(head);
           paneEl.appendChild(el('p', 'msg', errorMessage(r.data)));
           return;
@@ -774,11 +797,23 @@ export function createWork(deps) {
       msg.setAttribute('role', 'alert');
       msg.setAttribute('aria-live', 'polite');
 
-      /* 머리 줄 — 「‹ 목록」(좁은 폭) · 완료 표시 · 링크 복사 · 전체 화면으로 열기 · 더보기 · 닫기 */
+      /* 머리 줄 — 「‹ 목록」(좁은 폭) · 완료 표시 · 링크 복사 · 전체 화면으로 열기 · 더보기 · 닫기
+         U4-2 전체 화면: 「‹ 프로젝트」(그 프로젝트 주소 — 경로 줄의 바로 위 칸) · 완료 표시 · 링크 복사 · 더보기(+ 「문서로 보기」) */
       const head = el('div', 'task-pane__head');
-      const back = textButton('‹ 목록', 'btn btn--quiet btn--small task-pane__back');
-      back.addEventListener('click', () => close({ push: true }));
-      head.appendChild(back);
+      const crumbsHead = Array.isArray(data.breadcrumb) ? data.breadcrumb : [];
+      if (full) {
+        const proj = data.row && crumbsHead.length >= 2 ? crumbsHead[crumbsHead.length - 2] : null;
+        projectHref = proj && UUID_RE.test(String(proj.id)) ? pageUrl(proj.id) : base + '/';
+        const up = el('a', 'btn btn--quiet btn--small', '‹ 프로젝트');
+        up.href = projectHref;
+        up.setAttribute('data-task-up', '');
+        if (proj && proj.title) { up.setAttribute('aria-label', '프로젝트 「' + proj.title + '」로'); }
+        head.appendChild(up);
+      } else {
+        const back = textButton('‹ 목록', 'btn btn--quiet btn--small task-pane__back');
+        back.addEventListener('click', () => close({ push: true }));
+        head.appendChild(back);
+      }
       if (canEdit) {
         const done = page.status === 'done';
         const doneBtn = textButton(done ? '완료 취소' : '완료 표시', 'btn btn--quiet btn--small', 'check');
@@ -801,11 +836,13 @@ export function createWork(deps) {
       tools.appendChild(copy);
       // U3 A — 넓게 보기(≥1200 에서만 보인다 — CSS). 켜면 화면 폭 70%, 끄면 앞 폭
       if (sizer) { tools.appendChild(sizer.wideButton()); }
-      const full = el('a', 'btn btn--icon btn--plain');
-      full.href = pageUrl(id);
-      full.setAttribute('aria-label', '전체 화면으로 열기');
-      full.appendChild(icon('files'));
-      tools.appendChild(full);
+      if (!full) {
+        const fullLink = el('a', 'btn btn--icon btn--plain');
+        fullLink.href = pageUrl(id);
+        fullLink.setAttribute('aria-label', '전체 화면으로 열기');
+        fullLink.appendChild(icon('files'));
+        tools.appendChild(fullLink);
+      }
       // 더보기(2.15) — 본문 고치기 · 하위 작업 더하기(고칠 수 있을 때) · 지우기(관리 — 맨 아래 빨강). 모두 숨으면 메뉴째 숨는다(CSS)
       const more = el('details', 'menu');
       const sum = el('summary', 'btn btn--icon btn--plain');
@@ -826,12 +863,24 @@ export function createWork(deps) {
       const delItem = el('button', 'menu__item menu__item--danger', '지우기');
       delItem.type = 'button';
       delItem.hidden = !canManage;
-      list.append(titleItem, editItem, subItem, sep, delItem);
+      list.append(titleItem, editItem, subItem);
+      // U4-2 — 전체 화면의 「문서로 보기」(프로젝트 메뉴와 같은 방식 — 옛 일반 문서 모양 · 볼 수 있는 사람 누구나)
+      if (full && typeof ctx.onAsDoc === 'function') {
+        const asDocItem = el('button', 'menu__item');
+        asDocItem.type = 'button';
+        asDocItem.setAttribute('data-task-as-doc', '');
+        asDocItem.append(icon('files'), el('span', null, '문서로 보기'));
+        asDocItem.addEventListener('click', () => { more.open = false; ctx.onAsDoc(); });
+        list.appendChild(asDocItem);
+      }
+      list.append(sep, delItem);
       more.appendChild(list);
       tools.appendChild(more);
-      const x = iconButton('x', '닫기');
-      x.addEventListener('click', () => close({ push: true }));
-      tools.appendChild(x);
+      if (!full) {
+        const x = iconButton('x', '닫기');
+        x.addEventListener('click', () => close({ push: true }));
+        tools.appendChild(x);
+      }
       head.appendChild(tools);
       paneEl.appendChild(head);
 
@@ -1144,7 +1193,7 @@ export function createWork(deps) {
           go.setAttribute('aria-label', '하위 작업 열기');
           go.appendChild(icon('chevron'));
           go.addEventListener('click', (e) => {
-            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+            if (full || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
             e.preventDefault();
             open(c.id, { push: true });
           });
@@ -1299,17 +1348,19 @@ export function createWork(deps) {
       pickTab('comments');
       loadComments();
 
-      /* 바닥 — 댓글 칸(@아이디로 부르기 = 지금 멘션) + 「보내기」(테두리 — 칸 안에 검정을 두지 않는다) */
+      /* 바닥 — 댓글 칸(@ 부르기 = 멘션 입력 부품 한 벌 — U4-4 · DESIGN 2.27: 후보 목록 · 확인 색 · 「부를 사람」 줄) + 「보내기」(테두리 — 칸 안에 검정을 두지 않는다) */
       if (canComment) {
         const foot = el('form', 'task-pane__foot');
         const ta = el('textarea');
         ta.rows = 2;
         ta.maxLength = 2000;
-        ta.placeholder = '댓글을 쓰거나 @아이디로 부르세요';
+        ta.placeholder = '댓글을 쓰거나 @ 로 사람을 부르세요';
         ta.setAttribute('aria-label', '댓글');
         const send = el('button', 'btn btn--quiet', '보내기');
         send.type = 'submit';
         foot.append(ta, send);
+        const mention = createMentionInput(ta, { pageId: id, api: api, personLabel: personLabel });
+        foot.insertBefore(mention.notice, send);
         foot.addEventListener('submit', (e) => {
           e.preventDefault();
           const text = ta.value.trim();
@@ -1319,6 +1370,7 @@ export function createWork(deps) {
             send.disabled = false;
             if (r.status !== 201 && r.status !== 200) { say(msg, failMessage(r)); return; }
             ta.value = '';
+            mention.reset();
             loadComments();
           }).catch(() => { send.disabled = false; say(msg, genericError); });
         });
@@ -1421,7 +1473,7 @@ export function createWork(deps) {
       return box;
     }
 
-    return { open, close, current: () => currentId, host: () => paneEl, fromUrl: taskFromUrl, reload: () => (currentId ? load(currentId, false) : null) };
+    return { open, close, showFull, release, current: () => currentId, host: () => paneEl, fromUrl: taskFromUrl, reload: () => (currentId ? load(currentId, false) : null) };
   }
 
   /* 공간 트리(하위 작업의 상태 · 기한) — 공간마다 한 번. 공간 관문에 막히면(남의 개인 공간의 공유 페이지) 빈 목록 */
@@ -1664,10 +1716,29 @@ export function createWork(deps) {
   let asDoc = false;            // 「문서로 보기」를 골랐나
 
   let headDrawn = false;
+  let taskFull = null;          // U4-2 — 작업 전체 화면 칸(한 번만 만든다)
   function pageLoaded(pageId, data) {
     pageData = data;
     headDrawn = false;
     if (project && body.hasAttribute('data-project-view')) { drawProjectHead(); }
+    // Q:F-12 U4-2(DESIGN 2.25) — 서버가 단 첫 화면 종류가 「작업」이면 오른쪽 칸과 같은 부품 한 벌을 `#task-full` 에 본문 폭으로(같은 draw).
+    // 표식은 서버가 읽기 판정을 지난 사람에게만 단다 — 화면은 그 표식과 창구 답(can_*)만 따른다. 처음 한 번만 그리고, 그 뒤는 칸이 스스로 다시 읽는다
+    const host = $('task-full');
+    if (!taskFull && host && body.getAttribute('data-page-kind') === 'task' && data && data.page) {
+      taskFull = createPane(host, {
+        mode: 'full',
+        onChanged: () => { forgetTree(data.space ? data.space.id : null); },
+        onMarked: () => {},
+        // 「문서로 보기」 — 표식을 떼고 칸을 걷으면 CSS 가 옛 일반 문서 부품을 그대로 보인다(프로젝트 「문서로 보기」와 같은 방식)
+        onAsDoc: () => {
+          body.removeAttribute('data-page-kind');
+          if (taskFull) { taskFull.release(); }
+          const top = $('page-title');
+          if (top) { top.scrollIntoView({ block: 'start' }); }
+        }
+      });
+      taskFull.showFull(pageId, data);
+    }
   }
 
   function enterProject(ctx) {
@@ -1709,7 +1780,11 @@ export function createWork(deps) {
       asProject.dataset.bound = '1';
       asProject.addEventListener('click', () => { asDoc = false; headDrawn = false; show(asProject, false); if (project) { enterProject(project); project.reload(); } });
     }
-    if (isProject) { enterProject(ctx); } else if (project) { project = null; body.removeAttribute('data-project-view'); }
+    if (isProject) { enterProject(ctx); } else {
+      if (project) { project = null; body.removeAttribute('data-project-view'); }
+      // U4-1 — 첫 화면 종류가 「프로젝트」였는데 창구 답의 쓰임이 아니면(그사이 「표로 쓰기」) 표식을 떼고 일반 화면으로
+      if (body.getAttribute('data-page-kind') === 'project') { body.removeAttribute('data-page-kind'); }
+    }
   }
 
   function useAs(dbId, to) {
@@ -1744,6 +1819,7 @@ export function createWork(deps) {
       asDocBtn.addEventListener('click', () => {
         asDoc = true;
         body.removeAttribute('data-project-view');
+        body.removeAttribute('data-page-kind');   // U4-1 — 서버가 단 첫 화면 종류도 뗀다(옛 모양)
         show($('project-head'), false);
         if (projectPane && projectPane.current()) { projectPane.close({ push: true }); }
         show($('page-as-project'), true);

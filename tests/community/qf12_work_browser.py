@@ -1794,7 +1794,11 @@ try:
                 t = Tab(ctx)
                 p = t.page
                 # 전체 편집기 — 도구줄 · 블록 넣기 목록(기준)
+                # Q:F-12 U4-2 — 작업(프로젝트 행)의 전체 화면은 칸 부품(#task-full)이다 — 옛 문서 모양(전체 편집기)은 더보기 「문서로 보기」로
                 t.go('/community/p/' + ud['id'])
+                p.wait_for_selector('#task-full summary[aria-label="더보기"]', timeout=15000)
+                p.locator('#task-full summary[aria-label="더보기"]').click()
+                p.locator('#task-full [data-task-as-doc]').click()
                 p.wait_for_selector('#page-edit:not([hidden])', timeout=15000)
                 p.locator('#page-edit').click()
                 p.wait_for_selector('#inline-toolbar:not([hidden]) .editor-toolbar__row', timeout=8000)
@@ -1947,8 +1951,11 @@ try:
                 badges = p.evaluate("() => [...document.querySelectorAll('#task-pane li[data-attachment]')].map(li => [li.firstChild.textContent, (li.querySelector('.badge') || {}).textContent || null, !!li.querySelector('a')])")
                 check(badges == [['올리기.png', None, True], ['검사대기.png', '검사 중', False]], 'U3 C 「파일 첨부」 목록: pending 은 이름 + 「검사 중」 배지(받기 링크 0) ' + json.dumps(badges, ensure_ascii=False))
                 check(t.clean('u3-editor'), 'U3 B/C editor · upload console 0 · page errors 0 · 5xx 0')
-                # 전체 편집기에서도 붙여넣기(입구 셋은 두 편집기 모두)
+                # 전체 편집기에서도 붙여넣기(입구 셋은 두 편집기 모두) — U4-2: 작업 전체 화면에서 「문서로 보기」 뒤 전체 편집기
                 t.go('/community/p/' + ud['id'])
+                p.wait_for_selector('#task-full summary[aria-label="더보기"]', timeout=15000)
+                p.locator('#task-full summary[aria-label="더보기"]').click()
+                p.locator('#task-full [data-task-as-doc]').click()
                 p.wait_for_selector('#page-edit:not([hidden])', timeout=15000)
                 p.locator('#page-edit').click()
                 p.wait_for_selector('#page-editor .ProseMirror', timeout=8000)

@@ -149,7 +149,8 @@
         "wide",
         "normal",
         "small"
-      ]
+      ],
+      "width_pct": "pct5?"
     },
     "file": {
       "file_ref": "tbox-ref|att-ref",

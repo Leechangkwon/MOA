@@ -751,10 +751,14 @@ function community_page_row_sql(bool $withDoc): string
                -- 6-A: 이 페이지가 **DB 페이지**면 그 DB(dbself_*), **행**이면 속한 DB(p.database_id + 스키마)
                dbself.public_id AS dbself_public_id,
                dbself.schema    AS dbself_schema,
+               -- Q:F-12 U4-1: 쓰임(`project` · `my_tasks` · NULL) 두 칸 — 자기 DB(이 페이지가 프로젝트인가) · 속한 DB(이 페이지가 작업인가).
+               -- 읽기 열만이다(판정 재료 아님). 첫 화면 종류(`page_view.php` 의 `data-page-kind`)가 읽기 판정을 지난 뒤에만 쓴다.
+               dbself.purpose   AS dbself_purpose,
                p.database_id, p.properties,
                p.purged_at,
                dbrow.public_id  AS db_public_id,
-               dbrow.schema     AS db_schema
+               dbrow.schema     AS db_schema,
+               dbrow.purpose    AS db_purpose
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner    ON owner.id    = s.owner_user_id

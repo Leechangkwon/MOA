@@ -277,8 +277,7 @@ function renderAttachmentBlock(block, id, ctx) {
   }
   if (block.type === 'image' && entry.image === true && entry.scan_status === 'clean') {
     const fig = document.createElement('figure');
-    const width = ['full', 'wide', 'normal', 'small'].indexOf(block.width) !== -1 ? block.width : 'normal';
-    fig.className = 'doc-image doc-image--' + width;
+    fig.className = 'doc-image ' + imageWidthClass(block);
     if (id) { fig.id = 'block-' + id; }
     const img = document.createElement('img');
     img.className = 'doc-image__img';
@@ -305,8 +304,25 @@ function renderAttachmentBlock(block, id, ctx) {
   return wrap;
 }
 
-/** 5-E 그림·파일 — 지도(`ctx.file_titles`, 보는 사람이 t-box 에서 볼 수 있는 것만)에 있을 때만. 주소는 t-box 창구(`ctx.tbox_base`) */
-function renderFileBlock(block, id, ctx) {
+/**
+ * Q:F-12 U4-3(WK-28 · DESIGN 2.26 「폭 클래스」) — 그림 폭 클래스 하나. 서버 렌더러 `DocRender::imageWidthClass` 와 같은 규칙:
+ * `width_pct` 가 정수 10~100 · 5의 배수면 `doc-image--p{N}`(19값 — 검증기 `pct5` 와 같은 조건), 아니면 옛 `width` 넷(기본 normal).
+ * 값을 그대로 클래스에 붙이지 않는다 — 돌려주는 글자는 이 고정 규칙에서만 나온다(인라인 style 0).
+ */
+export function imageWidthPct(value) {
+  return Number.isInteger(value) && value >= 10 && value <= 100 && value % 5 === 0 ? value : null;
+}
+export function imageWidthClass(block) {
+  const pct = imageWidthPct(block ? block.width_pct : null);
+  if (pct !== null) { return 'doc-image--p' + String(pct); }
+  return 'doc-image--' + (block && ['full', 'wide', 'normal', 'small'].indexOf(block.width) !== -1 ? block.width : 'normal');
+}
+
+/**
+ * 5-E 그림·파일 — 지도(`ctx.file_titles`, 보는 사람이 t-box 에서 볼 수 있는 것만)에 있을 때만. 주소는 t-box 창구(`ctx.tbox_base`).
+ * Q:F-12 U4-3 — 편집기의 그림 표시 부품(editor.js `imageViews`)도 **이 함수 한 벌**로 그린다(읽기 화면과 같은 figure · 같은 주소 · 같은 검사 중 상자).
+ */
+export function renderFileBlock(block, id, ctx) {
   if (typeof block.file_ref === 'string' && block.file_ref.slice(0, 4) === 'att:') { return renderAttachmentBlock(block, id, ctx); }
   const map = ctx && ctx.file_titles && typeof ctx.file_titles === 'object' ? ctx.file_titles : {};
   const tbox = ctx && typeof ctx.tbox_base === 'string' ? ctx.tbox_base : '';
@@ -330,8 +346,7 @@ function renderFileBlock(block, id, ctx) {
   const name = typeof entry.name === 'string' ? entry.name : '';
   if (block.type === 'image' && entry.image === true) {
     const fig = document.createElement('figure');
-    const width = ['full', 'wide', 'normal', 'small'].indexOf(block.width) !== -1 ? block.width : 'normal';
-    fig.className = 'doc-image doc-image--' + width;
+    fig.className = 'doc-image ' + imageWidthClass(block);
     if (id) { fig.id = 'block-' + id; }
     const img = document.createElement('img');
     img.className = 'doc-image__img';

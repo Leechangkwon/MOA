@@ -334,9 +334,7 @@ final class DocRender
                     $abase = '/api/pages/' . $apage . '/attachments/' . $aref;
                     $aname = (string) ($aent['name'] ?? '');
                     if ($type === 'image' && ($aent['image'] ?? false) === true && ($aent['scan_status'] ?? '') === 'clean') {
-                        $width = isset($block['width']) && in_array($block['width'], ['full', 'wide', 'normal', 'small'], true)
-                            ? $block['width'] : 'normal';
-                        return '<figure class="doc-image doc-image--' . $width . '"' . $idAttr . '>'
+                        return '<figure class="doc-image ' . self::imageWidthClass($block) . '"' . $idAttr . '>'
                              . '<img class="doc-image__img" src="' . self::esc(Http::communityUrl($abase . '/raw'))
                              . '" alt="' . self::esc($aname) . '" loading="lazy">'
                              . ($acap === '' ? '' : '<figcaption class="doc-image__caption">' . $acap . '</figcaption>')
@@ -361,9 +359,7 @@ final class DocRender
                 }
                 $fname = (string) ($fent['name'] ?? '');
                 if ($type === 'image' && ($fent['image'] ?? false) === true) {
-                    $width = isset($block['width']) && in_array($block['width'], ['full', 'wide', 'normal', 'small'], true)
-                        ? $block['width'] : 'normal';
-                    return '<figure class="doc-image doc-image--' . $width . '"' . $idAttr . '>'
+                    return '<figure class="doc-image ' . self::imageWidthClass($block) . '"' . $idAttr . '>'
                          . '<img class="doc-image__img" src="' . self::esc(Http::url('/api/files/' . $ref . '/preview/raw'))
                          . '" alt="' . self::esc($fname) . '" loading="lazy">'
                          . ($cap === '' ? '' : '<figcaption class="doc-image__caption">' . $cap . '</figcaption>')
@@ -464,6 +460,23 @@ final class DocRender
      *
      * @param array<string,mixed> $block
      */
+    /**
+     * 그림 폭 클래스 하나 (Q:F-12 U4-3 · WK-28 — doc-render.js `imageWidthClass` 와 같은 규칙).
+     * `width_pct` 가 정수 10~100 · 5의 배수면 `doc-image--p{N}`(19값 — 검증기 `pct5` 와 같은 조건), 아니면 옛 `width` 넷(`doc-image--normal` 기본).
+     * 돌려주는 글자는 위 고정 목록에서만 나온다 — 값을 그대로 클래스에 붙이지 않는다(인라인 style 0).
+     *
+     * @param array<string,mixed> $block
+     */
+    public static function imageWidthClass(array $block): string
+    {
+        $pct = $block['width_pct'] ?? null;
+        if (is_int($pct) && $pct >= 10 && $pct <= 100 && $pct % 5 === 0) {
+            return 'doc-image--p' . (string) $pct;
+        }
+        $width = isset($block['width']) && in_array($block['width'], ['full', 'wide', 'normal', 'small'], true) ? $block['width'] : 'normal';
+        return 'doc-image--' . $width;
+    }
+
     /**
      * 파일 크기 글자 — 「1.8 MB」 (DESIGN 5장 — 단위 앞 한 칸). **정수 계산만** 써서 클라이언트 렌더러와 같은 값을 낸다(C:T-19).
      */

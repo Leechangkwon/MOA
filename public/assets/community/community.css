@@ -890,6 +890,40 @@ th.doc-table__cell { font-weight: 600; }
 .doc-image--wide { width: 720px; }
 .doc-image--full { width: 100%; }
 .doc-image__img { display: block; width: 100%; height: auto; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface-2); }
+/* Q:F-12 U4-3(WK-28 자유 크기 · DESIGN 2.26 「폭 클래스」) — 본문 폭의 10~100%, 5 간격 19개(`width_pct` → `doc-image--p{N}` — 인라인 style 0).
+   그림 칸은 블록이라 폭이 본문 전체이고, 이 클래스가 그 N% 로 묶는다. 옛 넷(--small/normal/wide/full)은 위 그대로 */
+.doc-image--p10 { max-width: 10%; }
+.doc-image--p15 { max-width: 15%; }
+.doc-image--p20 { max-width: 20%; }
+.doc-image--p25 { max-width: 25%; }
+.doc-image--p30 { max-width: 30%; }
+.doc-image--p35 { max-width: 35%; }
+.doc-image--p40 { max-width: 40%; }
+.doc-image--p45 { max-width: 45%; }
+.doc-image--p50 { max-width: 50%; }
+.doc-image--p55 { max-width: 55%; }
+.doc-image--p60 { max-width: 60%; }
+.doc-image--p65 { max-width: 65%; }
+.doc-image--p70 { max-width: 70%; }
+.doc-image--p75 { max-width: 75%; }
+.doc-image--p80 { max-width: 80%; }
+.doc-image--p85 { max-width: 85%; }
+.doc-image--p90 { max-width: 90%; }
+.doc-image--p95 { max-width: 95%; }
+.doc-image--p100 { max-width: 100%; }
+/* 편집 중 그림(DESIGN 2.26 「그림 블록(편집 중)」 · 「크기 손잡이」) — 카드가 아니라 읽기 화면과 같은 `figure.doc-image`(editor.js 그림 표시 부품).
+   덩어리 틀(`.doc-atom[data-atom=image]`)은 여백 · 카드 모양을 걷고 고른 표시(고리)는 그림 둘레에. 손잡이 `.doc-image__resize` = 그림 오른쪽 가장자리 가운데
+   보이는 8×32(--primary · 커서 ew-resize) · 누름 자리 44×44(::before 가 안쪽으로 — 칸 밖으로 넘치지 않게) · 고른 때만. 「60%」 글자 `.doc-image__size` 12px --muted */
+.ProseMirror .doc-atom[data-atom="image"] { display: block; padding: 0; cursor: default; }
+.ProseMirror-selectednode.doc-atom[data-atom="image"] { outline: none; }
+.ProseMirror-selectednode.doc-atom[data-atom="image"] :is(.doc-image, .doc-file) { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--r-ctl); }
+.doc-atom[data-atom="image"] .doc-image { position: relative; }
+.doc-atom[data-atom="image"] .doc-image__caption.muted { color: var(--muted); }
+.doc-image__resize { display: none; position: absolute; top: 50%; right: 0; width: 8px; height: 32px; margin-top: -16px; border-radius: 4px; background: var(--primary); cursor: ew-resize; touch-action: none; }
+.doc-image__resize::before { content: ""; position: absolute; top: -6px; bottom: -6px; left: -36px; right: 0; }
+.doc-image__size { display: none; position: absolute; top: 8px; right: 16px; padding: 0 6px; border-radius: var(--r-sm); background: var(--surface); color: var(--muted); font-size: 12px; line-height: 20px; }
+.ProseMirror-selectednode .doc-image__resize, .ProseMirror-selectednode .doc-image__size { display: block; }
+body[data-image-resizing] { cursor: ew-resize; user-select: none; }
 .doc-image__caption,
 .doc-file__caption,
 .doc-embed__caption { margin: 6px 0 0; color: var(--muted); font-size: 13px; }
@@ -1148,4 +1182,39 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 /* 게시판 바닥의 이전/다음이 고정 사용 안내 단추 아래에 놓이지 않도록 스크롤 여유를 둔다. */
 body[data-page="community-board"] .table-foot {
   margin-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+}
+
+/* ─── 멘션 입력 — 댓글 (Q:F-12 U4-4 · DESIGN 2.27) ─────────────────────────────────────────────
+   `community/mention-input.js` createMentionInput 한 벌(전체 화면 댓글 · 작업 칸 댓글). `.mention-field` = 입력 칸과 그림자 층을 겹치는 틀:
+   그림자 층 `.mention-backdrop` 은 입력 칸과 **같은 글꼴 · 여백 · 테두리 폭 · 줄바꿈**(글자는 투명 · 바탕만)이라 `@아이디` 자리에 바탕색이 놓인다 —
+   확인됨 `.mention-mark--ok` = --accent-soft · 못 찾음 `.mention-mark--miss` = --danger-soft(색만으로 가르지 않는다 — 칸 아래 `.help` 줄이 글자로도 말한다).
+   입력 칸은 바탕을 비우고(틀이 바탕) 스크롤 막대를 숨겨 두 층의 줄 폭을 같게 둔다. 후보 목록은 2.15 `.menu__list`(떠 있는 판)를 입력 칸 바로 아래에
+   (앵커를 아는 브라우저는 화면 기준으로 띄워 칸 · 화면을 밀지 않는다 — 2.8 ★ · 아래가 모자라면 위로). 새 색값 0 */
+.mention-field { position: relative; display: block; min-width: 0; border-radius: var(--r-ctl); background: var(--surface); }
+.mention-field > textarea, .mention-field > .mention-backdrop {
+  display: block; width: 100%; margin: 0; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl);
+  font: inherit; font-size: 14px; line-height: 1.5; letter-spacing: normal; text-align: left;
+  white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; tab-size: 4; scrollbar-width: none;
+}
+.mention-field > textarea { position: relative; z-index: 1; min-height: 64px; background: transparent; color: var(--fg); resize: vertical; }
+.mention-field > textarea::-webkit-scrollbar { display: none; }
+.mention-field > textarea:focus-visible { border-color: var(--ring); }
+.mention-field > .mention-backdrop { position: absolute; inset: 0; z-index: 0; height: auto; overflow: hidden; border-color: transparent; color: transparent; pointer-events: none; user-select: none; }
+.mention-mark--ok, .mention-mark--miss { border-radius: 3px; color: transparent; }
+/* 바탕(옅은 색)만으로는 밝은 테마에서 잘 안 보여 같은 층에 2px 밑줄(같은 뜻의 진한 색)을 더한다 — box-shadow 라 글자 자리 · 줄 높이는 그대로 */
+.mention-mark--ok { background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
+.mention-mark--miss { background: var(--danger-soft); box-shadow: inset 0 -2px 0 var(--danger); }
+.mention-field > .menu__list { position: absolute; top: calc(100% + 4px); left: 0; right: auto; width: min(22rem, 100%); max-height: 20rem; overflow-y: auto; }
+.mention-field > .menu__list > .help { padding: 6px 10px; white-space: normal; }
+.mention-field > .menu__list .menu__item { height: auto; min-height: 32px; white-space: normal; }
+.mention-field > .menu__list .menu__item[aria-selected="true"] { background: var(--muted-bg); }
+.mention-field > .menu__list .menu__item .muted { font-size: 12px; }
+@supports (anchor-name: --mention) and (anchor-scope: --mention) {
+  .mention-field { anchor-scope: --mention; }
+  .mention-field > textarea { anchor-name: --mention; }
+  .mention-field > .menu__list { position: fixed; position-anchor: --mention; inset: auto; margin: 4px 0; width: min(22rem, calc(100vw - 32px)); position-area: bottom span-right; position-try-fallbacks: top span-right, bottom span-left, top span-left; }
+}
+@media (max-width: 719.98px), (pointer: coarse) {
+  .mention-field > textarea, .mention-field > .mention-backdrop { font-size: 16px; }
+  .mention-field > .menu__list .menu__item { min-height: 44px; }
 }

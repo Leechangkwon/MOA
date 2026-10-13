@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=ddfabe5d21e6';
-import { hydrateDashboard } from './dashboard.js?v=ddfabe5d21e6';
+import { createTableEditor } from './table-editor.js?v=a58804fa4b68';
+import { hydrateDashboard } from './dashboard.js?v=a58804fa4b68';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,22 +42,23 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=ddfabe5d21e6';
-import { renderDoc, embedHost } from './doc-render.js?v=ddfabe5d21e6';
-import { createDatabaseView } from './database.js?v=ddfabe5d21e6';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=ddfabe5d21e6';
-import { bindEmbedAdmin } from './embeds.js?v=ddfabe5d21e6';
-import { bindPopular } from './popular.js?v=ddfabe5d21e6';
-import { bindPalettes } from './palettes.js?v=ddfabe5d21e6';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=ddfabe5d21e6';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=ddfabe5d21e6';
-import { drawTrust, bindProcedures } from './procedures.js?v=ddfabe5d21e6';
-import { createPageExport } from './export.js?v=ddfabe5d21e6';
-import { createDrafts } from './drafts.js?v=ddfabe5d21e6';
-import { drawPageAi, bindAiCenter } from './ai.js?v=ddfabe5d21e6';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=ddfabe5d21e6';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=a58804fa4b68';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=a58804fa4b68';
+import { createMentionInput } from './mention-input.js?v=a58804fa4b68';
+import { createDatabaseView } from './database.js?v=a58804fa4b68';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=a58804fa4b68';
+import { bindEmbedAdmin } from './embeds.js?v=a58804fa4b68';
+import { bindPopular } from './popular.js?v=a58804fa4b68';
+import { bindPalettes } from './palettes.js?v=a58804fa4b68';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=a58804fa4b68';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=a58804fa4b68';
+import { drawTrust, bindProcedures } from './procedures.js?v=a58804fa4b68';
+import { createPageExport } from './export.js?v=a58804fa4b68';
+import { createDrafts } from './drafts.js?v=a58804fa4b68';
+import { drawPageAi, bindAiCenter } from './ai.js?v=a58804fa4b68';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=a58804fa4b68';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=ddfabe5d21e6';
+import { createWork } from './work.js?v=a58804fa4b68';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -3728,6 +3729,165 @@ const liveToc = new Plugin({
   }
 });
 
+/* ─── 편집 중 그림 · 크기 끌기 (Q:F-12 U4-3 · WK-28 · DESIGN 2.26) ─────────────────────────────
+ *
+ * 편집기 안 그림 블록을 요약 카드가 아니라 **그림 자체**로 그린다 — 읽기 렌더러의 `renderFileBlock` 한 벌(같은 figure · 같은 주소 ·
+ * 검사 중이면 「검사 중이에요」 상자 · 받을 수 없으면 카드)을 빌린다(렌더러 두 벌 0). 아래 설명 한 줄(없으면 `.muted` 「설명을 더하려면 두 번 누르세요」).
+ * 두 번 누르기 = 지금 「블록 고치기」 창(설명 · 폭). 페이지 편집기와 작업 칸 편집기(mountPaneEditor)가 **같은 함수**를 쓴다.
+ *
+ * 크기 — 그림을 고르면(ProseMirror 노드 선택) 오른쪽 가장자리 가운데 손잡이 `.doc-image__resize`(role=slider) · 끌면 본문 폭의 10~100%, 5% 간격으로
+ * 맞춰지고(클래스 `doc-image--p{N}` 만 바꾼다 — 인라인 style 0) 놓으면 `width_pct` 를 노드 값으로 넣는다 → 편집기의 보통 저장 창구가 저장한다.
+ * 키보드: 그림을 고른 채 `Alt+←/→` 5%(`imageWidthStep`). 쓸 수 없는 사람에게는 편집기 자체가 없다(손잡이 0) · 제안 중에는 손잡이 · 단축키 0.
+ */
+const IMAGE_PCT_MIN = 10;
+const IMAGE_PCT_MAX = 100;
+const IMAGE_HINT = '설명을 더하려면 두 번 누르세요';
+
+function snapImagePct(v) {
+  const n = Math.round(Number(v) / 5) * 5;
+  return Math.min(IMAGE_PCT_MAX, Math.max(IMAGE_PCT_MIN, Number.isFinite(n) ? n : 60));
+}
+
+/** 지금 그려진 그림 폭(본문 폭 대비 %, 5 단위) — 옛 넷(small · normal · wide · full)에서 시작할 때 */
+function measuredImagePct(dom) {
+  const fig = dom ? dom.querySelector('.doc-image') : null;
+  const host = dom ? dom.clientWidth : 0;
+  if (!fig || host <= 0) { return 60; }
+  return snapImagePct(fig.getBoundingClientRect().width / host * 100);
+}
+
+function setImageWidthClass(fig, pct) {
+  for (const c of Array.from(fig.classList)) { if (c.indexOf('doc-image--') === 0) { fig.classList.remove(c); } }
+  fig.classList.add('doc-image--p' + String(pct));
+}
+
+/** Alt+←/→ — 고른 그림의 폭을 5% 바꾼다(고른 것이 그림이 아니면 다른 키 동작에 넘긴다) */
+function imageWidthStep(delta) {
+  return (state, dispatch, view) => {
+    const sel = state.selection;
+    if (!(sel instanceof NodeSelection) || sel.node.type !== schema.nodes.image) { return false; }
+    if (!dispatch) { return true; }
+    let cur = imageWidthPct(sel.node.attrs.width_pct);
+    if (cur === null) { cur = view ? measuredImagePct(view.nodeDOM(sel.from)) : 60; }
+    const next = snapImagePct(cur + delta);
+    if (next === sel.node.attrs.width_pct) { return true; }
+    const tr = state.tr.setNodeMarkup(sel.from, null, Object.assign({}, sel.node.attrs, { width_pct: next }));
+    tr.setSelection(NodeSelection.create(tr.doc, sel.from));
+    dispatch(tr.scrollIntoView());
+    return true;
+  };
+}
+const imageWidthKeys = () => keymap({ 'Alt-ArrowLeft': imageWidthStep(-5), 'Alt-ArrowRight': imageWidthStep(5) });
+
+/**
+ * @param {{ctx: Function, resizable: Function}} cfg  ctx() = 읽기 지도(file_titles · attachment_titles · attachment_page · base · tbox_base) ·
+ *        resizable() = 손잡이를 둘까(고칠 수 있고 제안 중이 아님)
+ */
+function imageViews(cfg) {
+  return new Plugin({
+    props: {
+      nodeViews: {
+        image(initial, view, getPos) {
+          let node = initial;
+          let fig = null;
+          let handle = null;
+          let sizeEl = null;
+          const dom = document.createElement('div');
+          dom.className = 'doc-atom';
+          dom.setAttribute('data-atom', 'image');
+          dom.setAttribute('contenteditable', 'false');
+          // 받기 카드(검사가 끝나지 않았거나 그림이 아닌 첨부)의 링크는 편집 중에는 따라가지 않는다(고르기 · 두 번 누르기만)
+          dom.addEventListener('click', (e) => { if (e.target instanceof Element && e.target.closest('a')) { e.preventDefault(); } });
+          const pctNow = () => { const v = imageWidthPct(node.attrs.width_pct); return v === null ? measuredImagePct(dom) : v; };
+          const paintSize = (pct) => { if (sizeEl) { sizeEl.textContent = String(pct) + '%'; } if (handle) { handle.setAttribute('aria-valuenow', String(pct)); } };
+          function commit(pct) {
+            const pos = typeof getPos === 'function' ? getPos() : null;
+            if (typeof pos !== 'number' || view.isDestroyed) { return; }
+            if (pct === node.attrs.width_pct) { draw(); return; }
+            const tr = view.state.tr.setNodeMarkup(pos, null, Object.assign({}, node.attrs, { width_pct: pct }));
+            tr.setSelection(NodeSelection.create(tr.doc, pos));
+            view.dispatch(tr);
+          }
+          function startDrag(e) {
+            if (e.button !== 0 || !fig) { return; }
+            e.preventDefault();
+            e.stopPropagation();
+            const host = dom.clientWidth || 1;
+            const left = fig.getBoundingClientRect().left;
+            let pct = pctNow();
+            document.body.setAttribute('data-image-resizing', '');
+            try { handle.setPointerCapture(e.pointerId); } catch (err) { /* 붙잡기는 편의 */ }
+            const move = (ev) => {
+              pct = snapImagePct((ev.clientX - left) / host * 100);
+              setImageWidthClass(fig, pct);
+              paintSize(pct);
+            };
+            const up = () => {
+              handle.removeEventListener('pointermove', move);
+              handle.removeEventListener('pointerup', up);
+              handle.removeEventListener('pointercancel', up);
+              document.body.removeAttribute('data-image-resizing');
+              commit(pct);
+            };
+            handle.addEventListener('pointermove', move);
+            handle.addEventListener('pointerup', up);
+            handle.addEventListener('pointercancel', up);
+          }
+          function draw() {
+            while (dom.firstChild) { dom.removeChild(dom.firstChild); }
+            const cap = typeof node.attrs.caption === 'string' ? node.attrs.caption : '';
+            const block = { type: 'image', file_ref: node.attrs.file_ref, caption: cap === '' ? [] : [{ t: cap, m: {} }], width: node.attrs.width };
+            if (imageWidthPct(node.attrs.width_pct) !== null) { block.width_pct = node.attrs.width_pct; }
+            let shown;
+            try { shown = renderFileBlock(block, null, cfg.ctx() || {}); } catch (err) { shown = document.createElement('div'); shown.className = 'doc-file'; }
+            dom.appendChild(shown);
+            fig = shown.matches('figure.doc-image') ? shown : null;
+            for (const img of shown.querySelectorAll('img')) { img.draggable = false; }
+            if (cap === '') {
+              const hint = document.createElement(fig ? 'figcaption' : 'p');
+              hint.className = (fig ? 'doc-image__caption' : 'doc-file__caption') + ' muted';
+              hint.textContent = IMAGE_HINT;
+              shown.appendChild(hint);
+            }
+            handle = null;
+            sizeEl = null;
+            if (fig && cfg.resizable()) {
+              handle = document.createElement('span');
+              handle.className = 'doc-image__resize';
+              handle.setAttribute('role', 'slider');
+              handle.setAttribute('aria-label', '그림 폭 — 끌거나 Alt+←/→');
+              handle.setAttribute('aria-valuemin', String(IMAGE_PCT_MIN));
+              handle.setAttribute('aria-valuemax', String(IMAGE_PCT_MAX));
+              handle.addEventListener('pointerdown', startDrag);
+              sizeEl = document.createElement('span');
+              sizeEl.className = 'doc-image__size';
+              sizeEl.setAttribute('aria-hidden', 'true');
+              fig.append(handle, sizeEl);
+              const v = imageWidthPct(node.attrs.width_pct);
+              if (v !== null) { paintSize(v); }
+            }
+          }
+          draw();
+          return {
+            dom: dom,
+            update(next) {
+              if (next.type !== node.type) { return false; }
+              const same = JSON.stringify(next.attrs) === JSON.stringify(node.attrs);
+              node = next;
+              if (!same) { draw(); }
+              return true;
+            },
+            selectNode() { dom.classList.add('ProseMirror-selectednode'); if (handle) { paintSize(pctNow()); } },
+            deselectNode() { dom.classList.remove('ProseMirror-selectednode'); },
+            stopEvent(e) { return !!(handle && e.target instanceof Node && handle.contains(e.target)); },
+            ignoreMutation: () => true
+          };
+        }
+      }
+    }
+  });
+}
+
 function buildInputRules() {
   const rules = [];
 
@@ -4326,7 +4486,11 @@ function createAtomDialog(getView, hooks) {
       fileQ.value = '';
       fileCaption.value = cur.caption || '';
       show(widthField, type === 'image');
-      widthSelect.value = cur.width || 'normal';
+      // U4-3 — 끌어서 맞춘 폭(`width_pct`)이 있으면 그 값을 첫 고르개 항목으로(그대로 두면 그 폭 · 넷 중 하나를 고르면 끌어 맞춘 폭을 지운다)
+      for (const o of Array.from(widthSelect.querySelectorAll('option[value="pct"]'))) { o.remove(); }
+      const dragged = type === 'image' ? imageWidthPct(cur.width_pct) : null;
+      if (dragged !== null) { widthSelect.insertBefore(new Option('끌어서 맞춘 폭 ' + String(dragged) + '%', 'pct'), widthSelect.firstChild); }
+      widthSelect.value = dragged !== null ? 'pct' : (cur.width || 'normal');
       // U3 C — 올리기 탭(올릴 수 있는 편집기일 때만 · 첫 탭 · 기본). 자료실 파일(tbox:)을 고치는 중이면 자료실 탭부터
       const canUpload = !!(hooks.upload && hooks.upload());
       show(tabBar, canUpload);
@@ -4389,7 +4553,11 @@ function createAtomDialog(getView, hooks) {
     }
     if (!cur.file_ref) { setText(msgEl, (type === 'image' ? '그림' : '파일') + '을 먼저 고르세요.'); return null; }
     const out = { id: id, file_ref: cur.file_ref, caption: fileCaption.value, name: cur.name || '' };
-    if (type === 'image') { out.width = widthSelect.value; }
+    if (type === 'image') {
+      const keep = widthSelect.value === 'pct' && imageWidthPct(cur.width_pct) !== null;
+      out.width = keep ? (['full', 'wide', 'normal', 'small'].indexOf(cur.width) !== -1 ? cur.width : 'normal') : widthSelect.value;
+      out.width_pct = keep ? cur.width_pct : null;
+    }
     return out;
   }
 
@@ -6231,11 +6399,15 @@ function initPage() {
   const commentQuotePick = document.getElementById('comment-quote-pick');
   const commentCancel = document.getElementById('comment-cancel');
   const commentSubmit = document.getElementById('comment-submit');
-  const mentionList = document.getElementById('comment-mentions');
   const readsEl = document.getElementById('page-reads');
   let replyTo = null;      // {id, who}
   let anchor = null;       // {block_id, quote}
-  let mentionTimer = null;
+  /* Q:F-12 U4-4(DESIGN 2.27) — `@` 후보 목록 · 확인 색 · 「부를 사람」 줄은 멘션 입력 부품 한 벌(작업 칸 댓글과 같은 함수).
+     떠 있는 목록 id 는 옛 칸 안 목록의 id(`comment-mentions`)를 잇는다 · 「찾을 수 없는 사람」 안내는 보내기 줄 앞 */
+  const commentMention = commentInput
+    ? createMentionInput(commentInput, { pageId: pageId, api: api, personLabel: personLabel, listId: 'comment-mentions' })
+    : null;
+  if (commentMention && commentSubmit && commentSubmit.parentNode) { commentSubmit.parentNode.insertBefore(commentMention.notice, commentSubmit.parentNode.firstChild); }
 
   /* B1-2 — 댓글·답글 쓰기 칸의 임시저장(W-4). 쓰기 칸에는 자동 저장이 없어, 로그인이 끊긴 채 「댓글 달기」를 누르면
      쓴 글 전체가 사라지던 자리다. 열쇠는 `…:comment:<페이지>:<답글 대상 uuid 또는 new>` — 지금 쓰기 칸의 대상이 곧 열쇠이고,
@@ -6506,44 +6678,8 @@ function initPage() {
     commentCancel.addEventListener('click', () => { replyTo = null; anchor = null; drawComposer(); });
   }
 
-  /* `@` 멘션 후보 — 입력 칸 **아래 칸 안에서** 펼친다(떠 있는 목록이 아니다). 후보는 창구가
-     「그 페이지를 볼 수 있는 사람」만 준다(11-1 ⑥). 눌러서 넣는다. */
-  function mentionQuery() {
-    if (!commentInput) { return ''; }
-    const before = commentInput.value.slice(0, commentInput.selectionStart || 0);
-    const m = before.match(/(^|[^a-z0-9_.@-])@([a-z0-9_.-]{1,64})$/);
-    return m ? m[2] : '';
-  }
-  function drawMentions() {
-    const q = mentionQuery();
-    if (q === '') { clear(mentionList); show(mentionList, false); return; }
-    api('GET', '/api/mention-candidates?page=' + encodeURIComponent(pageId) + '&q=' + encodeURIComponent(q))
-      .then((result) => {
-        clear(mentionList);
-        const people = result.status === 200 && Array.isArray(result.data.candidates) ? result.data.candidates : [];
-        for (const p of people) {
-          const li = document.createElement('li');
-          li.className = 'list__item';
-          const b = commentButton(personLabel(p.display_name, p.username), () => {
-            const pos = commentInput.selectionStart || 0;
-            const before = commentInput.value.slice(0, pos).replace(/@[a-z0-9_.-]{1,64}$/, '@' + p.username + ' ');
-            commentInput.value = before + commentInput.value.slice(pos);
-            commentInput.focus();
-            commentInput.setSelectionRange(before.length, before.length);
-            clear(mentionList);
-            show(mentionList, false);
-          });
-          b.setAttribute('data-mention', p.username);
-          li.appendChild(b);
-          mentionList.appendChild(li);
-        }
-        show(mentionList, people.length > 0);
-      }).catch(() => {});
-  }
   if (commentInput) {
     commentInput.addEventListener('input', () => {
-      if (mentionTimer !== null) { clearTimeout(mentionTimer); }
-      mentionTimer = setTimeout(drawMentions, 200);
       // B1-2 — 처음 입력할 때 열쇠를 받고(한 번), 그 뒤 1초 묶음으로 사본을 쓴다. 못 받으면 쓰지 않는다(평문 대체 0).
       if (drafts) {
         if (!drafts.available()) { draftOff(true); return; }
@@ -6570,7 +6706,7 @@ function initPage() {
           replyTo = null;
           anchor = null;
           drawComposer();
-          show(mentionList, false);
+          if (commentMention) { commentMention.reset(); }
         }
       });
     });
@@ -7491,6 +7627,9 @@ function initPage() {
         blockHandles,
         ...(proposal ? [proposalPlugin()] : [todoToggle]),
         liveToc,
+        // U4-3 — 편집 중에도 그림 자체 · 크기 손잡이 · Alt+←/→(제안 중에는 손잡이 · 단축키 0)
+        imageViews({ ctx: readCtx, resizable: () => state.canEdit && !proposal }),
+        ...(proposal ? [] : [imageWidthKeys()]),
         // U3 C — 붙여넣기 · 끌어놓기로 이 문서에 바로 올리기(고칠 수 있고 제안 중이 아닐 때만 — 막는 것은 서버)
         ...(state.canEdit && !proposal ? [pageUploads.plugin()] : [])
       ]
@@ -7593,6 +7732,7 @@ function initPage() {
         if (li && !li.classList.contains('is-reply')) { replyTo = { id: c.target, who: who ? who.textContent : '' }; }
       }
       commentInput.value = c.body;
+      if (commentMention) { commentMention.refresh(); }
       commentKeyNow = c.key;
       drawComposer();   // 대상 댓글이 사라졌으면 새 댓글 열쇠로 옮겨 쓴다(drawComposer 안)
     });
@@ -8126,6 +8266,8 @@ function initPage() {
     } catch (e) { wantEdit = false; }
     if (!wantEdit) { return; }
     try { window.history.replaceState(null, '', window.location.pathname); } catch (e) { /* 주소 정리는 편의일 뿐 */ }
+    // Q:F-12 U4-2 — 작업 전체 화면(`<body data-page-kind="task">`)에서는 일반 문서 편집기를 열지 않는다(설명은 칸 부품의 그 자리 편집기 — 누르면 편집)
+    if (body.getAttribute('data-page-kind') === 'task') { return; }
     if (state.canEdit && !state.editing) { startEditing(); }
   }).catch(() => { loadRecentNav(); setText(msg, GENERIC_ERROR); });
 }
@@ -8231,6 +8373,9 @@ function mountPaneEditor(mount, opts) {
       keymap({ 'Mod-z': undo, 'Mod-y': redo, 'Shift-Mod-z': redo, Enter: chainCommands(atomEditCommand(editAtom), commandCodeEnter, commandEnter),
         'Shift-Enter': commandShiftEnter, Backspace: commandBackspace, Tab: () => true, 'Shift-Tab': () => true }),
       keymap(baseKeymap), history(), dropCursor(), gapCursor(), uniqueBlockIds, todoToggle, liveToc,
+      // U4-3 — 전체 편집기와 같은 그림 표시 부품 · 손잡이 · Alt+←/→(같은 함수)
+      imageViews({ ctx: () => ({ file_titles: titles.file_titles, attachment_titles: titles.attachment_titles, attachment_page: opts.pageId, base: COMMUNITY_BASE, tbox_base: APP_BASE }), resizable: () => !stopped }),
+      imageWidthKeys(),
       uploads.plugin()
     ]
   });

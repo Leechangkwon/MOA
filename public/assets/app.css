@@ -2591,12 +2591,21 @@ button.task-inbox__star:hover { background: var(--muted-bg); color: var(--fg); }
 
 /* 프로젝트 화면 — `<body data-project-view>`(work.js 가 행 목록 창구의 `database.purpose` 를 보고 단다) 동안 페이지 머리 · 속성 줄 · 문서 본문을 가리고
    프로젝트 머리 · 보기 탭 · 작업 목록만 보인다(「프로젝트 메뉴 › 문서로 보기」가 표식을 뗀다). 자리는 id 규칙이다. */
-body[data-project-view] .main > :not(#project-head):not(#db-wrap):not(#task-pane):not(#msg):not(#page-crumb):not(dialog):not(.act-banner):not(.shell-tools) { display: none !important; }
-body[data-project-view] #db-wrap { border: 0; box-shadow: none; padding: 0; background: transparent; }
-body[data-project-view] :is(#db-title, #db-count, #db-add-prop, #db-view-form, #db-add-row, #db-list, .db-filter, [data-db-type], #db-wrap > .toolbar:first-child, .db-viewbar > .editor-toolbar__sep) { display: none !important; }
-body[data-project-view] #db-wrap { gap: 12px; }
+/* Q:F-12 U4-1(DESIGN 2.25 「첫 화면 종류」) — 서버가 첫 HTML 에 단 `<body data-page-kind="project">`(읽기 판정을 지난 사람에게만 — page_view.php)도
+   같은 숨김을 **처음 그릴 때부터** 건다(스크립트가 data-project-view 를 달기 전 일반 문서 화면이 깜빡이던 것 — 기획 16.1). 「문서로 보기」는 둘 다 뗀다 */
+:is(body[data-project-view], body[data-page-kind="project"]) .main > :not(#project-head):not(#db-wrap):not(#task-pane):not(#msg):not(#page-crumb):not(dialog):not(.act-banner):not(.shell-tools) { display: none !important; }
+:is(body[data-project-view], body[data-page-kind="project"]) #db-wrap { border: 0; box-shadow: none; padding: 0; background: transparent; }
+:is(body[data-project-view], body[data-page-kind="project"]) :is(#db-title, #db-count, #db-add-prop, #db-view-form, #db-add-row, #db-list, .db-filter, [data-db-type], #db-wrap > .toolbar:first-child, .db-viewbar > .editor-toolbar__sep) { display: none !important; }
+:is(body[data-project-view], body[data-page-kind="project"]) #db-wrap { gap: 12px; }
 body[data-project-view] #project-head .toolbar { flex-wrap: nowrap; min-width: 0; }
 body[data-project-view] #project-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Q:F-12 U4-2(DESIGN 2.25 「작업 전체 화면」) — `<body data-page-kind="task">` 이면 일반 문서 부품(머리 · 속성 · 행 속성 · 본문 · 하위 페이지 · 문서 댓글 …)을
+   처음부터 숨기고 `section#task-full.task-pane.task-pane--full` 한 칸만 — 오른쪽 칸(2.21)과 같은 부품 한 벌을 본문 폭(최대 960px · 가운데)으로.
+   칸 고정 자리(≥1200 position:fixed · 폭 변수 · 왼쪽 경계)는 걷는다. 「문서로 보기」가 속성을 떼면 옛 모양 그대로. 새 색값 0 */
+body[data-page-kind="task"] .main > :not(#task-full):not(#msg):not(#page-crumb):not(dialog):not(.act-banner):not(.shell-tools) { display: none !important; }
+/* 폭은 정해진 100%(최대 960) — `margin: auto` 만 두면 본문 칸(flex 세로)에서 안쪽 최소 폭(그림 · 도구줄)만큼 늘어 좁은 폭에서 넘쳤다 */
+.task-pane.task-pane--full { position: static; box-sizing: border-box; width: 100%; max-width: 960px; min-width: 0; margin: 0 auto; padding: 0 0 72px; overflow: visible; border-left: 0; background: transparent; }
 
 /* 포트폴리오 표(2.4 폭 규칙 — 그 표의 thead 순서) · 이름(색 네모) · 상태 · 진행률 · 담당 · 마감 · 최근 상태 글(한 줄 줄임) */
 #portfolio-rows td:nth-child(1) { min-width: 12rem; overflow-wrap: anywhere; }

@@ -15,9 +15,16 @@ declare(strict_types=1);
  *
  * ★ **이 화면은 판단하지 않는다** (PRD S-01). 페이지를 볼 수 있는지·고칠 수 있는지는
  *   창구가 매 요청 `CommunityAuthz` 로 판단하고, 화면은 그 답(403·404·`can_edit`)을 따를 뿐이다.
- *   그래서 여기서 페이지를 읽지도, 권한을 보지도 않는다 — 감사 행이 화면과 창구에서 두 번
- *   남는 일도 없다.
- * ★ HTML 로 나가는 동적 값은 **페이지 id 하나**이고, 그 값은 라우터의 자리표시자 `{id}` 가
+ *   감사 행은 창구에서만 남는다(여기서는 남기지 않는다 — 화면과 창구에서 두 번 남는 일이 없다).
+ * ★ Q:F-12 U4-1 (DESIGN 2.25 「첫 화면 종류」 · 기획 `community/work-ux-plan.md` 16.4 · 16.5) — 단 하나의 예외로 페이지 행을
+ *   **한 번** 읽는다(`community_page_row_nodoc` — 본문 칸 0). 읽기 판정 `CommunityAuthz::decidePageRead` 가 **통과할 때만**
+ *   `<body data-page-kind="project|task|doc">` 를 달고(프로젝트 = 쓰임 있는 데이터베이스 페이지 · 작업 = 그런 데이터베이스의 행),
+ *   작업이면 `main` 안에 빈 칸 `section#task-full.task-pane.task-pane--full` 을 그린다(안쪽은 work.js 가 칸 부품 한 벌로).
+ *   못 보는 사람 · 지운 페이지 · 없는 id 는 지금처럼 속성 0 · 칸 0 — 세 경우의 HTML 이 같은 모양이다(존재 · 종류 노출 0).
+ *   이 값은 **표시**일 뿐 권한이 아니다 — 본문 · 쓰기는 창구가 요청마다 다시 판정한다. 감사 행은 남기지 않는다(목록 조회와 같은 무게 —
+ *   열람의 감사는 곧이어 화면이 부르는 `GET /api/pages/{id}` 가 남긴다). 속성 값은 아래 고정 글자 셋 중 하나뿐이다(요청 값 0).
+ *   셸(`shell_top.php`)은 손대지 않는다 — 셸이 낸 HTML 의 `<body data-service=` 한 곳에 고정 글자 속성을 더한다(출력 버퍼).
+ * ★ HTML 로 나가는 동적 값은 **페이지 id 하나**(+ 위 고정 글자 셋 중 하나)이고, 그 값은 라우터의 자리표시자 `{id}` 가
  *   UUID 36자만 통과시킨 뒤 여기서 다시 `htmlspecialchars` 를 거친다 (PRD S-03).
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
@@ -37,11 +44,39 @@ $pageHelp    = 'community-page';
 $pageCss     = ['community/community.css'];
 $shellModule = 'community';
 $pagePalette = community_palette_version();   // 7-D2 — 셸이 `<link id="palette-css" … ?v=>` 를 그린다(P-6·P-7)
+
+// Q:F-12 U4-1 — 첫 화면 종류(머리글 ★ 참고). 판정을 지난 사람에게만 · 값은 고정 글자 셋
+$viewKind = '';
+$viewKindRow = community_page_row_nodoc($viewPageId, (int) $user['id']);
+if ($viewKindRow !== null && CommunityAuthz::decidePageRead($user, $viewKindRow)[0]) {
+    if (($viewKindRow['dbself_public_id'] ?? null) !== null && ($viewKindRow['dbself_purpose'] ?? null) !== null) {
+        $viewKind = 'project';
+    } elseif (($viewKindRow['database_id'] ?? null) !== null && ($viewKindRow['db_purpose'] ?? null) !== null) {
+        $viewKind = 'task';
+    } else {
+        $viewKind = 'doc';
+    }
+}
+unset($viewKindRow);
+
+ob_start();
 require __DIR__ . '/../../views/shell_top.php';
+$viewShellTop = (string) ob_get_clean();
+if (in_array($viewKind, ['project', 'task', 'doc'], true)) {
+    $viewShellTop = (string) preg_replace('/<body data-service=/', '<body data-page-kind="' . $viewKind . '" data-service=', $viewShellTop, 1);
+}
+echo $viewShellTop;
+unset($viewShellTop);
 ?>
     <!-- 경로(breadcrumb) — 뿌리부터 이 페이지까지 (4-A, DESIGN 2.14 `.crumb`).
          줄의 내용은 editor.js 가 createElement/textContent 로 채운다. -->
     <nav id="page-crumb" class="crumb" aria-label="페이지 경로" hidden></nav>
+<?php if ($viewKind === 'task'): ?>
+    <!-- Q:F-12 U4-2 (DESIGN 2.25 「작업 전체 화면」) — 오른쪽 작업 칸(2.21)과 **같은 부품 한 벌**을 본문 폭으로 그리는 빈 칸.
+         안쪽(머리 줄 · 제목 · 속성 · 맡김 안내 · 설명 · 하위 작업 · 파일 첨부 · 댓글 · 모든 활동)은 work.js `createPane(…, {mode:'full'})` 가 createElement 로.
+         읽기 판정을 지난 사람에게만 나간다(위 `$viewKind`) — 일반 문서 부품은 CSS(`body[data-page-kind=task]`)가 처음부터 숨긴다. -->
+    <section id="task-full" class="task-pane task-pane--full" aria-label="작업"></section>
+<?php endif; ?>
 
     <header class="page-head">
       <div class="page-head__text">
@@ -393,7 +428,8 @@ require __DIR__ . '/../../views/shell_top.php';
           <textarea id="comment-input" rows="3" maxlength="2000" spellcheck="false"
                     placeholder="@아이디 로 사람을 부를 수 있습니다"></textarea>
         </label>
-        <ul id="comment-mentions" class="list" aria-label="부를 사람" hidden></ul>
+        <!-- Q:F-12 U4-4 — @ 후보 목록 · 확인 색 · 「부를 사람」 줄은 멘션 입력 부품(`community/mention-input.js` createMentionInput) 한 벌이
+             입력 칸 둘레에 그린다(옛 칸 안 목록 `#comment-mentions` 는 그 부품의 떠 있는 목록 id 로 이어진다). -->
         <div class="form-actions">
           <button id="comment-quote-pick" class="btn btn--quiet btn--small" type="button">고른 문구 인용</button>
           <button id="comment-cancel" class="btn btn--quiet btn--small" type="button" hidden>답글·인용 그만두기</button>

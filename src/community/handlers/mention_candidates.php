@@ -9,7 +9,13 @@ declare(strict_types=1);
  * (그 사람 몫으로 읽은 페이지 행 + `decidePageRead`)으로 거른다. 규칙을 SQL 로 한 벌 더 적지 않는다.
  *
  *   · 부르는 사람이 그 페이지를 볼 수 있어야 한다(`community_history_gate` — 아니면 403·404).
- *   · `q` 는 공백을 뗀 1~64자, 비면 빈 목록(한 글자부터 — 5-A″ 와 같다). `%`·`_`·`#` 는 글자로만.
+ *   · `q` 는 공백을 뗀 1~64자. `%`·`_`·`#` 는 글자로만. 아이디가 **정확히 같은 사람을 맨 앞**에 둔다(Q:F-12 U4-4 — 화면의 확인 색이
+ *     「정확히 그 아이디」를 묻는다 · 비슷한 아이디가 20명을 넘어도 그 사람이 판정 상한 안에 든다). 그 밖 순서는 아이디 순 그대로.
+ *   · **빈 `q`(Q:F-12 U4-4 — 기획 `community/work-ux-plan.md` 16.4 · 16.5, DESIGN 2.27 「후보 목록」)**: 빈 목록 대신 `@` 를 치자마자 보일 후보 —
+ *     활성 사용자(부르는 사람 제외)를 **최근 이 문서에 쓴 사람(살아 있는 댓글 · 판 기록의 마지막 때) 먼저 → 아이디 순**으로 **50명까지** 읽어
+ *     (한 요청의 판정 수 상한) 같은 반복(그 사람 몫으로 다시 읽은 행 → `decideMentionTarget`)으로 통과한 10명. 고정 SQL 두 벌 중 하나를 고를 뿐
+ *     이어 붙이지 않는다. 새 노출 0 — 같은 호출자가 한 글자 검색을 되풀이해 이미 얻을 수 있던 집합(그 문서를 볼 수 있는 쓰기 자격 사람의
+ *     아이디 · 이름)이고, 「최근 쓴 사람」은 순서에만 쓰인다(댓글 · 판 기록은 부르는 사람이 이미 볼 수 있는 그 문서의 것). U1-a 담당 후보 빈 q 와 같은 방식.
  *   · 관리자 특권(`admin_all`)·숨긴 글 관리자(`board_moderator`)로만 볼 수 있는 사람은 후보가 아니다(좁은 쪽).
  *   · 돌려주는 것은 아이디·이름뿐, 최대 10명. 자기 자신은 빠진다.
  *   · 7-D4 — 항목에 계정 번호 `id`(users.id 정수) 한 칸을 더한다(지시서 3.5 예외 · 메인 결정 2026-09-27): 글 안 멘션 마크 `{kind: user, id}` 가
@@ -34,23 +40,45 @@ if (!Authz::canCommunityWrite($user)) {
 
 $q = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', Http::queryText('q', 64));
 if ($q === '') {
-    Http::json(['candidates' => []]);
-    exit;
+    // U4-4 — 열자마자 후보: 최근 이 문서에 쓴 사람 먼저 · 아이디 순 · 판정 50명까지(아래 반복이 한 명씩 판정한다 — 후보 규칙은 SQL 에 없다)
+    $sql = <<<'SQL'
+        WITH pg AS (
+            SELECT p.id FROM community.pages p WHERE p.public_id = CAST(:pid AS uuid)
+        ), wrote AS (
+            SELECT c.author_id AS uid, max(c.created_at) AS at
+              FROM community.comments c JOIN pg ON pg.id = c.page_id
+             WHERE c.deleted_at IS NULL AND c.hidden_at IS NULL
+             GROUP BY c.author_id
+            UNION ALL
+            SELECT v.edited_by AS uid, max(v.edited_at) AS at
+              FROM community.page_versions v JOIN pg ON pg.id = v.page_id
+             GROUP BY v.edited_by
+        )
+        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
+          FROM public.users u
+          LEFT JOIN (SELECT uid, max(at) AS at FROM wrote GROUP BY uid) w ON w.uid = u.id
+         WHERE u.is_active = true
+           AND u.id <> CAST(:me AS bigint)
+         ORDER BY w.at DESC NULLS LAST, u.username
+         LIMIT 50
+        SQL;
+    $bind = [':me' => (int) $user['id'], ':pid' => $pageRaw];
+} else {
+    $like = '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
+    $sql = <<<'SQL'
+        SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
+          FROM public.users u
+         WHERE u.is_active = true
+           AND u.id <> CAST(:me AS bigint)
+           AND (u.username ILIKE :like ESCAPE '#' OR u.display_name ILIKE :like2 ESCAPE '#')
+         ORDER BY (u.username = :exact) DESC, u.username
+         LIMIT 20
+        SQL;
+    $bind = [':me' => (int) $user['id'], ':like' => $like, ':like2' => $like, ':exact' => $q];
 }
-$like = '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
-
-$sql = <<<'SQL'
-    SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
-      FROM public.users u
-     WHERE u.is_active = true
-       AND u.id <> CAST(:me AS bigint)
-       AND (u.username ILIKE :like ESCAPE '#' OR u.display_name ILIKE :like2 ESCAPE '#')
-     ORDER BY u.username
-     LIMIT 20
-    SQL;
 
 $out = [];
-foreach (Db::instance()->run($sql, [':me' => (int) $user['id'], ':like' => $like, ':like2' => $like])->fetchAll() as $t) {
+foreach (Db::instance()->run($sql, $bind)->fetchAll() as $t) {
     $rowFor = community_page_row($pageRaw, (int) $t['id']);
     if ($rowFor !== null && CommunityAuthz::decideMentionTarget($t, $rowFor)[0]) {
         $out[] = [
