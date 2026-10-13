@@ -124,6 +124,9 @@ with sync_playwright() as pw:
     page.wait_for_selector('#page-editor [data-atom="table"]', timeout=5000)
 
     add_block(page, "파일")
+    # Q:F-12 U3 (DESIGN 2.24 ③) — 그림 · 파일 창의 첫 탭이 「이 문서에 올리기」가 됐다. 이 시험은 자료실 파일을 고르는 길을 재므로 둘째 탭을 누른다
+    if page.locator('#atom-file [data-atom-tab="library"]').count():
+        page.click('#atom-file [data-atom-tab="library"]')
     page.wait_for_selector("#atom-file-list .block-pick", timeout=8000)
     page.fill("#atom-file-q", "C5E-사내")
     page.wait_for_function("n => [...document.querySelectorAll('#atom-file-list .block-pick')].some(b => b.textContent.includes(n))",
