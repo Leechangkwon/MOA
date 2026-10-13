@@ -2244,7 +2244,8 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
   position: absolute;
   top: calc(100% + 6px);
   right: 0;
-  z-index: 40;
+  /* 메신저 떠 있는 창(`--z-floating` 60) 위 — 창이 오른쪽 위에 열려 있어도 격자 판(로그아웃까지)을 누를 수 있게(U2 핫픽스 2026-10-13 · 넓은 화면도 폰과 같은 값) */
+  z-index: calc(var(--z-floating) + 1);
   width: 300px;
   max-height: calc(100vh - 96px);
   overflow-y: auto;
