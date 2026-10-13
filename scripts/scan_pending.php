@@ -53,6 +53,12 @@ declare(strict_types=1);
  * ── 출력에 무엇을 적지 않나
  *   파일 이름·저장 경로·시그니처 이름은 표준출력에 적지 않는다(건수 요약만). cron 메일·로그로
  *   새지 않게 하려는 것이고, 그 값들은 전부 감사 로그 `detail` 에 있다 (ARCH 7.5).
+ *
+ * ── Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCH 24.4)
+ *   `community.page_attachments` 의 `pending` 도 **같은 작업자 · 같은 규칙**으로 본다 — 한 번의 clamscan 에 함께 싣고,
+ *   경로는 `Storage::pathFor(이름, Storage::AREA_ATTACHMENTS)` 한 곳 · 격리 폴더도 같다 · 순서(바이트 이동 먼저 → UPDATE+감사)도 같다.
+ *   감사는 같은 `file.scan` 문장이고 `target_type` 만 `page_attachment` 다. 표가 없는 DB(커뮤니티 마이그레이션 전)면 그 갈래를 건너뛴다.
+ *   한 번에 보는 건수(--limit)는 두 표를 합친 수다(자료실 먼저).
  */
 
 require_once __DIR__ . '/lib/cli_bootstrap.php';
@@ -163,7 +169,7 @@ $db = Db::instance();
 
 $rows = $db->run(
     "SELECT id, public_id, stored_name, original_name, access_level,
-            sha256, size_bytes, uploaded_by
+            sha256, size_bytes, uploaded_by, 'file' AS src
        FROM files
       WHERE scan_status = 'pending'
         AND purged_at IS NULL
@@ -171,6 +177,36 @@ $rows = $db->run(
       LIMIT :limit",
     [':limit' => $limit]
 )->fetchAll();
+
+/* Q:F-12 U3-1 — 문서 전용 첨부의 대기 행(남은 건수만큼). 영구 삭제된 첨부는 행이 없으므로 purged 조건이 필요 없다. */
+$attachmentsReady = $db->run("SELECT to_regclass('community.page_attachments') IS NOT NULL")->fetchColumn();
+if (($attachmentsReady === true || $attachmentsReady === 't') && count($rows) < $limit) {
+    $attRows = $db->run(
+        "SELECT id, public_id, stored_name, original_name, NULL AS access_level,
+                sha256, size_bytes, uploaded_by, 'attachment' AS src
+           FROM community.page_attachments
+          WHERE scan_status = 'pending'
+          ORDER BY created_at
+          LIMIT :limit",
+        [':limit' => $limit - count($rows)]
+    )->fetchAll();
+    $rows = array_merge($rows, $attRows);
+}
+
+/** 행이 어느 표인가 — 저장 구역 · UPDATE 대상 · 감사 target_type 이 이 값 하나로 갈린다 */
+function scan_is_attachment(array $row): bool
+{
+    return (string) ($row['src'] ?? 'file') === 'attachment';
+}
+
+/** 검사 결과를 그 행의 표에 적는다 — SQL 은 고정 두 문장 중 하나(표 이름을 조립하지 않는다) */
+function scan_set_status(Db $db, array $row, string $status): void
+{
+    $sql = scan_is_attachment($row)
+        ? "UPDATE community.page_attachments SET scan_status = :st WHERE id = :id AND scan_status = 'pending'"
+        : "UPDATE files SET scan_status = :st WHERE id = :id AND scan_status = 'pending'";
+    $db->run($sql, [':st' => $status, ':id' => (int) $row['id']]);
+}
 
 if ($rows === []) {
     cli_say('검사 대기 없음 — 스캐너를 실행하지 않는다.');
@@ -203,10 +239,10 @@ function scan_fail(array $row, string $why): void
         return;
     }
     Audit::error('file.scan', 'scan_failed', [
-        'target_type'  => 'file',
+        'target_type'  => scan_is_attachment($row) ? 'page_attachment' : 'file',
         'target_id'    => (int) $row['id'],
         'target_name'  => (string) $row['original_name'],
-        'access_level' => (string) $row['access_level'],
+        'access_level' => $row['access_level'] === null ? null : (string) $row['access_level'],
         'detail'       => ['mode' => 'scan', 'reason' => $why],
     ]);
 }
@@ -223,7 +259,7 @@ $quarantineDir = cli_quarantine_dir();
 
 foreach ($rows as $row) {
     try {
-        $path = Storage::pathFor((string) $row['stored_name']);
+        $path = Storage::pathFor((string) $row['stored_name'], scan_is_attachment($row) ? Storage::AREA_ATTACHMENTS : '');
     } catch (Throwable $e) {
         // stored_name 이 UUID 형태가 아니거나 저장소 밖을 가리킨다 — 검사 대상이 아니다.
         scan_fail($row, 'bad_stored_name');
@@ -255,15 +291,12 @@ foreach ($rows as $row) {
         if (is_file($q)) {
             try {
                 $db->begin();
-                $db->run(
-                    "UPDATE files SET scan_status = 'infected' WHERE id = :id AND scan_status = 'pending'",
-                    [':id' => (int) $row['id']]
-                );
+                scan_set_status($db, $row, 'infected');
                 Audit::deny('file.scan', 'infected', [
-                    'target_type'  => 'file',
+                    'target_type'  => scan_is_attachment($row) ? 'page_attachment' : 'file',
                     'target_id'    => (int) $row['id'],
                     'target_name'  => (string) $row['original_name'],
-                    'access_level' => (string) $row['access_level'],
+                    'access_level' => $row['access_level'] === null ? null : (string) $row['access_level'],
                     'detail'       => [
                         'mode'        => 'scan',
                         // 어느 시그니처였는지는 앞선 실행이 남기지 못했다. 지어내지 않고
@@ -374,7 +407,8 @@ foreach ($byPath as $path => $row) {
     $id         = (int) $row['id'];
     $storedName = (string) $row['stored_name'];
     $original   = (string) $row['original_name'];
-    $level      = (string) $row['access_level'];
+    $level      = $row['access_level'] === null ? null : (string) $row['access_level'];
+    $targetType = scan_is_attachment($row) ? 'page_attachment' : 'file';
     $isInfected = isset($found[$path]);
 
     if ($dryRun) {
@@ -408,12 +442,9 @@ foreach ($byPath as $path => $row) {
             //    다음 실행이 같은 행을 다시 본다(그때 파일은 이미 격리 폴더에 있으므로
             //    file_missing 으로 남는다 — 조용한 성공보다 시끄러운 실패가 낫다).
             $db->begin();
-            $db->run(
-                "UPDATE files SET scan_status = 'infected' WHERE id = :id AND scan_status = 'pending'",
-                [':id' => $id]
-            );
+            scan_set_status($db, $row, 'infected');
             Audit::deny('file.scan', 'infected', [
-                'target_type'  => 'file',
+                'target_type'  => $targetType,
                 'target_id'    => $id,
                 'target_name'  => $original,
                 'access_level' => $level,
@@ -430,12 +461,9 @@ foreach ($byPath as $path => $row) {
             $infected++;
         } else {
             $db->begin();
-            $db->run(
-                "UPDATE files SET scan_status = 'clean' WHERE id = :id AND scan_status = 'pending'",
-                [':id' => $id]
-            );
+            scan_set_status($db, $row, 'clean');
             Audit::allow('file.scan', [
-                'target_type'  => 'file',
+                'target_type'  => $targetType,
                 'target_id'    => $id,
                 'target_name'  => $original,
                 'access_level' => $level,

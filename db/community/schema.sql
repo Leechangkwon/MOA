@@ -763,6 +763,43 @@ CREATE TABLE IF NOT EXISTS community.embedding_queue (
 );
 CREATE INDEX IF NOT EXISTS embedding_queue_pending_idx ON community.embedding_queue(available_at,page_id) WHERE state='pending';
 
+
+-- ─────────────────────────────────────────────────────────────
+-- Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCHITECTURE 24.2 · 24.6 — 사이트 지시서 docs/qf12-u3-directive.md)
+--   이미 있는 DB 는 db/migrations/2026-10-13_community_page_attachments.sql 이 **같은 모양**을 만든다(이 절은 그 파일의 1~2 절과
+--   같은 문장 — 30일 정리 함수의 첨부 두 줄은 그 파일 3 절, 권한은 db/community/grants.sql 끝 절).
+--   ★ 이 절은 Q:F-12 업무 화면 절 **앞**에 둔다 — qf12_floor_http 의 「Q:F-12 전 schema + 마이그레이션 = 새 설치」 비교가
+--     그 절 앞까지를 기준 판으로 자르기 때문이다(두 쪽 모두 이 표를 가져 비교가 그대로 SAME).
+--   ★ 앱 계정은 SELECT · INSERT · UPDATE(scan_status) 만 — DELETE 는 소유자의 영구 삭제 함수만(grants.sql).
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS community.page_attachments (
+    id              BIGSERIAL   PRIMARY KEY,
+    public_id       UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    page_id         BIGINT      NOT NULL REFERENCES community.pages(id),
+    uploaded_by     BIGINT      NOT NULL REFERENCES public.users(id),
+    original_name   TEXT        NOT NULL CONSTRAINT page_attachments_name_check
+                                CHECK (char_length(original_name) BETWEEN 1 AND 255),
+    ext             TEXT        NOT NULL CONSTRAINT page_attachments_ext_check CHECK (ext ~ '^[a-z0-9]{1,10}$'),
+    mime            TEXT        NOT NULL CONSTRAINT page_attachments_mime_check CHECK (char_length(mime) BETWEEN 1 AND 255),
+    size_bytes      BIGINT      NOT NULL CONSTRAINT page_attachments_size_check CHECK (size_bytes BETWEEN 1 AND 104857600),
+    sha256          TEXT        NOT NULL CONSTRAINT page_attachments_sha256_check CHECK (sha256 ~ '^[0-9a-f]{64}$'),
+    stored_name     TEXT        NOT NULL UNIQUE CONSTRAINT page_attachments_stored_check
+                                CHECK (stored_name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]{1,10}$'),
+    scan_status     TEXT        NOT NULL DEFAULT 'pending' CONSTRAINT page_attachments_scan_check
+                                CHECK (scan_status IN ('pending','clean','infected')),
+    sensitive_flags TEXT[]      NOT NULL DEFAULT '{}',
+    exec_content    BOOLEAN     NOT NULL DEFAULT false,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS page_attachments_page_idx  ON community.page_attachments (page_id);
+CREATE INDEX IF NOT EXISTS page_attachments_quota_idx ON community.page_attachments (uploaded_by, created_at);
+
+CREATE TABLE IF NOT EXISTS community.page_attachment_purge_queue (
+    stored_name TEXT        PRIMARY KEY CONSTRAINT page_attachment_purge_queue_stored_check
+                            CHECK (stored_name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.[a-z0-9]{1,10}$'),
+    queued_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 -- ─────────────────────────────────────────────────────────────
 -- Q:F-12 업무 화면 — 담당자 · 프로젝트 · 포트폴리오 (지시서 A · 커뮤니티 ARCHITECTURE 23.2)
 --   이미 있는 DB 는 db/migrations/2026-10-19_qf12_work.sql 이 **같은 모양**을 만든다(이 절은 그 파일의 1~5 절과

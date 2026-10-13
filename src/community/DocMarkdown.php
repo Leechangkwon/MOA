@@ -202,10 +202,13 @@ final class DocMarkdown
                     break;
                 case 'image':
                 case 'file':
-                    $ref = is_string($block['file_ref'] ?? null) && str_starts_with($block['file_ref'], 'tbox:')
-                        ? substr($block['file_ref'], 5) : '';
-                    $entry = $ctx['file_titles'][$ref] ?? null;
-                    $href = $ctx['file_href'][$ref] ?? null;
+                    // Q:F-12 U3-1 — `att:` 문서 전용 첨부는 부르는 쪽이 준 첨부 지도 · 주소(로그인 필요한 창구)로만 링크(없으면 「볼 수 없는 파일」)
+                    $isAtt = is_string($block['file_ref'] ?? null) && str_starts_with($block['file_ref'], 'att:');
+                    $ref = $isAtt ? substr($block['file_ref'], 4)
+                        : (is_string($block['file_ref'] ?? null) && str_starts_with($block['file_ref'], 'tbox:')
+                            ? substr($block['file_ref'], 5) : '');
+                    $entry = $ctx[$isAtt ? 'attachment_titles' : 'file_titles'][$ref] ?? null;
+                    $href = $ctx[$isAtt ? 'attachment_href' : 'file_href'][$ref] ?? null;
                     if (!is_array($entry) || self::safeHref($href) === null) {
                         $out .= "볼 수 없는 파일\n\n";
                     } else {

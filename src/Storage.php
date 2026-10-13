@@ -21,6 +21,11 @@ declare(strict_types=1);
  *
  *   7) purge()(30일 휴지통 실제 삭제) 는 9단계 배치 scripts/purge_trash.php 가 부른다.
  *      DB 행은 지우지 않고 files.purged_at 만 찍는다 — 감사 추적을 끊지 않기 위해서다 (ARCH 11.1).
+ *
+ *   8) Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCH 24.2) — 하위 폴더 **하나**: `STORAGE_DIR/attachments/<uuid[0:2]>/<uuid>.<ext>`.
+ *      함수를 새로 두 벌 만들지 않고, 경로를 만드는 함수들에 끝 인자 `$area` 하나를 더했다(기본값 '' = 지금까지와 글자까지 같은 자료실 경로).
+ *      `$area` 는 이 클래스 상수(AREA_ATTACHMENTS)만 받는다 — 요청 값이 들어올 자리가 아니고, 그 밖의 값은 예외다.
+ *      이름 규칙(UUIDv4.확장자 정규식) · realpath 로 저장소 안인지 다시 보기 · 0750/0640 은 자료실과 같다.
  */
 final class Storage
 {
@@ -35,6 +40,9 @@ final class Storage
 
     private const DIR_MODE  = 0750;
     private const FILE_MODE = 0640;
+
+    /** Q:F-12 U3-1 — 문서 전용 첨부의 하위 폴더 이름(코드 상수 — 경로에 들어가는 유일한 고정 글자) */
+    public const AREA_ATTACHMENTS = 'attachments';
 
     /**
      * 저장소 루트. .env 의 STORAGE_DIR 고정값이며 요청 값이 섞이지 않는다.
@@ -87,13 +95,20 @@ final class Storage
      *   ① stored_name 이 "UUIDv4.확장자" 형태인지 정규식 검사 — `..`·`/` 는 통과할 수 없다.
      *   ② 상위 폴더가 이미 있으면 realpath 결과가 baseDir 안인지 다시 확인.
      */
-    public static function pathFor(string $storedName): string
+    public static function pathFor(string $storedName, string $area = ''): string
     {
         if (preg_match(self::STORED_RE, $storedName) !== 1) {
             throw new RuntimeException('허용되지 않는 저장 이름입니다');
         }
         $base = self::baseDir();
-        $dir  = $base . '/' . substr($storedName, 0, 2) . '/' . substr($storedName, 2, 2);
+        if ($area === '') {
+            $dir = $base . '/' . substr($storedName, 0, 2) . '/' . substr($storedName, 2, 2);
+        } elseif ($area === self::AREA_ATTACHMENTS) {
+            // U3-1 — `attachments/<uuid 앞 2글자>/` 한 층(ARCH 24.2). 아래 realpath 확인은 그대로 탄다.
+            $dir = $base . '/' . self::AREA_ATTACHMENTS . '/' . substr($storedName, 0, 2);
+        } else {
+            throw new RuntimeException('허용되지 않는 저장 구역입니다');
+        }
 
         if (is_dir($dir)) {
             $realDir = realpath($dir);
@@ -109,9 +124,9 @@ final class Storage
      * 실제 바이트가 있는지 확인한다. 다운로드 핸들러는 감사 로그(allow)를 남기기 **전에**
      * 이것을 부른다 — 파일이 없는데 "다운로드 성공" 이 기록되는 일을 막는다.
      */
-    public static function assertExists(string $storedName): void
+    public static function assertExists(string $storedName, string $area = ''): void
     {
-        $path = self::pathFor($storedName);
+        $path = self::pathFor($storedName, $area);
         if (!is_file($path) || !is_readable($path)) {
             throw new RuntimeException('저장된 파일을 찾을 수 없습니다');
         }
@@ -123,13 +138,13 @@ final class Storage
      *
      * $storedName 은 newStoredName() 이 만든 값만 넘긴다.
      */
-    public static function put(string $tmpPath, string $storedName): string
+    public static function put(string $tmpPath, string $storedName, string $area = ''): string
     {
         if (!is_uploaded_file($tmpPath)) {
             // HTTP 업로드로 들어온 임시 파일이 아니면 옮기지 않는다.
             throw new RuntimeException('업로드된 파일이 아닙니다');
         }
-        $path = self::pathFor($storedName);
+        $path = self::pathFor($storedName, $area);
         $dir  = dirname($path);
 
         if (!is_dir($dir) && !mkdir($dir, self::DIR_MODE, true) && !is_dir($dir)) {
@@ -187,9 +202,9 @@ final class Storage
      * 옮겨 둔 파일을 되돌린다 (업로드 트랜잭션 롤백용).
      * purge()(30일 휴지통 실제 삭제)와는 다른 용도다 — 방금 이 요청이 만든 파일만 지운다.
      */
-    public static function removeUploaded(string $storedName): void
+    public static function removeUploaded(string $storedName, string $area = ''): void
     {
-        $path = self::pathFor($storedName);
+        $path = self::pathFor($storedName, $area);
         if (is_file($path)) {
             unlink($path);
         }
@@ -203,9 +218,9 @@ final class Storage
      * 업로드된 HTML·SVG 가 브라우저에서 렌더링되는 저장형 XSS 를 막기 위해
      * 항상 application/octet-stream + attachment 로 내린다 (bootstrap 의 nosniff 와 함께).
      */
-    public static function stream(string $storedName, string $originalName, string $mime): void
+    public static function stream(string $storedName, string $originalName, string $mime, string $area = ''): void
     {
-        $path = self::pathFor($storedName);
+        $path = self::pathFor($storedName, $area);
         if (!is_file($path) || !is_readable($path)) {
             throw new RuntimeException('저장된 파일을 찾을 수 없습니다');
         }
@@ -262,13 +277,13 @@ final class Storage
      * $mime 은 `Upload::MIME_BY_EXT` 를 통과해 DB 에 기록된 값만 들어온다는 전제이지만,
      * 그 전제가 깨져도(DB 침해 등) 아래 정규식이 막는다.
      */
-    public static function streamInline(string $storedName, string $originalName, string $mime): void
+    public static function streamInline(string $storedName, string $originalName, string $mime, string $area = ''): void
     {
         if (preg_match('#^(image/(png|jpeg|gif)|application/pdf)$#', $mime) !== 1) {
             throw new RuntimeException('미리보기로 보낼 수 없는 형식입니다');
         }
 
-        $path = self::pathFor($storedName);
+        $path = self::pathFor($storedName, $area);
         if (!is_file($path) || !is_readable($path)) {
             throw new RuntimeException('저장된 파일을 찾을 수 없습니다');
         }
@@ -344,9 +359,9 @@ final class Storage
      *
      * 지우지 못한 경우(권한·I/O)는 예외다 — 호출자가 `file.purge error purge_failed` 로 남긴다.
      */
-    public static function purge(string $storedName): void
+    public static function purge(string $storedName, string $area = ''): void
     {
-        $path = self::pathFor($storedName);
+        $path = self::pathFor($storedName, $area);
         if (!file_exists($path)) {
             return;                      // 이미 없다 = 목표 달성
         }
@@ -359,9 +374,9 @@ final class Storage
     }
 
     /** 저장된 파일의 SHA-256 (정합성 검사, PRD S-08) */
-    public static function sha256(string $storedName): string
+    public static function sha256(string $storedName, string $area = ''): string
     {
-        $hash = hash_file('sha256', self::pathFor($storedName));
+        $hash = hash_file('sha256', self::pathFor($storedName, $area));
         if ($hash === false) {
             throw new RuntimeException('파일 해시를 계산할 수 없습니다');
         }

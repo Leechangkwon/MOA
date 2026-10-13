@@ -217,6 +217,28 @@ if ($targetDb !== null && (int) $targetDb['id'] !== (int) ($row['database_id'] ?
 }
 
 // ─── [5] 옮기기 ───────────────────────────────────────────────
+/* ─── Q:F-12 U3-1 (커뮤니티 ARCH 24.4) — 옮긴 뒤 「사내 · 게시됨」 넓이(`community_attachment_wide`)인 문서에 민감정보 표시가 붙은
+   첨부가 있으면 옮기지 않는다(자료실 규칙과 같은 문장). ★ 지금 규칙에서 옮기기는 범위를 바꾸지 않는다(같은 공간 · 4-B 트리 불변 규칙 —
+   가지가 새 부모보다 넓으면 위에서 이미 400) — 그래서 이 갈래는 첨부 올리기 · 넓히기 · 게시가 막은 상태가 어떤 길로든 생겼을 때의 방어다.
+   형식 거부(400)라 감사 문장 없이 서버 로그에만 남긴다(이 창구의 `db_in_db` · `too_many_rows` 와 같은 태도). ─── */
+$moveIds = community_subtree_live_ids($pageId);
+if (community_attachments_sensitive($moveIds)) {
+    $sqlSensPages = <<<'SQL'
+        SELECT p.public_id FROM community.pages p
+         WHERE p.id = ANY (CAST(:ids AS bigint[]))
+           AND EXISTS (SELECT 1 FROM community.page_attachments a
+                        WHERE a.page_id = p.id AND cardinality(a.sensitive_flags) > 0)
+        SQL;
+    foreach ($db->run($sqlSensPages, [':ids' => '{' . implode(',', array_map('intval', $moveIds)) . '}'])->fetchAll() as $sp) {
+        $sensRow = community_page_row((string) $sp['public_id'], $me);
+        if ($sensRow !== null && community_attachment_wide($sensRow)) {
+            error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community page.move refused sensitive_level_required page_id=' . (string) $pageId);
+            Http::json(['error' => Http::MSG_SENSITIVE_LEVEL_REQUIRED, 'reason' => 'sensitive_level_required'], 400);
+            exit;
+        }
+    }
+}
+
 $oldParentId = $row['parent_page_id'] === null ? null : (int) $row['parent_page_id'];
 $newParentId = $parentRow === null ? null : (int) $parentRow['id'];
 

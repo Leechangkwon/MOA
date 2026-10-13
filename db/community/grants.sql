@@ -276,3 +276,30 @@ BEGIN
                              community.portfolio_events_id_seq TO tbox_backup;
 END
 $$;
+
+-- ─── Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCHITECTURE 24.2) — 표 둘.
+--     표를 만드는 것은 db/community/schema.sql(새 설치)·db/migrations/2026-10-13_community_page_attachments.sql(기존 DB)이고,
+--     이 절은 **같은 권한**을 다시 건다(마이그레이션 4 절과 같은 줄). 표가 없으면(마이그레이션 전) NOTICE 만 남기고 건너뛴다.
+--   page_attachments             SELECT · INSERT · UPDATE(scan_status 한 칸 — 검사 배치) — ★ DELETE 없음(영구 삭제 함수만)
+--   page_attachment_purge_queue  앱 권한 0 (소유자의 purge_trash · scripts/community_purge.php 만)
+--   tbox_backup                  SELECT 만 · tbox_perm · tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('community.page_attachments') IS NULL OR to_regclass('community.page_attachment_purge_queue') IS NULL THEN
+        RAISE NOTICE '문서 전용 첨부 표가 없다 — db/migrations/2026-10-13_community_page_attachments.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON community.page_attachments, community.page_attachment_purge_queue FROM tbox_app, tbox_backup;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_perm') THEN
+        EXECUTE 'REVOKE ALL ON community.page_attachments, community.page_attachment_purge_queue FROM tbox_perm';
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+        EXECUTE 'REVOKE ALL ON community.page_attachments, community.page_attachment_purge_queue FROM tbox_push';
+    END IF;
+    GRANT SELECT, INSERT       ON community.page_attachments TO tbox_app;
+    GRANT UPDATE (scan_status) ON community.page_attachments TO tbox_app;
+    GRANT USAGE, SELECT ON SEQUENCE community.page_attachments_id_seq TO tbox_app;
+    GRANT SELECT ON community.page_attachments, community.page_attachment_purge_queue TO tbox_backup;
+    GRANT SELECT ON SEQUENCE community.page_attachments_id_seq TO tbox_backup;
+END
+$$;

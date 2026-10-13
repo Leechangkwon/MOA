@@ -127,6 +127,19 @@ if (!community_file_refs_ok($restoreNewFiles, CommunityAuthz::pageAudiences($row
     Http::json(['error' => '그 판에는 지금 붙일 수 없는 파일이 있습니다', 'reason' => 'file_ref'], 400);
     exit;
 }
+/* Q:F-12 U3-1 (커뮤니티 ARCH 24.5) — 되돌리는 판에 지금 본문에 없는 `att:` 첨부가 있으면 넣는 것과 같다 — **이 문서의** 첨부여야 한다.
+   감사 사유는 파일 갈래와 같은 `file_ref` · detail.cause 와 응답 `reason` 은 `bad_attachment_ref`(저장 창구와 같은 문장). */
+$restoreNewAtts = array_values(array_diff(Doc::extract($oldDoc)['atts'], Doc::extract(json_decode((string) $row['doc'], true) ?: [])['atts']));
+if (!community_attachment_refs_ok($pageId, $restoreNewAtts)) {
+    Audit::deny('page.restore_version', 'file_ref', [
+        'target_type' => 'page',
+        'target_id'   => $pageId,
+        'target_name' => $pageTitle,
+        'detail'      => ['page_title' => $pageTitle, 'restored_from' => $want, 'cause' => 'bad_attachment_ref'],
+    ]);
+    Http::json(['error' => COMMUNITY_ATTACHMENT_REF_REFUSED, 'reason' => 'bad_attachment_ref'], 400);
+    exit;
+}
 /* 7-C — 되돌리는 판에 지금 본문에 없는 임베드가 있으면 넣는 것과 같다 — 허용 목록과 견준다(K-3). */
 $restoreNewEmbeds = array_values(array_diff(Doc::extract($oldDoc)['embeds'], Doc::extract(json_decode((string) $row['doc'], true) ?: [])['embeds']));
 if (!community_embeds_ok($restoreNewEmbeds)) {

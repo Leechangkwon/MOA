@@ -544,6 +544,21 @@ final class Doc
                 }
                 return;
 
+            /*
+             * `tbox-ref|att-ref` — Q:F-12 U3-1 그림·파일 블록의 `file_ref` 가 받는 두 꼴(커뮤니티 ARCH 24.5):
+             *   `tbox:<uuid>` 자료실 파일(위 `tbox-ref` 와 같은 모양) · `att:<uuid>` **이 문서의** 첨부(`community.page_attachments`).
+             * ★ **형태만 본다** — `att:` 이 이 문서의 첨부인지는 저장 창구(SaveDoc · 판 복원)가 DB 를 읽어 가른다(`community_attachment_refs_ok`).
+             */
+            case 'tbox-ref|att-ref':
+                if (!is_string($value)) {
+                    $add($p, 'bad_type');
+                    return;
+                }
+                if (preg_match('/^(tbox|att):[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $value) !== 1) {
+                    $add($p, 'bad_ref');
+                }
+                return;
+
             // `int[]` — 5-E 표의 `col_widths`. 열 수와 같은 길이인지는 블록을 다 본 뒤(위 `walk`) 가른다.
             case 'int[]':
                 if (!self::isList($value) || count($value) > (int) $limits['table_cols']) {
@@ -1017,11 +1032,13 @@ final class Doc
      * `link`·`link_to_page` 만). 멘션 세그먼트의 글자는 「@」 하나라 `plain_text`·발췌에도 이름·제목이 들어가지 않는다(M-8).
      *
      * @param  array<string,mixed> $doc
-     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,child_pages:list<string>,todos:list<array{block_id:string,checked:bool,text:string}>,files:list<string>,embeds:list<string>,palette_names:list<string>,mentions:list<array{kind:string,id:int|string}>}
+     * `atts` 는 Q:F-12 U3-1 에 생긴 칸이다 — 그림·파일 블록의 `att:<uuid>` 첨부 id(같은 것은 한 번). `files`(자료실 `tbox:`)와 **섞지 않는다**.
+     *
+     * @return array{plain_text:string,blocks:list<array{block_id:string,block_type:string,ord:int,excerpt:string}>,links:list<array{from_block_id:string,to_page_id:string}>,child_pages:list<string>,todos:list<array{block_id:string,checked:bool,text:string}>,files:list<string>,atts:list<string>,embeds:list<string>,palette_names:list<string>,mentions:list<array{kind:string,id:int|string}>}
      */
     public static function extract(array $doc): array
     {
-        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => [], 'embeds' => [], 'palette_names' => [], 'mentions' => []];
+        $out = ['plain_text' => '', 'blocks' => [], 'links' => [], 'child_pages' => [], 'todos' => [], 'files' => [], 'atts' => [], 'embeds' => [], 'palette_names' => [], 'mentions' => []];
         $ord = 0;
         $parts = [];
         self::collect(is_array($doc['blocks'] ?? null) ? $doc['blocks'] : [], $ord, $parts, $out);
@@ -1104,6 +1121,13 @@ final class Doc
                 && !in_array(substr($block['file_ref'], 5), $out['files'], true)
             ) {
                 $out['files'][] = substr($block['file_ref'], 5);
+            }
+            // Q:F-12 U3-1 — 문서 전용 첨부 `att:<uuid>`(자료실 `files` 와 따로)
+            if (($type === 'image' || $type === 'file') && isset($block['file_ref']) && is_string($block['file_ref'])
+                && strncmp($block['file_ref'], 'att:', 4) === 0
+                && !in_array(substr($block['file_ref'], 4), $out['atts'], true)
+            ) {
+                $out['atts'][] = substr($block['file_ref'], 4);
             }
 
             if ($type === 'to_do') {

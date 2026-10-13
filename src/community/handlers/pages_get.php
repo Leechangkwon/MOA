@@ -400,6 +400,10 @@ community_form_json([
     /* 5-E — 본문의 그림·파일 지도(보는 사람이 t-box 에서 볼 수 있는 파일만) · 페이지 링크 제목 지도(볼 수 있는 페이지만) ·
        역참조(이 페이지를 가리키는 볼 수 있는 페이지). 지도에 없는 것은 렌더러가 「볼 수 없는 …」 한 장으로 그린다. */
     'file_titles' => ($ft = community_file_titles($docExtract['files'], $user)) === [] ? new stdClass() : $ft,
+    /* Q:F-12 U3-1 (커뮤니티 ARCH 24) — 이 문서의 첨부 지도 {name,size,image,scan_status}. 첨부를 받을 수 있는 사람에게만
+       (`decideAttachmentRead` — 관리자 특권 갈래로 연 사람은 빈 지도) · 다른 문서의 첨부는 싣지 않는다(행 읽기가 page_id 로 거른다). */
+    'attachment_titles' => (!CommunityAuthz::decideAttachmentRead($user, $row, ['page_id' => (int) $row['id']])[0]
+        || ($at = community_attachment_titles((int) $row['id'])) === []) ? new stdClass() : $at,
     'link_titles' => ($lt = community_link_titles(array_map(static fn (array $l): string => $l['to_page_id'], $docExtract['links']), $user)) === [] ? new stdClass() : $lt,
     'synced_uses' => community_sync_uses($row,$user),
     'backlinks'   => community_backlinks((string) $row['public_id'], (int) $row['id'], $user),

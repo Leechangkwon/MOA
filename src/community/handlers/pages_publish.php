@@ -149,6 +149,20 @@ $sqlSet = <<<'SQL'
 
 $db->begin();
 try {
+    /* Q:F-12 U3-1 (커뮤니티 ARCH 24.4) — 민감정보 표시가 붙은 문서 첨부가 있으면 게시하지 않는다(게시 = 「게시됨」 넓이 · 자료실 규칙과 같은 문장).
+       행을 **먼저 잠그고** 본다 — 첨부 올리기도 같은 행을 잠근 뒤 넓이를 다시 보므로 겹침이 없다. 감사 사유는 파일 갈래와 같은 `file_narrower`. */
+    $db->run(COMMUNITY_PAGE_LOCK_SQL, [':pid' => $pageId]);
+    if (community_attachments_sensitive([$pageId])) {
+        $db->rollback();
+        Audit::deny('page.publish', 'file_narrower', [
+            'target_type' => 'page',
+            'target_id'   => $pageId,
+            'target_name' => $pageTitle,
+            'detail'      => ['page_title' => $pageTitle, 'board_id' => $boardId, 'cause' => 'sensitive_level_required'],
+        ]);
+        Http::json(['error' => Http::MSG_SENSITIVE_LEVEL_REQUIRED, 'reason' => 'sensitive_level_required'], 400);
+        exit;
+    }
     $done = $db->run($sqlSet, [':from' => $from, ':from2' => $from, ':bid' => $boardId, ':me' => $me, ':pid' => $pageId, ':dv' => (int) $row['doc_version']])->fetch();
     if (!is_array($done)) {
         // 읽은 뒤 사이에 다른 요청이 먼저 게시했거나 지웠다.

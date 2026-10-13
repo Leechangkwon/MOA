@@ -875,16 +875,24 @@ final class Upload
      * 논리 삭제된 파일도 합계에 넣는다 — 올리고 지우기를 반복해 한도를 우회하지 못하게 한다.
      * 한도를 넘으면 `quota_exceeded` 예외. 핸들러는 다른 검증 실패와 똑같이 400 + deny 로 끝낸다
      * (사유는 감사 로그에만, PRD 8장 표의 업로드 실패 코드는 400/403/413 이고 413 은 nginx 몫이다).
+     *
+     * Q:F-12 U3-1 (커뮤니티 ARCH 24.4) — **자료실 `files` + 문서 전용 첨부 `community.page_attachments` 합산**이다.
+     * 합산은 이 SQL 한 곳이고 두 입구(자료실 업로드 · 첨부 올리기)가 이 함수를 함께 부른다 — 한쪽 표로 한도를 비켜 가지 못한다.
+     * 첨부 행은 영구 삭제 때 지워지지만 그것은 30일 뒤라 24시간 창에는 닿지 않는다.
      */
     public static function checkDailyQuota(int $userId, int $newSize): void
     {
         $sql = <<<'SQL'
-            SELECT COALESCE(SUM(size_bytes), 0) AS used
-              FROM files
-             WHERE uploaded_by = :uid
-               AND created_at > now() - interval '24 hours'
+            SELECT (SELECT COALESCE(SUM(f.size_bytes), 0)
+                      FROM files f
+                     WHERE f.uploaded_by = :uid
+                       AND f.created_at > now() - interval '24 hours')
+                 + (SELECT COALESCE(SUM(a.size_bytes), 0)
+                      FROM community.page_attachments a
+                     WHERE a.uploaded_by = :uid2
+                       AND a.created_at > now() - interval '24 hours') AS used
             SQL;
-        $row  = Db::instance()->run($sql, [':uid' => $userId])->fetch();
+        $row  = Db::instance()->run($sql, [':uid' => $userId, ':uid2' => $userId])->fetch();
         $used = is_array($row) ? (int) $row['used'] : 0;
 
         if ($used + $newSize > self::DAILY_QUOTA_BYTES) {

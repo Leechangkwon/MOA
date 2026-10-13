@@ -236,6 +236,12 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/pages/{id}/history',                'history.php',         'community.read'],
     ['GET',    '/api/me/trash',                          'trash_list.php',      'community.read'],
     ['POST',   '/api/pages/{id}/restore',                'page_restore.php',    'community.write'],
+    /* ── Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCH 24.3) — 판정은 `CommunityAuthz::decideAttachmentUpload/Read`(문서 판정을 부르는 두 줄 갈래).
+     * 첨부 행은 `page_id = 주소 문서 AND public_id = 주소 첨부` 로만 읽는다(`community_attachment_row`). `{gid}` 는 UUID 자리표시자를 다시 쓴다.
+     * 프로그램 토큰 창구(COMMUNITY_API_TOKEN_ROUTES)에는 넣지 않는다(24.3). */
+    ['POST',   '/api/pages/{id}/attachments',                'attachments_upload.php',   'community.write'],
+    ['GET',    '/api/pages/{id}/attachments/{gid}/raw',      'attachments_raw.php',      'community.read'],
+    ['GET',    '/api/pages/{id}/attachments/{gid}/download', 'attachments_download.php', 'community.read'],
 
     /* ── 상태 칸 (4-D, C:F-37) ──
      * 바꾸는 창구는 `community.write` + 행 단위 `decidePageChange`(소유자·편집 공유자·팀원).
@@ -3179,6 +3185,239 @@ function community_file_titles(array $fileIds, array $u): array
             // 그림으로 그릴 수 있나 — 검사를 마친(깨끗한) 그림 파일만
             // 실행 내용이 든 파일은 미리보기가 403 이다(F-65) — 그림으로 그리지 않고 카드로
             'image' => strncmp((string) $f['mime'], 'image/', 6) === 0 && (string) $f['scan_status'] === 'clean' && $f['exec_content'] !== true,
+        ];
+    }
+    return $out;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+ * Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCH 24 — 사이트 지시서 docs/qf12-u3-directive.md)
+ *   판정은 `CommunityAuthz::decideAttachmentRead/Upload` 두 갈래뿐이고, 여기 있는 것은 **행 읽기**와 그 결과의 모양뿐이다.
+ *   자료실(`public.files`) · 자료실 판정(`Authz::decideRead` · `visibleFilesWhere`)과 섞지 않는다(24.1).
+ * ══════════════════════════════════════════════════════════════════ */
+
+/** 본문에 다른 문서의 첨부(`att:`)를 넣으려 할 때의 400 문장(저장 · 판 복원이 같은 글자) */
+const COMMUNITY_ATTACHMENT_REF_REFUSED = '이 문서에 올린 첨부만 본문에 넣을 수 있습니다. 다른 문서의 첨부는 그 문서에서 내려받아 이 문서에 다시 올리세요';
+/** 첨부 공개 id 모양(소문자 UUID — `gen_random_uuid()`) */
+const COMMUNITY_ATTACHMENT_ID_RE = '/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/';
+/** 문서 하나의 첨부 지도(`attachment_titles`)에 싣는 최대 개수 — 응답이 문서만큼 커지지 않게 */
+const COMMUNITY_ATTACHMENT_TITLES_MAX = 500;
+/** raw(inline)로 내보낼 수 있는 형식 — 그림 셋뿐(PDF 는 raw 아님 · Storage::streamInline 의 허용 목록 안쪽) */
+const COMMUNITY_ATTACHMENT_IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/gif'];
+
+/**
+ * 첨부 행 하나 — **이 문서의** 첨부만. `page_id` 와 `public_id` 를 함께 조건으로 읽으므로 다른 문서의 첨부 id 를 주소에 넣으면
+ * 0행이다(존재 노출 0 — 없는 id 와 같은 404). 모양이 틀린 id 는 DB 에 묻지 않고 null.
+ *
+ * @return array<string,mixed>|null
+ */
+function community_attachment_row(int $pageId, string $attPublicId): ?array
+{
+    if (preg_match(COMMUNITY_ATTACHMENT_ID_RE, $attPublicId) !== 1) {
+        return null;
+    }
+    $sql = <<<'SQL'
+        SELECT a.id, a.public_id, a.page_id, a.uploaded_by, a.original_name, a.ext, a.mime, a.size_bytes,
+               a.sha256, a.stored_name, a.scan_status, cardinality(a.sensitive_flags) > 0 AS has_sensitive, a.exec_content
+          FROM community.page_attachments a
+         WHERE a.page_id = CAST(:page AS bigint)
+           AND a.public_id = CAST(:att AS uuid)
+        SQL;
+    $row = Db::instance()->run($sql, [':page' => $pageId, ':att' => $attPublicId])->fetch();
+    return is_array($row) ? $row : null;
+}
+
+/**
+ * 본문에 **새로 들어온** `att:` 참조가 모두 **이 문서의** 첨부인가(ARCH 24.5 — 저장 · 판 복원). 아니면 거짓 → 400 `bad_attachment_ref`.
+ * 없는 id · 다른 문서의 id 는 같은 거짓이다(어느 쪽인지 응답이 가르지 않는다).
+ *
+ * @param list<string> $attIds `Doc::extract()['atts']` 의 차집합
+ */
+function community_attachment_refs_ok(int $pageId, array $attIds): bool
+{
+    $attIds = array_values(array_unique($attIds));
+    if ($attIds === []) {
+        return true;
+    }
+    if (count($attIds) > 200) {
+        return false;
+    }
+    $names = [];
+    $bind  = [':page' => $pageId];
+    foreach ($attIds as $i => $aid) {
+        if (preg_match(COMMUNITY_ATTACHMENT_ID_RE, (string) $aid) !== 1) {
+            return false;
+        }
+        $names[]           = 'CAST(:a' . $i . ' AS uuid)';
+        $bind[':a' . $i]   = (string) $aid;
+    }
+    $in  = implode(', ', $names);   // 개수로 만든 자리표시자 이름뿐 — 값은 전부 바인딩
+    $sql = <<<SQL
+        SELECT count(*) FROM community.page_attachments a
+         WHERE a.page_id = CAST(:page AS bigint)
+           AND a.public_id IN ({$in})
+        SQL;
+    return (int) Db::instance()->run($sql, $bind)->fetchColumn() === count($attIds);
+}
+
+/**
+ * 이 문서들 중 하나라도 **민감정보 표시가 붙은 첨부**를 가졌나(ARCH 24.4 — 넓히기 · 게시 · 이동 거부의 재료).
+ *
+ * @param list<int> $pageIds
+ */
+function community_attachments_sensitive(array $pageIds): bool
+{
+    $ids = array_values(array_unique(array_map('intval', $pageIds)));
+    if ($ids === []) {
+        return false;
+    }
+    $sql = <<<'SQL'
+        SELECT EXISTS (
+            SELECT 1 FROM community.page_attachments a
+             WHERE a.page_id = ANY (CAST(:ids AS bigint[]))
+               AND cardinality(a.sensitive_flags) > 0)
+        SQL;
+    $v = Db::instance()->run($sql, [':ids' => '{' . implode(',', $ids) . '}'])->fetchColumn();
+    return $v === true || $v === 't' || $v === 1;
+}
+
+/**
+ * 이 문서의 넓이가 **「사내 · 게시됨」** 인가(ARCH 24.4 — 민감 첨부를 두지 않는 넓이). 판정 함수가 아니라 행의 넓이 값을 읽는 것뿐이고,
+ * 범위 값은 `CommunityAuthz::baseVisibility` 한 곳에서 읽는다.
+ *   개인 공간 — 게시 중(`published`)이거나 기준 범위가 `internal` 이면 참 · 모르는 범위도 참(모르면 막는다)
+ *   팀 공간   — 거짓(공간 등급 = 그 팀)
+ *   게시판 글 · 모르는 공간 — 참(게시된 글이다 · 모르면 막는다)
+ *
+ * @param array<string,mixed> $row `community_page_row()` 의 행
+ */
+function community_attachment_wide(array $row): bool
+{
+    $kind = (string) ($row['space_kind'] ?? '');
+    if ($kind === 'team') {
+        return false;
+    }
+    if ($kind !== 'personal') {
+        return true;
+    }
+    if ((string) ($row['visibility'] ?? '') === 'published') {
+        return true;
+    }
+    $base = CommunityAuthz::baseVisibility($row);
+    return $base === null || $base === 'internal';
+}
+
+/**
+ * 첨부 받기 관문 한 벌 — raw(inline 그림) · download 두 창구가 **같은 순서**로 부른다(ARCH 24.3 · 자료실 `_download_common.php` 와 같은 순서).
+ *   [1] 문서 행(보는 사람 기준) → 없으면 404(감사 없음 — 대상이 없다)
+ *   [2] 첨부 행 = `page_id` + `public_id` 함께 → 없으면 404(남의 문서 첨부 id 도 여기서 0행)
+ *   [권한 ✔] `CommunityAuthz::decideAttachmentRead` → 거부는 **언제나 404**(존재 노출 0 — 「막혔다」와 「없다」를 가르지 않는다)
+ *   [3] raw 는 그림 셋(png · jpeg · gif)만 — 그 밖 404
+ *   [4] 검사 상태 — pending 423 · infected 403(자료실 문장 그대로) · 실행 내용 표식 403
+ *   [5] 무결성 — 실제 바이트 · sha256 이 기록과 같아야 한다(다르면 500 — 전송 · allow 기록 전)
+ * 거부 · 실패는 `attachment.download deny refused`(detail.cause = 판정 · 검사 코드 원문)를 남기고 응답한 뒤 끝낸다.
+ * 통과면 `attachment.download allow` 를 남기고 [문서 행, 첨부 행] 을 돌려준다 — 부르는 쪽은 바로 Storage 로 보낸다.
+ * 감사 detail 에는 디스크 이름 · 경로 · 내용을 넣지 않는다.
+ *
+ * @param  array<string,mixed> $user
+ * @param  'raw'|'download'    $part
+ * @return array{0:array<string,mixed>,1:array<string,mixed>}
+ */
+function community_attachment_gate(array $user, string $pagePublicId, string $attPublicId, string $part): array
+{
+    $row = community_page_row($pagePublicId, (int) $user['id']);
+    if ($row === null) {
+        Http::error(404, Http::MSG_NOT_FOUND);
+    }
+    $pageId    = (int) $row['id'];
+    $pageTitle = community_target_title((string) $row['title']);
+    $att       = community_attachment_row($pageId, $attPublicId);
+
+    $deny = static function (string $cause, int $status) use ($att, $pageId, $pageTitle, $part): void {
+        Audit::deny('attachment.download', 'refused', [
+            'target_type' => 'page_attachment',
+            'target_id'   => $att === null ? null : (int) $att['id'],
+            'target_name' => $att === null ? null : (string) $att['original_name'],
+            'detail'      => ['page_title' => $pageTitle, 'page_id' => $pageId, 'part' => $part, 'cause' => $cause],
+        ]);
+        if ($status === 423) {
+            Http::locked(Http::SCAN_RETRY_AFTER_SECONDS, Http::MSG_SCAN_PENDING);
+        }
+        if ($status === 500) {
+            Http::error(500, '서버 오류');
+        }
+        Http::error($status, $status === 404 ? Http::MSG_NOT_FOUND
+            : ($cause === 'scan_infected' ? Http::MSG_SCAN_INFECTED : Http::MSG_FORBIDDEN));
+    };
+
+    if ($att === null) {
+        $deny(CommunityAuthz::CODE_NOT_FOUND, 404);
+        throw new LogicException('unreachable');
+    }
+    [$mayRead, $readCode] = CommunityAuthz::decideAttachmentRead($user, $row, $att);
+    if (!$mayRead) {
+        $deny($readCode, 404);
+    }
+    if ($part === 'raw' && !in_array((string) $att['mime'], COMMUNITY_ATTACHMENT_IMAGE_MIMES, true)) {
+        $deny('not_image', 404);
+    }
+    if ($att['exec_content'] === true) {
+        $deny('exec_content', 403);
+    }
+    $scan = (string) $att['scan_status'];
+    if ($scan !== 'clean') {
+        $deny($scan === 'infected' ? 'scan_infected' : 'scan_pending', $scan === 'infected' ? 403 : 423);
+    }
+    try {
+        Storage::assertExists((string) $att['stored_name'], Storage::AREA_ATTACHMENTS);
+        $hashOk = hash_equals((string) $att['sha256'], Storage::sha256((string) $att['stored_name'], Storage::AREA_ATTACHMENTS));
+    } catch (Throwable $e) {
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' attachment bytes missing id=' . (string) $att['id']);
+        $deny('file_missing', 500);
+        throw $e;   // 도달하지 않는다
+    }
+    if (!$hashOk) {
+        error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' attachment hash mismatch id=' . (string) $att['id']);
+        $deny('hash_mismatch', 500);
+    }
+
+    Audit::allow('attachment.download', [
+        'target_type' => 'page_attachment',
+        'target_id'   => (int) $att['id'],
+        'target_name' => (string) $att['original_name'],
+        'detail'      => [
+            'granted_by' => $readCode,
+            'page_title' => $pageTitle,
+            'page_id'    => $pageId,
+            'part'       => $part,
+            'size_bytes' => (int) $att['size_bytes'],
+            'sha256'     => (string) $att['sha256'],
+        ],
+    ]);
+    return [$row, $att];
+}
+
+/**
+ * 문서 하나의 첨부 지도(`attachment_titles` — ARCH 24 · 지시서 「그 문서 첨부 {name,size,image,scan_status}」).
+ * 부르는 쪽이 `decideAttachmentRead` 로 받을 수 있는 사람인지 먼저 본다(못 받는 사람에게는 빈 지도). 디스크 이름 · 올린 사람 · 해시는 싣지 않는다.
+ *
+ * @return array<string,array{name:string,size:int,image:bool,scan_status:string}>
+ */
+function community_attachment_titles(int $pageId): array
+{
+    $sql = <<<'SQL'
+        SELECT a.public_id, a.original_name, a.size_bytes, a.mime, a.scan_status
+          FROM community.page_attachments a
+         WHERE a.page_id = CAST(:page AS bigint)
+         ORDER BY a.created_at, a.id
+         LIMIT CAST(:lim AS int)
+        SQL;
+    $out = [];
+    foreach (Db::instance()->run($sql, [':page' => $pageId, ':lim' => COMMUNITY_ATTACHMENT_TITLES_MAX])->fetchAll() as $a) {
+        $out[(string) $a['public_id']] = [
+            'name'        => (string) $a['original_name'],
+            'size'        => (int) $a['size_bytes'],
+            'image'       => in_array((string) $a['mime'], COMMUNITY_ATTACHMENT_IMAGE_MIMES, true),
+            'scan_status' => (string) $a['scan_status'],
         ];
     }
     return $out;

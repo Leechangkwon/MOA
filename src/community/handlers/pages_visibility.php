@@ -269,6 +269,32 @@ $cascaded = count($targets);
 
 $db->begin();
 try {
+    /* ─── [5-2] Q:F-12 U3-1 (커뮤니티 ARCH 24.4) — 민감정보 표시가 붙은 문서 첨부가 있으면 「사내」로 넓히지 않는다(자료실 규칙과 같은 문장).
+       이 페이지와 「하위까지 함께」로 바뀌는 하위를 **먼저 잠그고** 본다 — 첨부 올리기도 같은 행을 잠근 뒤 넓이를 다시 보므로
+       「넓히기 검사 뒤에 민감 첨부가 끼어드는」 겹침이 없다. 감사 사유는 파일 갈래와 같은 `file_narrower`(detail.cause 로 구분). ─── */
+    if ($want === 'internal') {
+        $sensIds = array_values(array_unique(array_merge([$pageId], array_map(static fn (array $t): int => (int) $t['id'], $targets))));
+        sort($sensIds);
+        $db->run('SELECT 1 FROM community.pages WHERE id = ANY (CAST(:ids AS bigint[])) ORDER BY id FOR NO KEY UPDATE',
+            [':ids' => '{' . implode(',', $sensIds) . '}']);
+        if (community_attachments_sensitive($sensIds)) {
+            $db->rollback();
+            Audit::deny('page.visibility', 'file_narrower', [
+                'target_type' => 'page',
+                'target_id'   => $pageId,
+                'target_name' => $pageTitle,
+                'detail'      => [
+                    'page_title'      => $pageTitle,
+                    'visibility_from' => $from,
+                    'visibility_to'   => $want,
+                    'cause'           => 'sensitive_level_required',
+                ],
+            ]);
+            Http::json(['error' => Http::MSG_SENSITIVE_LEVEL_REQUIRED, 'reason' => 'sensitive_level_required'], 400);
+            exit;
+        }
+    }
+
     $changed = $db->run($sqlSetSelf, [':vis' => $want, ':me' => $me, ':pid' => $pageId, ':dv' => (int) $row['doc_version']])->rowCount();
     if ($changed < 1) {
         // 읽고 나서 여기 오기까지 사이에 다른 요청이 먼저 지웠거나(→ 없는 것과 같다) 본문을 저장했다(→ 409 다시 시도).

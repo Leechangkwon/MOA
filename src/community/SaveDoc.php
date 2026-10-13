@@ -158,6 +158,12 @@ function community_save_doc(array $user, string $publicId, array $body, array $o
                     'reason' => 'file_ref',
                 ], []);
             }
+            /* Q:F-12 U3-1 (커뮤니티 ARCH 24.5) — **새로 들어온** `att:` 첨부 참조는 **이 문서의** 첨부여야 한다(다른 문서 · 없는 id 는 같은 400).
+               감사 사유는 위 첨부 갈래와 같은 `file_ref`(문장 「붙일 수 없는 파일」) · detail.cause 와 응답 `reason` 은 `bad_attachment_ref`. */
+            $newAtts = array_values(array_diff(Doc::extract($doc)['atts'], Doc::extract($currentDoc)['atts']));
+            if (!community_attachment_refs_ok($pageId, $newAtts)) {
+                $reject('file_ref', 400, ['error' => COMMUNITY_ATTACHMENT_REF_REFUSED, 'reason' => 'bad_attachment_ref'], ['cause' => 'bad_attachment_ref']);
+            }
             /* 7-C — **새로 넣은** 임베드만 허용 목록과 견준다(K-3 — 목록에서 빠진 호스트의 옛 임베드는 저장을 막지 않는다). */
             if (!community_buttons_ok($doc, $currentDoc, $pid, $user)) { $reject('button_not_allowed', 400, ['error'=>'이 페이지에 묶인 내 버튼 작업만 추가할 수 있습니다.', 'reason'=>'button_not_allowed'], []); }
             $newEmbeds = array_values(array_diff(Doc::extract($doc)['embeds'], Doc::extract($currentDoc)['embeds']));

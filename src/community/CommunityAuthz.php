@@ -482,6 +482,48 @@ final class CommunityAuthz
     }
 
     /**
+     * Q:F-12 U3-1 문서 전용 첨부 — **받기**(커뮤니티 ARCH 24.1). 새 판정이 아니라 두 줄짜리 갈래다:
+     *   ① 첨부 행의 `page_id` 가 주소의 문서 행 `id` 와 같은가 — 아니면 `not_found`(남의 문서 첨부를 내 문서 주소로 끌어오기 0)
+     *   ② 그 문서의 읽기 판정 `decidePageRead` 를 **그대로** 부른다(공유 · 인계 · 범위 · 팀 이동 · 휴지통은 거기서 끝난다)
+     * 관리자 특권 갈래(`admin_all` · `board_moderator`)는 첨부에 열지 않는다 — 지시서 U3-1 ① 「Admin(관리 갈래 꺼짐) 404」 ·
+     * 기획 15.5 「비공개 문서 첨부를 Admin 도 못 받음」. 내보내기(`decidePageExport`)와 같은 코드 `privileged_only` 로 닫는다.
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $pageRow `community_page_row()` 의 행
+     * @param  array<string,mixed> $attRow  첨부 행(`page_id` 만 본다)
+     * @return array{0:bool,1:string}
+     */
+    public static function decideAttachmentRead(array $u, array $pageRow, array $attRow): array
+    {
+        if ((int) ($attRow['page_id'] ?? 0) !== (int) ($pageRow['id'] ?? -1)) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        [$read, $code] = self::decidePageRead($u, $pageRow);
+        if ($read && in_array($code, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)) {
+            return [false, 'privileged_only'];
+        }
+        return [$read, $code];
+    }
+
+    /**
+     * Q:F-12 U3-1 문서 전용 첨부 — **올리기**(커뮤니티 ARCH 24.1). 그 문서의 고치기 판정 `decidePageChange` 그대로 +
+     * 쓰기 자격 있는 역할(`Authz::canCommunityWrite` — 라우트 정책 `community.write` 와 같은 표. 손님 자기 공간의 주인 갈래가
+     * 참이어도 여기서 닫힌다 — pages_get 의 `can_edit` 와 같은 AND).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $pageRow
+     * @return array{0:bool,1:string}
+     */
+    public static function decideAttachmentUpload(array $u, array $pageRow): array
+    {
+        [$change, $code] = self::decidePageChange($u, $pageRow);
+        if ($change && !Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        return [$change, $code];
+    }
+
+    /**
      * 이 사람이 이 페이지를 **관리할 수 있나** (5-A 새 함수).
      *
      * 관리 = 삭제 · 옮기기 · 되살리기 · 공개 범위 · 공유 추가·바꾸기·빼기 · 인계.

@@ -1290,6 +1290,12 @@ final class Audit
         'page.restore_version|deny|file_ref'    => '{actor} 이(가) 페이지 「{target}」 을(를) 지금 붙일 수 없는 파일이 든 판으로 되돌리려 해서 거부했습니다',
         'page.visibility|deny|too_many_files'   => '{actor} 이(가) 페이지 「{target}」 를 넓히려 했지만 붙은 파일이 너무 많아 한 번에 견줄 수 없어 거부했습니다',
         'page.visibility|deny|file_narrower'    => '{actor} 이(가) 페이지 「{target}」 를 넓히려 했지만 새 범위의 사람이 볼 수 없는 파일이 붙어 있어 거부했습니다',
+        // Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCH 24.6) — 거부 사유는 detail.cause(판정·검사 코드 원문)에, 문장은 한 줄씩.
+        //   detail 에는 문서 제목 · 크기 · 형식 · sha256 · 사유만 — 파일 내용 · 디스크 이름 · 경로는 넣지 않는다.
+        'attachment.upload|allow'               => '{actor} 이(가) 문서 첨부 「{target}」 을(를) 올렸습니다 (문서 제목·크기는 상세 기록)',
+        'attachment.upload|deny|refused'        => '{actor} 이(가) 문서 첨부 「{target}」 을(를) 올리려 했지만 거부했습니다 (문서 제목·사유는 상세 기록)',
+        'attachment.download|allow'             => '{actor} 이(가) 문서 첨부 「{target}」 을(를) 열거나 내려받았습니다 (문서 제목·방식은 상세 기록)',
+        'attachment.download|deny|refused'      => '{actor} 이(가) 문서 첨부 「{target}」 을(를) 열거나 내려받으려 했지만 거부했습니다 (문서 제목·사유는 상세 기록)',
         'page.delete|deny|not_author'           => '{actor} 이(가) 다른 사람이 쓴 게시판 글 「{target}」 을(를) 지우려 해서 막았습니다',
     ];
 

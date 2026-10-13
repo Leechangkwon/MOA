@@ -317,6 +317,38 @@ final class DocRender
             // 그림 주소는 t-box 창구 — 가져가는 순간에도 t-box 가 자기 권한으로 다시 판단한다.
             case 'image':
             case 'file':
+                /* Q:F-12 U3-1 (커뮤니티 ARCH 24.5) — `att:<uuid>` 문서 전용 첨부. 지도(`$ctx['attachment_titles']` — 창구가 이 문서의 첨부를
+                   받을 수 있는 사람에게만 준 것)와 문서 id(`$ctx['attachment_page']`)가 있을 때만 그린다. 주소는 첨부 창구 —
+                   가져가는 순간에도 창구가 문서 판정으로 다시 판단한다. 그림은 검사가 끝난(clean) 그림만, 그 밖은 내려받기 카드. */
+                if (isset($block['file_ref']) && is_string($block['file_ref']) && strncmp($block['file_ref'], 'att:', 4) === 0) {
+                    $aref  = preg_match(self::UUID_RE, substr($block['file_ref'], 4)) === 1 ? substr($block['file_ref'], 4) : '';
+                    $apage = is_string($ctx['attachment_page'] ?? null) && preg_match(self::UUID_RE, $ctx['attachment_page']) === 1
+                        ? $ctx['attachment_page'] : '';
+                    $amap  = is_array($ctx['attachment_titles'] ?? null) ? $ctx['attachment_titles'] : [];
+                    $aent  = $aref !== '' && is_array($amap[$aref] ?? null) ? $amap[$aref] : null;
+                    $acap  = isset($block['caption']) && is_array($block['caption']) ? self::rich($block['caption'], $ctx) : '';
+                    if ($aent === null || $apage === '') {
+                        return '<div class="doc-file"' . $idAttr . '><div class="card card--soon">'
+                             . '<span class="card__title">' . self::FILE_UNREADABLE . '</span></div></div>';
+                    }
+                    $abase = '/api/pages/' . $apage . '/attachments/' . $aref;
+                    $aname = (string) ($aent['name'] ?? '');
+                    if ($type === 'image' && ($aent['image'] ?? false) === true && ($aent['scan_status'] ?? '') === 'clean') {
+                        $width = isset($block['width']) && in_array($block['width'], ['full', 'wide', 'normal', 'small'], true)
+                            ? $block['width'] : 'normal';
+                        return '<figure class="doc-image doc-image--' . $width . '"' . $idAttr . '>'
+                             . '<img class="doc-image__img" src="' . self::esc(Http::communityUrl($abase . '/raw'))
+                             . '" alt="' . self::esc($aname) . '" loading="lazy">'
+                             . ($acap === '' ? '' : '<figcaption class="doc-image__caption">' . $acap . '</figcaption>')
+                             . '</figure>';
+                    }
+                    return '<div class="doc-file"' . $idAttr . '>'
+                         . '<a class="card card--link" href="' . self::esc(Http::communityUrl($abase . '/download')) . '">'
+                         . '<span class="card__title">' . self::esc($aname) . '</span>'
+                         . '<span class="card__meta">' . self::esc(self::sizeText((int) ($aent['size'] ?? 0))) . '</span></a>'
+                         . ($acap === '' ? '' : '<p class="doc-file__caption">' . $acap . '</p>')
+                         . '</div>';
+                }
                 $ref   = isset($block['file_ref']) && is_string($block['file_ref']) && strncmp($block['file_ref'], 'tbox:', 5) === 0
                     && preg_match(self::UUID_RE, substr($block['file_ref'], 5)) === 1
                     ? substr($block['file_ref'], 5) : '';
@@ -636,7 +668,8 @@ final class DocRender
         $walk=static function(array $blocks) use (&$walk,$rich,$ctx):array {
             $out=[];foreach($blocks as $b) {
                 $type=$b['type']??'';$label=null;$href=null;
-                if(in_array($type,['file','image'],true)) { $label='로그인이 필요한 파일'; }
+                // Q:F-12 U3-1 (WK-27) — 문서 전용 첨부(`att:`)는 공개 링크에서 「볼 수 없는 파일」(첨부 id 도 남기지 않는다)
+                if(in_array($type,['file','image'],true)) { $label=is_string($b['file_ref']??null) && str_starts_with($b['file_ref'],'att:') ? self::FILE_UNREADABLE : '로그인이 필요한 파일'; }
                 elseif($type==='db_view') { $label='로그인 필요'; }
                 elseif($type==='button') { $label=$b['label']??'버튼'; }
                 elseif(in_array($type,['child_page','link_to_page'],true)) { $e=$ctx['public_links'][$b['page_id']??'']??null;$label=$e['title']??'비공개 페이지';$href=$e['url']??null; }
@@ -671,6 +704,23 @@ final class DocRender
             }
             $label = (string) ($entry['icon'] ?? '') . ' ' . (string) ($entry['title'] ?? '');
             return '<p><a href="' . self::esc($href) . '">' . self::esc(trim($label)) . '</a></p>';
+        }
+        if (($type === 'file' || $type === 'image') && is_string($block['file_ref'] ?? null) && str_starts_with($block['file_ref'], 'att:')) {
+            // Q:F-12 U3-1 — 문서 전용 첨부: 부르는 쪽이 준 지도 · 주소(`attachment_titles` · `attachment_href` — 로그인 필요한 창구 주소)가
+            // 있을 때만 링크, 없으면 「볼 수 없는 파일」. 인쇄에서도 그림을 끼우지 않고 링크만(첨부 창구는 문서 판정을 다시 한다).
+            $aref = substr($block['file_ref'], 4);
+            $aent = $ctx['attachment_titles'][$aref] ?? null;
+            $ahref = DocMarkdown::safeHref($ctx['attachment_href'][$aref] ?? null);
+            if (!is_array($aent) || $ahref === null) {
+                return '<p>' . self::FILE_UNREADABLE . '</p>';
+            }
+            $alabel = ($type === 'image' ? '그림: ' : '파일: ') . (string) ($aent['name'] ?? '');
+            if ($type === 'file') {
+                $alabel .= ' (' . self::sizeText((int) ($aent['size'] ?? 0)) . ')';
+            }
+            $acaption = self::rich(is_array($block['caption'] ?? null) ? $block['caption'] : [], $ctx);
+            return '<p><a href="' . self::esc($ahref) . '">' . self::esc($alabel) . '</a></p>'
+                . ($acaption === '' ? '' : '<p>' . $acaption . '</p>');
         }
         if ($type === 'file' || $type === 'image') {
             $ref = is_string($block['file_ref'] ?? null) && str_starts_with($block['file_ref'], 'tbox:')
