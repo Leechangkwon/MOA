@@ -109,10 +109,6 @@ U3-2(화면)는 하지 않았다. push · 발행 · main 합치기 안 함. 커�
 구현: Opus 에이전트 · 같은 worktree · 같은 브랜치(`feat/qf12-u3`) · 시작 HEAD `fe2305f` · 결과 폴더 `/home/changkwon/qaredi-qf12u3-results-20261013/U3-1b/`.
 U3-2 쪽 파일(`public/assets/**` · `work_home_page.php` · `my_tasks_page.php` · `qf12_work_browser.py` · 위키)과 U3-2 worktree 는 손대지 않았다. push · 발행 · 합치기 없음.
 격리 틀 포트 8768 은 U3-2 에이전트의 실행이 끝나기를 기다렸다가(`ss -ltn`) 썼다.
-## 2부 — U3-2 화면: 칸 넓히기 · 칸 편집기 · 오른쪽 칸 하나로 · 바로 올리기
-
-구현: Opus 에이전트 · worktree `/home/changkwon/qaredi-qf12u3s-20261013`(브랜치 `feat/qf12-u3-screen` — U3-1 `9703afe` + 지시 `fe2305f` 위) · 결과 폴더 `/home/changkwon/qaredi-qf12u3-results-20261013/U3-2/`.
-서버 PHP(화면 PHP 둘의 주석 말고) · db · scripts 0. push · 발행 · 합치기 안 함. 커밋 해시는 이 파일이 든 커밋 — 마지막 답에 적는다.
 
 ### 1. 변경 파일
 
@@ -171,6 +167,47 @@ U3-1b 단언이 실제로 확인한 것(이름은 결과 JSON 원문):
 - **③ 내보내기** — md · html 둘 다: 그림 `att:` → `{APP_URL}/community/api/pages/{문서}/attachments/{첨부}/raw`, 파일 → `…/download` 링크 · 「볼 수 없는 파일」 0 · 이름 표시 / 인쇄 화면 같은 링크 / 내보낸 그림 주소 소유자 200 · 비로그인 401 / Admin(관리 갈래) 내보내기 403(그대로 닫힘) / 남의 `att:` 을 심은 문서 → 「볼 수 없는 파일」 · id 0 / **공개 링크 `/pub/`** → 「볼 수 없는 파일」 ×2 · 첨부 id · 창구 주소 0
 - **④ 쓰기 입구** — 새 문서(세션) 남의 첨부 · 없는 id → 400 `bad_attachment_ref`(저장과 같은 문장) · 문서 0개 생김 / MCP 토큰 → 400 · (대조) 토큰 일반 생성 201 / 템플릿 만들기 → `att:` 블록 빠짐(`dropped_blocks` ≥ 2) · 심은 템플릿으로 새 문서 → 400 / 게시판 새 글 `doc` → 400 · (대조) 201 / AI 넣기 `doc` 키 → 400 · `att:<id>` 글자 AI 출력 → 문단 글자(file_ref 0)
 - 감사 — `privacy.purge · account.purge · page.purge` 에 첨부 디스크 이름 · 경로 0 · 감사 전체에 저장소 경로 · 민감 원문 0
+
+### 3. 못 한 것과 이유 (미검증 포함)
+
+| 항목 | 상태 · 이유 |
+|---|---|
+| 운영 cron 실제 계정(root · `/etc/tbox-v2/owner.pgpass` · tbox_owner)으로 `privacy_purge.php` · `consistency_check.php` | **미검증** — 합성 DB(소유자 tbox_testdb · 임시 pgpass · 앱 계정은 .env 의 계정)로만. 운영 앱 계정이 `page_attachment_queued` 를 EXECUTE 할 수 있는지는 운영 마이그레이션 뒤 `has_function_privilege('tbox_app', …)` 로 볼 것 |
+| 마이그레이션 적용 순서 | 이 파일(파일 이름 날짜 10-13)은 **2026-10-21_privacy_retention.sql 뒤에** 돌아야 새 `privacy_purge_pages` 가 남는다. 운영은 10-21 이 이미 적용돼 있어 그대로 맞다. 파일 이름 순서로 처음부터 까는 새 설치(10-13 → 10-21)는 옛 몸이 이긴다 — 그때는 이 파일을 한 번 더(멱등). 합성 틀은 10-21 → 10-13 순서(목록 그대로) |
+| 정합성 검사 운영 실행 | 운영에서 돌리지 않음(읽기 전용이지만 운영 감사에 `audit.integrity` 행이 늘고 불일치면 AL-6). 운영 반영 뒤 첫 02:00 결과를 볼 것 |
+| `qf13_retention_http` 의 `MIG base (main)` 단언 | 지금 main 기준이라 실패(위) — 이번 변경과 무관 · 고치지 않음(허용 목록 밖) |
+| retention 첫 시도의 401 한 번 | 다시 돌려 재현 안 됨 — 원인 미확인(미검증) |
+| stage89 교차 회귀 | 이번에 돌리지 않음(지시서 1b 완료 기준에 없음 — 묶음 끝 회귀 몫) |
+| 동기화 블록이 다른 문서의 `att:` 을 끼워 보일 때 | U3-1 그대로(창구 404 · 렌더러 「볼 수 없는 파일」) — 이번 범위 밖 |
+| 백업 · 복원이 `attachments/` 를 싣는지 | U3-1 과 같이 미검증 |
+
+### 4. 확정한 값
+
+- 내보내기 · 인쇄 링크: `{APP_URL}/community/api/pages/{문서 public_id}/attachments/{첨부 public_id}/raw`(mime png/jpeg/gif) · `…/download`(그 밖). 지도는 본문이 가리키는 첨부만 · `decideAttachmentRead` 가 열릴 때만
+- 새 문서 · 템플릿 거부: 400 `{"error": COMMUNITY_ATTACHMENT_REF_REFUSED, "reason": "bad_attachment_ref"}`(저장 · 판 복원과 같은 글자) · 형식 거부라 감사 0(자료실 `file_ref` 거부와 같음)
+- 정합성 검사 detail 새 키: `attachment_rows · attachment_disk_files · attachment_queued · attachment_trash_missing` · 불일치 항목 `area: "attachments"` · 종류는 자료실과 같은 `missing · hash_mismatch · orphan`(+ 감염 갈래 `infected_in_storage · quarantine_missing · quarantine_hash_mismatch · quarantine_unreadable`)
+- 함수: `community.page_attachment_queued(p_names text[]) RETURNS SETOF text` — LANGUAGE sql · STABLE · SECURITY DEFINER · `SET search_path = community, pg_temp` · EXECUTE tbox_app 만 / `community.privacy_purge_pages(p_ids bigint[]) RETURNS bigint` — 서명 · 권한 그대로
+- 탈퇴 파기 스크립트 출력: `문서 첨부 파일: N개 지움[ · 실패 M개(다음 실행이 다시)]` · dry `[dry] 대기열의 문서 첨부 파일: N개(…)` · 감사 `privacy.purge allow detail.attachment_files` · `privacy.purge error purge_failed detail.attachment_failures`
+
+### 5. 지시서와 다르게 한 것 (이유)
+
+1. **새 파일 `scripts/lib/attachment_purge.php`** — 「community_purge.php 와 같은 함수 재사용」을 글자대로 지키려면 두 스크립트가 함께 부를 자리가 필요하다(스크립트끼리는 서로 require 할 수 없다 — 실행된다). U3-1 의 고리를 그대로 옮겼다
+2. **새 DB 함수 `community.page_attachment_queued(text[])`(SECURITY DEFINER)** — 정합성 검사는 앱 계정(tbox_app)으로 돌고, U3-1 에서 대기열 표의 앱 권한을 0 으로 정했다. 「대기열 행은 고아가 아님」을 지키면서 앱 권한을 넓히지 않으려고, 저장소에서 찾은 이름의 **소속만** 묻는 읽기 함수를 두었다(목록을 꺼낼 수 없다 · 쓰기 0 · search_path 고정). 같은 마이그레이션 파일 · schema.sql · community/grants.sql 에 한 벌. 대안(tbox_app 에 대기열 SELECT)은 U3-1 의 「대기열 앱 권한 0」 단언을 깨서 택하지 않았다 — 메인 판단 필요
+3. **`pages_export.php` · `page_print.php` 한 줄씩** — 허용 목록은 `export_helpers.php` 였지만 ctx 를 만드는 함수가 문서 행을 받지 않아(본문만), 막 다시 읽고 판정한 행을 넘기는 인자 하나를 더했다
+4. **템플릿 입구는 400 이 아니라 「뺌」** — 템플릿 만들기는 원래 `Doc::templateBody` 가 그림 · 파일 블록을 모두 빼므로(자료실 파일과 같은 규칙) `att:` 이 템플릿에 닿지 않는다. 지시서의 「입구마다 400」은 ① 템플릿 본문으로 새 문서를 만드는 길(pages_create — 심은 템플릿으로 400 확인) ② templates_create 의 방어 줄(지금 규칙으로는 닿지 않음)로 지켰다. 게시판 새 글 · AI 넣기는 본문 블록을 받지 않는 창구라 코드를 바꾸지 않고 400(허용 키) · 문단 글자로만 들어감을 시험으로 확인했다
+5. **정합성 검사 감사 detail 의 첨부 디스크 이름** — 불일치가 있을 때 detail · AL-6 sample 에 자료실과 같이 `stored_name`(난수 이름 — 경로 아님)이 실린다(운영자가 파일을 찾을 유일한 값). U3-1 ⑥ 의 「감사에 첨부 디스크 이름 0」은 올리기 · 받기 · 영구 삭제 감사에 대한 것으로 그대로 지켜진다(1b 감사 단언). 경로 · 원문은 0 — 메인 확인 필요
+6. 「살아 있음」을 문서 기준(휴지통 · 영구 삭제 아님)으로 — 휴지통 문서 첨부의 바이트 없음은 자료실 휴지통과 같이 보고만(`attachment_trash_missing`)
+7. 탈퇴 파기의 파일 순서 — 사진 · AI 그림은 「커밋 전에 파일 먼저」인데, 첨부는 purge_trash 와 같은 대기열 방식(커밋 뒤 비움 · 실패해도 이름이 대기열에 남아 다음 실행이 잇는다)으로 했다
+
+## 2부 — U3-2 화면: 칸 넓히기 · 칸 편집기 · 오른쪽 칸 하나로 · 바로 올리기
+
+구현: Opus 에이전트 · worktree `/home/changkwon/qaredi-qf12u3s-20261013`(브랜치 `feat/qf12-u3-screen` — U3-1 `9703afe` + 지시 `fe2305f` 위) · 결과 폴더 `/home/changkwon/qaredi-qf12u3-results-20261013/U3-2/`.
+서버 PHP(화면 PHP 둘의 주석 말고) · db · scripts 0. push · 발행 · 합치기 안 함. 커밋 해시는 이 파일이 든 커밋 — 마지막 답에 적는다.
+
+### 1. 변경 파일
+
+| 파일 | 내용 |
+|---|---|
 | `public/assets/community/work.js` | **WK-26**: `inboxView` 가 `createPane(aside)` 한 벌만 쓴다 — `div.task-inbox__pane` · 1200 넘나들기 다시 열기 · 함수 자리(`createPane((id)=>…)`) 갈래 삭제. 줄 = aria-current · aria-expanded, Esc 는 목록 · 칸 안에서 칸 닫기(입력 · 편집기 · 메뉴 · 창 안 제외) + 초점은 그 줄. 보기(목록 · 보드 · 달력)를 바꿔도 칸 그대로. **폭 조절** `paneSizer` — 손잡이 `div.task-pane__resize`(role=separator · aria-orientation · aria-label 「작업 상세 폭」 · aria-valuemin/max/now) 끌기(pointer capture) · ←/→ 16 · Home · 두 번 누르기 = 기본 폭 · 머리 줄 「넓게 보기」(`[data-pane-wide]` · aria-pressed · 켜면 위 끝, 끄면 앞 폭) · 폭은 `<body>` CSS 변수 `--task-pane-w` 하나(기본 폭이면 지움) · localStorage `qaredi-task-pane-w:v1:<아이디>` · 화면 폭 · 사이드바 접기(`data-sidebar`)가 바뀌면 같은 고른 값을 새 범위로. **알림 색** `say(node, text, ok)` — 「링크를 복사했어요」만 `.msg--ok`(그 밖 알림 줄은 그대로 오류 색). **파일 첨부** 목록 = 자료실 파일 + `attachment_titles`(clean = 받기 링크 · pending 「검사 중」 배지 · 그 밖 「받을 수 없음」 배지). 칸 읽기 ctx 에 `attachment_titles` · `attachment_page` |
 | `public/assets/community/editor.js` | **창 한 벌**: `blockDialogFor` · `atomDialogFor` — `createBlockDialog` · `createAtomDialog` 를 화면에 한 번만 만들고 연 쪽 편집기(getView · hooks)로 묶어 연다(페이지 편집기 · 칸 편집기 공용). `ensureEditorDialogs` — 창 마크업이 없는 화면(업무 홈 · 내 작업)에 page_view.php 와 **같은 id · 클래스**로 createElement(구조 지문 시험으로 같음 확인). `blockKeymapFor` · `atomEditCommand` 를 모듈 함수로(페이지 편집기도 이것을 부른다). **도구줄** `createToolbar(view, {wrap, addBlock, paper:false})` — 칸 편집기가 같은 함수로 「블록 추가 · 색 · 배경 · 링크 · 멘션」을 단다(칸 줄은 id 0 — 페이지 편집기와 겹치지 않게). **`mountPaneEditor`** — 도구줄 · 블록 추가(같은 `BLOCK_TYPES` 목록) · 블록 고치기 창 · Ctrl+Alt+숫자 · 덩어리 Enter/두 번 누르기 · 할 일 상자 · 목차 · 「하위 페이지」 블록 · 붙여넣기 · 끌어놓기. 걷은 뒤에도 마지막 저장은 그대로(`gone` 표시) · 「편집 마침」은 올리던 것이 들어간 뒤 저장. **바로 올리기** `createUploads` 한 벌(입구 셋 공용): XHR multipart `POST /api/pages/{id}/attachments`(진행률 · 같은 CSRF) · 자리표시는 ProseMirror 장식(본문에 저장 0) · 차례로 한 번에 하나 · 취소 · 실패면 자리표시 지우고 창구 `error` 그대로 · 401 → 로그인 · 413 → 「파일이 100MB 를 넘습니다」. 붙여넣기는 **파일만**(글이 함께 든 붙여넣기 · HTML 의 외부 그림은 지금처럼) · 끌어놓기는 파일만(편집기 안 블록 옮기기 그대로). **「이 문서에 올리기」 탭** — 그림 · 파일 창 `#atom-file` 에 탭 둘(`.toolbar.db-viewbar` + `.db-type` 단추 · role=tablist/tab/tabpanel · ←/→) · 파일 고르기 `.btn--quiet`(aria-label 「이 문서에 그림/파일 올리기」) · 넣기 = 창 닫고 커서 자리 자리표시(창의 설명 · 그림 폭 반영) · 고치기 = 창 안에서 올리고 「고치기」로 바꿈 · 올릴 수 없는 편집기(제안 중 등)면 탭 줄을 숨기고 자료실만. 페이지 편집기: `state.attachmentTitles` · 읽기 ctx · fromDoc ctx · 붙여넣기 · 끌어놓기 플러그인(고칠 수 있고 제안 중이 아닐 때만) |
 | `public/assets/community/editor-schema.js` | `fromDoc` — `att:` 이름은 `attachment_titles` 에서 · `toDoc` — `att:` 그림 · 파일 블록도 저장(전엔 `tbox:` 만 남기고 버렸다 — 1부 「못 한 것」) |
@@ -212,32 +249,6 @@ U3-1b 단언이 실제로 확인한 것(이름은 결과 JSON 원문):
 
 | 항목 | 상태 · 이유 |
 |---|---|
-| 운영 cron 실제 계정(root · `/etc/tbox-v2/owner.pgpass` · tbox_owner)으로 `privacy_purge.php` · `consistency_check.php` | **미검증** — 합성 DB(소유자 tbox_testdb · 임시 pgpass · 앱 계정은 .env 의 계정)로만. 운영 앱 계정이 `page_attachment_queued` 를 EXECUTE 할 수 있는지는 운영 마이그레이션 뒤 `has_function_privilege('tbox_app', …)` 로 볼 것 |
-| 마이그레이션 적용 순서 | 이 파일(파일 이름 날짜 10-13)은 **2026-10-21_privacy_retention.sql 뒤에** 돌아야 새 `privacy_purge_pages` 가 남는다. 운영은 10-21 이 이미 적용돼 있어 그대로 맞다. 파일 이름 순서로 처음부터 까는 새 설치(10-13 → 10-21)는 옛 몸이 이긴다 — 그때는 이 파일을 한 번 더(멱등). 합성 틀은 10-21 → 10-13 순서(목록 그대로) |
-| 정합성 검사 운영 실행 | 운영에서 돌리지 않음(읽기 전용이지만 운영 감사에 `audit.integrity` 행이 늘고 불일치면 AL-6). 운영 반영 뒤 첫 02:00 결과를 볼 것 |
-| `qf13_retention_http` 의 `MIG base (main)` 단언 | 지금 main 기준이라 실패(위) — 이번 변경과 무관 · 고치지 않음(허용 목록 밖) |
-| retention 첫 시도의 401 한 번 | 다시 돌려 재현 안 됨 — 원인 미확인(미검증) |
-| stage89 교차 회귀 | 이번에 돌리지 않음(지시서 1b 완료 기준에 없음 — 묶음 끝 회귀 몫) |
-| 동기화 블록이 다른 문서의 `att:` 을 끼워 보일 때 | U3-1 그대로(창구 404 · 렌더러 「볼 수 없는 파일」) — 이번 범위 밖 |
-| 백업 · 복원이 `attachments/` 를 싣는지 | U3-1 과 같이 미검증 |
-
-### 4. 확정한 값
-
-- 내보내기 · 인쇄 링크: `{APP_URL}/community/api/pages/{문서 public_id}/attachments/{첨부 public_id}/raw`(mime png/jpeg/gif) · `…/download`(그 밖). 지도는 본문이 가리키는 첨부만 · `decideAttachmentRead` 가 열릴 때만
-- 새 문서 · 템플릿 거부: 400 `{"error": COMMUNITY_ATTACHMENT_REF_REFUSED, "reason": "bad_attachment_ref"}`(저장 · 판 복원과 같은 글자) · 형식 거부라 감사 0(자료실 `file_ref` 거부와 같음)
-- 정합성 검사 detail 새 키: `attachment_rows · attachment_disk_files · attachment_queued · attachment_trash_missing` · 불일치 항목 `area: "attachments"` · 종류는 자료실과 같은 `missing · hash_mismatch · orphan`(+ 감염 갈래 `infected_in_storage · quarantine_missing · quarantine_hash_mismatch · quarantine_unreadable`)
-- 함수: `community.page_attachment_queued(p_names text[]) RETURNS SETOF text` — LANGUAGE sql · STABLE · SECURITY DEFINER · `SET search_path = community, pg_temp` · EXECUTE tbox_app 만 / `community.privacy_purge_pages(p_ids bigint[]) RETURNS bigint` — 서명 · 권한 그대로
-- 탈퇴 파기 스크립트 출력: `문서 첨부 파일: N개 지움[ · 실패 M개(다음 실행이 다시)]` · dry `[dry] 대기열의 문서 첨부 파일: N개(…)` · 감사 `privacy.purge allow detail.attachment_files` · `privacy.purge error purge_failed detail.attachment_failures`
-
-### 5. 지시서와 다르게 한 것 (이유)
-
-1. **새 파일 `scripts/lib/attachment_purge.php`** — 「community_purge.php 와 같은 함수 재사용」을 글자대로 지키려면 두 스크립트가 함께 부를 자리가 필요하다(스크립트끼리는 서로 require 할 수 없다 — 실행된다). U3-1 의 고리를 그대로 옮겼다
-2. **새 DB 함수 `community.page_attachment_queued(text[])`(SECURITY DEFINER)** — 정합성 검사는 앱 계정(tbox_app)으로 돌고, U3-1 에서 대기열 표의 앱 권한을 0 으로 정했다. 「대기열 행은 고아가 아님」을 지키면서 앱 권한을 넓히지 않으려고, 저장소에서 찾은 이름의 **소속만** 묻는 읽기 함수를 두었다(목록을 꺼낼 수 없다 · 쓰기 0 · search_path 고정). 같은 마이그레이션 파일 · schema.sql · community/grants.sql 에 한 벌. 대안(tbox_app 에 대기열 SELECT)은 U3-1 의 「대기열 앱 권한 0」 단언을 깨서 택하지 않았다 — 메인 판단 필요
-3. **`pages_export.php` · `page_print.php` 한 줄씩** — 허용 목록은 `export_helpers.php` 였지만 ctx 를 만드는 함수가 문서 행을 받지 않아(본문만), 막 다시 읽고 판정한 행을 넘기는 인자 하나를 더했다
-4. **템플릿 입구는 400 이 아니라 「뺌」** — 템플릿 만들기는 원래 `Doc::templateBody` 가 그림 · 파일 블록을 모두 빼므로(자료실 파일과 같은 규칙) `att:` 이 템플릿에 닿지 않는다. 지시서의 「입구마다 400」은 ① 템플릿 본문으로 새 문서를 만드는 길(pages_create — 심은 템플릿으로 400 확인) ② templates_create 의 방어 줄(지금 규칙으로는 닿지 않음)로 지켰다. 게시판 새 글 · AI 넣기는 본문 블록을 받지 않는 창구라 코드를 바꾸지 않고 400(허용 키) · 문단 글자로만 들어감을 시험으로 확인했다
-5. **정합성 검사 감사 detail 의 첨부 디스크 이름** — 불일치가 있을 때 detail · AL-6 sample 에 자료실과 같이 `stored_name`(난수 이름 — 경로 아님)이 실린다(운영자가 파일을 찾을 유일한 값). U3-1 ⑥ 의 「감사에 첨부 디스크 이름 0」은 올리기 · 받기 · 영구 삭제 감사에 대한 것으로 그대로 지켜진다(1b 감사 단언). 경로 · 원문은 0 — 메인 확인 필요
-6. 「살아 있음」을 문서 기준(휴지통 · 영구 삭제 아님)으로 — 휴지통 문서 첨부의 바이트 없음은 자료실 휴지통과 같이 보고만(`attachment_trash_missing`)
-7. 탈퇴 파기의 파일 순서 — 사진 · AI 그림은 「커밋 전에 파일 먼저」인데, 첨부는 purge_trash 와 같은 대기열 방식(커밋 뒤 비움 · 실패해도 이름이 대기열에 남아 다음 실행이 잇는다)으로 했다
 | 서버 렌더러(`DocRender.php`)의 pending 그림 | 화면(doc-render.js)은 DESIGN 2.24 대로 「검사 중이에요」 상자인데, 서버 렌더러는 pending 그림을 받기 카드로 그린다(1부 그대로 — 서버 PHP 는 이번 범위 밖). 두 렌더러 같음 시험(stage3 의 C:T-19)은 att: 를 쓰지 않아 지금은 걸리지 않는다. 맞출지는 메인 판단 |
 | 칸을 닫는 중에 올리던 파일 | 「편집 마침」은 올리던 것이 블록으로 들어간 뒤 저장한다. 칸을 ✕ · 다른 줄로 **닫으면** 올리던 것은 서버에 첨부로 남지만 본문 블록은 들어가지 않는다(「블록에서 지워도 첨부는 남는다」와 같은 상태) — 미검증(시험 없음) |
 | 「취소」 단추 | 자리표시 · 취소 단추가 서는 것은 시험했지만, 진행 중 실제로 눌러 XHR 이 끊기는 것은 합성 파일이 작아(곧 끝남) 시험하지 않았다 — 미검증 |
