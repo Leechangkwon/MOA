@@ -457,7 +457,8 @@ share claude_employee01 "$PP" claude_employee02 view > /dev/null
 capi GET "/api/mention-candidates?page=$PP&q=claude_" claude_employee01 > /dev/null
 contains "공유받은 사람은 후보에 나온다" "claude_employee02" "$(cat "$WORK/b")"
 lacks "  Guest 는 후보가 아니다" "claude_guest01" "$(cat "$WORK/b")"
-expect "  빈 q → 빈 목록" "[]" "$(capi GET "/api/mention-candidates?page=$PP&q=%20" claude_employee01 >/dev/null; jget "d['candidates']" < "$WORK/b")"
+# Q:F-12 U4-4 (DESIGN 2.27 · 기획 16.4) — 빈 q 도 후보를 준다(그 문서를 볼 수 있는 쓰기 자격 사람만 · 판정 그대로 · 최대 10). 옛 기대 「빈 목록」을 새 규칙으로
+expect "  빈 q → 후보(공유받은 사람 claude_employee02 있음 · Guest 없음 · 최대 10)" "True True True" "$(capi GET "/api/mention-candidates?page=$PP&q=%20" claude_employee01 >/dev/null; jget "' '.join(str(x) for x in ['claude_employee02' in [c['username'] for c in d['candidates']], 'claude_guest01' not in [c['username'] for c in d['candidates']], len(d['candidates']) <= 10])" < "$WORK/b")"
 expect "못 보는 페이지의 후보 → 403" "403" "$(capi GET "/api/mention-candidates?page=$PP&q=claude" claude_manager01)"
 expect "공유받은 사람 @ → 알림 1 (mention)" "1" \
   "$(comment claude_employee01 "$PP" "{'body':'@claude_employee02 다시 봐 주세요'}" >/dev/null; notes_of claude_employee02 mention)"

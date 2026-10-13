@@ -1855,7 +1855,7 @@ try:
                 with p.expect_response(lambda r: r.url.endswith('/api/pages/' + ua['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
                     prevented = p.evaluate(PASTE_JS, [U3_PNG_B64, '캡처.png', 'image/png', ''])
                 check(up.value.status == 201 and prevented, 'U3 C 붙여넣기(합성 png 클립보드) → POST /api/pages/{id}/attachments 201')
-                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]') && !document.querySelector('#task-pane .doc-upload')", 10000)
+                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]') && !document.querySelector('#task-pane .ProseMirror .doc-upload:not(.doc-atom .doc-upload)')", 10000)
                 ph = p.evaluate('window.__u3ph')
                 metrics['u3_placeholder'] = ph
                 check(len(ph) == 1 and ph[0]['kind'] == 'image' and ph[0]['role'] == 'status' and ph[0]['live'] == 'polite' and ph[0]['name'] == '캡처.png'
@@ -1894,12 +1894,12 @@ try:
                 with p.expect_response(lambda r: r.url.endswith('/api/pages/' + ub['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
                     prevented = p.evaluate(DROP_JS, [memo, '메모.txt', 'text/plain'])
                 check(up.value.status == 201 and prevented, 'U3 C 끌어놓기(파일) → 201')
-                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"file\"]') && !document.querySelector('#task-pane .doc-upload')", 10000)
+                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"file\"]') && !document.querySelector('#task-pane .ProseMirror .doc-upload:not(.doc-atom .doc-upload)')", 10000)
                 # 허용 밖 파일 → 이유 문장 · 자리표시 사라짐
                 with p.expect_response(lambda r: r.url.endswith('/api/pages/' + ub['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
                     p.evaluate(DROP_JS, [base64.b64encode(b'MZ synthetic').decode(), '실행.exe', 'application/octet-stream'])
                 bad = up.value
-                until(p, "() => !document.querySelector('#task-pane .doc-upload') && (document.querySelector('#task-pane > .msg') || {}).textContent !== ''", 10000)
+                until(p, "() => !document.querySelector('#task-pane .ProseMirror .doc-upload:not(.doc-atom .doc-upload)') && (document.querySelector('#task-pane > .msg') || {}).textContent !== ''", 10000)
                 bm = p.evaluate("() => { const m = document.querySelector('#task-pane > .msg'); return {text: m.textContent, ok: m.classList.contains('msg--ok')}; }")
                 bj = bad.json()
                 check(bad.status == 400 and bj.get('reason') == 'ext_not_allowed' and bm['text'] == bj.get('error') and not bm['ok'] and p.locator('#task-pane .ProseMirror .doc-atom[data-atom="file"]').count() == 1,
@@ -1927,7 +1927,7 @@ try:
                 with p.expect_response(lambda r: r.url.endswith('/api/pages/' + uc['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
                     p.locator('[data-atom-upload-input]').set_input_files(files=[{'name': '올리기.png', 'mimeType': 'image/png', 'buffer': U3_PNG}])
                 check(up.value.status == 201 and not p.evaluate("document.getElementById('atom-dialog').open"), 'U3 C 「이 문서에 올리기」 → 창 닫힘 · 201')
-                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]') && !document.querySelector('#task-pane .doc-upload')", 10000)
+                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]') && !document.querySelector('#task-pane .ProseMirror .doc-upload:not(.doc-atom .doc-upload)')", 10000)
                 # 검사 중(pending) — SCAN_ENABLED=1 로 하나 더 붙여넣기
                 env_path = root / '.env'
                 env_text = env_path.read_text()
@@ -1936,7 +1936,7 @@ try:
                     with p.expect_response(lambda r: r.url.endswith('/api/pages/' + uc['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
                         p.evaluate(PASTE_JS, [U3_PNG_B64, '검사대기.png', 'image/png', ''])
                     pj = up.value.json()
-                    until(p, "() => document.querySelectorAll('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]').length === 2 && !document.querySelector('#task-pane .doc-upload')", 10000)
+                    until(p, "() => document.querySelectorAll('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]').length === 2 && !document.querySelector('#task-pane .ProseMirror .doc-upload:not(.doc-atom .doc-upload)')", 10000)
                     st_ = end_edit(p, uc['id'])
                 finally:
                     env_path.write_text(env_text)
