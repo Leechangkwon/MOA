@@ -692,10 +692,13 @@ export function fromDoc(doc, ctx) {
       continue;
     }
     if (b.type === 'image' || b.type === 'file') {
-      const fmap = ctx && ctx.file_titles && typeof ctx.file_titles === 'object' ? ctx.file_titles : {};
+      // Q:F-12 U3 C — `att:<uuid>`(이 문서 전용 첨부)는 `attachment_titles`, `tbox:<uuid>`(자료실)는 `file_titles` 에서 이름을 찾는다
       const ref = typeof b.file_ref === 'string' ? b.file_ref : null;
-      const fid = ref && ref.slice(0, 5) === 'tbox:' ? ref.slice(5) : '';
-      const ent = Object.prototype.hasOwnProperty.call(fmap, fid) ? fmap[fid] : null;
+      const isAtt = !!ref && ref.slice(0, 4) === 'att:';
+      const fmap = ctx && (isAtt ? ctx.attachment_titles : ctx.file_titles) && typeof (isAtt ? ctx.attachment_titles : ctx.file_titles) === 'object'
+        ? (isAtt ? ctx.attachment_titles : ctx.file_titles) : {};
+      const fid = ref && ref.slice(0, 5) === 'tbox:' ? ref.slice(5) : (isAtt ? ref.slice(4) : '');
+      const ent = fid !== '' && Object.prototype.hasOwnProperty.call(fmap, fid) ? fmap[fid] : null;
       const a2 = { id: attrs.id, file_ref: ref, caption: plainOf(b.caption), name: ent && typeof ent.name === 'string' ? ent.name : '볼 수 없는 파일' };
       if (b.type === 'image') { a2.width = ['full', 'wide', 'normal', 'small'].indexOf(b.width) !== -1 ? b.width : 'normal'; }
       content.push({ type: b.type, attrs: a2 });
@@ -883,7 +886,8 @@ export function toDoc(pmDoc) {
       continue;
     }
     if (ourType === 'image' || ourType === 'file') {
-      if (typeof a.file_ref !== 'string' || a.file_ref.slice(0, 5) !== 'tbox:') { continue; }
+      // 자료실(`tbox:`) · 이 문서 전용 첨부(`att:` — U3 C)만 저장한다. 모양 · 「이 문서의 첨부인가」는 서버가 다시 본다(Doc.php · SaveDoc.php)
+      if (typeof a.file_ref !== 'string' || (a.file_ref.slice(0, 5) !== 'tbox:' && a.file_ref.slice(0, 4) !== 'att:')) { continue; }
       block.file_ref = a.file_ref;
       const cap = richOf(a.caption);
       if (cap.length > 0) { block.caption = cap; }

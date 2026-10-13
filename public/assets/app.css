@@ -922,6 +922,8 @@ table.files:has(> #audit-body) th { padding: 0 6px; }
   font-size: 14px;
 }
 .msg:empty { min-height: 0; }
+/* Q:F-12 U3-4(DESIGN 2.21 「알림 색」) — 같은 알림 줄의 **성공** 안내(「링크를 복사했어요」 등)는 성공 색. 오류만 --danger(위 .msg) · 새 색값 0 */
+.msg--ok { color: var(--ok-fg); }
 
 .notice {
   margin: 0;
@@ -2455,8 +2457,8 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 
 /* 업무함 `.task-inbox` (Q:F-12 U2 · WK-20 C · WK-21 A · WK-22 ① · DESIGN 2.20-A) — `.task-list` 의 변형: 묶음 머리 없이 한 줄 한 건(Gmail 받은편지함).
    줄 요소 · 완료 원 · 색 네모 · 마감 색은 2.20 그대로. 묶음 경계는 꼬리표(`li.task-inbox__tag` — 12px --muted 600 + 오른쪽 1px 선, 「지난 기한」만 --danger).
-   줄 = li(완료 원 36 · ★ 32 · 줄 단추) — 줄 단추 안이 출처 10rem · 제목 + 보조 글 · 꼬리 · 마감 6.5rem. 펼침 = 같은 li 안 `div.task-inbox__pane`(2.21 안쪽 그대로 —
-   왼쪽 들여쓰기 68 · 아래 여백 20). 펼친 줄은 2.20 「고른 줄」(aria-current — --accent-soft). 새 색값 0 */
+   줄 = li(완료 원 36 · ★ 32 · 줄 단추) — 줄 단추 안이 출처 10rem · 제목 + 보조 글 · 꼬리 · 마감 6.5rem. 줄을 누르면 오른쪽 작업 상세 칸(2.21 aside —
+   U3 WK-26 · U2 의 줄 아래 펼침은 없앴다). 열린 줄은 2.20 「고른 줄」(aria-current — --accent-soft). 새 색값 0 */
 .task-inbox > .task-list__rows { display: flex; flex-direction: column; }
 .task-inbox__tag { display: flex; align-items: center; gap: 8px; padding: 14px 8px 4px; color: var(--muted); font-size: 12px; font-weight: 600; line-height: 1.3; }
 .task-inbox__tag:first-child { padding-top: 2px; }
@@ -2478,7 +2480,6 @@ button.task-inbox__star:hover { background: var(--muted-bg); color: var(--fg); }
 .task-inbox__line > .task-row__main > .task-row__aux { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: 13px; }
 .task-inbox__line > .task-row__aux { justify-content: flex-end; }
 .task-inbox__line > .task-row__cell--due { justify-content: flex-end; }
-.task-inbox__pane { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 16px; min-width: 0; padding: 12px 20px 20px 68px; border-top: 1px solid var(--line); background: var(--surface); cursor: auto; }
 .task-inbox__row > .task-list__actions,
 .task-inbox > .task-list__rows > .task-list__actions { padding: 4px 4px 4px 68px; }
 @media (max-width: 719.98px) {
@@ -2524,9 +2525,9 @@ button.task-inbox__star:hover { background: var(--muted-bg); color: var(--fg); }
 .task-pane__doc--editable:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
 /* 하위 작업 줄: 제목 단추는 글자 모양(테두리 · 바탕 없음 · 한 줄 줄임은 .task-row__title 그대로) · 그 자리 입력은 .task-add__input 그대로 ·
    줄 끝 › 는 .btn--icon(아래 아이콘 칸 하나 — 내림 꺾쇠를 오른쪽으로 돌린다) · 목록 끝 「＋ 하위 작업 추가」는 줄 폭이 아니라 글자 폭 */
-:is(.task-pane, .task-inbox__pane) button.task-row__title { padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; font: inherit; font-weight: 500; text-align: left; cursor: text; }
-:is(.task-pane, .task-inbox__pane) button.task-row__title:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
-:is(.task-pane, .task-inbox__pane) .task-row > .btn--icon .icon { transform: rotate(-90deg); }
+.task-pane button.task-row__title { padding: 0; border: 0; border-radius: var(--r-sm); background: transparent; font: inherit; font-weight: 500; text-align: left; cursor: text; }
+.task-pane button.task-row__title:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+.task-pane .task-row > .btn--icon .icon { transform: rotate(-90deg); }
 .task-pane__section > .btn { align-self: flex-start; }
 .task-pane__activity { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }
 .task-event { color: var(--muted); font-size: 13px; overflow-wrap: anywhere; }
@@ -2535,10 +2536,10 @@ button.task-inbox__star:hover { background: var(--muted-bg); color: var(--fg); }
 .task-pane__foot { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: 1px solid var(--line); }
 .task-pane__foot textarea { width: 100%; min-height: 64px; padding: 8px 12px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; resize: vertical; }
 .task-pane__foot .btn { align-self: flex-end; }
-:is(.task-pane, .task-inbox__pane) .task-row { grid-template-columns: minmax(0, 1fr) auto auto auto; min-height: 40px; }
-:is(.task-pane, .task-inbox__pane) .menu__list input[type="search"] { width: 100%; height: 32px; margin-bottom: 4px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
+.task-pane .task-row { grid-template-columns: minmax(0, 1fr) auto auto auto; min-height: 40px; }
+.task-pane .menu__list input[type="search"] { width: 100%; height: 32px; margin-bottom: 4px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
 /* 담당 고르기 안내(U1-a 「나뿐이에요」 한 줄 · 「고칠 수 있는 사람만」)는 칸 폭만큼 꺾는다 — 넓은 화면에서 메뉴가 안내 한 줄 길이로 목록 위까지 늘어나지 않게 */
-:is(.task-pane, .task-inbox__pane) .menu__list > .help { max-width: 20rem; }
+.task-pane .menu__list > .help { max-width: 20rem; }
 /* 좁은 폭(720 미만)의 담당 고르기 메뉴 — 「바꾸기」가 줄 가운데쯤이라 왼쪽(기본) · 오른쪽 어느 쪽으로 펼쳐도 화면 끝에 닿았다(검토 RV-U1-2, 412 에서 x 0).
    「바꾸기」 아래 화면 폭 전체 칸에 왼쪽 맞춤으로 두고 좌우 16px 를 비운다(아래가 모자라면 위로). 2.15 공용 규칙과 같은 조건(앵커를 아는 브라우저)에서만 —
    상세 칸 속성 줄(.task-pane__props)의 메뉴 하나만 바꾼다. 720 이상은 공용 규칙 그대로 */
@@ -2547,22 +2548,45 @@ button.task-inbox__star:hover { background: var(--muted-bg); color: var(--fg); }
     .task-pane__props .menu__list { position-area: bottom span-all; justify-self: start; margin: 6px 16px; position-try-fallbacks: flip-block; }
   }
 }
+/* U3 A(DESIGN 2.21 「폭 조절 · 넓게 보기」) — 칸 폭 = CSS 변수 `--task-pane-w`(work.js 가 `<body>` 에 CSSOM 으로 하나 — 없으면 기본 clamp(400px, 34vw, 480px))를
+   400px ~ 화면 폭 70% 로 다시 묶은 값. 칸 · 목록 오른쪽 여백 · 손잡이 자리가 같은 식이다. 손잡이 `.task-pane__resize`(role=separator) = 칸 왼쪽 경계 위 8px 누름 자리 ·
+   칸 높이 전체(position: fixed — 칸이 스크롤해도 제자리) · 올리면 커서 col-resize + 경계 1px --line → 2px --primary. 「넓게 보기」(data-pane-wide)는 내림 꺾쇠를 돌린 아이콘
+   (← 넓히기 · 켜면 → 되돌리기). 1200 미만은 칸이 목록을 대신하므로 둘 다 숨는다(폭 조절 0). 새 색값 0 */
 @media (min-width: 1200px) {
-  .task-pane { position: fixed; top: 0; right: 0; bottom: 0; width: clamp(400px, 34vw, 480px); overflow-y: auto; border-left: 1px solid var(--line); scrollbar-width: thin; }
-  body[data-task-open] .main { padding-right: calc(clamp(400px, 34vw, 480px) + 32px); }
+  .task-pane { position: fixed; top: 0; right: 0; bottom: 0; width: max(400px, min(var(--task-pane-w, clamp(400px, 34vw, 480px)), 70vw)); overflow-y: auto; border-left: 1px solid var(--line); scrollbar-width: thin; }
+  body[data-task-open] .main { padding-right: calc(max(400px, min(var(--task-pane-w, clamp(400px, 34vw, 480px)), 70vw)) + 32px); }
   .task-pane__back { display: none; }
+  .task-pane__resize { position: fixed; top: 0; bottom: 0; right: calc(max(400px, min(var(--task-pane-w, clamp(400px, 34vw, 480px)), 70vw)) - 4px); width: 8px; cursor: col-resize; touch-action: none; }
+  .task-pane__resize::after { content: ""; position: absolute; top: 0; bottom: 0; left: 3px; width: 2px; background: transparent; }
+  .task-pane__resize:hover::after, .task-pane__resize:focus-visible::after, body[data-task-resizing] .task-pane__resize::after { background: var(--primary); }
+  .task-pane__resize:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+  body[data-task-resizing] { cursor: col-resize; user-select: none; }
+  .task-pane [data-pane-wide] .icon { transform: rotate(90deg); }
+  .task-pane [data-pane-wide][aria-pressed="true"] .icon { transform: rotate(-90deg); }
 }
+/* U3 B(DESIGN 2.21 「칸 편집기」) — 칸 안 편집기 도구줄은 페이지 편집기와 같은 `.editor-toolbar`(community.css) 그대로이고, 칸 폭 안에서만 바꾼다:
+   줄은 칸 폭 전체(좁으면 단추가 줄바꿈 — 같은 .editor-toolbar__row) · 색 · 배경 · 링크 · 멘션 줄은 툴바 **아래**로 열려 칸 폭 안에 든다(넓은 화면의
+   「툴바 오른쪽에 뜨는」 갈래는 칸이 화면 오른쪽 끝이라 쓰지 않는다) */
+.task-pane .editor-toolbar { width: auto; }
+.task-pane .editor-toolbar > .editor-palette__row { top: calc(100% + 4px); left: 0; right: 0; width: auto; max-width: none; min-height: 0; padding: 8px; flex-wrap: wrap; }
+/* U3 C(DESIGN 2.24) — 올리는 동안의 자리표시 블록 `.doc-upload`(본문에 저장되지 않는 편집기 장식 · 읽기 화면의 「검사 중이에요」 그림 상자도 같은 모양):
+   그림이면(data-kind=image) 회색 상자 · 파일이면 파일 줄 모양. 이름 + 「올리는 중 n%」(12px --muted) + 「취소」. 새 색값 0 */
+.doc-upload { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; min-width: 0; margin: 8px 0; padding: 10px 12px; border: 1px dashed var(--line); border-radius: var(--r-ctl); background: var(--surface-2); color: var(--fg); font-size: 14px; }
+.doc-upload[data-kind="image"] { min-height: 120px; justify-content: center; text-align: center; }
+.doc-upload__name { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.doc-upload__progress { flex: none; color: var(--muted); font-size: 12px; }
 @media (max-width: 1199.98px) {
+  .task-pane__resize, .task-pane [data-pane-wide] { display: none; }
   /* 칸이 목록을 대신한다 — main 의 다른 칸은 숨는다(창 · 「역할로 보기」 띠는 그대로) */
   body[data-task-open] .main > :not(.task-pane):not(dialog):not(.act-banner):not(.shell-tools) { display: none !important; }
   .task-pane { padding: 0 0 72px; }
 }
 @media (max-width: 719.98px) {
   /* 하위 작업 줄이 두 줄 카드가 될 때(아래 「칸 줄 없이 두 줄 카드」) 줄 끝 › 는 마감 오른쪽에서 두 줄을 걸친다 */
-  :is(.task-pane, .task-inbox__pane) .task-row { grid-template-columns: minmax(0, 1fr) auto auto; }
-  :is(.task-pane, .task-inbox__pane) .task-row > .btn--icon { grid-column: 3; grid-row: 1 / span 2; }
+  .task-pane .task-row { grid-template-columns: minmax(0, 1fr) auto auto; }
+  .task-pane .task-row > .btn--icon { grid-column: 3; grid-row: 1 / span 2; }
   /* 상세 칸 줄은 완료 원 · 제목뿐이라 꺾지 않는다 — 긴 제목이 완료 원 아래 줄로 내려가지 않고 그 줄에서 줄임표로 끝난다 */
-  :is(.task-pane, .task-inbox__pane) .task-row > .task-row__main { flex-wrap: nowrap; }
+  .task-pane .task-row > .task-row__main { flex-wrap: nowrap; }
 }
 
 /* 프로젝트 화면 — `<body data-project-view>`(work.js 가 행 목록 창구의 `database.purpose` 를 보고 단다) 동안 페이지 머리 · 속성 줄 · 문서 본문을 가리고

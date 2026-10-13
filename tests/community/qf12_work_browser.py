@@ -20,10 +20,17 @@
   U2(사용감 라운드)    [접기 collapse] ☰ → 폭 64 · 글자 0 · 남는 항목 · 툴팁 · 기억 · 959 0 / [업무함 u2] 화면 순서 = buildInbox(JS) = Python 규칙 ·
                        꼬리표 · 「@」 · 「검토」 · ★ · 줄 아래 펼침(2.21 요소) · 주소 · ✕ · Esc · 뒤로 · 완료 · ↓↑ · 홈 10줄 · briefing 403 · 1199 · 412 ·
                        손님 · 역할로 보기(손님) 쓰는 단추 0 · 폭 여섯 × 밝게 · 어둡게 · 고대비 (QF12D_ONLY=u2,collapse · 보고용 사본 shots)
+                       ★ U3(WK-26 ②)로 「줄 아래 펼침」 단언은 「오른쪽 칸 하나(aside#task-pane)」로 고쳤다 — 줄 아래 판(.task-inbox__pane) 0
+  U3(사용감 라운드)    [u3] 칸 폭: 손잡이(separator · aria-value*) 끌기 · ←/→ 16 · Home · 두 번 누르기 · 범위 400 ~ 70% · 새로고침 뒤 기억 · 넓게 보기 ·
+                       1199 · 412 폭 조절 0 / 알림 색(성공 .msg--ok ≠ --danger · 오류 --danger) / 칸 편집기 도구줄 · 블록 넣기 목록 = 전체 편집기 ·
+                       창 한 벌(내 작업 화면의 창 = 페이지 화면 창 구조) / 붙여넣기(합성 png) → 자리표시 → 그림 블록 · 첨부 행 1 · 본문 att: ·
+                       끌어놓기 → 파일 블록 · 「이 문서에 올리기」 탭 · 허용 밖 → 이유 문장 · pending → 「검사 중」 · 전체 편집기 붙여넣기 /
+                       보기 공유 · 손님 입구 셋 0 / 폭 여섯 × 밝게 · 어둡게 · 고대비(읽기 · 편집 · 넓게) 넘침 0 · 누름 자리 44 · 인라인 style 0(CSSOM 변수 제외)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
 import re, secrets, subprocess, sys
+from collections import Counter
 from urllib.parse import urlsplit, parse_qs
 from playwright.sync_api import sync_playwright
 assert str(root).startswith('/tmp/qaredi-stage13-') and manifest['database'].startswith('tbox_memories_test_')
@@ -1078,8 +1085,9 @@ try:
             : li.matches('.task-inbox__row') ? ['row', li.getAttribute('data-task'), [...li.querySelectorAll(':scope > .task-inbox__line .badge')].map(b => b.textContent.trim()),
                 li.querySelector(':scope > .task-inbox__line .task-row__cell--meta').textContent.trim(), (li.querySelector(':scope > .task-inbox__line .task-row__main .task-row__aux') || {textContent: ''}).textContent.trim()]
             : ['li', (li.querySelector('[data-add-bucket]') || {getAttribute: () => null}).getAttribute('data-add-bucket'), (li.querySelector('[data-more-bucket]') || {getAttribute: () => null}).getAttribute('data-more-bucket')])"""
+        # U3(WK-26) — 줄 아래 판은 없어졌다. 셋째 값 = 그 줄이 열린 줄(aria-current)인가
         LINE_STATE = """() => [...document.querySelectorAll('li.task-inbox__row')].map(li => [li.getAttribute('data-task'), li.querySelector(':scope > .task-inbox__line').getAttribute('aria-expanded'),
-            !!li.querySelector(':scope > .task-inbox__pane:not([hidden])')])"""
+            li.getAttribute('aria-current') === 'true'])"""
 
         def py_inbox(mt, br, fav):
             """buildInbox(work.js) 와 같은 규칙을 시험이 따로 계산한다 — 두 구현이 같은 답이어야 한다."""
@@ -1247,50 +1255,52 @@ try:
                 t.go('/community/my-tasks')
                 p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
                 line = lambda pid: p.locator('li.task-inbox__row[data-task="' + pid + '"] > .task-inbox__line')
+                # U3(WK-26 ② — U2 의 「줄 아래 펼침」 단언을 「오른쪽 칸 하나」로 고쳤다): 1440 에서도 줄 → aside#task-pane(프로젝트와 같은 칸) · 줄 아래 판 0
                 line(o1['id']).click()
-                p.wait_for_selector('li.task-inbox__row[data-task="' + o1['id'] + '"] > .task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
                 p.wait_for_timeout(400)
                 st = p.evaluate(LINE_STATE)
-                pane_parts = p.evaluate("""(id) => { const pn = document.querySelector('li.task-inbox__row[data-task="' + id + '"] > .task-inbox__pane');
-                    const li = pn.closest('li'); const lr = li.querySelector(':scope > .task-inbox__line').getBoundingClientRect(); const pr = pn.getBoundingClientRect();
+                pane_parts = p.evaluate("""(id) => { const pn = document.getElementById('task-pane'); const li = document.querySelector('li.task-inbox__row[data-task="' + id + '"]');
+                    const pr = pn.getBoundingClientRect(); const lr = document.getElementById('my-tasks-list').getBoundingClientRect();
                     return {h2: !!pn.querySelector('h2#task-pane-title'), props: !!pn.querySelector('dl.task-pane__props'), doc: !!pn.querySelector('.task-pane__doc'),
                             subs: [...pn.querySelectorAll('.task-pane__section-head')].some(h => h.textContent.startsWith('하위 작업')), act: !!pn.querySelector('.task-pane__activity'),
-                            foot: !!pn.querySelector('form.task-pane__foot textarea'), below: pr.top >= lr.bottom - 1, indent: Math.round(parseFloat(getComputedStyle(pn).paddingLeft)),
-                            asideHidden: document.getElementById('task-pane').hidden, taskOpen: document.body.hasAttribute('data-task-open'), cur: li.getAttribute('aria-current')}; }""", o1['id'])
-                metrics['u2_expand_1440'] = pane_parts
-                check([s for s in st if s[1] == 'true'] == [[o1['id'], 'true', True]], 'U2 1440 click row → that row aria-expanded true · pane inside that row only')
-                check(all(pane_parts[k] for k in ('h2', 'props', 'doc', 'subs', 'act', 'foot', 'below')) and pane_parts['indent'] == 68,
-                      'U2 1440 pane right below the row has 2.21 parts (h2 · dl.task-pane__props · 설명 · 하위 작업 · 활동 · 댓글 칸) · indent 68 ' + json.dumps(pane_parts))
-                check(pane_parts['asideHidden'] and not pane_parts['taskOpen'] and pane_parts['cur'] == 'true', 'U2 1440 aside#task-pane unused · body[data-task-open] absent · expanded row aria-current (--accent-soft)')
+                            foot: !!pn.querySelector('form.task-pane__foot textarea'), right: Math.round(pr.right) === innerWidth && pr.left >= lr.right - 1, tag: pn.tagName,
+                            inline: document.querySelectorAll('.task-inbox__pane').length, rowHasPane: !!li.querySelector('#task-pane, .task-pane'),
+                            taskOpen: document.body.hasAttribute('data-task-open'), cur: li.getAttribute('aria-current'), w: Math.round(pr.width)}; }""", o1['id'])
+                metrics['u3_inbox_aside_1440'] = pane_parts
+                check([s for s in st if s[1] == 'true'] == [[o1['id'], 'true', True]], 'U3 WK-26 1440 click row → that row aria-expanded · aria-current (one row)')
+                check(all(pane_parts[k] for k in ('h2', 'props', 'doc', 'subs', 'act', 'foot', 'right')) and pane_parts['tag'] == 'ASIDE' and pane_parts['inline'] == 0 and not pane_parts['rowHasPane'],
+                      'U3 WK-26 1440 row → aside#task-pane on the right of the list with 2.21 parts (h2 · props · 설명 · 하위 작업 · 활동 · 댓글) · 줄 아래 판 0 ' + json.dumps(pane_parts))
+                check(pane_parts['taskOpen'] and pane_parts['cur'] == 'true' and pane_parts['w'] == 480, 'U3 WK-26 1440 body[data-task-open] · row aria-current (--accent-soft) · default width 480')
                 check(parse_qs(p.evaluate('location.search').lstrip('?')).get('task') == [o1['id']], 'U2 1440 address ?task={row}')
-                p.screenshot(path=str(shots / 'u2-inbox-expanded-1440.png'))
+                p.screenshot(path=str(shots / 'u3-inbox-aside-1440.png'))
                 line(o2['id']).click()
-                p.wait_for_selector('li.task-inbox__row[data-task="' + o2['id'] + '"] > .task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                until(p, "() => (document.getElementById('task-pane-title') || {}).textContent === %s" % json.dumps(o2['title']), 10000)
                 st = p.evaluate(LINE_STATE)
                 check([s for s in st if s[1] == 'true' or s[2]] == [[o2['id'], 'true', True]] and parse_qs(p.evaluate('location.search').lstrip('?')).get('task') == [o2['id']],
-                      'U2 1440 another row → previous row collapses (aria-expanded false) · only one open · ?task=row2')
+                      'U2 1440 another row → same aside shows row2 · previous row aria-expanded false · ?task=row2')
                 line(o2['id']).click()
-                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
-                check(p.evaluate('location.search') == '' and all(s[1] == 'false' for s in p.evaluate(LINE_STATE)), 'U2 1440 same row again → collapsed · no ?task')
+                until(p, "() => document.getElementById('task-pane').hidden === true", 8000)
+                check(p.evaluate('location.search') == '' and all(s[1] == 'false' for s in p.evaluate(LINE_STATE)), 'U2 1440 same row again → pane closed · no ?task')
                 # ✕
                 line(o1['id']).click()
-                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
-                p.locator('.task-inbox__pane .task-pane__tools .btn--icon[aria-label="닫기"]').click()
-                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
-                check(p.evaluate('location.search') == '', 'U2 1440 ✕ collapses')
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.locator('#task-pane .task-pane__tools .btn--icon[aria-label="닫기"]').click()
+                until(p, "() => document.getElementById('task-pane').hidden === true", 8000)
+                check(p.evaluate('location.search') == '', 'U2 1440 ✕ closes')
                 # Esc
                 line(o1['id']).click()
-                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
                 line(o1['id']).focus()
                 p.keyboard.press('Escape')
-                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
-                check(p.evaluate("document.activeElement && document.activeElement.matches('li[data-task=\"%s\"] > .task-inbox__line')" % o1['id']), 'U2 1440 Esc collapses · focus back on the row')
+                until(p, "() => document.getElementById('task-pane').hidden === true", 8000)
+                check(p.evaluate("document.activeElement && document.activeElement.matches('li[data-task=\"%s\"] > .task-inbox__line')" % o1['id']), 'U2 1440 Esc closes · focus back on the row')
                 # 뒤로 가기
                 line(o1['id']).click()
-                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
                 p.go_back()
-                until(p, "() => !document.querySelector('.task-inbox__pane:not([hidden])')", 8000)
-                check(p.evaluate('location.search') == '' and all(s[1] == 'false' for s in p.evaluate(LINE_STATE)), 'U2 1440 back → collapsed')
+                until(p, "() => document.getElementById('task-pane').hidden === true", 8000)
+                check(p.evaluate('location.search') == '' and all(s[1] == 'false' for s in p.evaluate(LINE_STATE)), 'U2 1440 back → closed')
                 # ↓↑
                 line(o1['id']).focus()
                 p.keyboard.press('ArrowDown')
@@ -1361,7 +1371,8 @@ try:
                 check(allv.is_visible() and allv.get_attribute('href') == '/community/my-tasks' and allv.inner_text().strip() == '모두 보기', 'U2 홈 「모두 보기」 → /community/my-tasks')
                 check(p.locator('#work-home-tasks .work-cols').count() == 0 and p.locator('[data-home-bucket]').count() == 0, 'U2 홈 three columns gone')
                 p.locator('li.task-inbox__row[data-task="' + rows_[0] + '"] > .task-inbox__line').click()
-                p.wait_for_selector('#work-home-rows .task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                check(p.locator('.task-inbox__pane').count() == 0 and p.evaluate("document.body.hasAttribute('data-task-open')"), 'U3 WK-26 홈 1440 row → aside#task-pane (줄 아래 판 0 · body[data-task-open])')
                 p.wait_for_timeout(400)
                 p.screenshot(path=str(shots / 'u2-home-expanded-1440.png'))
                 check(t.clean('u2-home'), 'U2 홈 console 0')
@@ -1530,7 +1541,7 @@ try:
                 check(st['collapsed'] == 'collapsed' and st['width'] == 64, 'U2 collapse kept on /community/my-tasks')
                 p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
                 p.locator('#my-tasks-rows li.task-inbox__row > .task-inbox__line').first.click()
-                p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
                 p.wait_for_timeout(400)
                 p.screenshot(path=str(shots / 'u2-collapsed-inbox-expanded-1440.png'))
                 for path in ('/tbox/', '/community/memories'):
@@ -1576,6 +1587,454 @@ try:
                 ctx.close()
             guard('U2 collapse', collapse_wide)
 
+        # ─── U3(사용감 라운드 · WK-24 ② · WK-25 ① · WK-26 ②) — 칸 넓히기 · 칸 편집기 · 문서에 바로 올리기 · 알림 색 (QF12D_ONLY=u3) ─────────
+        if want('u3'):
+            import struct, zlib
+
+            def synth_png(w, h):
+                """합성 그림(가로 그러데이션) — 스크린샷에서 보이게 1×1 보다 크게. 바깥 자료 0"""
+                rows = b''.join(b'\x00' + b''.join(bytes(((x * 255) // w, 120 + (y * 100) // h, 200)) for x in range(w)) for y in range(h))
+                chunk = lambda tag, data: struct.pack('>I', len(data)) + tag + data + struct.pack('>I', zlib.crc32(tag + data) & 0xffffffff)
+                return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows, 9)) + chunk(b'IEND', b'')
+            U3_PNG = synth_png(240, 120)
+            U3_PNG_B64 = base64.b64encode(U3_PNG).decode()
+            pu3 = call('POST', '/api/pages', {'database': True, 'preset': 'project', 'title': 'U3 칸 편집기 프로젝트'}, user='other', expected=201)['page']
+
+            def u3task(title):
+                r = call('POST', '/api/pages', {'parent_id': pu3['id'], 'title': title, 'properties': {'section': '01. 진행'}}, user='other', expected=201)['page']
+                call('PATCH', '/api/pages/' + r['id'] + '/properties', {'status': 'todo', 'due': today}, user='other')
+                return r
+            ua, ub, uc, ud = u3task('U3 붙여넣기 작업'), u3task('U3 끌어놓기 작업'), u3task('U3 올리기 탭 작업'), u3task('U3 전체 편집기 작업')
+            # 보기 공유 — 다른 팀 직원(employee) · 손님: 입구 셋 0 문맥
+            for who_ in ('employee', 'guest'):
+                rr = raw('PUT', '/api/pages/' + ua['id'] + '/shares/' + users[who_]['username'], {'level': 'view'}, user='other')
+                check(rr.status_code in (200, 201), 'U3 fixture: view share to %s (%d)' % (who_, rr.status_code))
+
+            def att_rows(pid):
+                return sql("SELECT public_id||'|'||original_name||'|'||scan_status FROM community.page_attachments WHERE page_id=(SELECT id FROM community.pages WHERE public_id="
+                           + lit(pid) + ") ORDER BY id").splitlines()
+
+            def page_refs(pid):
+                doc = call('GET', '/api/pages/' + pid, user='other')['page']['doc']
+                return [(b['type'], b.get('file_ref')) for b in doc.get('blocks', []) if b.get('type') in ('image', 'file')]
+
+            BODY_STYLE_RE = re.compile(r'^--task-pane-w: \d+px;?$')
+            # 인라인 style — CSSOM 예외 둘(진행 폭 `.progress` 의 --pct · `<body>` 의 --task-pane-w 하나)만 빼고 0
+            STYLE_JS = r"""() => ({others: [...document.querySelectorAll('[style]')].filter(e => !e.matches('.progress') && e !== document.body).map(e => e.tagName + '.' + e.className).slice(0, 5),
+                                     body: document.body.getAttribute('style')})"""
+            PANE_W_JS = r"""() => { const p = document.getElementById('task-pane'); const h = p.querySelector('.task-pane__resize'); const r = p.getBoundingClientRect();
+                const hr = h ? h.getBoundingClientRect() : null; const m = getComputedStyle(document.querySelector('.main'));
+                const wide = p.querySelector('[data-pane-wide]');
+                return {w: Math.round(r.width), left: Math.round(r.left), now: h ? h.getAttribute('aria-valuenow') : null, min: h ? h.getAttribute('aria-valuemin') : null,
+                        max: h ? h.getAttribute('aria-valuemax') : null, role: h ? h.getAttribute('role') : null, orient: h ? h.getAttribute('aria-orientation') : null,
+                        label: h ? h.getAttribute('aria-label') : null, hx: hr ? Math.round(hr.left + hr.width / 2) : null, hw: hr ? Math.round(hr.width) : null,
+                        hh: hr ? Math.round(hr.height) : null, hvis: hr ? hr.width > 0 && getComputedStyle(h).display !== 'none' : false,
+                        pad: Math.round(parseFloat(m.paddingRight)), wide: wide ? wide.getAttribute('aria-pressed') : null, wideVis: wide ? wide.getBoundingClientRect().width > 0 : false,
+                        store: Object.entries(localStorage).filter(([k]) => k.startsWith('qaredi-task-pane-w:')), vw: innerWidth,
+                        mainLeft: Math.round(document.querySelector('.main').getBoundingClientRect().left),
+                        listW: Math.round((document.getElementById('my-tasks-list') || document.getElementById('work-home-tasks') || p).getBoundingClientRect().width),
+                        overflow: document.documentElement.scrollWidth - innerWidth}; }"""
+            OPEN_EDIT_JS = r"""() => { const d = document.querySelector('#task-pane .task-pane__doc'); return !!d && d.classList.contains('task-pane__doc--editable'); }"""
+
+            def open_task(p, tid):
+                p.locator('li.task-inbox__row[data-task="' + tid + '"] > .task-inbox__line').click()
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                until(p, "() => (document.getElementById('task-pane-title') || {}).textContent !== '' && !!document.querySelector('#task-pane .task-pane__doc')", 8000)
+                p.wait_for_timeout(300)
+
+            def start_edit(p):
+                until(p, OPEN_EDIT_JS, 8000)
+                p.locator('#task-pane .task-pane__doc').click()
+                p.wait_for_selector('#task-pane .ProseMirror', timeout=8000)
+                p.wait_for_timeout(200)
+
+            def end_edit(p, tid):
+                """「편집 마침」 — 올리던 것이 들어간 뒤 저장(flush)하고 걷는다. 자동 저장이 먼저 나갔을 수 있어 PATCH 를 기다리지 않고 결과(배지)를 본다"""
+                p.locator('#task-pane .task-pane__section-head .btn', has_text='편집 마침').click()
+                until(p, "() => !document.querySelector('#task-pane .ProseMirror')", 20000)
+                p.wait_for_timeout(300)
+                txt = p.evaluate("() => (document.querySelector('#task-pane .task-pane__section-head .badge') || {}).textContent || ''")
+                return 0 if txt == '저장 못 함' else 200
+
+            def u3_width():
+                ctx = context('other', 1440)
+                ctx.grant_permissions(['clipboard-read', 'clipboard-write'], origin=site)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/my-tasks')
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                open_task(p, ua['id'])
+                s0 = p.evaluate(PANE_W_JS)
+                metrics['u3_width_default'] = s0
+                # 위 끝 = min(화면 70% = 1008, 목록 480px 이 남는 폭 = 1440 − 본문 왼쪽(사이드바) − 본문 여백 64 − 480) — DESIGN 2.21 「범위」
+                pmax = min(1008, 1440 - s0['mainLeft'] - 64 - 480)
+                metrics['u3_width_max'] = pmax
+                check(p.locator('.task-inbox__pane').count() == 0 and s0['w'] == 480 and s0['left'] == 960, 'U3 A 업무함 줄 → aside 칸(줄 아래 판 0) · 기본 폭 480 · 오른쪽 끝 ' + json.dumps(s0))
+                check(s0['role'] == 'separator' and s0['orient'] == 'vertical' and s0['label'] == '작업 상세 폭' and s0['min'] == '400' and s0['max'] == str(pmax) and s0['now'] == '480'
+                      and s0['hw'] == 8 and s0['hh'] == 900 and abs(s0['hx'] - 960) <= 1,
+                      'U3 A 손잡이 role=separator · aria-orientation vertical · 「작업 상세 폭」 · valuemin 400 · valuemax %d(min(70%%, 목록 480 남김)) · valuenow 480 · 폭 8 · 높이 칸 전체 · 왼쪽 경계 위' % pmax)
+                check(s0['pad'] == 480 + 32 and s0['wide'] == 'false' and s0['wideVis'] and p.evaluate("document.body.getAttribute('style')") is None,
+                      'U3 A 목록 여백 = 칸 폭 + 32 · 「넓게 보기」 aria-pressed false · 기본 폭이면 body style 0')
+                # 끌기
+                p.mouse.move(s0['hx'], 450)
+                p.mouse.down()
+                p.mouse.move(s0['hx'] - 60, 450, steps=4)
+                p.mouse.move(s0['hx'] - 120, 450, steps=4)
+                p.mouse.up()
+                p.wait_for_timeout(200)
+                s1 = p.evaluate(PANE_W_JS)
+                metrics['u3_width_drag'] = s1
+                check(abs(s1['w'] - 600) <= 2 and s1['now'] == str(s1['w']) and s1['pad'] == s1['w'] + 32 and s1['store'] == [['qaredi-task-pane-w:v1:' + users['other']['username'], str(s1['w'])]],
+                      'U3 A 손잡이 끌기 120px → 폭 600 · aria-valuenow · 목록 여백 따라옴 · localStorage qaredi-task-pane-w:v1:<아이디> 숫자 하나 ' + json.dumps([s1['w'], s1['now'], s1['pad'], s1['store']]))
+                st = p.evaluate(STYLE_JS)
+                check(st['others'] == [] and BODY_STYLE_RE.match(st['body'] or ''), 'U3 A 인라인 style = <body> 의 --task-pane-w 하나뿐(CSSOM) ' + json.dumps(st, ensure_ascii=False))
+                # 키보드 ← → Home
+                p.locator('#task-pane .task-pane__resize').focus()
+                p.keyboard.press('ArrowLeft')
+                k1 = p.evaluate(PANE_W_JS)['w']
+                p.keyboard.press('ArrowRight')
+                p.keyboard.press('ArrowRight')
+                k2 = p.evaluate(PANE_W_JS)['w']
+                p.keyboard.press('Home')
+                k3 = p.evaluate(PANE_W_JS)
+                check(k1 == s1['w'] + 16 and k2 == s1['w'] - 16 and k3['w'] == 480 and k3['store'] == [] and p.evaluate("document.body.getAttribute('style')") is None,
+                      'U3 A ← +16 · → −16 · Home = 기본 폭(480 · 기억 지움 · body style 0) ' + json.dumps([k1, k2, k3['w']]))
+                # 범위 400 ~ 70%
+                hx = p.evaluate(PANE_W_JS)['hx']
+                p.mouse.move(hx, 450); p.mouse.down(); p.mouse.move(5, 450, steps=6); p.mouse.up()
+                r1 = p.evaluate(PANE_W_JS)
+                hx = r1['hx']
+                p.mouse.move(hx, 450); p.mouse.down(); p.mouse.move(1435, 450, steps=6); p.mouse.up()
+                r2 = p.evaluate(PANE_W_JS)
+                check(r1['w'] == pmax and r1['now'] == str(pmax) and r2['w'] == 400 and r2['now'] == '400', 'U3 A 범위: 끝까지 끌어도 %d(위 끝) · 반대로 400 %s' % (pmax, json.dumps([r1['w'], r2['w']])))
+                check(r1['overflow'] <= 0 and r1['listW'] >= 480, 'U3 A 위 끝 폭에서 목록 %dpx(≥ 480) · 가로 넘침 0 (%d)' % (r1['listW'], r1['overflow']))
+                # 두 번 누르기 = 기본 폭
+                p.locator('#task-pane .task-pane__resize').dblclick()
+                p.wait_for_timeout(150)
+                check(p.evaluate(PANE_W_JS)['w'] == 480, 'U3 A 손잡이 두 번 누르기 = 기본 폭 480')
+                # 넓게 보기 — 켜면 70% · 끄면 앞 폭
+                p.locator('#task-pane .task-pane__resize').focus()
+                for _ in range(5):
+                    p.keyboard.press('ArrowLeft')
+                before = p.evaluate(PANE_W_JS)['w']
+                p.locator('#task-pane [data-pane-wide]').click()
+                p.wait_for_timeout(150)
+                w1 = p.evaluate(PANE_W_JS)
+                p.screenshot(path=str(shots / 'u3-wide-1440.png'))
+                p.locator('#task-pane [data-pane-wide]').click()
+                p.wait_for_timeout(150)
+                w2 = p.evaluate(PANE_W_JS)
+                check(before == 560 and w1['w'] == pmax and w1['wide'] == 'true' and w2['w'] == 560 and w2['wide'] == 'false',
+                      'U3 A 「넓게 보기」 켜면 위 끝 %d · aria-pressed true · 끄면 앞 폭 560 %s' % (pmax, json.dumps([before, w1['w'], w1['wide'], w2['w'], w2['wide']])))
+                # 새로고침 뒤 기억
+                p.reload(wait_until='networkidle')
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_timeout(300)
+                rl = p.evaluate(PANE_W_JS)
+                check(rl['w'] == 560 and rl['now'] == '560' and rl['pad'] == 592, 'U3 A 새로고침 뒤 폭 기억(560 · 주소 ?task= 로 다시 열림)')
+                # 홈에서도 같은 칸 · 같은 폭(같은 사람의 기억 한 벌)
+                t.go('/community/?task=' + ua['id'])
+                p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                p.wait_for_timeout(300)
+                hm = p.evaluate(PANE_W_JS)
+                check(hm['w'] == 560 and p.locator('.task-inbox__pane').count() == 0, 'U3 A 홈 ?task= → 같은 aside · 같은 폭 560')
+                p.locator('#task-pane [data-pane-wide]').click()
+                p.wait_for_timeout(200)
+                check(p.evaluate(PANE_W_JS)['overflow'] <= 0, 'U3 A 홈 넓게 보기 가로 넘침 0')
+                p.locator('#task-pane [data-pane-wide]').click()
+                # 사이드바 접기(☰) — 목록 자리가 넓어지면 위 끝도 늘어난다(본문 왼쪽 64)
+                p.locator('#sidebar-collapse').click()
+                p.wait_for_timeout(300)
+                sc = p.evaluate(PANE_W_JS)
+                p.locator('#task-pane [data-pane-wide]').click()
+                p.wait_for_timeout(200)
+                sw = p.evaluate(PANE_W_JS)
+                pmax_c = min(1008, 1440 - sc['mainLeft'] - 64 - 480)
+                check(sc['mainLeft'] == 64 and sc['max'] == str(pmax_c) and sw['w'] == pmax_c and sw['overflow'] <= 0,
+                      'U3 A 사이드바 접으면 위 끝 %d(목록 480 남김 · 70%% 이하) · 넓게 보기 = 그 폭 · 넘침 0' % pmax_c)
+                p.screenshot(path=str(shots / 'u3-wide-collapsed-1440.png'))
+                p.locator('#task-pane [data-pane-wide]').click()
+                p.locator('#sidebar-collapse').click()
+                p.wait_for_timeout(300)
+                # 알림 색 — 성공(링크 복사)은 .msg--ok(≠ --danger) · 오류는 --danger
+                p.locator('#task-pane .task-pane__tools .btn--icon[aria-label="링크 복사"]').click()
+                until(p, "() => { const m = document.querySelector('#task-pane > .msg'); return m && m.textContent !== ''; }", 5000)
+                col = p.evaluate("""() => { const m = document.querySelector('#task-pane > .msg'); const probe = document.createElement('p'); probe.className = 'msg'; probe.textContent = 'x';
+                    document.getElementById('task-pane').appendChild(probe); const danger = getComputedStyle(probe).color; probe.remove();
+                    return {text: m.textContent, ok: m.classList.contains('msg--ok'), color: getComputedStyle(m).color, danger: danger}; }""")
+                metrics['u3_msg_ok'] = col
+                check(col['text'] == '링크를 복사했어요.' and col['ok'] and col['color'] != col['danger'], 'U3-4 「링크를 복사했어요」 = 성공 모양 .msg--ok · 색 ≠ --danger ' + json.dumps(col, ensure_ascii=False))
+                p.route('**/community/api/pages/*/properties', lambda route: route.fulfill(status=400, content_type='application/json', body='{"error":"합성 오류 문장"}'))
+                p.locator('#task-pane .task-pane__props select[aria-label="상태"]').select_option('doing')
+                until(p, "() => (document.querySelector('#task-pane > .msg') || {}).textContent === '합성 오류 문장'", 5000)
+                er = p.evaluate("() => { const m = document.querySelector('#task-pane > .msg'); return {ok: m.classList.contains('msg--ok'), color: getComputedStyle(m).color}; }")
+                check(not er['ok'] and er['color'] == col['danger'], 'U3-4 오류는 그대로 --danger(.msg--ok 0)')
+                p.unroute('**/community/api/pages/*/properties')
+                check(t.clean('u3-width'), 'U3 A width/memory/alert console 0')
+                ctx.close()
+                # 1199 · 412 — 폭 조절 없음(칸이 목록을 대신)
+                for width, touch in ((1199, False), (412, True)):
+                    ctx = context('other', width, 900 if width > 800 else 915, touch=touch)
+                    ctx.add_init_script("localStorage.setItem('qaredi-task-pane-w:v1:%s', '700')" % users['other']['username'])
+                    t = Tab(ctx)
+                    p = t.page
+                    t.go('/community/my-tasks?task=' + ua['id'])
+                    p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                    p.wait_for_timeout(300)
+                    s = p.evaluate(PANE_W_JS)
+                    check(not s['hvis'] and not s['wideVis'] and s['overflow'] <= 0 and s['w'] != 700 and (width > 800 or s['w'] >= width - 2 * 24),
+                          'U3 A %d: 손잡이 · 넓게 보기 숨음 · 칸이 목록을 대신(폭 %d · 기억 700 무시) · 넘침 0' % (width, s['w']))
+                    if width == 412:
+                        p.screenshot(path=str(shots / 'u3-pane-412.png'))
+                    check(t.clean('u3-w%d' % width), 'U3 A %d console 0' % width)
+                    ctx.close()
+
+            def u3_editor():
+                ctx = context('other', 1440)
+                t = Tab(ctx)
+                p = t.page
+                # 전체 편집기 — 도구줄 · 블록 넣기 목록(기준)
+                t.go('/community/p/' + ud['id'])
+                p.wait_for_selector('#page-edit:not([hidden])', timeout=15000)
+                p.locator('#page-edit').click()
+                p.wait_for_selector('#inline-toolbar:not([hidden]) .editor-toolbar__row', timeout=8000)
+                full_tools = p.evaluate("() => [...document.querySelectorAll('#inline-toolbar .editor-toolbar__row > button')].map(b => b.textContent.trim())")
+                p.locator('#page-add-block').click()
+                p.wait_for_selector('#block-dialog[open]', timeout=5000)
+                full_blocks = p.evaluate("() => [...document.querySelectorAll('#block-list .block-pick')].map(b => b.getAttribute('data-block-type') + ':' + b.getAttribute('data-block-index') + ':' + b.querySelector('strong').textContent)")
+                p.keyboard.press('Escape')
+                FP_JS = "(id) => [...document.querySelectorAll('#' + id + ' *')].filter(e => !e.closest('#block-list, #block-sample, #atom-file-list, #atom-link-list, #atom-table-grid')).map(e => e.tagName + '#' + e.id + '.' + (typeof e.className === 'string' ? e.className : '') + (e.hidden ? '[hidden]' : ''))"
+                fp_page = [p.evaluate(FP_JS, 'block-dialog'), p.evaluate(FP_JS, 'atom-dialog')]
+                check(p.evaluate("document.querySelectorAll('#block-dialog, #atom-dialog').length") == 2, 'U3 B 페이지 화면: 창 마크업 한 벌(page_view.php — 새로 짓지 않음)')
+                p.locator('#page-done').click()
+                p.wait_for_timeout(800)
+                # 칸 편집기
+                t.go('/community/my-tasks')
+                p.wait_for_selector('#my-tasks-rows .task-inbox__row', timeout=15000)
+                open_task(p, ua['id'])
+                start_edit(p)
+                pane_tools = p.evaluate("() => [...document.querySelectorAll('#task-pane .editor-toolbar .editor-toolbar__row > button')].map(b => b.textContent.trim())")
+                metrics['u3_tools'] = {'full': full_tools, 'pane': pane_tools}
+                check(pane_tools == full_tools and pane_tools == ['블록 추가', '색', '배경', '링크', '멘션'] and p.locator('#task-pane .editor-toolbar').count() == 1,
+                      'U3 B 칸 편집기 도구줄 = 전체 편집기와 같은 목록(같은 createToolbar · 용지 고르개는 전체 화면 몫) ' + json.dumps(pane_tools, ensure_ascii=False))
+                fp_tasks = [p.evaluate(FP_JS, 'block-dialog'), p.evaluate(FP_JS, 'atom-dialog')]
+                p.locator('#task-pane .editor-toolbar .editor-toolbar__row > button', has_text='블록 추가').click()
+                p.wait_for_selector('#block-dialog[open]', timeout=5000)
+                pane_blocks = p.evaluate("() => [...document.querySelectorAll('#block-list .block-pick')].map(b => b.getAttribute('data-block-type') + ':' + b.getAttribute('data-block-index') + ':' + b.querySelector('strong').textContent)")
+                check(pane_blocks == full_blocks and len(pane_blocks) >= 20 and p.locator('#block-dialog').count() == 1,
+                      'U3 B 칸의 「블록 추가」 메뉴 = 전체 편집기와 같은 목록 (%d · 창 한 벌)' % len(pane_blocks))
+                p.keyboard.press('Escape')
+                p.wait_for_timeout(200)
+                # 이 화면(내 작업)에는 창 마크업이 없다 — editor.js 가 같은 id · 클래스로 지은 창 = 페이지 화면 창(구조 지문 — 열기 전 같은 때에 잰 것)
+                metrics['u3_dialog_fp'] = {'page': [len(x) for x in fp_page], 'tasks': [len(x) for x in fp_tasks],
+                                           'diff': [[list((Counter(fp_tasks[i]) - Counter(fp_page[i])).items())[:8], list((Counter(fp_page[i]) - Counter(fp_tasks[i])).items())[:8]] for i in (0, 1)]}
+                check(fp_tasks == fp_page, 'U3 B 내 작업 화면의 「블록 추가」 · 「블록 고치기」 창 = 페이지 화면 창과 같은 구조(id · 클래스 지문 %s)' % json.dumps([len(x) for x in fp_tasks]))
+                # 표 블록 넣기(같은 창 · 같은 함수) — 칸 편집기에 표 카드
+                p.locator('#task-pane .editor-toolbar .editor-toolbar__row > button', has_text='블록 추가').click()
+                p.locator('#block-list .block-pick[data-block-type="table"]').click()
+                p.locator('#block-insert').click()
+                p.wait_for_selector('#atom-dialog[open]', timeout=5000)
+                p.locator('#atom-commit').click()
+                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom')", 5000)
+                check(p.locator('#task-pane .ProseMirror .doc-atom').count() == 1, 'U3 B 칸 편집기에서 「블록 추가 › 표」 → 표 블록(같은 블록 고치기 창)')
+                # 붙여넣기(합성 png 클립보드) → 자리표시 → 그림 블록
+                p.evaluate("""() => { window.__u3ph = []; const ed = document.querySelector('#task-pane .ProseMirror');
+                    new MutationObserver((ms) => { for (const m of ms) for (const n of m.addedNodes) if (n.nodeType === 1 && n.matches('.doc-upload'))
+                      window.__u3ph.push({kind: n.getAttribute('data-kind'), role: n.getAttribute('role'), live: n.getAttribute('aria-live'), name: (n.querySelector('.doc-upload__name') || {}).textContent,
+                        prog: (n.querySelector('.doc-upload__progress') || {}).textContent, cancel: !!n.querySelector('button.btn--quiet.btn--small')}); }).observe(ed, {childList: true, subtree: true}); }""")
+                p.locator('#task-pane .ProseMirror').click()
+                p.keyboard.press('End')
+                PASTE_JS = """([b64, name, type, text]) => { const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); const dt = new DataTransfer();
+                    dt.items.add(new File([bin], name, {type: type})); if (text) dt.setData('text/plain', text);
+                    const ev = new ClipboardEvent('paste', {clipboardData: dt, bubbles: true, cancelable: true});
+                    document.querySelector('#task-pane .ProseMirror').dispatchEvent(ev); return ev.defaultPrevented; }"""
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + ua['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
+                    prevented = p.evaluate(PASTE_JS, [U3_PNG_B64, '캡처.png', 'image/png', ''])
+                check(up.value.status == 201 and prevented, 'U3 C 붙여넣기(합성 png 클립보드) → POST /api/pages/{id}/attachments 201')
+                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]') && !document.querySelector('#task-pane .doc-upload')", 10000)
+                ph = p.evaluate('window.__u3ph')
+                metrics['u3_placeholder'] = ph
+                check(len(ph) == 1 and ph[0]['kind'] == 'image' and ph[0]['role'] == 'status' and ph[0]['live'] == 'polite' and ph[0]['name'] == '캡처.png'
+                      and ph[0]['prog'].startswith('올리는 중') and ph[0]['cancel'], 'U3 C 자리표시 블록(.doc-upload · role=status · aria-live polite · 이름 · 「올리는 중 n%」 · 「취소」) → 그림 블록으로 바뀜 ' + json.dumps(ph, ensure_ascii=False))
+                # 붙여넣은 글(HTML 의 외부 그림 주소)은 지금처럼 버린다 — 글이 함께 든 붙여넣기는 올리지 않는다
+                n_before = len(att_rows(ua['id']))
+                p.evaluate(PASTE_JS, [U3_PNG_B64, 'cell.png', 'image/png', '표 칸 글자'])
+                p.wait_for_timeout(600)
+                check(len(att_rows(ua['id'])) == n_before and p.locator('#task-pane .doc-upload').count() == 0, 'U3 C 글이 함께 든 붙여넣기는 올리지 않음(파일만 받는다)')
+                st_ = end_edit(p, ua['id'])
+                rows_ = att_rows(ua['id'])
+                refs = page_refs(ua['id'])
+                metrics['u3_paste_server'] = {'rows': rows_, 'refs': refs}
+                check(st_ == 200 and len(rows_) == 1 and rows_[0].endswith('|캡처.png|clean'), 'U3 C 서버의 첨부 행 1(이름 캡처.png · clean) ' + json.dumps(rows_, ensure_ascii=False))
+                check(refs == [('image', 'att:' + rows_[0].split('|')[0])], 'U3 C 저장된 본문 file_ref = att:<그 첨부> (그림 블록) ' + json.dumps(refs))
+                until(p, "() => { const i = document.querySelector('#task-pane .task-pane__doc img.doc-image__img'); return i && i.complete && i.naturalWidth > 0; }", 10000)
+                src = p.evaluate("document.querySelector('#task-pane .task-pane__doc img.doc-image__img').getAttribute('src')")
+                check(src == '/community/api/pages/' + ua['id'] + '/attachments/' + rows_[0].split('|')[0] + '/raw', 'U3 C 읽기 화면 그림 = 첨부 창구 raw 주소 · 그림이 실제로 그려짐 ' + src)
+                # 상세 칸 「파일 첨부」 목록에 attachment_titles
+                p.locator('#task-pane .task-pane__tools .btn--icon[aria-label="닫기"]').click()
+                open_task(p, ua['id'])
+                fl = p.evaluate("() => [...document.querySelectorAll('#task-pane li[data-attachment]')].map(li => [li.textContent, (li.querySelector('a') || {}).getAttribute ? li.querySelector('a').getAttribute('href') : null])")
+                check(fl == [['캡처.png', '/community/api/pages/' + ua['id'] + '/attachments/' + rows_[0].split('|')[0] + '/download']]
+                      and p.locator('#task-pane .task-pane__section-head', has_text='파일 첨부 1').count() == 1, 'U3 C 상세 칸 「파일 첨부 1」 = attachment_titles(받기 주소) ' + json.dumps(fl, ensure_ascii=False))
+                p.locator('#task-pane [data-pane-wide]').click()
+                p.wait_for_timeout(400)
+                p.screenshot(path=str(shots / 'u3-wide-image-1440.png'))
+                p.locator('#task-pane [data-pane-wide]').click()
+                # 끌어놓기(파일) → 파일 블록
+                open_task(p, ub['id'])
+                start_edit(p)
+                DROP_JS = """([b64, name, type]) => { const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0)); const dt = new DataTransfer(); dt.items.add(new File([bin], name, {type: type}));
+                    const ed = document.querySelector('#task-pane .ProseMirror'); const r = ed.getBoundingClientRect();
+                    const ev = new DragEvent('drop', {dataTransfer: dt, clientX: r.left + 20, clientY: r.top + 10, bubbles: true, cancelable: true}); ed.dispatchEvent(ev); return ev.defaultPrevented; }"""
+                memo = base64.b64encode('합성 메모 한 줄\n'.encode()).decode()
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + ub['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
+                    prevented = p.evaluate(DROP_JS, [memo, '메모.txt', 'text/plain'])
+                check(up.value.status == 201 and prevented, 'U3 C 끌어놓기(파일) → 201')
+                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"file\"]') && !document.querySelector('#task-pane .doc-upload')", 10000)
+                # 허용 밖 파일 → 이유 문장 · 자리표시 사라짐
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + ub['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
+                    p.evaluate(DROP_JS, [base64.b64encode(b'MZ synthetic').decode(), '실행.exe', 'application/octet-stream'])
+                bad = up.value
+                until(p, "() => !document.querySelector('#task-pane .doc-upload') && (document.querySelector('#task-pane > .msg') || {}).textContent !== ''", 10000)
+                bm = p.evaluate("() => { const m = document.querySelector('#task-pane > .msg'); return {text: m.textContent, ok: m.classList.contains('msg--ok')}; }")
+                bj = bad.json()
+                check(bad.status == 400 and bj.get('reason') == 'ext_not_allowed' and bm['text'] == bj.get('error') and not bm['ok'] and p.locator('#task-pane .ProseMirror .doc-atom[data-atom="file"]').count() == 1,
+                      'U3 C 허용 밖 파일 → 400 · 칸 알림 줄 = 창구 이유 문장 그대로(--danger) · 자리표시 사라짐 · 블록 0 ' + json.dumps(bm, ensure_ascii=False))
+                st_ = end_edit(p, ub['id'])
+                rows_b = att_rows(ub['id'])
+                check(st_ == 200 and len(rows_b) == 1 and page_refs(ub['id']) == [('file', 'att:' + rows_b[0].split('|')[0])], 'U3 C 끌어놓기 → 서버 첨부 행 1 · 본문 파일 블록 file_ref att: ' + json.dumps(rows_b, ensure_ascii=False))
+                # 「이 문서에 올리기」 탭(그림 창 첫 탭 · 기본)
+                open_task(p, uc['id'])
+                start_edit(p)
+                p.locator('#task-pane .editor-toolbar .editor-toolbar__row > button', has_text='블록 추가').click()
+                p.locator('#block-list .block-pick[data-block-type="image"]').click()
+                p.locator('#block-insert').click()
+                p.wait_for_selector('#atom-dialog[open] [data-atom-tab="upload"]', timeout=5000)
+                tabs = p.evaluate("""() => ({tabs: [...document.querySelectorAll('#atom-file [role=tab]')].map(b => [b.textContent, b.getAttribute('aria-selected')]),
+                    up: !document.querySelector('[data-atom-upload]').closest('[hidden]'), lib: !!document.getElementById('atom-file-q').closest('[hidden]'),
+                    label: document.querySelector('[data-atom-upload]').getAttribute('aria-label'), accept: document.querySelector('[data-atom-upload-input]').getAttribute('accept'),
+                    tabbar: !document.querySelector('#atom-file [role=tablist]').hidden})""")
+                metrics['u3_tabs'] = tabs
+                check(tabs['tabs'] == [['이 문서에 올리기', 'true'], ['자료실에서 고르기', 'false']] and tabs['up'] and tabs['lib'] and tabs['label'] == '이 문서에 그림 올리기' and tabs['tabbar'],
+                      'U3 C 그림 창 탭 둘: 「이 문서에 올리기」(첫 탭 · 기본 · 파일 고르기 aria-label) · 「자료실에서 고르기」 ' + json.dumps(tabs, ensure_ascii=False))
+                p.locator('[data-atom-tab="library"]').click()
+                check(p.locator('#atom-file-q').is_visible() and not p.locator('[data-atom-upload]').is_visible(), 'U3 C 「자료실에서 고르기」 탭 = 지금 창 그대로(파일 찾기 칸)')
+                p.locator('[data-atom-tab="upload"]').click()
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + uc['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
+                    p.locator('[data-atom-upload-input]').set_input_files(files=[{'name': '올리기.png', 'mimeType': 'image/png', 'buffer': U3_PNG}])
+                check(up.value.status == 201 and not p.evaluate("document.getElementById('atom-dialog').open"), 'U3 C 「이 문서에 올리기」 → 창 닫힘 · 201')
+                until(p, "() => !!document.querySelector('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]') && !document.querySelector('#task-pane .doc-upload')", 10000)
+                # 검사 중(pending) — SCAN_ENABLED=1 로 하나 더 붙여넣기
+                env_path = root / '.env'
+                env_text = env_path.read_text()
+                env_path.write_text(re.sub(r'^SCAN_ENABLED=.*$', 'SCAN_ENABLED=1', env_text, flags=re.M))
+                try:
+                    with p.expect_response(lambda r: r.url.endswith('/api/pages/' + uc['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
+                        p.evaluate(PASTE_JS, [U3_PNG_B64, '검사대기.png', 'image/png', ''])
+                    pj = up.value.json()
+                    until(p, "() => document.querySelectorAll('#task-pane .ProseMirror .doc-atom[data-atom=\"image\"]').length === 2 && !document.querySelector('#task-pane .doc-upload')", 10000)
+                    st_ = end_edit(p, uc['id'])
+                finally:
+                    env_path.write_text(env_text)
+                rows_c = att_rows(uc['id'])
+                until(p, "() => !!document.querySelector('#task-pane .task-pane__doc .doc-upload[data-kind=\"image\"]')", 8000)
+                pend = p.evaluate("""() => [...document.querySelectorAll('#task-pane .task-pane__doc .doc-upload')].map(b => [b.querySelector('.doc-upload__name').textContent, b.querySelector('.doc-upload__progress').textContent])""")
+                check(pj.get('scan_status') == 'pending' and st_ == 200 and [r.split('|')[2] for r in rows_c] == ['clean', 'pending'] and pend == [['검사대기.png', '검사 중이에요']]
+                      and p.locator('#task-pane .task-pane__doc img.doc-image__img').count() == 1,
+                      'U3 C pending → 읽기 화면 「검사 중이에요」 회색 상자(그림 대신 · 423 을 오류로 띄우지 않음) · clean 그림은 그대로 ' + json.dumps(pend, ensure_ascii=False))
+                p.locator('#task-pane .task-pane__tools .btn--icon[aria-label="닫기"]').click()
+                open_task(p, uc['id'])
+                badges = p.evaluate("() => [...document.querySelectorAll('#task-pane li[data-attachment]')].map(li => [li.firstChild.textContent, (li.querySelector('.badge') || {}).textContent || null, !!li.querySelector('a')])")
+                check(badges == [['올리기.png', None, True], ['검사대기.png', '검사 중', False]], 'U3 C 「파일 첨부」 목록: pending 은 이름 + 「검사 중」 배지(받기 링크 0) ' + json.dumps(badges, ensure_ascii=False))
+                check(t.clean('u3-editor'), 'U3 B/C editor · upload console 0 · page errors 0 · 5xx 0')
+                # 전체 편집기에서도 붙여넣기(입구 셋은 두 편집기 모두)
+                t.go('/community/p/' + ud['id'])
+                p.wait_for_selector('#page-edit:not([hidden])', timeout=15000)
+                p.locator('#page-edit').click()
+                p.wait_for_selector('#page-editor .ProseMirror', timeout=8000)
+                p.locator('#page-editor .ProseMirror').click()
+                with p.expect_response(lambda r: r.url.endswith('/api/pages/' + ud['id'] + '/attachments') and r.request.method == 'POST', timeout=20000) as up:
+                    p.evaluate(PASTE_JS.replace("#task-pane .ProseMirror", "#page-editor .ProseMirror"), [U3_PNG_B64, '전체.png', 'image/png', ''])
+                until(p, "() => !!document.querySelector('#page-editor .ProseMirror .doc-atom[data-atom=\"image\"]')", 10000)
+                p.locator('#page-done').click()
+                until(p, "() => { const i = document.querySelector('#page-doc img.doc-image__img'); return i && i.complete && i.naturalWidth > 0; }", 15000)
+                check(up.value.status == 201 and page_refs(ud['id']) == [('image', 'att:' + att_rows(ud['id'])[0].split('|')[0])], 'U3 C 전체 화면 편집기에서도 붙여넣기 → 첨부 · att: 그림 · 읽기 화면에 그려짐')
+                check(t.clean('u3-full'), 'U3 C full editor console 0')
+                ctx.close()
+
+            def u3_readers():
+                # 보기 공유(다른 팀 직원) · 손님 — 칸 · 전체 화면 모두 입구 셋 0
+                for who_ in ('employee', 'guest'):
+                    ctx = context(who_, 1440)
+                    t = Tab(ctx)
+                    p = t.page
+                    t.go('/community/my-tasks?task=' + ua['id'])
+                    p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
+                    p.wait_for_timeout(500)
+                    r_ = p.evaluate("""() => ({editable: !!document.querySelector('#task-pane .task-pane__doc--editable'), pm: document.querySelectorAll('.ProseMirror').length,
+                        bar: document.querySelectorAll('#task-pane .editor-toolbar').length, up: document.querySelectorAll('[data-atom-upload]').length,
+                        img: !!document.querySelector('#task-pane .task-pane__doc img.doc-image__img'), att: document.querySelectorAll('#task-pane li[data-attachment]').length})""")
+                    p.locator('#task-pane .task-pane__doc').click()
+                    p.wait_for_timeout(300)
+                    r2 = p.evaluate("() => document.querySelectorAll('.ProseMirror, #task-pane .editor-toolbar').length")
+                    metrics['u3_reader_' + who_] = r_
+                    check(not r_['editable'] and r_['pm'] == 0 and r_['bar'] == 0 and r_['up'] == 0 and r2 == 0,
+                          'U3 C %s(보기 공유): 칸 편집기 · 도구줄 · 붙여넣기 · 끌어놓기 · 올리기 탭 0 %s' % (who_, json.dumps(r_)))
+                    check(r_['img'] and r_['att'] == 1, 'U3 C %s(보기 공유): 문서를 볼 수 있으니 첨부 그림 · 「파일 첨부」는 보인다(판정이 문서를 따른다)' % who_)
+                    t.go('/community/p/' + ua['id'])
+                    p.wait_for_timeout(1200)
+                    check(not p.locator('#page-edit').is_visible() and p.locator('.ProseMirror').count() == 0, 'U3 C %s 전체 화면: 편집(입구) 0' % who_)
+                    check(t.clean('u3-reader-' + who_), 'U3 C %s console 0' % who_)
+                    ctx.close()
+
+            def u3_matrix():
+                widths = [(360, False), (412, True), (820, False), (1199, False), (1280, False), (1440, False)]
+                summary = {}
+                for mode in ('light', 'dark', 'hc'):
+                    sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(oth))
+                    for width, touch in widths:
+                        ctx = context('other', width, 900 if width > 800 else 915, touch=touch, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
+                        t = Tab(ctx)
+                        p = t.page
+                        tag = 'u3-%d%s-%s' % (width, 't' if touch else '', mode)
+
+                        def one():
+                            t.go('/community/my-tasks?task=' + ua['id'])
+                            p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=15000)
+                            p.wait_for_timeout(300)
+                            states = ['read', 'edit'] + (['wide'] if width >= 1200 else [])
+                            for state in states:
+                                if state == 'edit':
+                                    start_edit(p)
+                                    p.locator('#task-pane .editor-toolbar .editor-toolbar__row > button', has_text='멘션').dispatch_event('mousedown')
+                                    p.wait_for_timeout(200)
+                                if state == 'wide':
+                                    p.locator('#task-pane [data-pane-wide]').click()
+                                    p.wait_for_timeout(300)
+                                a = p.evaluate(AUDIT_JS, touch or width < 720)
+                                s_ = p.evaluate(STYLE_JS)
+                                summary[tag + '-' + state] = {'overflow': a['overflow'], 'small': a['smallCount'], 'others': s_['others'], 'body': s_['body']}
+                                check(a['overflow'] <= 0, 'U3 %s %s horizontal overflow 0 (%d)' % (tag, state, a['overflow']))
+                                if touch or width < 720:
+                                    check(a['smallCount'] == 0, 'U3 %s %s tap targets ≥ 44 (%d small: %s)' % (tag, state, a['smallCount'], json.dumps(a['small'], ensure_ascii=False)))
+                                check(s_['others'] == [] and (s_['body'] is None or BODY_STYLE_RE.match(s_['body'])), 'U3 %s %s inline style 0 (CSSOM --task-pane-w only)' % (tag, state))
+                                if state == 'edit':
+                                    pr = p.evaluate("() => { const r = document.querySelector('#task-pane .editor-toolbar > .editor-palette__row:not([hidden])'); const pn = document.getElementById('task-pane').getBoundingClientRect(); if (!r) return null; const b = r.getBoundingClientRect(); return [Math.round(b.left - pn.left), Math.round(pn.right - b.right)]; }")
+                                    check(pr is not None and pr[0] >= 0 and pr[1] >= 0, 'U3 %s 멘션 줄(툴바 아래 줄)이 칸 안에 열림 %s' % (tag, json.dumps(pr)))
+                                    p.keyboard.press('Escape')
+                            if mode in ('light', 'dark') and width in (412, 1440):
+                                p.screenshot(path=str(shots / ('%s-edit.png' % tag)))
+                        guard('U3 matrix ' + tag, one)
+                        check(t.clean('u3m-%d-%s' % (width, mode)), 'U3 %d%s %s console 0 · page errors 0 · 5xx 0' % (width, ' touch' if touch else '', mode))
+                        ctx.close()
+                sql('UPDATE users SET high_contrast=false WHERE id=' + str(oth))
+                metrics['u3_matrix'] = summary
+
+            guard('U3 width', u3_width)
+            guard('U3 editor', u3_editor)
+            guard('U3 readers', u3_readers)
+            guard('U3 matrix', u3_matrix)
+
         # ─── U2 보고용 화면 사본(밝게 · 어둡게 한 벌) — 지시서 「스크린샷」 목록 · 묶음 이름 shots ───────────────────────────────
         if want('shots'):
             def u2_shots():
@@ -1589,7 +2048,7 @@ try:
                         t.go('/community/')
                         p.wait_for_selector('#work-home-rows .task-inbox__row', timeout=15000)
                         p.locator('#work-home-rows li.task-inbox__row > .task-inbox__line').first.click()
-                        p.wait_for_selector('.task-inbox__pane:not([hidden]) #task-pane-title', timeout=10000)
+                        p.wait_for_selector('#task-pane:not([hidden]) #task-pane-title', timeout=10000)
                         p.wait_for_timeout(500)
                         p.screenshot(path=str(shots / ('final-1440-%s-%s-home-expanded.png' % ('collapsed' if collapsed else 'open', theme))))
                         if not collapsed:

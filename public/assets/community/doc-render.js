@@ -209,8 +209,105 @@ function renderEmbed(block, id, ctx) {
   return wrap;
 }
 
+/**
+ * Q:F-12 U3 C(커뮤니티 ARCH 24.5 · DESIGN 2.24) — `att:<uuid>` 이 문서 전용 첨부. 지도(`ctx.attachment_titles` — 창구가 이 문서의 첨부를
+ * 받을 수 있는 사람에게만 준 것)와 문서 id(`ctx.attachment_page`)가 있을 때만 그린다(없으면 「볼 수 없는 파일」 — 서버 렌더러와 같은 문구).
+ * 주소는 첨부 창구(`ctx.base` + `/api/pages/{문서}/attachments/{첨부}/raw|download`) — 가져가는 순간에도 창구가 문서 판정으로 다시 판단한다.
+ * 그림은 검사가 끝난(clean) 그림만 `<img>`. 검사 대기(pending)면 그림은 「검사 중이에요」 회색 상자(`.doc-upload` 자리표시 모양),
+ * 파일은 이름 + 「검사 중」 배지(받기 링크 0 — 창구 423 을 오류로 띄우지 않는다). 그 밖은 서버 렌더러와 같은 받기 카드.
+ */
+function renderAttachmentBlock(block, id, ctx) {
+  const map = ctx && ctx.attachment_titles && typeof ctx.attachment_titles === 'object' ? ctx.attachment_titles : {};
+  const page = ctx && typeof ctx.attachment_page === 'string' && UUID_RE.test(ctx.attachment_page) ? ctx.attachment_page : '';
+  const base = ctx && typeof ctx.base === 'string' ? ctx.base : '';
+  const ref = typeof block.file_ref === 'string' && UUID_RE.test(block.file_ref.slice(4)) ? block.file_ref.slice(4) : '';
+  const entry = ref !== '' && Object.prototype.hasOwnProperty.call(map, ref) && map[ref] && typeof map[ref] === 'object' ? map[ref] : null;
+  const hasCap = Array.isArray(block.caption) && block.caption.length > 0;
+  const wrap = document.createElement('div');
+  wrap.className = 'doc-file';
+  if (id) { wrap.id = 'block-' + id; }
+  if (!entry || page === '') {
+    const card = document.createElement('div');
+    card.className = 'card card--soon';
+    const t = document.createElement('span');
+    t.className = 'card__title';
+    t.textContent = FILE_UNREADABLE;
+    card.appendChild(t);
+    wrap.appendChild(card);
+    return wrap;
+  }
+  const name = typeof entry.name === 'string' ? entry.name : '';
+  const href = base + '/api/pages/' + page + '/attachments/' + ref;
+  const addCaption = (host, tag, cls) => {
+    if (!hasCap) { return; }
+    const cap = document.createElement(tag);
+    cap.className = cls;
+    appendRich(cap, block.caption, ctx);
+    host.appendChild(cap);
+  };
+  if (entry.scan_status === 'pending') {
+    if (block.type === 'image') {
+      const box = document.createElement('div');
+      box.className = 'doc-upload';
+      box.setAttribute('data-kind', 'image');
+      const n = document.createElement('span');
+      n.className = 'doc-upload__name';
+      n.textContent = name;
+      const p = document.createElement('span');
+      p.className = 'doc-upload__progress';
+      p.textContent = '검사 중이에요';
+      box.appendChild(n);
+      box.appendChild(p);
+      wrap.appendChild(box);
+    } else {
+      const card = document.createElement('div');
+      card.className = 'card card--soon';
+      const t = document.createElement('span');
+      t.className = 'card__title';
+      t.textContent = name;
+      const b = document.createElement('span');
+      b.className = 'badge';
+      b.textContent = '검사 중';
+      card.appendChild(t);
+      card.appendChild(b);
+      wrap.appendChild(card);
+    }
+    addCaption(wrap, 'p', 'doc-file__caption');
+    return wrap;
+  }
+  if (block.type === 'image' && entry.image === true && entry.scan_status === 'clean') {
+    const fig = document.createElement('figure');
+    const width = ['full', 'wide', 'normal', 'small'].indexOf(block.width) !== -1 ? block.width : 'normal';
+    fig.className = 'doc-image doc-image--' + width;
+    if (id) { fig.id = 'block-' + id; }
+    const img = document.createElement('img');
+    img.className = 'doc-image__img';
+    img.setAttribute('src', href + '/raw');
+    img.setAttribute('alt', name);
+    img.setAttribute('loading', 'lazy');
+    fig.appendChild(img);
+    addCaption(fig, 'figcaption', 'doc-image__caption');
+    return fig;
+  }
+  const a = document.createElement('a');
+  a.className = 'card card--link';
+  a.setAttribute('href', href + '/download');
+  const t = document.createElement('span');
+  t.className = 'card__title';
+  t.textContent = name;
+  const m = document.createElement('span');
+  m.className = 'card__meta';
+  m.textContent = sizeText(entry.size);
+  a.appendChild(t);
+  a.appendChild(m);
+  wrap.appendChild(a);
+  addCaption(wrap, 'p', 'doc-file__caption');
+  return wrap;
+}
+
 /** 5-E 그림·파일 — 지도(`ctx.file_titles`, 보는 사람이 t-box 에서 볼 수 있는 것만)에 있을 때만. 주소는 t-box 창구(`ctx.tbox_base`) */
 function renderFileBlock(block, id, ctx) {
+  if (typeof block.file_ref === 'string' && block.file_ref.slice(0, 4) === 'att:') { return renderAttachmentBlock(block, id, ctx); }
   const map = ctx && ctx.file_titles && typeof ctx.file_titles === 'object' ? ctx.file_titles : {};
   const tbox = ctx && typeof ctx.tbox_base === 'string' ? ctx.tbox_base : '';
   const ref = typeof block.file_ref === 'string' && block.file_ref.slice(0, 5) === 'tbox:' && UUID_RE.test(block.file_ref.slice(5))

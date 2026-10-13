@@ -60,7 +60,7 @@ require __DIR__ . '/../../views/shell_top.php';
 
       <!-- 목록 = 업무함 전체(Q:F-12 U2 · WK-20 C · DESIGN 2.20-A) — 묶음 머리 없는 한 줄 한 건(꼬리표 「지난 기한 n」 … 로만 경계). 줄은 work.js 가
            `GET /api/my-tasks` + `GET /api/briefing` 의 답을 잇기만 해 그린다(buildInbox). 「오늘」 「기한 없음」 꼬리표 뒤 「＋ 작업 추가」 · 묶음 「더 보기」 그대로.
-           ≥1200 은 줄을 누르면 그 줄 아래 펼침 · 그보다 좁으면 아래 aside 칸(2.21). -->
+           줄을 누르면 아래 aside 칸(2.21 — WK-26 오른쪽 칸 하나 · ≥1200 은 목록 오른쪽, 그보다 좁으면 목록을 대신). -->
       <section id="my-tasks-list" class="task-list task-inbox panel" aria-label="내 작업 목록">
         <ul id="my-tasks-rows" class="task-list__rows"></ul>
         <p id="my-tasks-empty" class="muted" hidden></p>
