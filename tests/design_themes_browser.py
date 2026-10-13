@@ -102,4 +102,5 @@ finally:
 result={'checks':checks,'failures':failures,'console':console,'scope':'isolated rendered production views; original auth/API scripts excluded; live regression separate'}
 (OUT/'results.json').write_text(json.dumps(result,ensure_ascii=False,indent=2))
 print(json.dumps(result,ensure_ascii=False))
+print('RESULT pass=%d fail=%d skip=0' % (checks-len(failures), max(len(failures), 1 if console else 0)))
 raise SystemExit(bool(failures or console))

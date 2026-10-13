@@ -175,7 +175,7 @@ status_of()  { sed -n 's#^HTTP/[0-9.]* \([0-9]*\).*#\1#p' "$1" | head -1 | tr -d
 hr "디버깅 묶음 S2 — 임시 인스턴스 준비 (운영 DB 에는 쓰지 않는다)"
 
 if ss -ltn 2>/dev/null | grep -q "127.0.0.1:$PORT "; then echo "포트 $PORT 이 이미 쓰이고 있다 — 중단"; exit 3; fi
-ENV_SRC="${DBGS2_ENV_SRC:-$ROOT/.env}"
+ENV_SRC="${DBGS2_ENV_SRC:-${QCHECK_ENV_SRC:-$ROOT/.env}}"
 [ -f "$ENV_SRC" ] || { echo "임시 .env 원본이 없다 — DBGS2_ENV_SRC 로 0600 사본을 넘긴다"; exit 3; }
 FREE_MB=$(df -Pm / | awk 'NR==2{print $4}')
 [ "${FREE_MB:-0}" -ge 1200 ] || { echo "루트 여유가 1.2GB 미만(${FREE_MB}MB) — 시작하지 않는다"; exit 3; }

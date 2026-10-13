@@ -218,7 +218,7 @@ tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclu
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
     -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
     -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" \
-    "$ROOT/.env" > "$INST/app/.env"
+    "${QCHECK_ENV_SRC:-$ROOT/.env}" > "$INST/app/.env"
 chmod 600 "$INST/app/.env"
 grep -q "^DB_NAME=$DB\$" "$INST/app/.env" || { echo "임시 .env 에 임시 DB 이름이 들어가지 않았다 — 중단"; exit 4; }
 # 회귀 스크립트 일부가 `$ROOT/../community/doc-schema.json` 을 읽는다 — 기획 폴더를 **읽기 전용 링크**로 둔다.

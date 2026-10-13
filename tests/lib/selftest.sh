@@ -5,6 +5,7 @@
 #   ① 한국어 합계 다섯 변형   ② 파이썬 네 형식   ③ 정적 「결과:」·RESULT 줄
 #   ④ rc 와 합계가 어긋나면 더 나쁜 쪽(실패) + 형식 위반   ⑤ ③ 미검증(필수 SKIP·rc 3·4·known_fail)
 #   ⑥ 가림·잡음 견본   ⑦ common.sh 함수   ⑧ run.sh 흉내 저장소(임시 폴더, 흉내 git — 실제 커밋 0)
+#   ③-2 꼬리 줄(RC-3)   ⑧-2 시간 제한 · 남은 프로세스 · --skip-known-fail · --env-src · compare (RC-1·2·5·6·7)
 #   ⑨ secrets.sh — 가짜 비밀이 명령 인자·/proc/*/cmdline 에 0, 표준입력으로만 감(가짜 curl·php·python3 심)
 #   ⑩ db_read.sh — ro → sudo 폴백 → rc 3, 실패를 0 으로 읽지 않음, 두 경로 모두 READ ONLY 세션 먼저, 한 문장만(가짜 psql·sudo 심)
 #   ⑨·⑩ 은 PATH 앞에 둔 가짜 명령만 부른다 — 진짜 curl·psql·sudo 는 한 번도 불리지 않는다(네트워크·DB 0).
@@ -73,6 +74,26 @@ expect "wiki_check 「결과: 실패 — …」" "$(V fail - 0 1 0 static 0)" "$
 expect "RESULT 줄이 있으면 그것을 쓴다" "$(V pass - 25 0 0 result 0)" "$(J result-line.txt 0)"
 expect "안쪽 시험의 RESULT 뒤 바깥 한국어 합계 → 바깥 것" "$(V fail - 70 1 0 ko_skip 0)" "$(J result-nested.txt 1)"
 expect "RESULT 와 한국어 줄이 다르면 형식 위반·실패는 큰 쪽" "$(V fail - 22 2 0 result 1)" "$(J result-mismatch.txt 0)"
+
+hr "③-2 꼬리 줄 · 트레이스백 · 대문자 합계 (RC-3)"
+JS() { python3 "$PY" judge - --rc "$1" 2>&1; }
+TAILL='OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1'
+expect "RESULT 뒤 꼬리 줄 → 통과로 셈(messenger_http 형)" "$(V pass - 75 0 0 result 0)" \
+  "$(printf 'PASS a\nRESULT pass=75 fail=0\n%s\n\n' "$TAILL" | JS 0)"
+expect "RESULT(skip 포함) 뒤 꼬리 줄 → 통과" "$(V pass - 3 0 0 result 0)" \
+  "$(printf 'RESULT pass=3 fail=0 skip=0\n%s\n' "$TAILL" | JS 0)"
+expect "꼬리 줄 뒤 트레이스백(rc 1) → 실패 · 합계 전에 멈춤(messenger_store_browser #6 형)" "$(V fail - 0 0 0 - 0)" \
+  "$(printf 'RESULT pass=40 fail=0\n%s\nTraceback (most recent call last):\n  File "x.py", line 1\nRuntimeError: Integration failed\n' "$TAILL" | JS 1)"
+expect "꼬리 줄 뒤 트레이스백(rc 0) → 실패(형식 위반) — 트레이스백은 건너뛰지 않는다" "$(V fail - 0 0 0 - 1)" \
+  "$(printf 'RESULT pass=40 fail=0 skip=0\n%s\nTraceback (most recent call last):\nRuntimeError: x\n' "$TAILL" | JS 0)"
+expect "PASS=196 FAIL=0 + 꼬리 → 통과(stage89_cross_regression 형)" "$(V pass - 196 0 0 pass_fail_upper 0)" \
+  "$(printf 'PASS one\nPASS=196 FAIL=0 LEGACY_COMMON8_PASSED=not_claimed\nOWNED_SERVER_STOPPED=1; SYNTHETIC_DB_DROPPED=1\n' | JS 0)"
+expect "PASS=5 FAIL=2 + 꼬리 · rc 1 → 실패 2" "$(V fail - 5 2 0 pass_fail_upper 0)" \
+  "$(printf 'PASS=5 FAIL=2\n%s\n' "$TAILL" | JS 1)"
+expect "꼬리 줄만 있고 합계 없음(stage9d 형) → 여전히 형식 위반" "$(V fail - 0 0 0 - 1)" \
+  "$(printf 'PASS a\nPASS b\n%s\n' "$TAILL" | JS 0)"
+expect "CONTRAST_FAIL=0 뒤 RESULT 줄(contrast.py) → 통과" "$(V pass - 146 0 0 result 0)" \
+  "$(printf '  ✔ a\nCONTRAST_FAIL=0\nRESULT pass=146 fail=0 skip=0\n' | JS 0)"
 
 hr "④ rc 와 합계가 어긋나면 더 나쁜 쪽(실패) + 형식 위반"
 expect "stage26 형: 합계 실패 2 인데 rc 0 → 실패" "$(V fail - 48 2 0 ko_indent_pf 1)" "$(J rc-mismatch-stage26.txt 0)"
@@ -419,6 +440,116 @@ PY
   done
   expect "QCHECK_CHILD_UMASK 는 시험 자식 환경에 넘기지 않음" "child-var=none" \
     "$(grep '^child-var=' "$RUNS/$last/raw/e2e.umask.log" 2>/dev/null)"
+
+  sub "RC-1 시간 제한 — sleep 999 · est_sec 1 · --timeout-min 5 → 약 5초 뒤 ③ timeout"
+  printf '[{"id": "e2e.hang", "cmd": "sleep 999", "module": "core", "env": "static", "status": "required", "est_sec": 1}]\n' > "$T/cat-hang.json"
+  t0=$(date +%s)
+  o=$(E run --catalog "$T/cat-hang.json" --timeout-min 5 --fresh 2>&1); rc=$?
+  t1=$(date +%s); dt=$((t1 - t0))
+  last=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  if [ "$dt" -ge 5 ] && [ "$dt" -le 25 ]; then ok "약 5초 뒤 끝남 (${dt}초)"; else bad "약 5초 뒤 끝나야 함 (${dt}초)"; fi
+  contains "요약에 ③ timeout" "③ timeout e2e.hang 시간 제한 5초 넘음" "$o"
+  expect "시간 제한은 ③ — 실패 아님 rc 0" "0" "$rc"
+  contains "원문 끝에 실행기 한 줄" "run.sh: 시간 제한 5초 넘음 — SIGTERM(묶음 1개) → 120초 안에 모두 끝남" "$(tail -2 "$RUNS/$last/raw/e2e.hang.log")"
+  expect "기록: verdict unverified · code timeout · time_limit 5" "unverified timeout 5.0" \
+    "$(python3 -c 'import json,sys; t=json.load(open(sys.argv[1]))["tests"][0]; print(t["verdict"], t["code"], t["time_limit"])' "$RUNS/$last/summary.json")"
+  expect "그 sleep 999 가 남지 않음" "0" "$(pgrep -u "$(id -u)" -fx 'sleep 999' | wc -l | tr -d ' ')"
+  o=$(E report "$last" --md 2>&1)
+  contains "report --md 다음 조치에 timeout 한 줄" "- timeout: 멈춘 시험 — 원문 끝 줄과 남은 프로세스를 보고 원인을 적는다" "$o"
+  printf '[{"id": "e2e.slowok", "cmd": "sleep 2", "module": "core", "env": "static", "status": "required", "est_sec": 1, "timeout_sec": 1}]\n' > "$T/cat-tsec.json"
+  o=$(E run --catalog "$T/cat-tsec.json" --fresh 2>&1)
+  contains "카탈로그 timeout_sec 가 있으면 그것(1초)" "③ timeout e2e.slowok 시간 제한 1초 넘음" "$o"
+  o=$(E run --catalog "$T/cat-tsec.json" --fresh --no-timeout 2>&1)
+  lacks "--no-timeout 이면 시간 제한 없음" "③ timeout" "$o"
+  E run --catalog "$T/cat-tsec.json" --timeout-min 0 >/dev/null 2>&1; expect "--timeout-min 0 → rc 2" "2" "$?"
+
+  sub "RC-2 남은 프로세스 — 같은 세션 · 새 세션 손주(표식) · 이름 제한"
+  cat > "$T/t_leave.sh" <<'EOF'
+sleep 600 &
+echo "$!" > "$E2E_MARK/leave.sleep"
+setsid python3 -c 'import time; time.sleep(600)' </dev/null >/dev/null 2>&1 &
+setsid sleep 601 </dev/null >/dev/null 2>&1 &
+sleep 0.5
+pgrep -u "$(id -u)" -f '^python3 -c import time; time.sleep\(600\)$' | head -1 > "$E2E_MARK/leave.py"
+pgrep -u "$(id -u)" -fx 'sleep 601' | head -1 > "$E2E_MARK/leave.s601"
+printf '  ✔ 흉내 남기고 끝남\n  통과 1 · 실패 0\n'
+EOF
+  printf '[{"id": "e2e.leave", "cmd": "bash %s", "module": "core", "env": "static", "status": "required", "est_sec": 1}]\n' "$T/t_leave.sh" > "$T/cat-leave.json"
+  o=$(E run --catalog "$T/cat-leave.json" --fresh 2>&1); rc=$?
+  last=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  expect "판정은 그대로 통과 rc 0" "0" "$rc"
+  contains "요약 「남은 프로세스 n 정리」" "· 남은 프로세스 2 정리 — e2e.leave (python3, sleep×2) · 보고만 sleep" "$o"
+  expect "기록 leftover: count 3 · names · 정리 2 · 세션 밖 2 · 보고만 sleep" "3 python3,sleep,sleep 2 python3,sleep sleep" \
+    "$(python3 -c 'import json,sys; L=json.load(open(sys.argv[1]))["tests"][0]["leftover"]; print(L["count"], ",".join(L["names"]), L["cleaned"], ",".join(L["outside_session"]), ",".join(L["report_only"]))' "$RUNS/$last/summary.json")"
+  p=$(cat "$MARK/leave.sleep" 2>/dev/null)
+  if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then ok "같은 세션의 sleep 600 이 실제로 없어짐(pid $p)"; else bad "같은 세션의 sleep 600 이 남음(pid ${p:-?})"; fi
+  p=$(cat "$MARK/leave.py" 2>/dev/null)
+  if [ -n "$p" ] && ! kill -0 "$p" 2>/dev/null; then ok "새 세션 손주 python3(표식)도 없어짐(pid $p)"; else bad "새 세션 손주 python3 가 남음(pid ${p:-?})"; fi
+  p=$(cat "$MARK/leave.s601" 2>/dev/null)
+  if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then ok "새 세션 sleep(이름 밖)은 보고만 — 남아 있음(pid $p) → 자체 시험이 치움"; kill "$p" 2>/dev/null; else bad "이름 밖 새 세션 프로세스를 건드렸다(pid ${p:-?})"; fi
+  contains "report --md 다음 조치에 남은 프로세스" "- 남은 프로세스·열린 포트: 시험의 정리(trap) 결함 후보" "$(E report "$last" --md 2>&1)"
+  if kill -0 $$ 2>/dev/null; then ok "실행기를 부른 셸(자체 시험)은 살아 있음"; else bad "부른 셸이 죽었다"; fi
+
+  sub "RC-5 --skip-known-fail — 만료 전 건너뜀 · 만료 뒤 돎 · 인자 없으면 돎"
+  o=$(E run --catalog "$CAT" --select id:e2e.kf --skip-known-fail --fresh 2>&1); rc=$?
+  last=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  contains "요약 머리에 ③ known_fail 건너뜀(늘 보임)" "③ known_fail 건너뜀 1 — e2e.kf · 만료 2099-01-01" "$(printf '%s\n' "$o" | sed -n 3p)"
+  contains "③ 줄에 사유·만료" "③ known_fail_skipped e2e.kf 「흉내 사유」 만료 2099-01-01 — --skip-known-fail 로 돌리지 않음" "$o"
+  if [ -e "$RUNS/$last/raw/e2e.kf.log" ]; then bad "만료 전 known_fail 이 돌았다"; else ok "만료 전 known_fail 은 돌지 않음(원문 0)"; fi
+  python3 - "$CAT" "$T/cat-kfexp.json" <<'PY'
+import json, sys
+c = json.load(open(sys.argv[1]))
+c["tests"] = [dict(t, known_fail=dict(t["known_fail"], expires="2000-01-01")) for t in c["tests"] if t["id"] == "e2e.kf"]
+json.dump(c, open(sys.argv[2], "w"))
+PY
+  o=$(E run --catalog "$T/cat-kfexp.json" --skip-known-fail --fresh 2>&1); rc=$?
+  last=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  if [ -e "$RUNS/$last/raw/e2e.kf.log" ]; then ok "만료 지난 known_fail 은 --skip-known-fail 이어도 돎"; else bad "만료 지난 known_fail 을 건너뛰었다"; fi
+  contains "  만료 → required 로 실패" "✖ e2e.kf 실패 1 (rc 1) · known_fail 만료(2000-01-01) → required 로 판정" "$o"
+  o=$(E run --catalog "$CAT" --select id:e2e.kf --fresh 2>&1)
+  last=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  if [ -e "$RUNS/$last/raw/e2e.kf.log" ]; then ok "인자가 없으면 known_fail 도 돎(옛 동작)"; else bad "인자 없이 known_fail 을 건너뛰었다"; fi
+  contains "list --skip-known-fail 도 셈" "known_fail 건너뜀 1" "$(E list --catalog "$CAT" --skip-known-fail 2>&1 | head -1)"
+
+  sub "RC-6 --env-src — 0600 · 내 소유 · 저장소 밖만 · 경로만 넘김"
+  printf 'for v in QCHECK_ENV_SRC QF2_ENV_SRC DBGS_ENV_SRC STAGE7C_ENV_SRC STAGE7D3_ENV_SRC D74_ENV_SRC PK_ENV_SRC; do eval "x=\\${$v-unset}"; [ "$x" = "$E2E_ENVSRC" ] && echo "same $v" || echo "diff $v"; done\nprintf "  ✔ 흉내 env\\n  통과 1 · 실패 0\\n"\n' > "$T/t_envsrc.sh"
+  printf '[{"id": "e2e.envsrc", "cmd": "bash %s", "module": "core", "env": "static", "status": "required"}]\n' "$T/t_envsrc.sh" > "$T/cat-envsrc.json"
+  ES="$T/envsrc/fake.env"; mkdir -p "$T/envsrc"; printf 'DB_NAME=qchk_fake\n' > "$ES"
+  chmod 644 "$ES"; nb=$(ls "$RUNS" | grep -cE '^[0-9]+$')
+  o=$(E run --catalog "$T/cat-envsrc.json" --env-src "$ES" 2>&1); rc=$?
+  expect "0644 → rc 2" "2" "$rc"; contains "  사유" "모드가 0600 이 아니다(0644)" "$o"
+  chmod 600 "$ES"
+  E run --catalog "$T/cat-envsrc.json" --env-src "$T/envsrc/none.env" >/dev/null 2>&1; expect "없는 파일 → rc 2" "2" "$?"
+  printf 'x\n' > "$R0/in-repo.env"; chmod 600 "$R0/in-repo.env"
+  o=$(E run --catalog "$T/cat-envsrc.json" --env-src "$R0/in-repo.env" 2>&1); rc=$?
+  expect "저장소 안 → rc 2" "2" "$rc"; contains "  사유" "저장소 안이다" "$o"; rm -f "$R0/in-repo.env"
+  ln -s "$ES" "$T/envsrc/link.env"
+  E run --catalog "$T/cat-envsrc.json" --env-src "$T/envsrc/link.env" >/dev/null 2>&1; expect "심볼릭 링크 → rc 2" "2" "$?"
+  expect "거부된 실행은 실행 기록을 만들지 않음" "$nb" "$(ls "$RUNS" | grep -cE '^[0-9]+$')"
+  o=$(E2E_ENVSRC="$ES" E run --catalog "$T/cat-envsrc.json" --env-src "$ES" --fresh 2>&1); rc=$?
+  last=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  expect "0600 · 저장소 밖 → 돈다 rc 0" "0" "$rc"
+  expect "시험 자식 환경에 일곱 이름 모두 같은 경로" "7" "$(grep -c '^same ' "$RUNS/$last/raw/e2e.envsrc.log")"
+  lacks "원문·요약에 파일 내용 없음" "qchk_fake" "$(cat "$RUNS/$last/raw/e2e.envsrc.log" "$RUNS/$last/summary.json" "$RUNS/$last/summary.txt")"
+
+  sub "RC-7 compare — rc 0→1 · 꼬리 줄 뒤 트레이스백도 DIFF"
+  cat > "$T/t_flip.sh" <<'EOF'
+if [ -e "$E2E_MARK/flip" ]; then
+  printf 'PASS a\nRESULT pass=40 fail=0\nOWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1\nTraceback (most recent call last):\nRuntimeError: Integration failed\n'; exit 1
+fi
+printf 'PASS a\nRESULT pass=75 fail=0\nOWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1\n'
+EOF
+  printf '[{"id": "e2e.flip", "cmd": "bash %s", "module": "tbox", "env": "static", "status": "required"},{"id": "e2e.same", "cmd": "bash tests/t_pass.sh", "module": "core", "env": "static", "status": "required"}]\n' "$T/t_flip.sh" > "$T/cat-flip.json"
+  rm -f "$MARK/flip"; E run --catalog "$T/cat-flip.json" --fresh >/dev/null 2>&1; ra=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  touch "$MARK/flip";  E run --catalog "$T/cat-flip.json" --fresh >/dev/null 2>&1; rb=$(ls "$RUNS" | grep -E '^[0-9]+$' | sort -n | tail -1)
+  o=$(E compare "$ra" "$rb" 2>&1); rc=$?
+  expect "맨 위 한 줄" "DIFF 1 · SAME 1 · ONLY_A 0 · ONLY_B 0" "$(printf '%s\n' "$o" | head -1 | sed 's/ — .*//')"
+  contains "DIFF rc 0→1 · verdict pass→fail" "DIFF   e2e.flip  verdict pass→fail · rc 0→1 · 합계 75/0/0→0/0/0 · +단언 1 / −단언 0" "$o"
+  contains "SAME" "SAME   e2e.same" "$o"
+  expect "DIFF 가 있으면 rc 1" "1" "$rc"
+  expect "같은 실행끼리 rc 0" "0" "$(E compare "$ra" "$ra" >/dev/null 2>&1; echo $?)"
+  contains "--md 표" "| DIFF | \`e2e.flip\` | verdict pass→fail · rc 0→1" "$(E compare "$ra" "$rb" --md 2>&1)"
+  E compare 999 "$ra" >/dev/null 2>&1; expect "없는 실행 → rc 2" "2" "$?"
 fi
 
 # ════════════════════════════════════════════════════════════════

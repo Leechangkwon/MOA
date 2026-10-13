@@ -7,11 +7,12 @@
     "status": "required|advisory|known_fail|manual_only|helper(다른 시험이 부르는 도우미 — 단독 실행 불가)|orphan(부르는 셸 없음)",
     "needs": "sudo=sudo -n 을 쓴다(없으면 SKIP·FAIL·exit 3 경로) · browser=playwright · nginx=운영 nginx 설정의 행동을 단언 · clamav=clamscan 이 실제로 돌아야 함 · network=바깥 인터넷 요청 · qrcode=python qrcode · totp_wait=정상 경로에서 다음 TOTP 30초 창을 기다림(로그인 재시도 대기만 있는 것은 넣지 않음)",
     "writes_prod": "true = 앱 요청 경로 밖에서 운영 상태를 바꾼다(운영 tbox_re 에 psql 직접 쓰기 · /etc/tbox-v2 비밀 파일 교체 · 운영 .env 로 도는 앱 CLI 가 상태를 바꿈: scan_pending --force-enabled, dry-run 아닌 alerts.php). qa_ 계정이 앱 창구로 만들고 스스로 되돌리는 쓰기와 운영 클러스터의 임시 DB createdb/dropdb 는 false 이고 notes 에 적었다 · tests/run.sh 는 writes_prod 항목(또는 cmd 가 그 시험 파일을 부르는 항목)을 기본 거부한다(③ writes_prod — --select·--catalog·--include-manual 로는 안 풀림). --allow-writes-prod 를 명시하고 그 스크립트의 BASE·DB 가 tests/lib/prod_guard.sh 로 「prod」일 때만 돈다(temp·unknown 은 그래도 거부 · 디버깅 묶음 T 9번 2026-09-26 · 취합 결정)",
-    "covers": "원문에서 확실한 것만: (1) 스크립트가 이름으로 부르거나 검사하는 저장소 파일(머리 주석·코드, 있는 파일만, 디렉터리 전체 php -l 은 뺌) (2) 스크립트가 부르는 창구 경로를 public/index.php TBOX_ROUTES·src/community/routes.php COMMUNITY_ROUTES 로 찾은 핸들러(메서드가 적혀 있거나 경로의 라우트가 하나뿐일 때만). core 셋과 고아 둘(f-문자열 경로)은 손으로 — 고아 둘은 호출마다 메서드·경로를 라우트 표에 대조",
+    "covers": "원문에서 확실한 것만: (1) 스크립트가 이름으로 부르거나 검사하는 저장소 파일(머리 주석·코드, 있는 파일만, 디렉터리 전체 php -l 은 뺌) (2) 스크립트가 부르는 창구 경로를 public/index.php TBOX_ROUTES·src/community/routes.php COMMUNITY_ROUTES 로 찾은 핸들러(메서드가 적혀 있거나 경로의 라우트가 하나뿐일 때만). core 셋과 고아 둘(f-문자열 경로)은 손으로 — 고아 둘은 호출마다 메서드·경로를 라우트 표에 대조 · 좁히는 규칙(RC-4 2026-10-13 — 공통 셸·화면 자산 여섯 src/views/shell_top.php · public/assets/app.js · public/assets/app.css · public/assets/community/editor.js · public/assets/community/work.js · public/assets/messenger.js 에 적용): **빼는 것** — 그 시험이 그 파일을 (a) 머리 주석·목록(php -l 대상 목록 등)에서만 말하거나 (b) 「정적 공통 검사」로만 본다: node --check·esprima 구문 · php -l · innerHTML/outerHTML/document.write grep · 절대 경로 리터럴 grep · #rgb/rgb( 새 색값 grep · import 버전 줄 (core.security_lint · community.asset_version · 정적 시험이 덮는다). **두는 것** — 그 파일의 특정 내용을 단언(예: help_button 「app.js 위임 하나(initHelpDialog)」) · 그 파일이 그리는 화면을 브라우저로 잰다(셸 화면을 띄우는 브라우저 시험 — 셸·app.css·app.js 는 모든 셸 화면, editor.js 는 커뮤니티 화면) · 그 파일이 부르는 창구·그 파일이 실린 응답을 HTTP 로 친다. 근거 표는 docs/regress-cleanup-report.md RC-4",
     "requirements": "머리 주석에 적힌 수락 기준 ID(T-·C:T-·Q:T-)만. 범위(C:T-14 ~ C:T-20)는 펼쳤다. 「… 방식」 참조와 다른 번호 체계와 겹치는 옛 번호는 뺐고 notes 에 적음",
     "risks": "머리 주석에 적힌 R-·C:R- ID 만",
     "est_sec": "어림값(실측 아님): 로그인 수·TOTP 창 대기·브라우저·임시 DB 준비로 잡음. R-73 사용자 활동 대기(최대 20분)는 넣지 않음. 정적 둘만 복제본 실측",
-    "known_fail": "status=known_fail 일 때만 {reason, since, expires}(만료 30일)",
+    "timeout_sec": "(선택) 이 시험의 시간 제한(초). 없으면 max(--timeout-min 600, est_sec × --timeout-factor 3). 넘으면 묶음(새 세션)에 SIGTERM → 120초 → 남은 것만 SIGKILL · 판정 ③ timeout(RC-1). --no-timeout 이면 한도 없음",
+    "known_fail": "status=known_fail 일 때만 {reason, since, expires, evidence}(만료 30일). reason 은 사람 말 한 문장 · evidence 는 근거 자료 파일 이름. 만료 전이면 판정 ③ known_fail, 만료가 지났거나 만료일이 없으면 required 로 판정한다. tests/run.sh run --skip-known-fail 이면 만료 전 항목을 돌리지 않고 ③ known_fail_skipped 로 요약 머리에 늘 보인다(인자가 없으면 돈다) · 2026-10-13 에 더한 19항목(since 2026-10-13 · expires 2026-11-12)은 사용자 승인 2026-10-13 「회귀 카탈로그 정리 진행해」(Fable 제안 「이미 깨진 옛 시험을 known_fail 로 표시해 회귀에서 빼기」에 대한 답 · 지시서 RC-5)",
     "accepted_limit": "받아들인 한계(결함 아님) {decision, since, text} — 사용자 결정으로 목표 밖이 된 몫. 단언은 그대로 두고, 그 몫으로 틀리면 결함이 아니라 known 한계로 분류한다(요약기는 이 칸을 읽지 않는다 — 사람·취합이 판정할 때 본다)"
   },
   "tests": [
@@ -222,7 +223,7 @@
       "cmd": "bash tests/changelog.sh",
       "module": "tbox",
       "env": "prod",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "browser"
@@ -253,7 +254,13 @@
       ],
       "est_sec": 300,
       "writes_prod": false,
-      "notes": "F-47 버전·변경 이력. 운영 8082 에 claude_admin01 로 한 번 로그인, GET·정적 검사뿐(데이터 0). git clone \"$ROOT\" 한 임시 클론 안에서 release.sh --dry-run(.git 없는 복사본에서는 못 돎). 끝에 tests/help_button.sh 를 회귀로 부른다(→ scripts/ui_snapshot.sh, sudo). 출력 기본 ~/.claude/ui-shots/changelog. R-73·R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
+      "notes": "F-47 버전·변경 이력. 운영 8082 에 claude_admin01 로 한 번 로그인, GET·정적 검사뿐(데이터 0). git clone \"$ROOT\" 한 임시 클론 안에서 release.sh --dry-run(.git 없는 복사본에서는 못 돎). 끝에 tests/help_button.sh 를 회귀로 부른다(→ scripts/ui_snapshot.sh, sudo). 출력 기본 ~/.claude/ui-shots/changelog. R-73·R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)",
+      "known_fail": {
+        "reason": "변경 이력 태그 v1.0.1 · 1440 합계 · 등급 표기 옛 기대값 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "tbox.f46",
@@ -747,7 +754,7 @@
       "cmd": "bash tests/help_button.sh",
       "module": "tbox",
       "env": "prod",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "browser"
@@ -782,7 +789,13 @@
       "risks": [],
       "est_sec": 150,
       "writes_prod": false,
-      "notes": "F-38 도움말 단추. 직접 sudo 는 없고 (d) 가 scripts/ui_snapshot.sh(claude_admin01, sudo 로 자격 읽기·8082 고정)를 UI_PAGES 로 부른다. 데이터 0. 판정 「1440px 결함 합계가 기존값 7건 이하」. 인자 없으면 ~/.claude/ui-shots/help-button 에 씀. R-73·R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)"
+      "notes": "F-38 도움말 단추. 직접 sudo 는 없고 (d) 가 scripts/ui_snapshot.sh(claude_admin01, sudo 로 자격 읽기·8082 고정)를 UI_PAGES 로 부른다. 데이터 0. 판정 「1440px 결함 합계가 기존값 7건 이하」. 인자 없으면 ~/.claude/ui-shots/help-button 에 씀. R-73·R-80 가드 없음. (1-B-1 9dcd2e7 뒤 검토 계정 claude_ — 자격 파일 이름 qa-totp.txt·seed-accounts.txt 는 그대로)",
+      "known_fail": {
+        "reason": "「사용 방법」 단추 수 16 → 18(화면이 늘었다) · 1440 합계 옛 기대값 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "tbox.stage26",
@@ -913,7 +926,7 @@
       "cmd": "bash tests/q_launcher.sh",
       "module": "launcher",
       "env": "prod",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "nginx"
@@ -950,14 +963,20 @@
       ],
       "est_sec": 120,
       "writes_prod": false,
-      "notes": "Qaredi 런처(Q:T-1·3~9). 운영 8082 의 사이트 루트·옛 주소 308·Set-Cookie 속성·CSP·정적 자산이 nginx 설정에 의존한다(머리 주석: PHP 내장 서버에서는 세션이 서지 않음) → php -S 임시 인스턴스로는 못 돎. 만든 공유 링크는 앱 창구로 회수, psql 읽기만."
+      "notes": "Qaredi 런처(Q:T-1·3~9). 운영 8082 의 사이트 루트·옛 주소 308·Set-Cookie 속성·CSP·정적 자산이 nginx 설정에 의존한다(머리 주석: PHP 내장 서버에서는 세션이 서지 않음) → php -S 임시 인스턴스로는 못 돎. 만든 공유 링크는 앱 창구로 회수, psql 읽기만.",
+      "known_fail": {
+        "reason": "런처 새 디자인(Qaredi 제목 · 바로가기 격자 · 타일 경로) 뒤 옛 기대값 — 기준 판에서도 같은 실패, v2.63.0 반영 뒤 11건은 기준 판 14건의 부분집합",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "q_launcher-post.log · run6-run7-compare.json"
+      }
     },
     {
       "id": "community.stage3",
       "cmd": "bash tests/community/stage3.sh",
       "module": "community",
       "env": "prod",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "browser",
@@ -999,7 +1018,13 @@
       ],
       "est_sec": 420,
       "writes_prod": false,
-      "notes": "커뮤니티 3단계. 운영 8082(SITE·CBASE)에 claude_ 다섯, 만든 페이지는 앱 창구로 논리 삭제, psql 읽기만. C:T-20 의 scripts/vendor_prosemirror.sh --verify 가 registry.npmjs.org 에서 tarball 을 받는다(외부 요청 — 네트워크 없으면 FAIL). 저장소 밖 $ROOT/../community/doc-schema.json 과 diff. browser_smoke.py 1~20 을 부른다. 스키마 미적용(503)이면 exit 3. (1-B-3: 검토 계정 claude_ 로 옮김)"
+      "notes": "커뮤니티 3단계. 운영 8082(SITE·CBASE)에 claude_ 다섯, 만든 페이지는 앱 창구로 논리 삭제, psql 읽기만. C:T-20 의 scripts/vendor_prosemirror.sh --verify 가 registry.npmjs.org 에서 tarball 을 받는다(외부 요청 — 네트워크 없으면 FAIL). 저장소 밖 $ROOT/../community/doc-schema.json 과 diff. browser_smoke.py 1~20 을 부른다. 스키마 미적용(503)이면 exit 3. (1-B-3: 검토 계정 claude_ 로 옮김)",
+      "known_fail": {
+        "reason": "감사 건수 · 손님 홈 · 절대 경로 · doc-schema 사본 옛 기대값 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.stage4a",
@@ -1047,7 +1072,7 @@
       "cmd": "bash tests/community/stage4b.sh",
       "module": "community",
       "env": "prod",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "browser"
@@ -1084,14 +1109,20 @@
       "risks": [],
       "est_sec": 300,
       "writes_prod": false,
-      "notes": "4-B 공개 범위. 운영 8082 에 페이지·팀 공간을 만든다 — 팀 공간은 지우는 창구가 없어 운영에 남는다. R-73 사용자 활동 가드 없음(R-80 만). 로그인 실패 exit 4. 저장소 밖 doc-schema diff."
+      "notes": "4-B 공개 범위. 운영 8082 에 페이지·팀 공간을 만든다 — 팀 공간은 지우는 창구가 없어 운영에 남는다. R-73 사용자 활동 가드 없음(R-80 만). 로그인 실패 exit 4. 저장소 밖 doc-schema diff.",
+      "known_fail": {
+        "reason": "editor.js esprima 구문(최신 문법) · doc-schema 사본 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.stage4c",
       "cmd": "bash tests/community/stage4c.sh",
       "module": "community",
       "env": "prod",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "browser"
@@ -1131,7 +1162,13 @@
       "risks": [],
       "est_sec": 300,
       "writes_prod": false,
-      "notes": "4-C 이력. 운영 8082. C:T-40 은 $ROOT/.env 의 앱 DB 자격(tbox_app, PGPASSWORD)으로 운영 tbox_re 에 UPDATE/DELETE … WHERE false 를 보내 42501 을 확인한다(쓰기 효과 0). R-73 사용자 활동 가드 없음. browser_smoke.py 30~31."
+      "notes": "4-C 이력. 운영 8082. C:T-40 은 $ROOT/.env 의 앱 DB 자격(tbox_app, PGPASSWORD)으로 운영 tbox_re 에 UPDATE/DELETE … WHERE false 를 보내 42501 을 확인한다(쓰기 효과 0). R-73 사용자 활동 가드 없음. browser_smoke.py 30~31.",
+      "known_fail": {
+        "reason": "위와 같음",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.stage4d",
@@ -2566,7 +2603,7 @@
       "cmd": "bash tests/community/qf4_draft_key.sh",
       "module": "community",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "browser",
@@ -2598,7 +2635,13 @@
       "risks": [],
       "est_sec": 600,
       "writes_prod": false,
-      "notes": "Q:F-4 라운드 B2 수락(U-3 자동 요청은 세션을 늘리지 않는다 + B1-2 쓰던 글 임시저장 + P-3 검토 Low-3). [A] GET /community/api/me/draft-key(no-store · 같은 사람 같은 값 · 역할로 보기 중에도 진짜 사용자 값 · 로그·감사에 열쇠 0 · 짧은 APP_SECRET 503) [B] U-3 ①~⑦(무활동 창 2분 · 자동 요청만 3분 → 401 · 사람 요청 1번 → 유지 · 쓰기는 늘 연장 · 대조군 표식 없는 폴링) [C] 헤드리스 tests/browser/qf4_drafts.py(B1-2 ①~⑦·⑨·⑩). SECTIONS=\"key u3 browser\" 로 일부만. 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 임시 DB tbox_qf4b2_test(파일 없는 파이프) · php -S 127.0.0.1:8102 · 임시 .env SESSION_IDLE_MIN=2(원본 .env 는 읽기만). 계정 claude_employee01·02·manager01·admin01(claude_ 만). 비밀은 py_secret·curl_json_secret(표준입력), 세션·CSRF 는 600 헤더 파일, 임시저장 열쇠는 찍지 않고 파일끼리 cmp. 같은 계정을 다시 넣을 때 다음 TOTP 칸을 기다린다(정상 경로 — totp_wait). 스크린샷 폴더는 남긴다(사람이 본다). 운영 8082 요청 0. est_sec 어림값([B] 3분 + [C] 약 5분 + 준비). 나가는 값 0·1·3·4. 카탈로그 밖에 있던 것을 1l 에서 실었다(취합 지시 — 메타데이터만)."
+      "notes": "Q:F-4 라운드 B2 수락(U-3 자동 요청은 세션을 늘리지 않는다 + B1-2 쓰던 글 임시저장 + P-3 검토 Low-3). [A] GET /community/api/me/draft-key(no-store · 같은 사람 같은 값 · 역할로 보기 중에도 진짜 사용자 값 · 로그·감사에 열쇠 0 · 짧은 APP_SECRET 503) [B] U-3 ①~⑦(무활동 창 2분 · 자동 요청만 3분 → 401 · 사람 요청 1번 → 유지 · 쓰기는 늘 연장 · 대조군 표식 없는 폴링) [C] 헤드리스 tests/browser/qf4_drafts.py(B1-2 ①~⑦·⑨·⑩). SECTIONS=\"key u3 browser\" 로 일부만. 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 임시 DB tbox_qf4b2_test(파일 없는 파이프) · php -S 127.0.0.1:8102 · 임시 .env SESSION_IDLE_MIN=2(원본 .env 는 읽기만). 계정 claude_employee01·02·manager01·admin01(claude_ 만). 비밀은 py_secret·curl_json_secret(표준입력), 세션·CSRF 는 600 헤더 파일, 임시저장 열쇠는 찍지 않고 파일끼리 cmp. 같은 계정을 다시 넣을 때 다음 TOTP 칸을 기다린다(정상 경로 — totp_wait). 스크린샷 폴더는 남긴다(사람이 본다). 운영 8082 요청 0. est_sec 어림값([B] 3분 + [C] 약 5분 + 준비). 나가는 값 0·1·3·4. 카탈로그 밖에 있던 것을 1l 에서 실었다(취합 지시 — 메타데이터만).",
+      "known_fail": {
+        "reason": "Auth 표식 자리 수 1 → 2 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.qf4_drafts",
@@ -3040,7 +3083,7 @@
       "cmd": "bash tests/qf3a_tbox.sh",
       "module": "tbox",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo"
       ],
@@ -3063,8 +3106,7 @@
         "src/handlers/files_recent.php",
         "src/handlers/home.php",
         "src/help/community.php",
-        "src/help/screens.php",
-        "src/views/shell_top.php"
+        "src/help/screens.php"
       ],
       "requirements": [],
       "risks": [
@@ -3072,7 +3114,13 @@
       ],
       "est_sec": 300,
       "writes_prod": false,
-      "notes": "대기열 6 Q:F-3a 라운드 A t-box 쪽 수락(A-T0 표·권한·새 설치 모양 = 마이그레이션 모양 · 즐겨찾기 넣기 판정 · 최근 = 감사 로그 읽기 · 한도). 임시 DB(+새 설치 비교용 빈 DB)·php -S(기본 8160). 2026-09-26 대기열 5d ④로 넣음"
+      "notes": "대기열 6 Q:F-3a 라운드 A t-box 쪽 수락(A-T0 표·권한·새 설치 모양 = 마이그레이션 모양 · 즐겨찾기 넣기 판정 · 최근 = 감사 로그 읽기 · 한도). 임시 DB(+새 설치 비교용 빈 DB)·php -S(기본 8160). 2026-09-26 대기열 5d ④로 넣음",
+      "known_fail": {
+        "reason": "grants.sql 절 잘라 내기 기대값(DO 블록 수) — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.qf3a",
@@ -3199,7 +3247,6 @@
       ],
       "covers": [
         "db/migrations/2026-10-05_qf3b_purge_favorites.sql",
-        "public/assets/app.js",
         "public/index.php",
         "scripts/security_lint.sh",
         "src/community/handlers/favorites.php",
@@ -3214,8 +3261,7 @@
         "src/handlers/files_update.php",
         "src/handlers/home.php",
         "src/help/community.php",
-        "src/help/screens.php",
-        "src/views/shell_top.php"
+        "src/help/screens.php"
       ],
       "requirements": [],
       "risks": [
@@ -3853,7 +3899,6 @@
         "src/handlers/users_password_reset.php",
         "src/handlers/users_update.php",
         "src/views/launcher.php",
-        "src/views/shell_top.php",
         "tests/lib/passkey_forge.py",
         "tests/lib/return_path_vectors.txt",
         "tests/passkey_api.py",
@@ -4102,7 +4147,7 @@
       "cmd": "bash tests/qf8_token_write.sh",
       "module": "core",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "totp_wait"
@@ -4120,7 +4165,6 @@
         "src/handlers/me.php",
         "src/handlers/api_whoami.php",
         "public/index.php",
-        "public/assets/app.js",
         "db/migrations/2026-10-11_api_tokens_scope_community.sql"
       ],
       "requirements": [
@@ -4138,14 +4182,20 @@
       ],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "Q:F-8 조각 S 수락 T-1~T-7(지시서 docs/qf8-ai-writer-directive.md). 임시 DB tbox_qf8_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 두 번 · 임시 인스턴스 둘(새 코드 QF8_PORT 기본 8401 · 기준 판 QF8_BASE_REV 기본 c2b4d76 을 +1 포트 — 세션 불변 대조 · 포트는 8401~8405 안) · T-5 는 COMMUNITY_ROUTES 전수(허용 셋 밖 전부 401/302 · 토큰 감사 0 — 검토 RV-QF8-6) · 공용 토큰은 시험이 만든 난수(임시 .env). 발급 두 번에 TOTP 창 둘. REGRESS=1 이면 api_whoami · community/stage3 · community/stage5a2(8401~8405 빈 자리) · f66 을 같은 임시 인스턴스에서 사본으로."
+      "notes": "Q:F-8 조각 S 수락 T-1~T-7(지시서 docs/qf8-ai-writer-directive.md). 임시 DB tbox_qf8_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 두 번 · 임시 인스턴스 둘(새 코드 QF8_PORT 기본 8401 · 기준 판 QF8_BASE_REV 기본 c2b4d76 을 +1 포트 — 세션 불변 대조 · 포트는 8401~8405 안) · T-5 는 COMMUNITY_ROUTES 전수(허용 셋 밖 전부 401/302 · 토큰 감사 0 — 검토 RV-QF8-6) · 공용 토큰은 시험이 만든 난수(임시 .env). 발급 두 번에 TOTP 창 둘. REGRESS=1 이면 api_whoami · community/stage3 · community/stage5a2(8401~8405 빈 자리) · f66 을 같은 임시 인스턴스에서 사본으로.",
+      "known_fail": {
+        "reason": "토큰 범위 표(Q:F-10 원자 여섯) 뒤 옛 기대값 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "core.qf9_pc_login",
       "cmd": "bash tests/qf9_pc_login.sh",
       "module": "core",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "totp_wait"
@@ -4165,7 +4215,6 @@
         "src/handlers/api_whoami.php",
         "src/handlers/reauth.php",
         "src/community/routes.php",
-        "public/assets/app.js",
         "scripts/alerts.php",
         "db/migrations/2026-10-12_session_open.sql",
         "db/schema.sql",
@@ -4190,7 +4239,13 @@
       ],
       "est_sec": 330,
       "writes_prod": false,
-      "notes": "Q:F-9 조각 S 수락 T-1~T-7(지시서 docs/qf9-pc-login-directive.md). 임시 DB tbox_qf9_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 2026-10-12 두 번(멱등) · 임시 인스턴스 둘(새 코드 QF9_PORT 8421~8424 기본 8421 · 워커 넷 · 기준 판 QF9_BASE_REV 기본 b7f6da4 를 +1 포트 — 일반 로그인 불변 대조 · 포트 8421~8425 안) · 발급 두 번에 TOTP 창 둘 · 링크 만료 31초 대기 · read/community.write/관리자 session.open 토큰은 임시 DB 에 직접. REGRESS=1 이면 api_whoami · f66 을 같은 임시 인스턴스에서 사본으로."
+      "notes": "Q:F-9 조각 S 수락 T-1~T-7(지시서 docs/qf9-pc-login-directive.md). 임시 DB tbox_qf9_<포트>_test(운영 사본 pg_dump 읽기만) · 마이그레이션 2026-10-12 두 번(멱등) · 임시 인스턴스 둘(새 코드 QF9_PORT 8421~8424 기본 8421 · 워커 넷 · 기준 판 QF9_BASE_REV 기본 b7f6da4 를 +1 포트 — 일반 로그인 불변 대조 · 포트 8421~8425 안) · 발급 두 번에 TOTP 창 둘 · 링크 만료 31초 대기 · read/community.write/관리자 session.open 토큰은 임시 DB 에 직접. REGRESS=1 이면 api_whoami · f66 을 같은 임시 인스턴스에서 사본으로.",
+      "known_fail": {
+        "reason": "Q:F-9 고정 기준 커밋 대비 「차이 0」 · token_scopes · 응답 모양 · 마이그레이션 적용 — 후보·기준 판 같은 포트 직접 실행 둘 다 134/12 같은 집합",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "qf9-direct-candidate.log · qf9-direct-base.log"
+      }
     },
     {
       "id": "design.allowlist",
@@ -4204,7 +4259,6 @@
         "src/views/design_controls.php",
         "public/assets/design.css",
         "public/assets/design.js",
-        "src/views/shell_top.php",
         "src/views/launcher.php",
         "src/handlers/login_page.php",
         "src/handlers/settings_page.php"
@@ -4251,7 +4305,7 @@
       "cmd": "bash tests/design_live.sh",
       "module": "launcher",
       "env": "prod",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "browser",
@@ -4274,7 +4328,13 @@
       "risks": [],
       "est_sec": 180,
       "writes_prod": false,
-      "notes": "공통 테마 전용 검사. browser는 운영 API/세션/DB 없이 실제 뷰를 렌더한다. live는 검토 계정으로 인증 후 GET과 취향 쿠키만 사용한다."
+      "notes": "공통 테마 전용 검사. browser는 운영 API/세션/DB 없이 실제 뷰를 렌더한다. live는 검토 계정으로 인증 후 GET과 취향 쿠키만 사용한다.",
+      "known_fail": {
+        "reason": "운영 테마 다섯 확인이 합계 전에 멈춤(rc 1) — 기준 판과 같음",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "design.public_launcher",
@@ -4358,7 +4418,7 @@
       "cmd": "bash tests/community/stage8b.sh",
       "module": "community",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "browser"
       ],
@@ -4413,7 +4473,13 @@
       "risks": [],
       "est_sec": 120,
       "writes_prod": false,
-      "notes": "Requires PHP, PostgreSQL test-role credentials and Python requests. Fresh empty synthetic DB; only private localhost HTTP and owned CLI processes. No production records copied or operational writes. Also requires markdown-it-py, PyYAML and Playwright Chromium. Export permission/ZIP/limits/audit/Markdown/YAML/parity and browser download/print assertions; baseline renderer is read from the named Git tag. Ports 8497/8498."
+      "notes": "Requires PHP, PostgreSQL test-role credentials and Python requests. Fresh empty synthetic DB; only private localhost HTTP and owned CLI processes. No production records copied or operational writes. Also requires markdown-it-py, PyYAML and Playwright Chromium. Export permission/ZIP/limits/audit/Markdown/YAML/parity and browser download/print assertions; baseline renderer is read from the named Git tag. Ports 8497/8498.",
+      "known_fail": {
+        "reason": "시험 의존성 `markdown_it` 없음 — 기준 판과 같음",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.stage89_http",
@@ -4532,7 +4598,7 @@
       "cmd": "bash tests/community/stage89_ui.sh",
       "module": "community",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "browser"
       ],
@@ -4585,7 +4651,13 @@
       "risks": [],
       "est_sec": 90,
       "writes_prod": false,
-      "notes": "Requires PHP, PostgreSQL test-role credentials and Python requests. Fresh empty synthetic DB; only private localhost HTTP and owned CLI processes. No production records copied or operational writes. Playwright checks recurring/status/due dialogs, procedure verification, template and DB-row repeat entry points, button insert/run and denied source. No formal acceptance IDs declared by the browser suite."
+      "notes": "Requires PHP, PostgreSQL test-role credentials and Python requests. Fresh empty synthetic DB; only private localhost HTTP and owned CLI processes. No production records copied or operational writes. Playwright checks recurring/status/due dialogs, procedure verification, template and DB-row repeat entry points, button insert/run and denied source. No formal acceptance IDs declared by the browser suite.",
+      "known_fail": {
+        "reason": "하네스가 끝에서 실패(rc 1) — 기준 판과 같음",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.stage9d",
@@ -4941,7 +5013,7 @@
       "cmd": "bash tests/community/stage10.sh",
       "module": "community",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "browser"
       ],
@@ -4996,7 +5068,13 @@
       "risks": [],
       "writes_prod": false,
       "est_sec": 120,
-      "notes": "Creates empty synthetic tbox_stage10_test_ DB and owned 8658/8659 PHP listeners; refuses occupied ports. No production dump, service/config/account/business-data writes. HTTP C:T-500–512, affected compatibility subset and actual browser. Baseline comparison is a separate stage10_harness.py --baseline-code --suite stage10_compat.py invocation against 905d352. Test-only purge owner is tbox_testdb; product migration retains tbox_owner."
+      "notes": "Creates empty synthetic tbox_stage10_test_ DB and owned 8658/8659 PHP listeners; refuses occupied ports. No production dump, service/config/account/business-data writes. HTTP C:T-500–512, affected compatibility subset and actual browser. Baseline comparison is a separate stage10_harness.py --baseline-code --suite stage10_compat.py invocation against 905d352. Test-only purge owner is tbox_testdb; product migration retains tbox_owner.",
+      "known_fail": {
+        "reason": "브라우저 묶음 30초 시간 초과 1건 — 기준 판과 같음",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.stage10_helper_stage10_harness",
@@ -5200,7 +5278,7 @@
       "cmd": "bash tests/changelog_admin_only.sh",
       "module": "tbox",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo"
       ],
@@ -5217,7 +5295,6 @@
         "src/handlers/me_act_stop.php",
         "src/handlers/login_page.php",
         "CHANGELOG.json",
-        "public/assets/app.js",
         "scripts/security_lint.sh"
       ],
       "requirements": [
@@ -5230,14 +5307,20 @@
       ],
       "est_sec": 20,
       "writes_prod": false,
-      "notes": "F-47 변경 이력 창의 변경 내용 목록은 관리자에게만(사용자 결정 2026-09-29). 임시 DB tbox_cladm_<포트>_test(운영 사본 pg_dump 읽기만 · CLADM_MIG_FROM 기본 2026-10-12 부터의 마이그레이션을 임시 DB 에만) · 임시 인스턴스 하나(CLADM_PORT 8431~8433 기본 8431). claude_admin01·claude_employee01 로 /tbox/·/community/ 셸 HTML 을 받아 changelog__list 유무·첫 변경 문장 유무를 grep. 보는 중(재인증 → POST /api/me/act Employee → DELETE)은 임시 DB 세션 행만 바뀐다."
+      "notes": "F-47 변경 이력 창의 변경 내용 목록은 관리자에게만(사용자 결정 2026-09-29). 임시 DB tbox_cladm_<포트>_test(운영 사본 pg_dump 읽기만 · CLADM_MIG_FROM 기본 2026-10-12 부터의 마이그레이션을 임시 DB 에만) · 임시 인스턴스 하나(CLADM_PORT 8431~8433 기본 8431). claude_admin01·claude_employee01 로 /tbox/·/community/ 셸 HTML 을 받아 changelog__list 유무·첫 변경 문장 유무를 grep. 보는 중(재인증 → POST /api/me/act Employee → DELETE)은 임시 DB 세션 행만 바뀐다.",
+      "known_fail": {
+        "reason": "임시 DB 에 새 마이그레이션 파일(2026-10-12~25)이 적용되지 않음 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "core.qf10_multi_scope",
       "cmd": "bash tests/qf10_multi_scope.sh",
       "module": "core",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "sudo",
         "totp_wait"
@@ -5263,7 +5346,6 @@
         "src/community/handlers/space_me.php",
         "src/community/handlers/pages_create.php",
         "public/index.php",
-        "public/assets/app.js",
         "scripts/alerts.php",
         "scripts/security_lint.sh",
         "db/schema.sql",
@@ -5289,7 +5371,13 @@
       ],
       "est_sec": 330,
       "writes_prod": false,
-      "notes": "Q:F-10 조각 S 수락 T-1~T-8(지시서 docs/qf10-multi-scope-directive.md S-6). 임시 DB tbox_qf10_<포트>_test(운영 사본 pg_dump 읽기만) + 새 설치 대조용 tbox_qf10_<포트>_schema(db/schema.sql) · 마이그레이션 2026-10-12 뒤 옛 다섯 값 행을 직접 넣고 2026-10-13 두 번(멱등)·모르는 값이면 멈춤(임시 DB 에서만 CHECK 를 잠깐 뗌) · 임시 인스턴스 하나(QF10_PORT 8451~8455 기본 8451 · 워커 넷) · 발급 여섯에 TOTP 창 여섯 · 묶음 토큰의 bound_ip 는 임시 DB 에서 바꿔 IP 밖을 흉내 · T-6 은 같은 사람의 토큰·세션 답을 본문까지 대조. REGRESS=1 이면 api_tokens · api_whoami 를 같은 임시 인스턴스에서 사본으로(qf8·qf9 는 각자 스크립트)."
+      "notes": "Q:F-10 조각 S 수락 T-1~T-8(지시서 docs/qf10-multi-scope-directive.md S-6). 임시 DB tbox_qf10_<포트>_test(운영 사본 pg_dump 읽기만) + 새 설치 대조용 tbox_qf10_<포트>_schema(db/schema.sql) · 마이그레이션 2026-10-12 뒤 옛 다섯 값 행을 직접 넣고 2026-10-13 두 번(멱등)·모르는 값이면 멈춤(임시 DB 에서만 CHECK 를 잠깐 뗌) · 임시 인스턴스 하나(QF10_PORT 8451~8455 기본 8451 · 워커 넷) · 발급 여섯에 TOTP 창 여섯 · 묶음 토큰의 bound_ip 는 임시 DB 에서 바꿔 IP 밖을 흉내 · T-6 은 같은 사람의 토큰·세션 답을 본문까지 대조. REGRESS=1 이면 api_tokens · api_whoami 를 같은 임시 인스턴스에서 사본으로(qf8·qf9 는 각자 스크립트).",
+      "known_fail": {
+        "reason": "고정 기준 커밋(7c87450) 대비 「차이 0」 · Guest 갈래 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "core.ux_r1_ui",
@@ -5722,7 +5810,7 @@
       "cmd": "python3 tests/community/memories_harness.py --suite messenger_window_browser.py --output /tmp/qaredi-messenger-window-results",
       "module": "tbox",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "browser"
       ],
@@ -5789,7 +5877,13 @@
       ],
       "est_sec": 600,
       "writes_prod": false,
-      "notes": "사이트 Q:F-11 지시서 B-5·B-6 「messenger_window_browser.py」 — tests/community/messenger_browser.py(커뮤니티 모달·모의 HTTP)를 대체. memories_harness 의 빈 합성 DB + 로컬 php -S + Chromium(CHROMIUM_EXECUTABLE). fixture claude_ 계정과 합성 대화 상대 둘만. 떠 있는 창: 셸(두 모드)·커뮤니티 9·시작 안내·런처의 같은 id 단추(손님·역할로 보기·미로그인 런처 0 · Set-Cookie 0) · 같은 탭 이동 복원(열림·상대·초안·스크롤·AI 스레드, 초점 그대로) · 여러 탭(BroadcastChannel 로 초안 지움·배지 같음 · 같은 UUID 동시 전송 1행 · navigator.locks 대표 탭 승계) · 로그아웃·계정 바뀜 · 390/412(터치·마우스)/820/1440 × 밝게·어둡게 × 고대비(아래 시트·사용 안내 단추와 겹침 0·누름 44) · 비모달(확인·AI 도구·재인증 창이 위) · 폴링 65초 관찰(닫힘 30초·열림 8초·숨김 0·last_seen 불변) · 커뮤니티 사람 대화 라우트 6개 404·GPT 휴면 · 꾸미기 → 모아 AI. dbg_u2 MODAL_RULE·ui_snapshot AUDIT_JS 를 글자 그대로 읽어 같은 인스턴스에서. 결과 파일은 단언 이름·참/거짓과 수치(metrics)만. QF11B_ONLY=t11,t12,… 로 묶음만 돌릴 수 있다."
+      "notes": "사이트 Q:F-11 지시서 B-5·B-6 「messenger_window_browser.py」 — tests/community/messenger_browser.py(커뮤니티 모달·모의 HTTP)를 대체. memories_harness 의 빈 합성 DB + 로컬 php -S + Chromium(CHROMIUM_EXECUTABLE). fixture claude_ 계정과 합성 대화 상대 둘만. 떠 있는 창: 셸(두 모드)·커뮤니티 9·시작 안내·런처의 같은 id 단추(손님·역할로 보기·미로그인 런처 0 · Set-Cookie 0) · 같은 탭 이동 복원(열림·상대·초안·스크롤·AI 스레드, 초점 그대로) · 여러 탭(BroadcastChannel 로 초안 지움·배지 같음 · 같은 UUID 동시 전송 1행 · navigator.locks 대표 탭 승계) · 로그아웃·계정 바뀜 · 390/412(터치·마우스)/820/1440 × 밝게·어둡게 × 고대비(아래 시트·사용 안내 단추와 겹침 0·누름 44) · 비모달(확인·AI 도구·재인증 창이 위) · 폴링 65초 관찰(닫힘 30초·열림 8초·숨김 0·last_seen 불변) · 커뮤니티 사람 대화 라우트 6개 404·GPT 휴면 · 꾸미기 → 모아 AI. dbg_u2 MODAL_RULE·ui_snapshot AUDIT_JS 를 글자 그대로 읽어 같은 인스턴스에서. 결과 파일은 단언 이름·참/거짓과 수치(metrics)만. QF11B_ONLY=t11,t12,… 로 묶음만 돌릴 수 있다.",
+      "known_fail": {
+        "reason": "Q:T-19 「GPT/OpenAI 글자 0」 17 · snap AUDIT_JS 16 · Q:T-11 런처 타일에서 멈춤 — RV-U2-1 · RV-U2-2 에서 기준 판과 이름까지 같음",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "community.memory_ai_http",
@@ -5869,7 +5963,7 @@
       "cmd": "python3 tests/qf13_consent_http.py --output /tmp/qaredi-qf13-consent-results",
       "module": "tbox",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "browser"
       ],
@@ -5915,14 +6009,20 @@
       "risks": [],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "사이트 Q:F-13 지시서 P1 — 자기 시험 틀(빈 합성 DB tbox_memories_test_qf13_<pid> + 마이그레이션 시험 DB · 저장소 임시 사본 · 로컬 php -S 127.0.0.1:8786 · Chromium) · fixture claude_ 와 이 시험의 qf13_ 합성 계정만 · 외부 요청 0(사본의 Fetch.php·Ai.php 만 합성 provider). 마이그레이션: main 스키마 위 2회 적용 = 새 설치 모양 · 기존 계정 줄 0. 공개: /tbox/privacy·/tbox/terms 로그인 없이 200 · Set-Cookie 0 · 운영자·책임자 이메일·시행일 · ?v= 목록 밖 404 · 로그인해도 같은 바이트. 가입: 체크 둘 중 하나라도 빠지면 400·계정 0 · 둘 다면 201·동의 줄 셋·감사. 기존 회원: 화면 302 /tbox/consent(?to= 허용 목록) · 세션 API 403 consent_required(t-box·커뮤니티) · /api/me·동의·로그아웃 열림 · 토큰 창구 그대로 · 계정 절차가 먼저 · 판이 바뀌면 다시. AI: 모아 AI·메시지 도구·사진 이야기·커뮤니티 AI 409 ai_consent_required · 합성 provider 0 → 동의 뒤 200(호출 4) → 철회 뒤 409(호출 0). 기록: 앱 계정 UPDATE/DELETE/TRUNCATE 42501 · 감사 셋. 화면: 바닥 링크 다섯 자리(+공개 화면) · 동의 화면 360·412·820·1440 × 밝게·어둡게 × 고대비 가로 넘침 0·콘솔 0 · 동의 뒤 보던 곳 · 메신저 AI 동의 창(동의 → 같은 요청 1회 · Esc → 호출 0 · 412 화면 안). 앱 접속 키 넷만 memories_harness.py 와 같은 자리에서 읽는다. 결과: results.json(단언·참거짓) · samples.json(403/409/200 본문 견본 — 개인 데이터 0) · 화면 PNG."
+      "notes": "사이트 Q:F-13 지시서 P1 — 자기 시험 틀(빈 합성 DB tbox_memories_test_qf13_<pid> + 마이그레이션 시험 DB · 저장소 임시 사본 · 로컬 php -S 127.0.0.1:8786 · Chromium) · fixture claude_ 와 이 시험의 qf13_ 합성 계정만 · 외부 요청 0(사본의 Fetch.php·Ai.php 만 합성 provider). 마이그레이션: main 스키마 위 2회 적용 = 새 설치 모양 · 기존 계정 줄 0. 공개: /tbox/privacy·/tbox/terms 로그인 없이 200 · Set-Cookie 0 · 운영자·책임자 이메일·시행일 · ?v= 목록 밖 404 · 로그인해도 같은 바이트. 가입: 체크 둘 중 하나라도 빠지면 400·계정 0 · 둘 다면 201·동의 줄 셋·감사. 기존 회원: 화면 302 /tbox/consent(?to= 허용 목록) · 세션 API 403 consent_required(t-box·커뮤니티) · /api/me·동의·로그아웃 열림 · 토큰 창구 그대로 · 계정 절차가 먼저 · 판이 바뀌면 다시. AI: 모아 AI·메시지 도구·사진 이야기·커뮤니티 AI 409 ai_consent_required · 합성 provider 0 → 동의 뒤 200(호출 4) → 철회 뒤 409(호출 0). 기록: 앱 계정 UPDATE/DELETE/TRUNCATE 42501 · 감사 셋. 화면: 바닥 링크 다섯 자리(+공개 화면) · 동의 화면 360·412·820·1440 × 밝게·어둡게 × 고대비 가로 넘침 0·콘솔 0 · 동의 뒤 보던 곳 · 메신저 AI 동의 창(동의 → 같은 요청 1회 · Esc → 호출 0 · 412 화면 안). 앱 접속 키 넷만 memories_harness.py 와 같은 자리에서 읽는다. 결과: results.json(단언·참거짓) · samples.json(403/409/200 본문 견본 — 개인 데이터 0) · 화면 PNG.",
+      "known_fail": {
+        "reason": "「main 에 동의 표 없음」 가정 — 기준 판과 같은 실패",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "tbox.qf13_retention_http",
       "cmd": "python3 tests/community/memories_harness.py --suite qf13_retention_http.py --output /tmp/qaredi-qf13-retention-results",
       "module": "tbox",
       "env": "temp-instance",
-      "status": "required",
+      "status": "known_fail",
       "needs": [
         "browser"
       ],
@@ -5959,7 +6059,13 @@
       "risks": [],
       "est_sec": 150,
       "writes_prod": false,
-      "notes": "사이트 Q:F-13 지시서 P2 — memories_harness 의 빈 합성 DB + 로컬 php -S(127.0.0.1:8768·8769) + Chromium(CHROMIUM_EXECUTABLE) · fixture claude_ 와 이 시험의 qf13r_ 합성 계정만 · 외부 요청 0. 소유자 함수는 합성 DB 소유자(tbox_testdb)로 부른다(작업 폴더의 0600 pgpass · TBOX_OWNER_PGPASS/ROLE — 시험 끝에 작업 폴더째 지움) · 체인 파일은 TBOX_AUDIT_CHAIN_FILE 로 작업 폴더에. 파기: 366일·31일·3년+1일 줄과 경계 안 줄(364일·29일·3년−1일) → dry 는 수만 · --run 뒤 지난 것만 0 · 사진·AI 그림 파일 0 · 두 번째 0 · 정합성 --strict 통과 · 출력·감사에 내용 0. 권한: 앱 계정 함수 넷·audit_logs DELETE/UPDATE·탈퇴 요청 DELETE/purged_at/상태 INSERT 42501 · 처리 때 당기기·되돌리기 트리거 P0001 · 함수 소유자만 EXECUTE. 탈퇴: 요청 재인증 403 → 201 → 409 · 관리자 재인증 403 → 목록(남은 자료 수) → 자기 자신 400 · 처리 200 → 즉시 비활성·OTP·비밀번호·세션·패스키·토큰 0 · 로그인·옛 세션·토큰 거부 → 30일 당긴 뒤 deleted-<번호>·「탈퇴한 사용자 #번호」·개인 공간 문서·사진(파일)·여행 0 · 팀 글·게시판 글·댓글·자료실 파일 남음(게시판 writer 표시 바뀜) · 감사 셋 · 이름 충돌·다시 켠 계정 건너뜀. G-2: GPS·XMP·주석·뒤 그림이 든 JPEG · eXIf/tEXt/iTXt PNG · EXIF/XMP WebP → 저장 파일 메타 0 · 픽셀 같음 · JPEG 방향만 남김 · DB 지문 = 저장 파일 · 옛 사진 그대로. 감사 사슬: 3년 지난 날 접기(start 줄) · 검증 통과 · 파기 뒤 통과 · 남은 날 변조·가짜 시작점은 실패. 마이그레이션: main 스키마 위 2회 = 새 설치 모양. P2-a~e. 화면: 「내 계정」 탈퇴(확인 창 → 재인증 창 → 한 번) · 관리자 「탈퇴 요청」(확인 창 → 처리) · 360·412·820·1440 × 밝게·어둡게 · 고대비 가로 넘침 0 · 콘솔 0. 결과: qf13-retention-results.json(단언·참거짓) · samples.json(응답 견본 — 개인 데이터 0) · 명령 출력(건수만) · 화면 PNG. 앱 접속 키 넷만 memories_harness.py 와 같은 자리에서 읽는다."
+      "notes": "사이트 Q:F-13 지시서 P2 — memories_harness 의 빈 합성 DB + 로컬 php -S(127.0.0.1:8768·8769) + Chromium(CHROMIUM_EXECUTABLE) · fixture claude_ 와 이 시험의 qf13r_ 합성 계정만 · 외부 요청 0. 소유자 함수는 합성 DB 소유자(tbox_testdb)로 부른다(작업 폴더의 0600 pgpass · TBOX_OWNER_PGPASS/ROLE — 시험 끝에 작업 폴더째 지움) · 체인 파일은 TBOX_AUDIT_CHAIN_FILE 로 작업 폴더에. 파기: 366일·31일·3년+1일 줄과 경계 안 줄(364일·29일·3년−1일) → dry 는 수만 · --run 뒤 지난 것만 0 · 사진·AI 그림 파일 0 · 두 번째 0 · 정합성 --strict 통과 · 출력·감사에 내용 0. 권한: 앱 계정 함수 넷·audit_logs DELETE/UPDATE·탈퇴 요청 DELETE/purged_at/상태 INSERT 42501 · 처리 때 당기기·되돌리기 트리거 P0001 · 함수 소유자만 EXECUTE. 탈퇴: 요청 재인증 403 → 201 → 409 · 관리자 재인증 403 → 목록(남은 자료 수) → 자기 자신 400 · 처리 200 → 즉시 비활성·OTP·비밀번호·세션·패스키·토큰 0 · 로그인·옛 세션·토큰 거부 → 30일 당긴 뒤 deleted-<번호>·「탈퇴한 사용자 #번호」·개인 공간 문서·사진(파일)·여행 0 · 팀 글·게시판 글·댓글·자료실 파일 남음(게시판 writer 표시 바뀜) · 감사 셋 · 이름 충돌·다시 켠 계정 건너뜀. G-2: GPS·XMP·주석·뒤 그림이 든 JPEG · eXIf/tEXt/iTXt PNG · EXIF/XMP WebP → 저장 파일 메타 0 · 픽셀 같음 · JPEG 방향만 남김 · DB 지문 = 저장 파일 · 옛 사진 그대로. 감사 사슬: 3년 지난 날 접기(start 줄) · 검증 통과 · 파기 뒤 통과 · 남은 날 변조·가짜 시작점은 실패. 마이그레이션: main 스키마 위 2회 = 새 설치 모양. P2-a~e. 화면: 「내 계정」 탈퇴(확인 창 → 재인증 창 → 한 번) · 관리자 「탈퇴 요청」(확인 창 → 처리) · 360·412·820·1440 × 밝게·어둡게 · 고대비 가로 넘침 0 · 콘솔 0. 결과: qf13-retention-results.json(단언·참거짓) · samples.json(응답 견본 — 개인 데이터 0) · 명령 출력(건수만) · 화면 PNG. 앱 접속 키 넷만 memories_harness.py 와 같은 자리에서 읽는다.",
+      "known_fail": {
+        "reason": "하네스가 끝에서 실패(rc 1) — 기준 판과 같음",
+        "since": "2026-10-13",
+        "expires": "2026-11-12",
+        "evidence": "run6-run7-compare.json"
+      }
     },
     {
       "id": "tbox.qf13_owner_fix",
