@@ -800,6 +800,21 @@ CREATE TABLE IF NOT EXISTS community.page_attachment_purge_queue (
     queued_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- U3-1b — 정합성 검사(앱 계정)가 「저장소에서 찾은 이 이름들 중 영구 삭제 대기열에 있는 것」만 묻는 읽기 함수(마이그레이션 7 절과 같은 문장).
+--   대기열 표의 앱 권한은 0 그대로 — 이미 아는 이름의 소속만 확인할 수 있다. EXECUTE 는 db/community/grants.sql 끝 절(tbox_app 하나).
+CREATE OR REPLACE FUNCTION community.page_attachment_queued(p_names text[])
+RETURNS SETOF text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = community, pg_temp
+AS $fn$
+    SELECT q.stored_name FROM community.page_attachment_purge_queue q
+     WHERE q.stored_name = ANY (p_names)
+     ORDER BY q.stored_name
+$fn$;
+REVOKE ALL ON FUNCTION community.page_attachment_queued(text[]) FROM PUBLIC;
+
 -- ─────────────────────────────────────────────────────────────
 -- Q:F-12 업무 화면 — 담당자 · 프로젝트 · 포트폴리오 (지시서 A · 커뮤니티 ARCHITECTURE 23.2)
 --   이미 있는 DB 는 db/migrations/2026-10-19_qf12_work.sql 이 **같은 모양**을 만든다(이 절은 그 파일의 1~5 절과

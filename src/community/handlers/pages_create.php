@@ -214,6 +214,13 @@ if ($extract['files'] !== []) {
     Http::json(['error' => '파일은 페이지를 만든 뒤 붙입니다', 'reason' => 'file_ref'], 400);
     exit;
 }
+/* Q:F-12 U3-1b (커뮤니티 ARCH 24.5) — 새 문서에는 아직 첨부가 없다. 첫 본문(직접 · 템플릿 · 프로그램 토큰 = MCP 「문서 만들기」 모두
+   이 자리를 지난다)의 `att:` 은 하나라도 **다른 문서의** 첨부이므로 거부한다 — 저장 · 판 복원과 같은 사유 · 문장(형식 거부라 감사 0,
+   위 자료실 파일 거부와 같은 태도). 첨부는 문서를 만든 뒤 그 문서에 올리고(`POST …/attachments`) 저장(PATCH)으로 넣는다. */
+if ($extract['atts'] !== []) {
+    Http::json(['error' => COMMUNITY_ATTACHMENT_REF_REFUSED, 'reason' => 'bad_attachment_ref'], 400);
+    exit;
+}
 /* 7-C — 첫 본문의 임베드는 모두 새것이다 — 허용 목록 안이어야 한다(K-3). 템플릿 본문은 **담을 때** 이미 견주었으므로
    그 뒤에 호스트가 빠져도 막지 않는다(옛 임베드와 같다 — 렌더러가 「허용 목록 밖」 카드로 그린다, 독립 검토 7-C L-1). */
 if ($tpl === null && !community_embeds_ok($extract['embeds'])) {

@@ -30,7 +30,7 @@ try {
     $ids = [];
     foreach ($entries as $entry) {
         [$row, $doc] = community_export_document($entry['row'], $user);
-        $ctx = community_export_context($doc, $user, $paths, $entry['path']);
+        $ctx = community_export_context($doc, $user, $paths, $entry['path'], $row);   // U3-1b — 문서 행(첨부 지도 · 창구 주소)
         $meta = community_export_meta($row, $now, $user);
         $body = $format === 'md' ? DocExport::markdown($doc, $meta, $ctx) : DocExport::html($doc, $meta, $ctx, $css);
         $bytes += strlen($body);

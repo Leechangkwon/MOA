@@ -14,9 +14,17 @@
 --                                           (소유자 연결)가 디스크 파일을 지운 뒤 줄을 지운다. 앱 권한 0.
 --   community.purge_trash(dry, max)         지금 몸(2026-10-01_community_suggestions.sql)을 글자 그대로 + 첨부 두 줄
 --                                           (대기열에 이름 적기 → 첨부 행 지우기). CREATE OR REPLACE 라 소유자 · EXECUTE 권한은 그대로다.
+--   ── U3-1b (같은 파일 끝 6 · 7 절) ──
+--   community.privacy_purge_pages(ids)      탈퇴 파기의 페이지 내용 삭제(2026-10-21_privacy_retention.sql)를 같은 서명으로 다시 정의 —
+--                                           그 몸 + 첨부 두 줄(위 purge_trash 와 같은 줄). 디스크 파일은 scripts/privacy_purge.php 가 지운다.
+--                                           ★ 이 파일은 2026-10-21 **뒤에** 돌린다(운영은 10-21 적용됨). 10-21 을 다시 돌렸으면 이 파일도 다시.
+--   community.page_attachment_queued(names) 정합성 검사(앱 계정)가 「이 이름들 중 영구 삭제 대기열에 있는 것」만 묻는 SECURITY DEFINER
+--                                           읽기 함수 — 대기열 표의 앱 권한은 그대로 0. EXECUTE 는 tbox_app 하나.
 --
 -- 되돌리기: 코드만 되돌리면 된다(표가 남아도 옛 코드는 읽지 않는다). 함수는 2026-10-01_community_suggestions.sql 의
---   함수 부분을 다시 돌리면 옛 몸으로 돌아간다. 표를 걷어 낼 때만, 소유자로(첨부 행 · 디스크 파일이 0 인지 먼저 본다):
+--   함수 부분을 다시 돌리면 옛 몸으로 돌아간다(privacy_purge_pages 는 2026-10-21_privacy_retention.sql 의 그 함수 부분 ·
+--   page_attachment_queued 는 DROP FUNCTION community.page_attachment_queued(text[])). 표를 걷어 낼 때만, 소유자로(첨부 행 · 디스크 파일이
+--   0 인지 먼저 본다): DROP FUNCTION community.page_attachment_queued(text[]);
 --   DROP TABLE community.page_attachment_purge_queue, community.page_attachments;
 
 \set ON_ERROR_STOP on
@@ -153,6 +161,112 @@ BEGIN
         ALTER TABLE community.page_attachments OWNER TO tbox_owner;
         ALTER TABLE community.page_attachment_purge_queue OWNER TO tbox_owner;
         ALTER FUNCTION community.purge_trash(boolean, integer) OWNER TO tbox_owner;
+    END IF;
+END
+$$;
+
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+-- Q:F-12 U3-1b (지시서 「U3-1b 바닥 후속」) — 같은 파일 끝에 더한다(아직 운영 미적용 · 새 파일 0). 위 1~5 절과 같은 트랜잭션.
+-- ══════════════════════════════════════════════════════════════════════════════════════════════
+
+-- ── 6. 탈퇴 파기의 페이지 내용 삭제 — community.privacy_purge_pages(ids) 를 첨부까지 지우도록 다시 정의 ──
+--   지금 정의는 2026-10-21_privacy_retention.sql(운영 적용됨 — 이 파일은 그 **뒤에** 돌린다). 서명 · 반환 · SECURITY INVOKER ·
+--   search_path 그대로, 몸은 그 파일 글자 그대로 + 첨부 두 줄(purge_trash 3 절과 같은 두 줄 — 대기열에 디스크 이름을 **먼저** 적고
+--   행을 지운다). 디스크 파일은 부르는 쪽 scripts/privacy_purge.php 가 커밋 뒤 대기열을 비워 지운다(community_purge.php 와 같은 함수 —
+--   scripts/lib/attachment_purge.php). CREATE OR REPLACE 라 소유자(tbox_owner) · EXECUTE 권한(PUBLIC · tbox_app 회수)은 그대로다.
+--   파기 범위는 그대로: 그 사람 **개인 공간**의 게시하지 않은 문서뿐 — 그 사람이 팀 공간 · 남의 문서에 올린 첨부는 그 문서 것이라 남는다.
+--   ★ 2026-10-21_privacy_retention.sql 을 다시 돌리면 옛 몸(첨부 없음)으로 돌아간다 — 그때는 이 파일도 다시 돌린다(멱등).
+CREATE OR REPLACE FUNCTION community.privacy_purge_pages(p_ids bigint[])
+RETURNS bigint
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path = community, public, pg_temp
+AS $fn$
+DECLARE
+    done bigint;
+BEGIN
+    IF p_ids IS NULL OR cardinality(p_ids) = 0 THEN
+        RETURN 0;
+    END IF;
+    IF to_regclass('community.synced_sources') IS NOT NULL THEN
+        DELETE FROM community.synced_references sr WHERE sr.page_id = ANY (p_ids);
+        DELETE FROM community.synced_sources ss WHERE ss.page_id = ANY (p_ids);
+    END IF;
+    IF to_regclass('community.page_embeddings') IS NOT NULL THEN
+        DELETE FROM community.page_embeddings e     WHERE e.page_id = ANY (p_ids);
+        DELETE FROM community.embedding_queue q     WHERE q.page_id = ANY (p_ids);
+        DELETE FROM community.ai_page_permissions a WHERE a.page_id = ANY (p_ids);
+    END IF;
+    DELETE FROM community.notifications nt
+     WHERE nt.page_id = ANY (p_ids)
+        OR nt.comment_id IN (SELECT c.id FROM community.comments c WHERE c.page_id = ANY (p_ids));
+    DELETE FROM community.comment_reactions r
+     WHERE r.comment_id IN (SELECT c.id FROM community.comments c WHERE c.page_id = ANY (p_ids));
+    DELETE FROM community.comments c WHERE c.page_id = ANY (p_ids) AND c.parent_comment_id IS NOT NULL;
+    DELETE FROM community.comments c WHERE c.page_id = ANY (p_ids);
+    DELETE FROM community.page_versions v      WHERE v.page_id = ANY (p_ids);
+    DELETE FROM community.page_blocks b        WHERE b.page_id = ANY (p_ids);
+    DELETE FROM community.page_links l         WHERE l.from_page_id = ANY (p_ids);
+    DELETE FROM community.page_edit_sessions s WHERE s.page_id = ANY (p_ids);
+    DELETE FROM community.page_shares s        WHERE s.page_id = ANY (p_ids);
+    DELETE FROM community.page_tags t          WHERE t.page_id = ANY (p_ids);
+    DELETE FROM community.page_views w         WHERE w.page_id = ANY (p_ids);
+    DELETE FROM community.page_reads r         WHERE r.page_id = ANY (p_ids);
+    DELETE FROM community.page_property_events e WHERE e.page_id = ANY (p_ids) AND e.prop LIKE 'db:%';
+    -- Q:F-12 U3-1b (ARCH 24.6) — 문서 전용 첨부: 디스크 이름을 대기열에 **먼저** 적고 행을 지운다(purge_trash 3 절과 같은 두 줄 · 한 트랜잭션).
+    INSERT INTO community.page_attachment_purge_queue (stored_name)
+         SELECT a.stored_name FROM community.page_attachments a WHERE a.page_id = ANY (p_ids)
+    ON CONFLICT (stored_name) DO NOTHING;
+    DELETE FROM community.page_attachments a   WHERE a.page_id = ANY (p_ids);
+    UPDATE community.databases d SET schema = '[]'::jsonb, views = '[]'::jsonb, updated_at = now()
+     WHERE d.page_id = ANY (p_ids);
+    UPDATE community.pages p
+       SET title = '영구 삭제된 페이지', icon = NULL,
+           doc = '{"schema":1,"blocks":[]}'::jsonb, plain_text = '', search_tsv = NULL, block_count = 0,
+           database_id = NULL, properties = NULL,
+           deleted_at = coalesce(p.deleted_at, now()), purge_after = coalesce(p.purge_after, now()),
+           purged_at = now()
+     WHERE p.id = ANY (p_ids) AND p.purged_at IS NULL;
+    GET DIAGNOSTICS done = ROW_COUNT;
+    RETURN done;
+END
+$fn$;
+
+REVOKE ALL ON FUNCTION community.privacy_purge_pages(bigint[]) FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_app') THEN
+        REVOKE ALL ON FUNCTION community.privacy_purge_pages(bigint[]) FROM tbox_app;
+    END IF;
+END
+$$;
+
+-- ── 7. 정합성 검사용 대기열 확인 함수 — community.page_attachment_queued(names) ──
+--   scripts/consistency_check.php 는 앱 계정(tbox_app)으로 돈다. 대기열 표의 앱 권한은 0 으로 둔 채(위 4 절), 「저장소에서 찾은
+--   이 이름들 중 영구 삭제 대기열에 있는 것」만 돌려준다 — 부르는 쪽이 **이미 아는 이름**의 소속만 확인할 수 있다(목록을 꺼낼 수 없다).
+--   SECURITY DEFINER(표 소유자) · search_path 고정 · 읽기만(STABLE) · 쓰기 0. EXECUTE 는 tbox_app 하나(PUBLIC 회수).
+CREATE OR REPLACE FUNCTION community.page_attachment_queued(p_names text[])
+RETURNS SETOF text
+LANGUAGE sql
+STABLE
+SECURITY DEFINER
+SET search_path = community, pg_temp
+AS $fn$
+    SELECT q.stored_name FROM community.page_attachment_purge_queue q
+     WHERE q.stored_name = ANY (p_names)
+     ORDER BY q.stored_name
+$fn$;
+
+REVOKE ALL ON FUNCTION community.page_attachment_queued(text[]) FROM PUBLIC;
+DO $$
+BEGIN
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_app') THEN
+        GRANT EXECUTE ON FUNCTION community.page_attachment_queued(text[]) TO tbox_app;
+    END IF;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_owner')
+       AND (SELECT rolsuper FROM pg_roles WHERE rolname = current_user) THEN
+        ALTER FUNCTION community.page_attachment_queued(text[]) OWNER TO tbox_owner;
+        ALTER FUNCTION community.privacy_purge_pages(bigint[])  OWNER TO tbox_owner;
     END IF;
 END
 $$;

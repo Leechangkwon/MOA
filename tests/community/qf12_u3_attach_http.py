@@ -18,6 +18,10 @@ fixture: A=claude_employee01(팀 X) · B=claude_manager01(팀 X) · C=claude_emp
   ⑤ 수명  purge_trash(시험이 직접) 뒤 첨부 행 0 · 대기열 → community_purge.php --run 뒤 디스크 파일 0 · 대기열 0
   ⑥ 감사  upload/download allow · deny · 디스크 이름 · 경로 · 민감 원문 노출 0
   더해서   권한(tbox_app DELETE 0 · UPDATE 는 scan_status 만) · 새 설치(schema.sql+grants) = 마이그레이션×2 모양 SAME
+  U3-1b   ③ 내보내기 md/html · 인쇄 att: → 로그인 필요한 창구 주소 링크 · /pub/ 「볼 수 없는 파일」 ·
+           ④ 다른 쓰기 입구(새 문서 · 템플릿 · MCP 토큰 400 bad_attachment_ref · 게시판 새 글 · AI 넣기) ·
+           ① consistency_check(정상 rc 0 · 누락 · 해시 불일치 · 고아 각 1 · 대기열은 고아 아님) ·
+           ② 탈퇴 파기(privacy_purge_pages 직접 · privacy_purge.php — 합성 탈퇴 사용자 B(claude_manager01)를 익명화하므로 맨 끝)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -511,11 +515,281 @@ try:
     sample = sql("SELECT summary FROM audit_logs WHERE action='attachment.upload' AND result='deny' ORDER BY id LIMIT 1")
     codes['audit_summary_sample_upload_deny'] = re.sub(r'claude_[a-z0-9]+', '{actor}', sample)
 
-    # 기록만(단언 아님) — 저장소 정합성 검사(scripts/consistency_check.php — U3-1 수정 허용 목록 밖)가 첨부 파일을 어떻게 보나.
+    # 기록만(단언 아님) — 시험이 SQL 로 심은 행(바이트 없음)이 남은 상태의 정합성 검사. 단언은 아래 1b ① (심은 행을 걷어 낸 뒤).
     # 출력에는 디스크 이름이 들 수 있으므로 종료 코드와 「orphan」 줄 수만 남긴다.
     cc = subprocess.run(['php', 'scripts/consistency_check.php', '--strict'], cwd=root, capture_output=True, text=True, timeout=300)
     codes['consistency_check_strict_rc_with_attachments'] = cc.returncode
     codes['consistency_check_orphan_mentions'] = (cc.stdout + cc.stderr).count('orphan')
+
+    # ══════════════════════════════════════════════════════════════════════════════════════════════
+    # U3-1b 바닥 후속 (지시서 「U3-1b」 완료 기준 ①~④) — 순서: ③ 내보내기 → ④ 다른 쓰기 입구 → ① 정합성 검사 → ② 탈퇴 파기(B 를 익명화하므로 마지막)
+    # ══════════════════════════════════════════════════════════════════════════════════════════════
+    import hashlib
+    import secrets
+
+    # ════════ 1b ③ 내보내기 · 인쇄 · 공개 링크 ═════════════════════════
+    pe = page('U3b 내보내기 문서')
+    ei = up_ok(pe, '내보낼그림.png', PNG, label='1b③ upload png to export doc')
+    ef = up_ok(pe, '내보낼글.txt', TXT, label='1b③ upload txt to export doc')
+    r = save_doc(pe, doc_with(('image', 'att:' + ei['id']), ('file', 'att:' + ef['id'])))
+    check(r.status_code == 200, '1b③ export doc body holds own att: image + file (got ' + str(r.status_code) + ')')
+    raw_path = '/community/api/pages/' + pe + '/attachments/' + ei['id'] + '/raw'
+    dl_path = '/community/api/pages/' + pe + '/attachments/' + ef['id'] + '/download'
+    for fmt in ('md', 'html'):
+        r = req('GET', '/api/pages/' + pe + '/export?format=' + fmt, None, 'A')
+        body = r.text if r.status_code == 200 else ''
+        esc = (lambda s: s.replace('.', '\\.')) if fmt == 'md' else (lambda s: s)   # md 는 글자 속 문장 부호를 \ 로 막는다(DocMarkdown::escape)
+        check(r.status_code == 200 and raw_path in body and dl_path in body and '볼 수 없는 파일' not in body
+              and esc('내보낼그림.png') in body and esc('내보낼글.txt') in body,
+              '1b③ export ' + fmt + ': att: image → login-required /raw link · file → /download link (not 「볼 수 없는 파일」)')
+        check(manifest['base_url'].removesuffix('/tbox') + raw_path in body, '1b③ export ' + fmt + ': link is the absolute APP_URL address (like t-box file_href)')
+    r = req('GET', '/p/' + pe + '/print', None, 'A')
+    body = r.text if r.status_code == 200 else ''
+    check(r.status_code == 200 and raw_path in body and dl_path in body and '볼 수 없는 파일' not in body, '1b③ print page: att: links to /raw · /download')
+    codes['export_att_href_shape'] = '{APP_URL}/community/api/pages/{page}/attachments/{att}/raw|download'
+    expect('GET', raw_path.removeprefix('/community'), None, 'A', 200, '1b③ exported image link works for the owner (window re-judges)')
+    expect('GET', dl_path.removeprefix('/community'), None, None, 401, '1b③ exported link without login → 401 (login-required address)')
+    # 관리자 특권 갈래로 읽히는 문서의 내보내기에는 첨부 지도가 없다 — 내보내기 자체가 닫혀 있다(decidePageExport)
+    r = req('GET', '/api/pages/' + pe + '/export?format=md', None, 'M')
+    check(r.status_code in (403, 404), '1b③ Admin (privileged branch) export of private doc closed (' + str(r.status_code) + ')')
+    # 다른 문서의 att: 을 SQL 로 심은 문서 — 내보내기는 「볼 수 없는 파일」(그 문서 첨부 지도에 없음)
+    pe2 = page('U3b 남의 첨부 심은 문서')
+    sql('UPDATE community.pages SET doc=' + lit(json.dumps(doc_with(('file', 'att:' + ef['id'])))) + '::jsonb WHERE public_id=' + lit(pe2))
+    r = req('GET', '/api/pages/' + pe2 + '/export?format=md', None, 'A')
+    check(r.status_code == 200 and '볼 수 없는 파일' in r.text and ef['id'] not in r.text, '1b③ export: (planted) other doc att: → 「볼 수 없는 파일」 · id 0')
+    # 공개 링크(/pub/) — 그대로 「볼 수 없는 파일」
+    space_a = int(sql('SELECT space_id FROM community.pages WHERE public_id=' + lit(pe)))
+    # (준비) 공간의 웹 게시 허용은 Admin 재인증 창구라 시험이 SQL 로 켠다(합성 DB) — 판정 대상은 아래 공개 화면이다
+    sql('UPDATE community.spaces SET web_publish_allowed=true WHERE id=' + str(space_a))
+    r = expect('POST', '/api/pages/' + pe + '/web-publish', {'confirm_public': True}, 'A', 201, '1b③ web-publish export doc')
+    pub_url = r.json().get('url', '') if r.status_code == 201 else ''
+    pr = requests.get(site + pub_url, headers={'User-Agent': 'tbox-review/' + time.strftime('%Y-%m-%d')}, timeout=35)
+    check(pr.status_code == 200 and pr.text.count('볼 수 없는 파일') >= 2 and ei['id'] not in pr.text and ef['id'] not in pr.text
+          and '/attachments/' not in pr.text, '1b③ public link /pub/: att: still 「볼 수 없는 파일」 · attachment ids · window address 0')
+
+    # ════════ 1b ④ 다른 쓰기 입구 — 새 문서 · 템플릿 · 게시판 새 글 · AI · MCP ═══════════════
+    other_att = doc_with(('image', 'att:' + a1['id']))
+    r = req('POST', '/api/pages', {'title': 'U3b 새 문서 남의 첨부', 'doc': other_att}, 'A')
+    check(r.status_code == 400 and r.json().get('reason') == 'bad_attachment_ref' and r.json().get('error') == codes['bad_attachment_ref_error'],
+          '1b④ new doc (session) with att: (even own other doc) → 400 bad_attachment_ref (same sentence as save)')
+    r = req('POST', '/api/pages', {'title': 'U3b 새 문서 없는 첨부', 'doc': doc_with(('file', 'att:' + str(uuid.uuid4())))}, 'A')
+    check(r.status_code == 400 and r.json().get('reason') == 'bad_attachment_ref', '1b④ new doc with unknown att: → 400 bad_attachment_ref')
+    check(n("SELECT count(*) FROM community.pages WHERE title LIKE 'U3b 새 문서%'") == 0, '1b④ refused new docs not created')
+    # MCP — 프로그램 토큰(개인 · community.write)으로 POST /api/pages (clients/mcp create_page 와 같은 창구)
+    tok = secrets.token_hex(24)
+    sql("INSERT INTO api_tokens(user_id,name,token_hash,hint,created_by,scope,expires_at) VALUES(" + str(uid('A')) + ",'U3b MCP 합성','"
+        + hashlib.sha256(tok.encode()).hexdigest() + "','" + tok[:6] + "'," + str(uid('A')) + ",'community.read+community.write',now()+interval '1 hour')")
+    th = {'User-Agent': 'tbox-review/' + time.strftime('%Y-%m-%d'), 'X-API-Token': tok}
+    r = requests.post(base + '/api/pages', json={'title': 'U3b MCP 남의 첨부', 'doc': other_att}, headers=th, timeout=35)
+    check(r.status_code == 400 and r.json().get('reason') == 'bad_attachment_ref', '1b④ MCP (program token POST /api/pages) with att: → 400 bad_attachment_ref')
+    r = requests.post(base + '/api/pages', json={'title': 'U3b MCP 대조', 'doc': {'schema': 1, 'blocks': [{'id': str(uuid.uuid4()), 'type': 'paragraph', 'text': []}]}},
+                      headers=th, timeout=35)
+    check(r.status_code == 201, '1b④ (control) MCP token create without att: → 201 (got ' + str(r.status_code) + ')')
+    sql("UPDATE api_tokens SET revoked_at=now() WHERE token_hash='" + hashlib.sha256(tok.encode()).hexdigest() + "'")
+    # 템플릿 — 템플릿 만들기는 그림 · 파일 블록을 빼고 담는다(자료실 파일과 같다) · 심어 둔 att: 템플릿으로 새 문서 → 400
+    r = req('POST', '/api/templates', {'page_id': pe, 'name': 'U3b 첨부 든 문서 틀'}, 'A')
+    tpl_id = (r.json().get('template') or {}).get('id') if r.status_code == 201 else None
+    tdoc = sql('SELECT doc::text FROM community.templates WHERE public_id=' + lit(tpl_id)) if tpl_id else ''
+    check(r.status_code == 201 and r.json().get('dropped_blocks', 0) >= 2 and 'att:' not in tdoc and tdoc != '',
+          '1b④ template from doc with att: blocks → att: blocks dropped (like t-box files) · template body has no att:')
+    if tpl_id:
+        sql('UPDATE community.templates SET doc=' + lit(json.dumps(doc_with(('file', 'att:' + ef['id'])))) + '::jsonb WHERE public_id=' + lit(tpl_id))
+    r = req('POST', '/api/pages', {'template_id': tpl_id}, 'A')
+    check(r.status_code == 400 and r.json().get('reason') == 'bad_attachment_ref', '1b④ new doc from (planted) template holding att: → 400 bad_attachment_ref')
+    # 게시판 새 글 — 본문을 받지 않는다(허용 키 title · tags) → doc 를 보내면 400
+    r = req('POST', '/api/boards/' + str(board) + '/pages', {'title': 'U3b 게시판 글', 'doc': other_att}, 'A')
+    check(r.status_code == 400, '1b④ board new post with doc (att:) → 400 (body not accepted — allowed keys)')
+    expect('POST', '/api/boards/' + str(board) + '/pages', {'title': 'U3b 게시판 대조'}, 'A', 201, '1b④ (control) board new post without doc → 201')
+    # AI 넣기 — 받는 키는 log_id · doc_version 뿐(doc 를 보내면 400) · AI 글은 문단 글자로만 들어간다(att: 글자도 file_ref 가 되지 않음)
+    pai = page('U3b AI 넣기 문서')
+    r = req('POST', '/api/pages/' + pai + '/ai-insert', {'log_id': str(uuid.uuid4()), 'doc_version': 1, 'doc': other_att}, 'A')
+    check(r.status_code == 400, '1b④ AI insert with doc key (att:) → 400 (keys log_id · doc_version only)')
+    log_id = sql("INSERT INTO community.ai_log(user_id,feature,page_refs,file_refs,input_text,output_text,model,started_at,status,chars_in,chars_out) VALUES("
+                 + str(uid('A')) + ",'assistant','[]','[]','합성 입력'," + lit('att:' + a1['id'] + ' 합성 AI 글') + ",'synthetic',now(),'ok',5,40) RETURNING public_id").splitlines()[0]
+    cur = req('GET', '/api/pages/' + pai, None, 'A').json()['page']['doc_version']
+    r = req('POST', '/api/pages/' + pai + '/ai-insert', {'log_id': log_id, 'doc_version': cur}, 'A')
+    adoc = json.dumps(req('GET', '/api/pages/' + pai, None, 'A').json()['page']['doc'], ensure_ascii=False)
+    check(r.status_code == 200 and 'file_ref' not in adoc and ('att:' + a1['id']) in adoc,
+          '1b④ AI insert of output holding "att:<id>" text → paragraph text only (no file_ref) via common save (SaveDoc)')
+    codes['write_entrances'] = {
+        'POST /api/pages (session · template_id · program token = MCP)': 'pages_create.php — att: → 400 bad_attachment_ref',
+        'POST /api/templates': 'templates_create.php — Doc::templateBody drops image/file blocks · defensive att: → 400',
+        'POST /api/boards/{num}/pages': 'board_pages_create.php — no body accepted (title · tags) → doc 400',
+        'POST /api/pages/{id}/ai-insert': 'ai_helpers.php — text paragraphs only · community_save_doc (SaveDoc att: check)',
+        'PATCH /api/pages/{id} · suggestion accept': 'community_save_doc (SaveDoc att: check — U3-1)',
+        'POST /api/pages/{id}/versions/{n}/restore': 'version_restore.php (U3-1)',
+        'server-built bodies': 'space_me · forms · integrations(connector) · automation create_page(Doc::templateBody) — no att:',
+    }
+
+    # ════════ 1b ① 정합성 검사 — 첨부 구역(누락 · 해시 불일치 · 고아 · 대기열은 고아 아님) ═══════════════
+    def cc_run():
+        done = subprocess.run(['php', 'scripts/consistency_check.php', '--strict'], cwd=root, capture_output=True, text=True, timeout=600)
+        d = json.loads(sql("SELECT detail::text FROM audit_logs WHERE action='audit.integrity' ORDER BY id DESC LIMIT 1") or '{}')
+        kinds = {}
+        for m in (d.get('mismatches') if isinstance(d.get('mismatches'), list) else []):
+            key = (m.get('area') or 'files') + ':' + m.get('kind', '?')
+            kinds[key] = kinds.get(key, 0) + 1
+        info = {k: d.get(k) for k in ('attachment_rows', 'attachment_disk_files', 'attachment_queued', 'attachment_trash_missing',
+                                      'quarantined', 'quarantine_orphan', 'db_rows', 'disk_files')}
+        return done.returncode, kinds, info
+
+    rc, kinds, info = cc_run()
+    codes['cc_before_cleanup'] = {'rc': rc, 'kinds': kinds, 'info': info}
+    # 시험이 SQL 로 심은 행(바이트 없음 — 총량 채우기 · 이동 방어)을 걷어 낸다(합성 DB) — 그 뒤가 「첨부 정상」 기준 상태다
+    sql("DELETE FROM files WHERE original_name LIKE '합성 총량 %'")
+    sql("DELETE FROM community.page_attachments WHERE sha256='" + '0' * 64 + "'")
+    rc, kinds, info = cc_run()
+    codes['cc_clean'] = {'rc': rc, 'kinds': kinds, 'info': info}
+    check(rc == 0 and kinds == {} and (info['attachment_rows'] or 0) > 10 and (info['attachment_disk_files'] or 0) > 10,
+          '1b① consistency --strict with healthy attachments → rc 0 · mismatches 0 (attachment area counted: rows · disk files, EICAR in quarantine)')
+    check((info['quarantined'] or 0) >= 1 and info['quarantine_orphan'] == 0, '1b① infected attachment in quarantine counted as quarantined (not quarantine orphan)')
+    pcx = page('U3b 정합성 문서')
+    m1 = up_ok(pcx, '정합1.txt', TXT, label='1b① upload 1')
+    m2 = up_ok(pcx, '정합2.png', PNG, label='1b① upload 2')
+    s1 = sql('SELECT stored_name FROM community.page_attachments WHERE public_id=' + lit(m1['id']))
+    s2 = sql('SELECT stored_name FROM community.page_attachments WHERE public_id=' + lit(m2['id']))
+    f1 = storage / 'attachments' / s1[:2] / s1
+    f2 = storage / 'attachments' / s2[:2] / s2
+    rc, kinds, info = cc_run()
+    check(rc == 0 and kinds == {}, '1b① (control) two new attachments → rc 0')
+    # 누락
+    hold = work / 'u3b-held.bin'
+    f1.rename(hold)
+    rc, kinds, info = cc_run()
+    codes['cc_missing'] = {'rc': rc, 'kinds': kinds}
+    check(rc == 2 and kinds == {'attachments:missing': 1}, '1b① attachment disk file removed → missing 1 (area attachments) · strict rc 2')
+    hold.rename(f1)
+    # 해시 불일치
+    keep = f2.read_bytes()
+    f2.write_bytes(keep + b'\0')
+    rc, kinds, info = cc_run()
+    codes['cc_hash'] = {'rc': rc, 'kinds': kinds}
+    check(rc == 2 and kinds == {'attachments:hash_mismatch': 1}, '1b① attachment bytes changed → hash_mismatch 1 · strict rc 2')
+    f2.write_bytes(keep)
+    # 고아 — DB 가 모르는 파일을 attachments/ 에
+    on = str(uuid.uuid4()) + '.txt'
+    orphan = storage / 'attachments' / on[:2] / on
+    orphan.parent.mkdir(mode=0o750, parents=True, exist_ok=True)
+    orphan.write_bytes(b'orphan')
+    rc, kinds, info = cc_run()
+    codes['cc_orphan'] = {'rc': rc, 'kinds': kinds}
+    check(rc == 2 and kinds == {'attachments:orphan': 1}, '1b① unknown file under attachments/ → orphan 1 · strict rc 2')
+    # 제자리가 아닌 폴더에 둔 같은 이름(행 있는 이름)도 고아
+    misplaced = storage / 'attachments' / 'zz' / s1
+    misplaced.parent.mkdir(mode=0o750, exist_ok=True)
+    misplaced.write_bytes(f1.read_bytes())
+    orphan.unlink()
+    rc, kinds, info = cc_run()
+    check(rc == 2 and kinds == {'attachments:orphan': 1}, '1b① copy of a known name in a wrong subfolder → orphan 1')
+    misplaced.unlink()
+    misplaced.parent.rmdir()
+    # 대기열 — 영구 삭제(purge_trash)로 행은 지워지고 파일은 스크립트를 기다리는 상태 → 고아 아님
+    pq = page('U3b 대기열 문서')
+    qa = up_ok(pq, '대기.txt', TXT, label='1b① upload to doc that will be purged')
+    qname = sql('SELECT stored_name FROM community.page_attachments WHERE public_id=' + lit(qa['id']))
+    expect('DELETE', '/api/pages/' + pq, None, 'A', 200, '1b① trash queue doc')
+    sql("UPDATE community.pages SET purge_after=now()-interval '1 day' WHERE public_id=" + lit(pq))
+    sql('SELECT count(*) FROM community.purge_trash(false, 500)')
+    qfile = storage / 'attachments' / qname[:2] / qname
+    check(qfile.is_file() and n('SELECT count(*) FROM community.page_attachments WHERE page_id=' + str(pk(pq))) == 0, '1b① (setup) row purged · file waiting in queue')
+    rc, kinds, info = cc_run()
+    codes['cc_queue'] = {'rc': rc, 'kinds': kinds, 'info': info}
+    check(rc == 0 and kinds == {} and info['attachment_queued'] == 1, '1b① purge-queue file is not an orphan (attachment_queued 1) · rc 0')
+    qfn = sql("SELECT has_function_privilege('tbox_app','community.page_attachment_queued(text[])','EXECUTE')||'|'||"
+              "has_function_privilege('tbox_backup','community.page_attachment_queued(text[])','EXECUTE')||'|'||"
+              "has_table_privilege('tbox_app','community.page_attachment_purge_queue','SELECT')||'|'||"
+              "(SELECT prosecdef FROM pg_proc WHERE oid='community.page_attachment_queued(text[])'::regprocedure)||'|'||"
+              "(SELECT array_to_string(proconfig,',') FROM pg_proc WHERE oid='community.page_attachment_queued(text[])'::regprocedure)")
+    codes['queue_fn_privs'] = qfn
+    check(qfn == 'true|false|false|true|search_path=community, pg_temp',
+          '1b① queue check fn: tbox_app EXECUTE · backup none · queue table SELECT still 0 · SECURITY DEFINER · search_path fixed')
+    probe = php("echo json_encode(Db::instance()->run('SELECT n FROM community.page_attachment_queued(CAST(:a AS text[])) AS n',"
+                "[':a'=>'{" + qname + "," + str(uuid.uuid4()) + ".txt}'])->fetchAll(PDO::FETCH_COLUMN));")
+    check(probe == json.dumps([qname]), '1b① app account: queue fn answers only membership of given names')
+    tq = php("try{Db::instance()->run('SELECT count(*) FROM community.page_attachment_purge_queue');echo 'ran';}catch(Throwable $e){echo (str_contains($e->getMessage(),'permission denied')?'permission denied':'other');}")
+    check(tq == 'permission denied', '1b① app account still cannot read the queue table directly')
+
+    # ════════ 1b ② 탈퇴 파기 — 개인 공간 문서 첨부: 행 0 · 디스크 0 / 팀 공간 · 남의 문서에 올린 첨부는 남는다 ═══════════
+    # (a) 함수 직접(소유자) — A 의 문서 하나
+    pfd = page('U3b 파기 함수 직접')
+    fd = up_ok(pfd, '파기직접.txt', TXT, label='1b② upload to doc for direct function call')
+    fdn = sql('SELECT stored_name FROM community.page_attachments WHERE public_id=' + lit(fd['id']))
+    sql('SELECT community.privacy_purge_pages(ARRAY[' + str(pk(pfd)) + ']::bigint[])')
+    check(n('SELECT count(*) FROM community.page_attachments WHERE page_id=' + str(pk(pfd))) == 0
+          and n('SELECT count(*) FROM community.page_attachment_purge_queue WHERE stored_name=' + lit(fdn)) == 1
+          and (storage / 'attachments' / fdn[:2] / fdn).is_file(),
+          '1b② privacy_purge_pages (called directly) → attachment rows 0 · name queued · file waits for the script')
+    pfn = sql("SELECT prosrc FROM pg_proc WHERE oid='community.privacy_purge_pages(bigint[])'::regprocedure")
+    check('page_attachment_purge_queue' in pfn and pfn.index('purge_queue') < pfn.index('DELETE FROM community.page_attachments')
+          and 'page_embeddings' in pfn and 'synced_sources' in pfn, '1b② privacy_purge_pages body: queue before delete · old lines kept (AI index · synced)')
+    pfp = sql("SELECT has_function_privilege('tbox_app','community.privacy_purge_pages(bigint[])','EXECUTE')||'|'||"
+              "(SELECT prosecdef FROM pg_proc WHERE oid='community.privacy_purge_pages(bigint[])'::regprocedure)||'|'||"
+              "pg_get_function_result('community.privacy_purge_pages(bigint[])'::regprocedure)")
+    check(pfp == 'false|false|bigint', '1b② privacy_purge_pages: same signature (returns bigint) · INVOKER · tbox_app EXECUTE 0')
+    # (b) 합성 탈퇴 사용자 B — 개인 공간 문서 둘(하나는 휴지통) · 팀 공간 문서 · 남의 문서(A 의 p1 — 앞에서 올린 총량100.txt)
+    pb = page('U3b 탈퇴 개인 문서', 'B')
+    b1 = up_ok(pb, '탈퇴그림.png', PNG, 'B', '1b② B uploads png to own personal doc')
+    b2 = up_ok(pb, '탈퇴글.txt', TXT, 'B', '1b② B uploads txt to own personal doc')
+    pbt = page('U3b 탈퇴 휴지통 문서', 'B')
+    b3 = up_ok(pbt, '휴지통.txt', TXT, 'B', '1b② B uploads to personal doc then trashes it')
+    expect('DELETE', '/api/pages/' + pbt, None, 'B', 200, '1b② B trashes second personal doc')
+    bt = up_ok(pt, '팀에남을글.txt', TXT, 'B', '1b② B uploads to team-space doc (team X)')
+    b_names = sql('SELECT stored_name FROM community.page_attachments WHERE public_id IN (' + ','.join(lit(x['id']) for x in (b1, b2, b3)) + ') ORDER BY id').splitlines()
+    keep_names = sql('SELECT stored_name FROM community.page_attachments WHERE uploaded_by=' + str(uid('B'))
+                     + ' AND public_id NOT IN (' + ','.join(lit(x['id']) for x in (b1, b2, b3)) + ') ORDER BY id').splitlines()
+    check(len(b_names) == 3 and len(keep_names) >= 2, '1b② (setup) B: 3 personal-doc attachments · ' + str(len(keep_names)) + ' on team/other docs')
+    queued_before = set(sql('SELECT stored_name FROM community.page_attachment_purge_queue').splitlines())
+    adm = uid('M')
+    sql('INSERT INTO account_deletion_requests(user_id) VALUES(' + str(uid('B')) + ')')
+    sql("UPDATE account_deletion_requests SET status='processed', processed_by=" + str(adm) + ' WHERE user_id=' + str(uid('B')))
+    sql("ALTER TABLE account_deletion_requests DISABLE TRIGGER account_deletion_requests_guard; UPDATE account_deletion_requests SET processed_at=now()-interval '31 days' WHERE user_id="
+        + str(uid('B')) + '; ALTER TABLE account_deletion_requests ENABLE TRIGGER account_deletion_requests_guard;')
+    sql('UPDATE users SET is_active=false WHERE id=' + str(uid('B')))
+    line = (Path.home() / '.config/qaredi/pgpass-testdb').read_text().splitlines()[0].split(':', 4)
+    own_pgpass = work / 'owner.pgpass'
+    own_pgpass.write_text('*:*:' + manifest['database'] + ':' + line[3] + ':' + line[4] + '\n')
+    own_pgpass.chmod(0o600)
+    penv = dict(os.environ, TBOX_OWNER_PGPASS=str(own_pgpass), TBOX_OWNER_ROLE='tbox_testdb')
+    dry = subprocess.run(['php', 'scripts/privacy_purge.php'], cwd=root, capture_output=True, text=True, timeout=180, env=penv)
+    all_b = [storage / 'attachments' / s[:2] / s for s in b_names]
+    check(dry.returncode == 0 and all(p.is_file() for p in all_b) and n('SELECT count(*) FROM community.page_attachments WHERE uploaded_by=' + str(uid('B'))) == 3 + len(keep_names)
+          and ('[dry] 대기열의 문서 첨부 파일: ' + str(len(queued_before)) + '개') in dry.stdout,
+          '1b② privacy_purge.php dry: rows · files unchanged · queue count shown')
+    run = subprocess.run(['php', 'scripts/privacy_purge.php', '--run'], cwd=root, capture_output=True, text=True, timeout=180, env=penv)
+    own_pgpass.unlink()
+    (out / 'privacy_purge.stdout.txt').write_text('$ php scripts/privacy_purge.php\nexit=' + str(dry.returncode) + '\n' + dry.stdout
+                                                   + '---\n$ php scripts/privacy_purge.php --run\nexit=' + str(run.returncode) + '\n' + run.stdout)
+    codes['privacy_purge_rc'] = [dry.returncode, run.returncode]
+    removed_expected = len(queued_before) + 3
+    check(run.returncode == 0 and ('문서 첨부 파일: ' + str(removed_expected) + '개 지움') in run.stdout,
+          '1b② privacy_purge.php --run exit 0 · removed ' + str(removed_expected) + ' attachment files (B personal 3 + queued before)')
+    check(n('SELECT count(*) FROM community.page_attachments WHERE public_id IN (' + ','.join(lit(x['id']) for x in (b1, b2, b3)) + ')') == 0,
+          '1b② B personal-doc attachment rows 0 (incl. trashed personal doc)')
+    check(not any(p.exists() for p in all_b), '1b② B personal-doc attachment disk files 0')
+    check(not (storage / 'attachments' / fdn[:2] / fdn).exists() and not qfile.exists(), '1b② files queued earlier (direct call · purge_trash) also removed by the same drain')
+    check(n('SELECT count(*) FROM community.page_attachment_purge_queue') == 0, '1b② purge queue 0 after the script')
+    keep_paths = [storage / 'attachments' / s[:2] / s for s in keep_names]
+    check(n('SELECT count(*) FROM community.page_attachments WHERE uploaded_by=' + str(uid('B'))) == len(keep_names) and all(p.is_file() for p in keep_paths),
+          '1b② attachments B put on team-space / other people\'s docs remain (row + file)')
+    expect('GET', att_url(pt, bt['id'], 'download'), None, 'A', 200, '1b② team doc attachment uploaded by purged B still downloadable by team member A')
+    check(sql('SELECT title||\'|\'||(purged_at IS NOT NULL) FROM community.pages WHERE public_id=' + lit(pb)) == '영구 삭제된 페이지|true'
+          and sql('SELECT username FROM users WHERE id=' + str(uid('B'))) == 'deleted-' + str(uid('B')), '1b② B anonymized · personal doc purged')
+    check(n("SELECT count(*) FROM audit_logs WHERE action='privacy.purge' AND result='allow' AND (detail->>'attachment_files')::int=" + str(removed_expected)) == 1,
+          '1b② audit privacy.purge allow detail.attachment_files=' + str(removed_expected))
+    check(n("SELECT count(*) FROM audit_logs WHERE action='account.purge' AND result='allow' AND target_id=" + str(uid('B'))) == 1, '1b② audit account.purge allow for B')
+    leak_names = set(b_names) | {fdn, qname}
+    check(not any(s in run.stdout or s in dry.stdout for s in leak_names) and str(storage) not in run.stdout, '1b② script stdout: no disk name · path')
+    codes['purge_rule_check'] = ('privacy-terms-plan 5.1 「탈퇴」: 개인 공간 문서(게시하지 않은 것) 내용 삭제 · 팀 공간 · 게시판 글은 남김 — '
+                                 '첨부는 문서를 따른다(개인 문서 첨부 삭제 · 팀 공간 · 남의 문서에 올린 첨부는 남음)')
+    # 파기 뒤 정합성 — 대기열을 비운 뒤 불일치 0
+    rc, kinds, info = cc_run()
+    codes['cc_after_privacy'] = {'rc': rc, 'kinds': kinds, 'info': info}
+    check(rc == 0 and kinds == {} and info['attachment_queued'] == 0, '1b①② consistency after privacy purge + drain → rc 0 · no orphan left')
+    # 1b 감사 노출 — 정합성 검사 detail 은 자료실과 같이 이름만(불일치 때) · 그 밖 1b 기록에 디스크 경로 · 민감 원문 0
+    blob = sql("SELECT coalesce(string_agg(coalesce(detail::text,'')||' '||summary||' '||coalesce(target_name,''),' '),'') FROM audit_logs WHERE action IN ('privacy.purge','account.purge','page.purge')")
+    check(not any(s in blob for s in leak_names) and str(storage) not in blob, '1b audit (privacy.purge · account.purge · page.purge): no attachment disk name · path')
+    blob_all = sql("SELECT coalesce(string_agg(coalesce(detail::text,''),' '),'') FROM audit_logs")
+    check(str(storage) not in blob_all and rrn() not in blob_all, '1b audit (all rows incl. audit.integrity): no storage path · sensitive text')
 
     # ════════ 새 설치 = 마이그레이션 ×2 (표 · 제약 · 색인 · 권한 · 시퀀스) ══════════════════
     env = {k: v for k, v in os.environ.items() if not k.startswith('PG')}

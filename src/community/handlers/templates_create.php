@@ -102,6 +102,12 @@ if (!$check['ok'] || Doc::extract($tplDoc)['files'] !== []) {
     Http::json(['error' => '이 페이지의 본문은 템플릿으로 담을 수 없습니다', 'reason' => 'bad_doc'], 400);
     exit;
 }
+/* Q:F-12 U3-1b — 문서 전용 첨부(`att:`)는 그 문서 것이라 템플릿(→ 새 문서)에 담지 않는다. 그림 · 파일 블록은 위 `Doc::templateBody` 가
+   이미 빼므로(자료실 파일과 같다 — `dropped` 에 셈) 여기 닿는 일은 없다 — 빼기 규칙이 바뀌어도 새지 않게 두는 방어 줄(pages_create 와 같은 사유 · 문장). */
+if (Doc::extract($tplDoc)['atts'] !== []) {
+    Http::json(['error' => COMMUNITY_ATTACHMENT_REF_REFUSED, 'reason' => 'bad_attachment_ref'], 400);
+    exit;
+}
 // 7-C — 템플릿에 담는 임베드는 **담을 때** 허용 목록과 견준다(쓸 때는 옛 임베드처럼 막지 않는다 — 독립 검토 7-C L-1)
 if (!community_embeds_ok(Doc::extract($tplDoc)['embeds'])) {
     Http::json(['error' => COMMUNITY_EMBED_REFUSED, 'reason' => 'embed_not_allowed'], 400);

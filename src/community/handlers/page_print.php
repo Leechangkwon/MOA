@@ -4,7 +4,7 @@ declare(strict_types=1);
 /** Dedicated authenticated SSR page. No editor, external frames or client document fetch. */
 $root = community_export_gate((string) $params[0], $user);
 [$row, $doc] = community_export_document($root, $user);
-$ctx = community_export_context($doc, $user, [], '');
+$ctx = community_export_context($doc, $user, [], '', $row);   // U3-1b — 문서 행(첨부 지도 · 창구 주소)
 $ctx['print'] = true;
 $meta = community_export_meta($row, gmdate('c'), $user);
 $esc = static fn(string $s): string => htmlspecialchars($s, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');

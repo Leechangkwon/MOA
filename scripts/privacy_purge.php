@@ -22,6 +22,15 @@ declare(strict_types=1);
  *   「파일만 남는 일」을 만들지 않는다). 파일을 지우다 실패하면 ROLLBACK — 줄도 파일 일부도 다음 실행이 이어서 지운다(없는 파일 = 목표 달성).
  *   파일 이름은 DB 가 준 값이지만 그대로 믿지 않는다 — 사진은 UUID 모양 · AI 그림은 Storage::isValidStoredName 을 지난 것만 경로가 된다.
  *
+ * 문서 전용 첨부 (사이트 Q:F-12 U3-1b · 커뮤니티 ARCH 24.6)
+ *   ② 가 부르는 `community.privacy_purge_pages` 는 지우는 개인 공간 문서의 첨부 **행**을 지우며 디스크 이름을 영구 삭제 대기열
+ *   (`community.page_attachment_purge_queue`)에 먼저 적는다(같은 트랜잭션). ② 를 커밋한 **뒤** 이 스크립트가 그 대기열을 비운다 —
+ *   휴지통 정리(community_purge.php)와 **같은 함수** `attachment_purge_drain()`(scripts/lib/attachment_purge.php — 경로는 Storage::purge 한 곳).
+ *   파일을 지운 뒤에야 대기열 줄을 지우므로 실패해도 다음 실행(이 스크립트든 04:10 community_purge 든)이 잇는다. 사진 · AI 그림처럼
+ *   「커밋 전에 파일 먼저」가 아닌 까닭: 대기열이 이름을 붙들고 있어 행 · 파일 어느 쪽도 흔적 없이 남지 않는다.
+ *   남는 것: 그 사람이 **팀 공간 · 남의 문서**에 올린 첨부(그 문서 것이다 — 기획 5.1 「팀 공간·게시판 글은 남긴다」와 같다).
+ *   기록: privacy.purge allow detail.attachment_files(지운 수) · 실패는 privacy.purge error purge_failed detail.attachment_failures(수 — 이름 · 경로 0).
+ *
  * 기록 — 내용 0, 건수만
  *   표준출력은 종류별 건수 한 줄씩(글·이름·파일 이름 0). 감사(앱 계정 — DB 줄 + 감사 파일이라 audit_chain 해시 체인이 이어진다):
  *     privacy.purge allow                       --run 마다 한 줄 · detail.counts = 종류별 건수 · detail.files = 지운 파일 수
@@ -35,6 +44,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/lib/cli_bootstrap.php';
 require_once __DIR__ . '/../src/community/Memories.php';
+require_once __DIR__ . '/lib/attachment_purge.php';
 
 $argv = $_SERVER['argv'];
 $run  = cli_flag($argv, 'run');
@@ -174,6 +184,15 @@ try {
     exit(TBOX_CLI_FAIL);
 }
 
+// ③ U3-1b — 탈퇴 파기로 지운 문서 첨부의 디스크 파일(영구 삭제 대기열). ② 커밋 **뒤** — 실패는 건수만 남기고 다음 실행이 잇는다.
+$attDrain = ['ready' => false, 'queued' => 0, 'removed' => 0, 'failed' => 0];
+try {
+    $attDrain = attachment_purge_drain($owner, $run);
+} catch (Throwable $e) {
+    $attDrain['failed']++;
+    error_log('[tbox-cli] privacy_purge 첨부 대기열 실패: ' . get_class($e));
+}
+
 cli_say(privacy_purge_line($prefix . '보관 기간 정리:', $expiredCounts) . ' 파일=' . $expiredFiles);
 $anonymized = 0;
 foreach ($accountRows as $uid => $info) {
@@ -187,12 +206,18 @@ foreach ($accountRows as $uid => $info) {
 if ($accountRows === []) {
     cli_say($prefix . '탈퇴 계정: 대상 없음');
 }
+if ($attDrain['ready']) {
+    cli_say($run
+        ? sprintf('문서 첨부 파일: %d개 지움%s', $attDrain['removed'], $attDrain['failed'] > 0 ? ' · 실패 ' . $attDrain['failed'] . '개(다음 실행이 다시)' : '')
+        : sprintf('[dry] 대기열의 문서 첨부 파일: %d개(이번 탈퇴 문서의 첨부는 --run 때 대기열에 들어간다)', $attDrain['queued']));
+}
 
 if ($run) {
     Audit::allow('privacy.purge', [
         'target_type' => 'system',
         'target_name' => '보관 기간 정리',
-        'detail'      => ['counts' => $expiredCounts, 'files' => $expiredFiles, 'accounts' => $anonymized],
+        'detail'      => ['counts' => $expiredCounts, 'files' => $expiredFiles, 'accounts' => $anonymized,
+                          'attachment_files' => $attDrain['removed']],
     ]);
     foreach ($accountRows as $uid => $info) {
         $target = ['target_type' => 'user', 'target_id' => $uid, 'target_name' => 'deleted-' . $uid];
@@ -204,6 +229,11 @@ if ($run) {
             continue;
         }
         Audit::allow('account.purge', $target + ['detail' => ['counts' => $info['counts'], 'files' => $info['files']]]);
+    }
+    if ($attDrain['failed'] > 0) {
+        Audit::error('privacy.purge', 'purge_failed', ['target_type' => 'system',
+            'detail' => ['max' => $max, 'accounts' => $accounts, 'attachment_failures' => $attDrain['failed']]]);
+        exit(TBOX_CLI_FAIL);
     }
 }
 exit(TBOX_CLI_OK);

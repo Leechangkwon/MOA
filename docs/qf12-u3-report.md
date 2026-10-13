@@ -103,3 +103,98 @@ U3-2(화면)는 하지 않았다. push · 발행 · main 합치기 안 함. 커�
 7. **공개 링크 문구** — 자료실 그림은 지금처럼 「로그인이 필요한 파일」, `att:` 만 「볼 수 없는 파일」(지시서 글자)
 8. 400 응답에 `reason` 코드를 함께 실음(화면 U3-2 가 문장을 고르지 않고 그대로 보이되 갈래를 알 수 있게) · 표 열을 NOT NULL + CHECK 로 더 좁힘 · `Http.php` 사유 표에 `bad_attachment_ref` 를 더하지 않음(그 표는 ARCH 5.30 과 글자 대조되는 표라 — 문장은 routes.php 상수)
 9. Storage 는 `putLocal` 이 아니라 `put`(HTTP 업로드 · `move_uploaded_file`)을 같은 함수로 재사용 — 첨부는 HTTP 업로드라 `putLocal`(가져오기 임시 폴더 전용)의 출처 검사와 맞지 않는다. routes.php 의 「일일 총량 합산 도우미」는 만들지 않았다(합산이 `Upload::checkDailyQuota` 한 곳이라 감싸는 함수가 필요 없다)
+
+## 1b — U3-1b 바닥 후속: 정합성 검사 · 탈퇴 파기 · 내보내기 · 다른 쓰기 입구
+
+구현: Opus 에이전트 · 같은 worktree · 같은 브랜치(`feat/qf12-u3`) · 시작 HEAD `fe2305f` · 결과 폴더 `/home/changkwon/qaredi-qf12u3-results-20261013/U3-1b/`.
+U3-2 쪽 파일(`public/assets/**` · `work_home_page.php` · `my_tasks_page.php` · `qf12_work_browser.py` · 위키)과 U3-2 worktree 는 손대지 않았다. push · 발행 · 합치기 없음.
+격리 틀 포트 8768 은 U3-2 에이전트의 실행이 끝나기를 기다렸다가(`ss -ltn`) 썼다.
+
+### 1. 변경 파일
+
+| 파일 | 내용 |
+|---|---|
+| `db/migrations/2026-10-13_community_page_attachments.sql` | **같은 파일 끝**(새 파일 0)에 6 · 7 절 — 6: `community.privacy_purge_pages(bigint[])` 를 같은 서명 · `RETURNS bigint` · `SECURITY INVOKER` · 같은 search_path 로 다시 정의(몸은 2026-10-21 글자 그대로 + 첨부 두 줄 — purge_trash 와 같은 「대기열에 이름 먼저 → 행 삭제」) · `REVOKE … FROM PUBLIC, tbox_app` · 슈퍼유저로 돌릴 때만 소유자 tbox_owner. 7: 정합성 검사용 `community.page_attachment_queued(text[])`(아래 5-2) · 머리 주석 · 되돌리기 줄 |
+| `db/community/schema.sql` | U3-1 절(Q:F-12 업무 화면 절 앞)에 `page_attachment_queued` 함수 — 마이그레이션 7 절과 같은 문장(새 설치). `privacy_purge_pages` 는 원래 schema.sql 에 없는 함수(마이그레이션 전용)라 더하지 않음 |
+| `db/community/grants.sql` | 끝 절 — `page_attachment_queued` EXECUTE 는 tbox_app 하나(PUBLIC · tbox_backup 회수, 함수 없으면 NOTICE 후 건너뜀). `privacy_purge_pages` 권한은 `db/grants.sql` 의 기존 「탈퇴 요청 · 보관 기간 파기」 절이 그대로 건다(바꿀 것 0) |
+| `scripts/consistency_check.php` | 첨부 구역: `community.page_attachments`(살아 있음 = 문서가 휴지통 · 영구 삭제 아님) ↔ `STORAGE_DIR/attachments/**` 를 자료실과 **따로** 대조. 행 대조를 함수 `consistency_compare_rows()` 하나로 묶어 자료실 · 첨부가 같은 규칙(① 누락 ② 해시 불일치 ③ 감염 행의 격리 규칙 · 휴지통 바이트 없음은 보고만)을 탄다 — 자료실 갈래의 판단 · 순서 · 출력 모양은 그대로. 고아: 제자리(`attachments/<앞 2>/<이름>`)가 아니거나 행도 대기열 이름도 아닌 파일. 영구 삭제 대기열 이름은 고아 아님(`attachment_queued` 로 보고). 자료실 훑기는 `attachments/` 아래를 보지 않음. 감염 첨부(격리 폴더)는 `quarantine_orphan` 에서 빠짐. 불일치 항목에 `area: attachments` · 출력 줄 `, area=attachments` · detail 에 `attachment_rows · attachment_disk_files · attachment_queued · attachment_trash_missing` |
+| `scripts/lib/attachment_purge.php`(새) | `attachment_purge_drain(PDO $owner, bool $run)` — 대기열 → `Storage::purge(이름, AREA_ATTACHMENTS)` → 지운 뒤에야 대기열 줄 삭제 · dry 는 건수만 · 이름 · 경로는 반환 · 출력 0. U3-1 의 community_purge.php 고리를 그대로 옮긴 것 |
+| `scripts/community_purge.php` | 위 함수를 부름(출력 문장 · 감사 `page.purge` detail 그대로) |
+| `scripts/privacy_purge.php` | **탈퇴 파기 cron 스크립트**(조사 결과: `deploy/cron.d/tbox-v2` 04:40 `root php …/scripts/privacy_purge.php --run` — `public.privacy_purge_accounts` → `community.privacy_purge_pages` 를 부르는 유일한 곳). ② 를 커밋한 **뒤** `attachment_purge_drain()` 로 대기열을 비움 · 출력 「문서 첨부 파일: N개 지움」(dry 는 「[dry] 대기열의 문서 첨부 파일: N개」) · `privacy.purge allow` detail `attachment_files` · 실패는 `privacy.purge error purge_failed` detail `attachment_failures` + 종료 1 |
+| `src/community/export_helpers.php` | `community_export_context(…, ?array $page = null)` — 문서 행이 오면 `decideAttachmentRead`(관리자 특권 갈래 닫힘 — pages_get 과 같은 조건)일 때만 본문이 가리키는 첨부의 `attachment_titles` 와 `attachment_href`(`community_export_url(Http::communityUrl('/api/pages/{문서}/attachments/{첨부}/raw|download'))` — 그림 형식이면 `/raw`, 그 밖 `/download`) |
+| `src/community/handlers/pages_export.php` · `page_print.php` | 위 함수에 막 다시 읽고 판정한 문서 행(`community_export_document` 의 `$row`)을 넘기는 한 줄씩 |
+| `src/community/handlers/pages_create.php` | 첫 본문의 `att:` 이 하나라도 있으면 400 `{error: COMMUNITY_ATTACHMENT_REF_REFUSED, reason: bad_attachment_ref}` — 자료실 파일 거부(`file_ref`) 바로 뒤 자리. 직접 본문 · 템플릿 본문 · 프로그램 토큰(MCP) 모두 이 자리를 지남 |
+| `src/community/handlers/templates_create.php` | `Doc::templateBody` 뒤 `att:` 이 남으면 400 `bad_attachment_ref`(방어 줄 — 아래 5-4) |
+| `tests/community/qf12_u3_attach_http.py` | U3-1b 단언 74개(아래) · 머리 주석 |
+| `tests/catalog.json` | `community.qf12_u3_attach_http` covers 에 바뀐 파일 · 입구 파일 · notes 에 U3-1b · est_sec 330 |
+
+#### 다른 쓰기 입구 조사 결과 (목록)
+
+| 입구 | 본문이 들어오는 길 | 조치 · 확인 |
+|---|---|---|
+| `POST /api/pages`(세션) | 요청 `doc` · `template_id`(템플릿 본문) | pages_create.php 400 `bad_attachment_ref` — 시험 |
+| `POST /api/pages`(프로그램 토큰 = **MCP** `qaredi_create_page` · `clients/mcp` `create_page`) | 요청 `doc` | 같은 자리 — 시험(토큰 `community.read+community.write`) |
+| `POST /api/templates` | 원본 문서 본문 → `Doc::templateBody` | 그림 · 파일 블록을 뺀다(자료실 파일과 같음 · `dropped_blocks`) + 방어 400 — 시험(빠짐 확인 · 심은 템플릿 → 새 문서 400) |
+| `POST /api/boards/{num}/pages`(게시판 새 글) | **본문을 받지 않음**(허용 키 `title · tags` — 빈 문단으로 만들고 저장은 PATCH) | 바꿀 것 0 — `doc` 를 보내면 400 시험 |
+| `POST /api/pages/{id}/ai-insert`(문서 AI 「초안을 문서에 넣기」) | AI 글을 **문단 글자로만** 붙여 `community_save_doc` 경유 | 바꿀 것 0 — `doc` 키 400 · `att:<id>` 글자가 든 AI 출력 → 문단 글자(file_ref 0) 시험 |
+| `PATCH /api/pages/{id}` · 제안 받아들이기 · AI 넣기 | `community_save_doc`(SaveDoc) | U3-1 검사 그대로 |
+| 판 복원 | version_restore.php | U3-1 검사 그대로 |
+| 서버가 만드는 본문 | `space_me` · 양식 응답(forms) · 연결기(Integrations) · 자동화 `create_page`(`Doc::templateBody` 거침) | 빈 문단 · 그림/파일 블록 뺌 — `att:` 0 |
+| 원격 MCP(`src/mcp`) · 비서(`src/assistant`) | 사진 기록 · 여행만 / 커뮤니티 문서 쓰기 없음 | 해당 없음 |
+
+### 2. 실행한 명령과 출력 (원문 = 결과 폴더 `U3-1b/`)
+
+| 명령 | 결과 | 원문 |
+|---|---|---|
+| `python3 tests/community/memories_harness.py --suite qf12_u3_attach_http.py --output …/U3-1b/accept-final` | **pass 249 · fail 0** (rc 0) = U3-1 의 175 그대로 + U3-1b 74. 커밋한 트리 그대로(머리 주석만 고치기 전 판 `accept/` 도 249/0) | `accept-final.log` · `accept-final/qf12-u3-attach-results.json` · `accept-final/privacy_purge.stdout.txt` · `accept-final/community_purge.stdout.txt` · `accept.log` |
+| 같은 명령 — 첫 실행 | pass 246 · fail 4(시험 쪽 잘못: md 내보내기는 `.` 을 `\.` 로 막는다 · 공간 웹 게시 허용 창구는 Admin 재인증이 필요 → 준비를 SQL 로) — 고친 뒤 위 249/0 | `accept1.log` · `accept1/` |
+| `… --suite qf12_floor_http.py` | **pass 267 · fail 0** — U3-1 기준 수와 같음 | `qf12_floor_http.log` |
+| `… --suite qf12_server_http.py` | **pass 204 · fail 0** — 같음 | `qf12_server_http.log` |
+| `… --suite memories_http.py`(consistency_check 를 부르는 옛 시험) | pass 122 · fail 0 | `memories_http.log` |
+| `. env.sh; … --suite qf13_retention_http.py`(privacy_purge.php 의 옛 시험) | pass 147 · fail 1 — 실패는 `MIG base (main) schema has no account_deletion_requests table`(`git show main:db/schema.sql` 이 Q:F-13 합친 뒤라 이미 표를 가짐 — 시점에 기대는 단언, 이번 변경과 무관). 같은 시험을 `fe2305f` 복사본으로 돌린 기준도 147 통과 뒤 같은 자리(복사본은 git 저장소가 아니라 `git show` 에서 멈춤). 그 앞의 탈퇴 · 파기 · 스크립트 단언 147 은 전부 통과 | `qf13_retention_http.log` · `baseline-qf13_retention_http.log` |
+| 같은 retention — 첫 시도 둘 | ① PIL 없음(env.sh 안 읽음) ② 첫 요청 `GET /api/me/space` 401 한 번(다시 돌리니 재현 안 됨 — 원인 미확인) | 덮어써서 원문 없음 |
+| `bash scripts/security_lint.sh` | 통과(금지 패턴 0건) | `static.log` |
+| `php -l`(바뀐 · 새 PHP 9개) | 전부 No syntax errors | `static.log` |
+| `node --check public/assets/community/*.js` | 실패 0(JS 변경 0) | `static.log` |
+| `php scripts/community_asset_version.php --check` · `bash tests/community/asset_version.sh` | rc 0 · 통과 37 실패 0 | `static.log` |
+| `bash tests/wiki_check.sh` | pass=1 fail=0 | `static.log` |
+| `git diff --check` · catalog.json JSON 읽기 | 0 · ok | `static.log` |
+
+U3-1b 단언이 실제로 확인한 것(이름은 결과 JSON 원문):
+
+- **① 정합성 검사** — 시험이 SQL 로 심은 바이트 없는 행(총량 채우기 · 이동 방어)을 걷어 낸 뒤 `--strict` **rc 0 · 불일치 0**(첨부 행 23 · 디스크 22 · 감염 1 은 격리 폴더 = `quarantined` 로 셈, `quarantine_orphan` 0) · 첨부 파일 하나 치움 → `attachments:missing` 1 · rc 2 · 바이트 1 더함 → `attachments:hash_mismatch` 1 · rc 2 · DB 가 모르는 파일 → `attachments:orphan` 1 · 아는 이름을 엉뚱한 하위 폴더에 복사 → `orphan` 1 · 휴지통 → `purge_trash` 로 행만 지워진(대기열) 파일 → **rc 0 · `attachment_queued` 1**(고아 아님) · 함수 권한 `tbox_app EXECUTE · tbox_backup 0 · 대기열 표 SELECT 여전히 0 · SECURITY DEFINER · search_path=community, pg_temp` · 앱 계정으로 함수 → 준 이름 중 대기열에 있는 것만 · 앱 계정으로 대기열 표 SELECT → permission denied · 파기 뒤 다시 rc 0(대기열 0). 정리 전 기록(단언 아님): rc 2 · `files:missing 21 · attachments:missing 22`(심은 행)
+- **② 탈퇴 파기** — 함수 직접(소유자): 첨부 행 0 · 이름 대기열 · 파일은 스크립트 차례 · 몸에 대기열이 삭제보다 먼저 · 옛 줄(AI 색인 · 동기화) 그대로 · `RETURNS bigint` · INVOKER · tbox_app EXECUTE 0 / 합성 탈퇴 사용자 B(`claude_manager01` — 개인 문서 둘(하나는 휴지통)에 첨부 3 · 팀 공간 문서 · A 의 문서에 첨부 3): 요청 → 처리 → 31일 당김 → 비활성 → `privacy_purge.php`(TBOX_OWNER_ROLE=tbox_testdb · 임시 0600 pgpass) dry: 행 · 파일 그대로 · 대기열 수 표시 / `--run` rc 0 · 「문서 첨부 파일: 5개 지움」(B 개인 3 + 앞서 대기열의 2) · B 개인 문서 첨부 행 0 · 디스크 0 · 대기열 0 · **팀 공간 · 남의 문서에 올린 B 첨부 3 은 행 + 파일 남음** · 팀원 A 가 그 첨부 download 200 · B 는 `deleted-<번호>` · 개인 문서 「영구 삭제된 페이지」 · 감사 `privacy.purge allow attachment_files=5` · `account.purge allow` · 표준출력에 디스크 이름 · 경로 0. **파기 규칙 문서 대조**: `docs/privacy-terms-plan.md` 5.1 「탈퇴한 회원의 작성물 — 개인 공간의 문서 · 파일 … 30일 뒤 삭제 · 팀 공간 · 게시판 글 · 댓글: 남기고」 · 5.2 「자료실 파일 · 팀 공간 · 게시판 글 · 댓글은 남기고」 — 첨부는 문서를 따르므로 개인 공간(게시하지 않은) 문서의 첨부는 지우고, 팀 공간 · 남의 문서 · 게시한 글의 첨부는 남는다(그 사람이 올렸어도). 일치
+- **③ 내보내기** — md · html 둘 다: 그림 `att:` → `{APP_URL}/community/api/pages/{문서}/attachments/{첨부}/raw`, 파일 → `…/download` 링크 · 「볼 수 없는 파일」 0 · 이름 표시 / 인쇄 화면 같은 링크 / 내보낸 그림 주소 소유자 200 · 비로그인 401 / Admin(관리 갈래) 내보내기 403(그대로 닫힘) / 남의 `att:` 을 심은 문서 → 「볼 수 없는 파일」 · id 0 / **공개 링크 `/pub/`** → 「볼 수 없는 파일」 ×2 · 첨부 id · 창구 주소 0
+- **④ 쓰기 입구** — 새 문서(세션) 남의 첨부 · 없는 id → 400 `bad_attachment_ref`(저장과 같은 문장) · 문서 0개 생김 / MCP 토큰 → 400 · (대조) 토큰 일반 생성 201 / 템플릿 만들기 → `att:` 블록 빠짐(`dropped_blocks` ≥ 2) · 심은 템플릿으로 새 문서 → 400 / 게시판 새 글 `doc` → 400 · (대조) 201 / AI 넣기 `doc` 키 → 400 · `att:<id>` 글자 AI 출력 → 문단 글자(file_ref 0)
+- 감사 — `privacy.purge · account.purge · page.purge` 에 첨부 디스크 이름 · 경로 0 · 감사 전체에 저장소 경로 · 민감 원문 0
+
+### 3. 못 한 것과 이유 (미검증 포함)
+
+| 항목 | 상태 · 이유 |
+|---|---|
+| 운영 cron 실제 계정(root · `/etc/tbox-v2/owner.pgpass` · tbox_owner)으로 `privacy_purge.php` · `consistency_check.php` | **미검증** — 합성 DB(소유자 tbox_testdb · 임시 pgpass · 앱 계정은 .env 의 계정)로만. 운영 앱 계정이 `page_attachment_queued` 를 EXECUTE 할 수 있는지는 운영 마이그레이션 뒤 `has_function_privilege('tbox_app', …)` 로 볼 것 |
+| 마이그레이션 적용 순서 | 이 파일(파일 이름 날짜 10-13)은 **2026-10-21_privacy_retention.sql 뒤에** 돌아야 새 `privacy_purge_pages` 가 남는다. 운영은 10-21 이 이미 적용돼 있어 그대로 맞다. 파일 이름 순서로 처음부터 까는 새 설치(10-13 → 10-21)는 옛 몸이 이긴다 — 그때는 이 파일을 한 번 더(멱등). 합성 틀은 10-21 → 10-13 순서(목록 그대로) |
+| 정합성 검사 운영 실행 | 운영에서 돌리지 않음(읽기 전용이지만 운영 감사에 `audit.integrity` 행이 늘고 불일치면 AL-6). 운영 반영 뒤 첫 02:00 결과를 볼 것 |
+| `qf13_retention_http` 의 `MIG base (main)` 단언 | 지금 main 기준이라 실패(위) — 이번 변경과 무관 · 고치지 않음(허용 목록 밖) |
+| retention 첫 시도의 401 한 번 | 다시 돌려 재현 안 됨 — 원인 미확인(미검증) |
+| stage89 교차 회귀 | 이번에 돌리지 않음(지시서 1b 완료 기준에 없음 — 묶음 끝 회귀 몫) |
+| 동기화 블록이 다른 문서의 `att:` 을 끼워 보일 때 | U3-1 그대로(창구 404 · 렌더러 「볼 수 없는 파일」) — 이번 범위 밖 |
+| 백업 · 복원이 `attachments/` 를 싣는지 | U3-1 과 같이 미검증 |
+
+### 4. 확정한 값
+
+- 내보내기 · 인쇄 링크: `{APP_URL}/community/api/pages/{문서 public_id}/attachments/{첨부 public_id}/raw`(mime png/jpeg/gif) · `…/download`(그 밖). 지도는 본문이 가리키는 첨부만 · `decideAttachmentRead` 가 열릴 때만
+- 새 문서 · 템플릿 거부: 400 `{"error": COMMUNITY_ATTACHMENT_REF_REFUSED, "reason": "bad_attachment_ref"}`(저장 · 판 복원과 같은 글자) · 형식 거부라 감사 0(자료실 `file_ref` 거부와 같음)
+- 정합성 검사 detail 새 키: `attachment_rows · attachment_disk_files · attachment_queued · attachment_trash_missing` · 불일치 항목 `area: "attachments"` · 종류는 자료실과 같은 `missing · hash_mismatch · orphan`(+ 감염 갈래 `infected_in_storage · quarantine_missing · quarantine_hash_mismatch · quarantine_unreadable`)
+- 함수: `community.page_attachment_queued(p_names text[]) RETURNS SETOF text` — LANGUAGE sql · STABLE · SECURITY DEFINER · `SET search_path = community, pg_temp` · EXECUTE tbox_app 만 / `community.privacy_purge_pages(p_ids bigint[]) RETURNS bigint` — 서명 · 권한 그대로
+- 탈퇴 파기 스크립트 출력: `문서 첨부 파일: N개 지움[ · 실패 M개(다음 실행이 다시)]` · dry `[dry] 대기열의 문서 첨부 파일: N개(…)` · 감사 `privacy.purge allow detail.attachment_files` · `privacy.purge error purge_failed detail.attachment_failures`
+
+### 5. 지시서와 다르게 한 것 (이유)
+
+1. **새 파일 `scripts/lib/attachment_purge.php`** — 「community_purge.php 와 같은 함수 재사용」을 글자대로 지키려면 두 스크립트가 함께 부를 자리가 필요하다(스크립트끼리는 서로 require 할 수 없다 — 실행된다). U3-1 의 고리를 그대로 옮겼다
+2. **새 DB 함수 `community.page_attachment_queued(text[])`(SECURITY DEFINER)** — 정합성 검사는 앱 계정(tbox_app)으로 돌고, U3-1 에서 대기열 표의 앱 권한을 0 으로 정했다. 「대기열 행은 고아가 아님」을 지키면서 앱 권한을 넓히지 않으려고, 저장소에서 찾은 이름의 **소속만** 묻는 읽기 함수를 두었다(목록을 꺼낼 수 없다 · 쓰기 0 · search_path 고정). 같은 마이그레이션 파일 · schema.sql · community/grants.sql 에 한 벌. 대안(tbox_app 에 대기열 SELECT)은 U3-1 의 「대기열 앱 권한 0」 단언을 깨서 택하지 않았다 — 메인 판단 필요
+3. **`pages_export.php` · `page_print.php` 한 줄씩** — 허용 목록은 `export_helpers.php` 였지만 ctx 를 만드는 함수가 문서 행을 받지 않아(본문만), 막 다시 읽고 판정한 행을 넘기는 인자 하나를 더했다
+4. **템플릿 입구는 400 이 아니라 「뺌」** — 템플릿 만들기는 원래 `Doc::templateBody` 가 그림 · 파일 블록을 모두 빼므로(자료실 파일과 같은 규칙) `att:` 이 템플릿에 닿지 않는다. 지시서의 「입구마다 400」은 ① 템플릿 본문으로 새 문서를 만드는 길(pages_create — 심은 템플릿으로 400 확인) ② templates_create 의 방어 줄(지금 규칙으로는 닿지 않음)로 지켰다. 게시판 새 글 · AI 넣기는 본문 블록을 받지 않는 창구라 코드를 바꾸지 않고 400(허용 키) · 문단 글자로만 들어감을 시험으로 확인했다
+5. **정합성 검사 감사 detail 의 첨부 디스크 이름** — 불일치가 있을 때 detail · AL-6 sample 에 자료실과 같이 `stored_name`(난수 이름 — 경로 아님)이 실린다(운영자가 파일을 찾을 유일한 값). U3-1 ⑥ 의 「감사에 첨부 디스크 이름 0」은 올리기 · 받기 · 영구 삭제 감사에 대한 것으로 그대로 지켜진다(1b 감사 단언). 경로 · 원문은 0 — 메인 확인 필요
+6. 「살아 있음」을 문서 기준(휴지통 · 영구 삭제 아님)으로 — 휴지통 문서 첨부의 바이트 없음은 자료실 휴지통과 같이 보고만(`attachment_trash_missing`)
+7. 탈퇴 파기의 파일 순서 — 사진 · AI 그림은 「커밋 전에 파일 먼저」인데, 첨부는 purge_trash 와 같은 대기열 방식(커밋 뒤 비움 · 실패해도 이름이 대기열에 남아 다음 실행이 잇는다)으로 했다

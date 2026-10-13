@@ -76,7 +76,13 @@ function community_export_collect(array $root, array $user, bool $tree, string $
     return [$entries, $skipped];
 }
 
-function community_export_context(array $doc, array $user, array $paths, string $from): array
+/**
+ * 내보내기 · 인쇄 ctx. Q:F-12 U3-1b — `$page` 는 이 본문의 문서 행(`community_export_document` 가 막 다시 읽고 판정한 행)이다.
+ * 문서 전용 첨부(`att:`)는 그 문서의 `decideAttachmentRead` 가 열릴 때만 지도(`attachment_titles` — 본문이 가리키는 것만)와
+ * 로그인 필요한 창구 주소(`attachment_href` — 그림 형식은 `/raw`, 그 밖은 `/download`)를 싣는다 — 자료실 `file_href` 와 같은 방식.
+ * 받는 순간에도 창구가 문서 판정을 다시 한다. 공개 링크(`/pub/`)는 이 함수를 쓰지 않는다(그쪽은 그대로 「볼 수 없는 파일」).
+ */
+function community_export_context(array $doc, array $user, array $paths, string $from, ?array $page = null): array
 {
     // This boundary needs references, not search text or excerpts. Extracting a large
     // code-only document's complete plain text is costly and supplies no permission data.
@@ -111,6 +117,21 @@ function community_export_context(array $doc, array $user, array $paths, string 
             $fileHrefs[$id] = community_export_url(Http::url('/api/files/' . $id . '/download'));
         }
     }
+    // Q:F-12 U3-1b — 문서 전용 첨부(그 문서 판정 · 관리자 특권 갈래는 닫힘 — pages_get 의 attachment_titles 와 같은 조건)
+    $attTitles = [];
+    $attHrefs = [];
+    if ($page !== null && $extract['atts'] !== []
+        && CommunityAuthz::decideAttachmentRead($user, $page, ['page_id' => (int) $page['id']])[0]) {
+        $wanted = array_flip($extract['atts']);
+        foreach (community_attachment_titles((int) $page['id']) as $aid => $entry) {
+            if (!isset($wanted[$aid])) {
+                continue;
+            }
+            $attTitles[$aid] = $entry;
+            $attHrefs[$aid] = community_export_url(Http::communityUrl('/api/pages/' . (string) $page['public_id']
+                . '/attachments/' . $aid . ($entry['image'] ? '/raw' : '/download')));
+        }
+    }
     $mentions = community_mention_labels($extract['mentions'], $user);
     foreach (array_keys($mentions) as $key) {
         if (str_starts_with($key, 'page:') && !isset($hrefs[substr($key, 5)])) {
@@ -119,6 +140,7 @@ function community_export_context(array $doc, array $user, array $paths, string 
     }
     return ['synced'=>community_sync_map($doc,$user), 'child_titles' => $titles, 'link_titles' => $titles, 'page_href' => $hrefs,
         'file_titles' => $files, 'file_href' => $fileHrefs, 'mention_labels' => $mentions,
+        'attachment_titles' => $attTitles, 'attachment_href' => $attHrefs,
         'db_views'=>community_db_widget_context($doc,$user), 'embeds' => community_embed_ctx()];
 }
 

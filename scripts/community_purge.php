@@ -23,9 +23,12 @@ declare(strict_types=1);
  *   지운 뒤에야 대기열 줄을 지운다. 중간에 죽어도 다음 실행이 잇는다(이미 없는 파일은 성공으로 본다). dry 는 건수만 보인다.
  *   결과는 `page.purge allow` detail 의 `attachment_files`(지운 수) · 실패는 `page.purge error purge_failed`(실패 수 — 이름 · 경로 0).
  *   소유자 계정 이름은 기본 `tbox_owner` — 합성 시험 DB 처럼 소유자가 다른 곳에서만 `TBOX_OWNER_DB_USER` 로 바꾼다(소문자 역할 이름 형태만).
+ *   U3-1b: 대기열을 비우는 일은 scripts/lib/attachment_purge.php 의 `attachment_purge_drain()` 한 함수 — 탈퇴 파기(privacy_purge.php)도
+ *   같은 함수를 부른다(탈퇴 파기의 `community.privacy_purge_pages` 도 같은 대기열에 이름을 적는다).
  */
 
 require_once __DIR__ . '/lib/cli_bootstrap.php';
+require_once __DIR__ . '/lib/attachment_purge.php';
 
 $argv = $_SERVER['argv'];
 $run  = cli_flag($argv, 'run');
@@ -67,29 +70,18 @@ try {
 $ids = array_map(static fn (array $r): int => (int) $r['page_id'], $rows);
 cli_say(sprintf('%s: %d개%s', $run ? '영구 삭제' : '[dry] 지울 대상', count($ids), $ids === [] ? '' : ' — ' . implode(', ', array_slice($ids, 0, 50))));
 
-/* ─── Q:F-12 U3-1 — 영구 삭제된 문서 첨부의 디스크 파일 (대기열 → 파일 지우기 → 대기열 줄 지우기) ─── */
+/* ─── Q:F-12 U3-1 — 영구 삭제된 문서 첨부의 디스크 파일 (대기열 → 파일 지우기 → 대기열 줄 지우기) ───
+   U3-1b: 탈퇴 파기(scripts/privacy_purge.php)와 **같은 함수**(scripts/lib/attachment_purge.php) — 출력 문장은 그대로다. */
 $attRemoved = 0;
 $attFailed  = 0;
 try {
-    $queueReady = $owner->query("SELECT to_regclass('community.page_attachment_purge_queue') IS NOT NULL")->fetchColumn();
-    if ($queueReady === true || $queueReady === 't') {
-        $queue = $owner->query('SELECT stored_name FROM community.page_attachment_purge_queue ORDER BY queued_at, stored_name LIMIT 5000')
-            ->fetchAll(PDO::FETCH_COLUMN);
-        if (!$run) {
-            cli_say(sprintf('[dry] 지울 첨부 파일: %d개', count($queue)));
-        } else {
-            $dequeue = $owner->prepare('DELETE FROM community.page_attachment_purge_queue WHERE stored_name = :n');
-            foreach ($queue as $name) {
-                try {
-                    Storage::purge((string) $name, Storage::AREA_ATTACHMENTS);
-                    $dequeue->execute([':n' => (string) $name]);
-                    $attRemoved++;
-                } catch (Throwable $e) {
-                    $attFailed++;   // 이름 · 경로는 찍지 않는다 — 다음 실행이 같은 줄을 다시 본다
-                }
-            }
-            cli_say(sprintf('첨부 파일: %d개 지움%s', $attRemoved, $attFailed > 0 ? ' · 실패 ' . $attFailed . '개(다음 실행이 다시)' : ''));
-        }
+    $drain = attachment_purge_drain($owner, $run);
+    $attRemoved = $drain['removed'];
+    $attFailed  = $drain['failed'];
+    if ($drain['ready']) {
+        cli_say($run
+            ? sprintf('첨부 파일: %d개 지움%s', $attRemoved, $attFailed > 0 ? ' · 실패 ' . $attFailed . '개(다음 실행이 다시)' : '')
+            : sprintf('[dry] 지울 첨부 파일: %d개', $drain['queued']));
     }
 } catch (Throwable $e) {
     $attFailed++;

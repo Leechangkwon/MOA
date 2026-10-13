@@ -303,3 +303,20 @@ BEGIN
     GRANT SELECT ON SEQUENCE community.page_attachments_id_seq TO tbox_backup;
 END
 $$;
+
+-- ─── Q:F-12 U3-1b — 대기열 확인 함수 community.page_attachment_queued(text[]) (마이그레이션 7 절과 같은 줄).
+--     정합성 검사(scripts/consistency_check.php — 앱 계정)만 부른다. 대기열 표 자체의 앱 권한은 위 절 그대로 0.
+--     탈퇴 파기 함수(community.privacy_purge_pages)의 권한은 db/grants.sql 「탈퇴 요청 · 보관 기간 파기」 절이 그대로 건다(소유자만).
+DO $$
+BEGIN
+    IF to_regprocedure('community.page_attachment_queued(text[])') IS NULL THEN
+        RAISE NOTICE '대기열 확인 함수가 없다 — db/migrations/2026-10-13_community_page_attachments.sql 을 먼저 돌린다(이 절은 건너뜀)';
+        RETURN;
+    END IF;
+    REVOKE ALL ON FUNCTION community.page_attachment_queued(text[]) FROM PUBLIC;
+    IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_backup') THEN
+        REVOKE ALL ON FUNCTION community.page_attachment_queued(text[]) FROM tbox_backup;
+    END IF;
+    GRANT EXECUTE ON FUNCTION community.page_attachment_queued(text[]) TO tbox_app;
+END
+$$;
