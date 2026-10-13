@@ -237,7 +237,7 @@ tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclu
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
     -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
     -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" \
-    "$ROOT/.env" > "$INST/app/.env"
+    "${QCHECK_ENV_SRC:-$ROOT/.env}" > "$INST/app/.env"
 chmod 600 "$INST/app/.env"
 
 # nginx 의 두 갈래(자산·단일 입구)만 흉내 내는 라우터. 운영에는 쓰이지 않는다.

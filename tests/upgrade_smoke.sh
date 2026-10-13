@@ -202,7 +202,7 @@ for side in old new; do
   sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
       -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$WORK/storage#" \
       -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$WORK/log/audit.log#" \
-      "$ROOT/.env" > "$WORK/$side/app/.env"
+      "${QCHECK_ENV_SRC:-$ROOT/.env}" > "$WORK/$side/app/.env"
   chmod 600 "$WORK/$side/app/.env"
   grep -q "^DB_NAME=$DB\$" "$WORK/$side/app/.env" || { echo "임시 .env($side) 에 임시 DB 이름이 들어가지 않았다 — 중단"; exit 4; }
   ln -s "$PLAN_DIR" "$WORK/$side/community" 2>/dev/null

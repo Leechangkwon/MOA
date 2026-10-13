@@ -177,6 +177,12 @@ def ratio(a, b):
     return (hi + 0.05) / (lo + 0.05)
 
 
+def result_line(lines, fail):
+    """요약기(tests/lib/results.py)가 세는 합계 한 줄 — 통과 = ✔ 줄 수(검사한 쌍·모양 확인), 실패 = CONTRAST_FAIL 과 같은 수"""
+    passed = sum(1 for ln in lines if ln.startswith('  ✔ '))
+    return 'RESULT pass=%d fail=%d skip=0' % (passed, fail)
+
+
 def main(argv):
     here = os.path.dirname(os.path.abspath(__file__))
     root = os.path.normpath(os.path.join(here, '..', '..'))
@@ -196,6 +202,7 @@ def main(argv):
         if not os.path.isfile(path):
             print('파일이 없다: %s' % path)
             print('CONTRAST_FAIL=1')
+            print('RESULT pass=0 fail=1 skip=0')
             return 2
         files[tag] = read_blocks(path)
 
@@ -207,6 +214,7 @@ def main(argv):
         if any(got[k] is None for k in ('base', 'base_dark', 'hc', 'hc_dark', 'hc_os')):
             print('\n'.join(lines))
             print('CONTRAST_FAIL=%d' % max(fail, 1))
+            print(result_line(lines, max(fail, 1)))
             return 2
         ok('%s 고대비 블록이 두 번 나오지 않는다' % tag, extra == [], ' '.join(extra))
         ok('%s `data-contrast` 는 세 선택자에만(화면 CSS 갈래 0)' % tag, n_attr == 3, '실제 %d' % n_attr)
@@ -266,6 +274,7 @@ def main(argv):
 
     print('\n'.join(lines))
     print('CONTRAST_FAIL=%d' % fail)
+    print(result_line(lines, fail))
     return 0 if fail == 0 else 1
 
 

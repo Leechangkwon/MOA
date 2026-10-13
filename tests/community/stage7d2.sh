@@ -344,7 +344,7 @@ mkdir -p "$INST/app" "$INST/storage" "$INST/log"
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$INST/app" -xf -
 # 임시 `.env` — 원본 `.env` 에서 **DB 이름·저장 경로·로그 경로만** 바꾼다. 값은 출력하지 않는다.
 #   원본은 이 트리의 .env — 복제본에는 .env 가 없으므로 부르는 쪽이 0600 사본을 트리 뿌리에 두고 부른다(끝나면 지운다).
-ENV_SRC="$ROOT/.env"
+ENV_SRC="${QCHECK_ENV_SRC:-$ROOT/.env}"
 [ -f "$ENV_SRC" ] || { echo "$ENV_SRC 가 없다 — 임시 .env 를 만들 원본이 없어 시험을 시작하지 않는다"; exit 3; }
 # qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \

@@ -263,7 +263,7 @@ INST="$(mktemp -d)"
 chmod 700 "$INST"
 mkdir -p "$INST/app" "$INST/storage" "$INST/tmp" "$INST/log"   # tmp = Storage::tmpDir(저장소의 형제 — zip·가져오기)
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env . | tar -C "$INST/app" -xf -
-ENV_SRC="${G0_ENV_SRC:-$ROOT/.env}"
+ENV_SRC="${G0_ENV_SRC:-${QCHECK_ENV_SRC:-$ROOT/.env}}"
 [ -f "$ENV_SRC" ] || { echo "$ENV_SRC 가 없다 — 임시 .env 를 만들 원본이 없어 시험을 시작하지 않는다"; exit 3; }
 # qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리)
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \

@@ -247,7 +247,7 @@ sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" \
     -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/storage#" \
     -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" \
     -e "s#^SESSION_IDLE_MIN=.*#SESSION_IDLE_MIN=$IDLE_MIN#" \
-    "$ROOT/.env" > "$INST/app/.env"
+    "${QCHECK_ENV_SRC:-$ROOT/.env}" > "$INST/app/.env"
 chmod 600 "$INST/app/.env"
 grep -q "^DB_NAME=$DB\$" "$INST/app/.env" || { echo "임시 .env 에 임시 DB 이름이 들어가지 않았다 — 중단"; exit 4; }
 expect "임시 .env 의 무활동 창 = ${IDLE_MIN}분 (원본 .env 는 읽기만)" "1" "$(grep -c "^SESSION_IDLE_MIN=$IDLE_MIN\$" "$INST/app/.env")"

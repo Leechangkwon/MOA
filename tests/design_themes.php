@@ -15,3 +15,4 @@ foreach (array_keys(Design::THEMES) as $theme) {
     }
 }
 echo "Design allowlist: $count passed\n";
+echo "RESULT pass=$count fail=0 skip=0\n";

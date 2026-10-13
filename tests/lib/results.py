@@ -9,15 +9,21 @@ python3 표준 라이브러리만 쓴다. 두 가지로 쓰인다.
      python3 tests/lib/results.py redact <원문>     가림 뒤 원문
      python3 tests/lib/results.py denoise <원문>    요약용 잡음 제거 뒤 원문
 2) tests/run.sh 의 몸체
-     python3 tests/lib/results.py cli --root <저장소> <list|run|show|summary|report> …
+     python3 tests/lib/results.py cli --root <저장소> <list|run|show|summary|report|compare> …
    run.sh 가 umask 077 · 실행 폴더 0700 · flock 을 먼저 하고 이 파일을 exec 한다.
    잠금은 실행 폴더가 아니라 사용자 단위 한 곳: ${XDG_RUNTIME_DIR:-$HOME/.cache}/qaredi-check/run.lock
    (폴더 0700) — QCHECK_RUNS 를 달리 준 두 실행도 서로 막는다.
    시험 자식은 077 이 아니라 부른 쪽 umask(QCHECK_CHILD_UMASK)로 돈다.
 
-세는 법(지시서 A-6):
+회귀 권장: tests/run.sh run --select diff:<기준>..<후보> --skip-known-fail   (그 뒤 tests/run.sh compare <기준 실행> <후보 실행>)
+
+세는 법(지시서 A-6 · RC-3):
   - 원문 끝부분에서 합계 줄을 찾는다. 끝에서부터 처음 걸리는 줄을 쓴다(중첩 시험의 합계에 속지 않게).
-  - `RESULT pass= fail= skip=` 줄이 있으면 그것 → 없으면 한국어 다섯 변형 → 파이썬 X_FAIL= → 정적 「결과:」.
+  - `RESULT pass= fail= [skip=]` 줄이 있으면 그것 → 없으면 `PASS=n FAIL=m [SKIP=k] [KEY=값 …]` → 한국어 다섯 변형
+    → 파이썬 X_FAIL= → 정적 「결과:」.
+  - 합계 줄 **뒤**의 꼬리 줄(`KEY=값` 또는 `KEY=값; KEY=값 …` 꼴 — 예: `OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1`)과
+    빈 줄은 건너뛴다(RC-3). 합계 줄보다 뒤에 `Traceback (most recent call last)` 가 있으면 건너뛰지 않고 「합계 없음 —
+    합계 전에 멈춤」으로 본다(합계를 낸 뒤 터진 시험을 통과로 세지 않는다).
   - rc 와 합계가 어긋나면 더 나쁜 쪽(실패)을 쓰고 「형식 위반」으로 표시한다.
   - rc 3·4 는 ③ 시작 거부/준비 실패. status=required 인데 SKIP>0 이면 ③ skipped_by_test.
   - known_fail 은 ③ known_fail(사유·만료일). 만료가 지났거나 만료일이 없으면 required 로 판정한다.
@@ -25,6 +31,24 @@ python3 표준 라이브러리만 쓴다. 두 가지로 쓰인다.
     ③ writes_prod. --select·--catalog(사용자 지정 목록)·--include-manual 로는 풀리지 않는다. `--allow-writes-prod` 를 **명시**하고
     그 시험 스크립트의 대상(첫 `BASE="…"`·`DB="…"` 줄)이 tests/lib/prod_guard.sh 판정으로 「prod」일 때만 돈다 — temp·unknown 이면
     이 인자가 있어도 거부(디버깅 묶음 T 9번 — 2026-09-26 회귀 틀이 f51·f52 를 돌려 운영 qa-totp.txt 를 덮어쓴 사고 · 취합 결정).
+
+돌리는 법(지시서 RC-1 · RC-2 · RC-5 · RC-6):
+  - 시간 제한: 시험마다 한도 = 카탈로그 `timeout_sec`(있으면) 또는 max(--timeout-min 600초, est_sec × --timeout-factor 3).
+    넘으면 그 시험의 묶음(아래 세션)에 SIGTERM → 120초 → 남은 것만 SIGKILL. 판정 ③ timeout. 원문 끝에 실행기 한 줄
+    「run.sh: 시간 제한 N초 넘음 — SIGTERM(묶음 n개) …」. --no-timeout 이면 한도 없음(옛 동작).
+  - 묶음: 시험은 새 세션(start_new_session)으로 뜬다. 끝나면(통과·실패·시간 제한·중단 모두) 같은 세션 id 의 남은 프로세스에
+    SIGTERM → 10초 → SIGKILL. 시험이 스스로 새 세션으로 띄운 손주(memories_harness 등)는 환경 표식 QCHECK_TEST_TOKEN 을
+    지닌 우리 소유 php·python3·chrome 만 같은 순서로 정리한다. 시험 중에 새로 열렸는데 표식이 없는 127.0.0.1 LISTEN 포트는
+    **보고만** 한다(다른 실행의 것일 수 있다). 실행기 자신·부모·실행기의 세션은 대상이 아니다. SIGKILL 은 늘 SIGTERM 으로
+    정리 기회를 준 뒤에만. 기록 `leftover: {count, names(명령 이름만), …}` · 요약 「남은 프로세스 n 정리」(판정은 그대로).
+  - --skip-known-fail: 만료 전 known_fail 항목을 돌리지 않고 ③ known_fail_skipped 로 요약 머리에 늘 보인다(만료가 지났거나
+    만료일이 없으면 건너뛰지 않는다 — required 로 돈다). 이 인자가 없으면 옛 동작 그대로(known_fail 도 돈다).
+  - --env-src <파일>: 있는 일반 파일 · 내 소유 · 모드 0600 · 저장소 밖일 때만 받는다(아니면 사용법 오류 rc 2). 시험 자식 환경에
+    QCHECK_ENV_SRC 와 QF2_ENV_SRC · DBGS_ENV_SRC · STAGE7C_ENV_SRC · STAGE7D3_ENV_SRC · D74_ENV_SRC · PK_ENV_SRC 를 같은 경로로
+    넣는다. 경로만 넘긴다 — 실행기는 내용을 읽지 않는다.
+
+대조(RC-7): compare <a> <b> — 두 실행 모두에 있는 시험마다 판정·코드·rc·합계(기록 그대로)와 실패 단언 이름 집합(원문 전체의
+  ✖/FAIL 줄, 기대값 꼬리 ` (기대=…)` 를 떼고 가린 뒤)을 견준다. SAME · DIFF(무엇이 다른지) · ONLY_A · ONLY_B. 맨 위 「DIFF n · SAME m」.
 """
 
 import argparse
@@ -64,7 +88,12 @@ ENV_KEYS_DEFAULT = (
 
 # ─── 줄 모양 ────────────────────────────────────────────────────────────────
 ANSI_RE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
-RE_RESULT = re.compile(r"^RESULT[ \t]+pass=(\d+)[ \t]+fail=(\d+)[ \t]+skip=(\d+)[ \t]*$")
+RE_RESULT = re.compile(r"^RESULT[ \t]+pass=(\d+)[ \t]+fail=(\d+)(?:[ \t]+skip=(\d+))?[ \t]*$")
+# 대문자 합계 `PASS=196 FAIL=0 LEGACY_COMMON8_PASSED=not_claimed` (stage89_cross_regression) — 뒤 KEY=값 은 무시
+RE_PF_UPPER = re.compile(r"^PASS=(\d+)[ \t]+FAIL=(\d+)(?:[ \t]+SKIP=(\d+))?(?:[ \t]+[A-Z][A-Z0-9_]*=\S*)*[ \t]*$")
+# 합계 줄 뒤의 꼬리 줄(RC-3): `OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1` — 건너뛴다
+RE_TAIL = re.compile(r"^[A-Z][A-Z0-9_]*=[^ ]*(?:; [A-Z][A-Z0-9_]*=[^ ]*)*$")
+RE_TRACEBACK = re.compile(r"^Traceback \(most recent call last\)")
 # 한국어 다섯 변형 (원문: tests/*.sh · tests/community/*.sh 의 printf/echo 합계 줄)
 #   ko_skip_unverified  printf '통과 %d · 실패 %d · 건너뜀/미검증 %d\n'   api_* · f53·f54·f65·f66·f68 · q_launcher · stage3·4a
 #   ko_skip             printf '통과 %d · 실패 %d · 건너뜀 %d\n'         community stage4b~7a
@@ -109,14 +138,16 @@ def _ko_format(m):
 
 
 def parse_counts(text):
-    """원문 끝부분에서 합계를 찾는다. 없으면 None."""
+    """원문 끝부분에서 합계를 찾는다. 없으면 None.
+
+    꼬리 줄(RE_TAIL)·빈 줄은 건너뛴다. 합계 줄을 만나기 전에 Traceback 을 만나면 None(합계 전에 멈춤)."""
     lines = _lines(text)
     start = max(0, len(lines) - TAIL_LINES)
     for i in range(len(lines) - 1, start - 1, -1):
         ln = lines[i]
         m = RE_RESULT.match(ln)
         if m:
-            p, f, s = (int(x) for x in m.groups())
+            p, f, s = int(m.group(1)), int(m.group(2)), int(m.group(3) or 0)
             out = {"pass": p, "fail": f, "skip": s, "format": "result", "lineno": i + 1, "violation": ""}
             # 바로 위(5줄 안)의 한국어 합계 줄과 대조한다 — 다르면 형식 위반, 실패는 큰 쪽
             for j in range(i - 1, max(start, i - 6) - 1, -1):
@@ -131,6 +162,10 @@ def parse_counts(text):
                     out["fail"] = max(f, kf)
                 break
             return out
+        m = RE_PF_UPPER.match(ln)
+        if m:
+            return {"pass": int(m.group(1)), "fail": int(m.group(2)), "skip": int(m.group(3) or 0),
+                    "format": "pass_fail_upper", "lineno": i + 1, "violation": ""}
         m = RE_KO.match(ln)
         if m:
             return {"pass": int(m.group("p")), "fail": int(m.group("f")),
@@ -145,6 +180,10 @@ def parse_counts(text):
             ok = m.group(1) == "통과"
             return {"pass": 1 if ok else 0, "fail": 0 if ok else 1, "skip": 0,
                     "format": "static", "lineno": i + 1, "violation": ""}
+        if RE_TRACEBACK.match(ln):
+            return None          # 합계 줄보다 뒤의 트레이스백 — 건너뛰지 않는다(합계 전에 멈춤으로 본다)
+        if not ln.strip() or RE_TAIL.match(ln):
+            continue             # 꼬리 줄·빈 줄 — 건너뛴다(RC-3)
     return None
 
 
@@ -892,41 +931,303 @@ def child_umask():
     return CHILD_UMASK_DEFAULT
 
 
-def execute(e, root, raw_path):
-    """시험 하나를 돌려 원문을 raw_path(0600)에 쓴다. (rc, 걸린 초, 중단 여부)"""
+# ─── 시간 제한 · 남은 프로세스 (RC-1 · RC-2) ─────────────────────────────────
+TIMEOUT_MIN_DEFAULT = 600        # 초 — 한도 = max(이것, est_sec × 배수) · 카탈로그 timeout_sec 가 있으면 그것
+TIMEOUT_FACTOR_DEFAULT = 3.0
+TIMEOUT_TERM_GRACE = 120         # 한도를 넘은 묶음: SIGTERM 뒤 기다리는 초 → 남으면 SIGKILL
+LEFTOVER_TERM_GRACE = 10         # 끝난 뒤 남은 프로세스: SIGTERM 뒤 기다리는 초 → 남으면 SIGKILL
+# 세션 밖(시험이 스스로 새 세션으로 띄운 손주)은 표식 + 우리 소유 + 이 이름일 때만 정리한다
+OUTSIDE_KILL_NAMES = ("php", "python3", "chrome", "chromium", "headless_shell")
+TOKEN_VAR = "QCHECK_TEST_TOKEN"
+# --env-src 가 넣는 이름(시험마다 다르던 원본 변수 여섯 + 공통 하나)
+ENV_SRC_VARS = ("QCHECK_ENV_SRC", "QF2_ENV_SRC", "DBGS_ENV_SRC", "STAGE7C_ENV_SRC", "STAGE7D3_ENV_SRC",
+                "D74_ENV_SRC", "PK_ENV_SRC")
+
+
+def time_limit(e, a):
+    """이 시험의 한도(초) — None 이면 한도 없음(--no-timeout)."""
+    if getattr(a, "no_timeout", False):
+        return None
+    v = e.get("timeout_sec")
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+        return float(v)
+    est = e.get("est_sec")
+    est = float(est) if isinstance(est, (int, float)) and not isinstance(est, bool) and est > 0 else 0.0
+    tmin = getattr(a, "timeout_min", None)
+    tfac = getattr(a, "timeout_factor", None)
+    tmin = TIMEOUT_MIN_DEFAULT if tmin is None else tmin
+    tfac = TIMEOUT_FACTOR_DEFAULT if tfac is None else tfac
+    return max(float(tmin), est * float(tfac))
+
+
+def _proc_stat(pid):
+    """/proc/<pid>/stat → (comm, state, ppid, pgrp, sid) · 없으면 None"""
+    try:
+        with open("/proc/%d/stat" % pid, "rb") as fh:
+            data = fh.read().decode("utf-8", "replace")
+    except OSError:
+        return None
+    lp, rp = data.find("("), data.rfind(")")
+    if lp < 0 or rp < 0:
+        return None
+    rest = data[rp + 2:].split()
+    try:
+        return data[lp + 1:rp], rest[0], int(rest[1]), int(rest[2]), int(rest[3])
+    except (IndexError, ValueError):
+        return None
+
+
+def _all_pids():
+    try:
+        names = os.listdir("/proc")
+    except OSError:
+        return []
+    return [int(x) for x in names if x.isdigit()]
+
+
+def _mine(pid):
+    try:
+        return os.stat("/proc/%d" % pid).st_uid == os.getuid()
+    except OSError:
+        return False
+
+
+def _protected():
+    """실행기 자신 · 부모 · init · 실행기의 세션 — 절대 건드리지 않는다"""
+    try:
+        mysid = os.getsid(0)
+    except OSError:
+        mysid = -1
+    return {os.getpid(), os.getppid(), 1, 0}, mysid
+
+
+def _has_token(pid, token):
+    if not token or not _mine(pid):
+        return False
+    try:
+        with open("/proc/%d/environ" % pid, "rb") as fh:
+            env = fh.read()
+    except OSError:
+        return False
+    return (TOKEN_VAR + "=" + token).encode() in env.split(b"\0")
+
+
+def _in_bundle(pid, sid, token):
+    """pid 가 아직 이 시험의 묶음인가 → 'sid' · 'token' · None (좀비·보호 대상은 None)"""
+    prot, mysid = _protected()
+    if pid in prot:
+        return None
+    st = _proc_stat(pid)
+    if not st or st[1] == "Z":
+        return None
+    if st[4] == mysid:
+        return None
+    if sid and sid > 1 and st[4] == sid:
+        return "sid"
+    if _has_token(pid, token):
+        return "token"
+    return None
+
+
+def bundle_members(sid, token):
+    """[(pid, 명령 이름, 갈래)] — 같은 세션(sid) 또는 표식(token)을 지닌 우리 프로세스"""
+    out = []
+    for pid in _all_pids():
+        why = _in_bundle(pid, sid, token)
+        if why:
+            st = _proc_stat(pid)
+            out.append((pid, st[0] if st else "?", why))
+    return out
+
+
+def _may_kill(pid, name, why):
+    if why == "sid":
+        return True
+    return any(name == n or name.startswith(n) for n in OUTSIDE_KILL_NAMES)
+
+
+def _signal_bundle(targets, sid, token, sig):
+    sent = 0
+    for pid, name, why in targets:
+        if _in_bundle(pid, sid, token) != why:     # 그 사이 끝났거나 다른 것이 됐다(pid 재사용) — 건너뜀
+            continue
+        try:
+            os.kill(pid, sig)
+            sent += 1
+        except OSError:
+            pass
+    return sent
+
+
+def _wait_gone(targets, sid, token, grace):
+    """grace 초 안에 targets 가 모두 끝나면 [] · 아니면 남은 것"""
+    end = time.time() + grace
+    left = list(targets)
+    while True:
+        left = [t for t in left if _in_bundle(t[0], sid, token) == t[2]]
+        if not left or time.time() >= end:
+            return left
+        time.sleep(0.2)
+
+
+def terminate_bundle(targets, sid, token, grace):
+    """SIGTERM → grace 초 → 남은 것만 SIGKILL. (SIGTERM 보낸 수, SIGKILL 보낸 수, 살아남은 이름)"""
+    nterm = _signal_bundle(targets, sid, token, signal.SIGTERM)
+    try:
+        left = _wait_gone(targets, sid, token, grace)
+    except (KeyboardInterrupt, _Stop):
+        left = [t for t in targets if _in_bundle(t[0], sid, token) == t[2]]   # 한 번 더 누르면 기다림을 줄인다
+    nkill = _signal_bundle(left, sid, token, signal.SIGKILL) if left else 0
+    surv = _wait_gone(left, sid, token, 3) if left else []
+    return nterm, nkill, [t[1] for t in surv]
+
+
+def listen_ports():
+    """127.0.0.1(·::1) LISTEN 포트 {port: inode}"""
+    out = {}
+    for fn, locs in (("/proc/net/tcp", ("0100007F",)), ("/proc/net/tcp6", ("00000000000000000000000001000000",))):
+        try:
+            with open(fn) as fh:
+                rows = fh.read().split("\n")[1:]
+        except OSError:
+            continue
+        for row in rows:
+            f = row.split()
+            if len(f) < 10 or f[3] != "0A":
+                continue
+            addr, _, port = f[1].partition(":")
+            if addr in locs:
+                try:
+                    out[int(port, 16)] = f[9]
+                except ValueError:
+                    pass
+    return out
+
+
+def port_owners(inodes):
+    """{inode: [(pid, 명령 이름)]} — 우리 소유 프로세스만 본다"""
+    want = {"socket:[%s]" % i: i for i in inodes}
+    res = {}
+    if not want:
+        return res
+    for pid in _all_pids():
+        if not _mine(pid):
+            continue
+        try:
+            fds = os.listdir("/proc/%d/fd" % pid)
+        except OSError:
+            continue
+        for fd in fds:
+            try:
+                ln = os.readlink("/proc/%d/fd/%s" % (pid, fd))
+            except OSError:
+                continue
+            if ln in want:
+                st = _proc_stat(pid)
+                res.setdefault(want[ln], []).append((pid, st[0] if st else "?"))
+    return res
+
+
+def cleanup_leftover(sid, token, ports_before):
+    """시험이 끝난 뒤 남은 묶음 정리 + 새로 열린 포트 보고 → leftover dict"""
+    members = bundle_members(sid, token)
+    kill = [t for t in members if _may_kill(t[0], t[1], t[2])]
+    report_only = [t for t in members if t not in kill]
+    nterm = nkill = 0
+    surv = []
+    if kill:
+        nterm, nkill, surv = terminate_bundle(kill, sid, token, LEFTOVER_TERM_GRACE)
+    lo = {"count": len(members), "names": sorted(t[1] for t in members), "cleaned": len(kill) - len(surv),
+          "sigterm": nterm, "sigkill": nkill, "survived": sorted(surv),
+          "outside_session": sorted(t[1] for t in members if t[2] == "token"),
+          "report_only": sorted(t[1] for t in report_only), "ports_open": []}
+    if ports_before is not None:
+        after = listen_ports()
+        new = {p: ino for p, ino in after.items() if p not in ports_before}
+        if new:
+            owners = port_owners(set(new.values()))
+            for p in sorted(new):
+                names = sorted(n for _, n in owners.get(new[p], []))
+                lo["ports_open"].append({"port": p, "names": names})
+    return lo
+
+
+def execute(e, root, raw_path, limit=None, env_src=None):
+    """시험 하나를 돌려 원문을 raw_path(0600)에 쓴다.
+
+    → dict(rc, elapsed, interrupted, timed_out, limit, leftover)"""
     argv, env_add = split_cmd(e["cmd"])
     env = os.environ.copy()
     env.pop("QCHECK_LOCK_FD", None)
     env.pop("QCHECK_CHILD_UMASK", None)
+    if env_src:
+        for k in ENV_SRC_VARS:
+            env[k] = env_src          # 경로만 — 내용은 읽지 않는다(RC-6)
     env.update(env_add)
+    token = hashlib.sha256(os.urandom(32)).hexdigest()[:32]
+    env[TOKEN_VAR] = token
     um = child_umask()
     if sys.version_info >= (3, 9):
         um_kw = {"umask": um}
     else:
         um_kw = {"preexec_fn": lambda: os.umask(um)}
+    res = {"rc": None, "elapsed": 0.0, "interrupted": False, "timed_out": False, "limit": limit, "leftover": None}
     # 원문 파일은 요약기(umask 077) 쪽에서 0600 을 명시해 연다 — 자식 umask 와 무관하다.
     fd = os.open(raw_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o600)
-    interrupted = False
+    try:
+        ports_before = listen_ports()
+    except Exception:
+        ports_before = None
     t0 = time.time()
     with os.fdopen(fd, "wb") as out:
         try:
+            # 새 세션 — 그 시험과 자식이 한 묶음(sid = proc.pid). 끝난 뒤 남은 것을 sid 로 찾는다(RC-2).
             proc = subprocess.Popen(argv, cwd=root, stdin=subprocess.DEVNULL, stdout=out,
-                                    stderr=subprocess.STDOUT, env=env, close_fds=True, **um_kw)
+                                    stderr=subprocess.STDOUT, env=env, close_fds=True,
+                                    start_new_session=True, **um_kw)
         except OSError as ex:
             out.write(("run.sh: 실행하지 못함: %s\n" % ex).encode())
-            return 127, time.time() - t0, False
+            res.update(rc=127, elapsed=time.time() - t0)
+            return res
+        sid = proc.pid
+        rc = None
         try:
-            rc = proc.wait()
-        except (KeyboardInterrupt, _Stop) as ex:
-            interrupted = True
-            # 시험의 trap 정리(덤프·임시 DB 삭제)가 끝나도록 기다린다. SIGKILL 은 쓰지 않는다.
             try:
-                if isinstance(ex, _Stop):
-                    proc.send_signal(signal.SIGTERM)
+                rc = proc.wait(timeout=limit)
+            except subprocess.TimeoutExpired:
+                res["timed_out"] = True
+                members = bundle_members(sid, None)          # 한도를 넘은 묶음 = 같은 세션만
+                n = len(members)
+                nterm, nkill, surv = terminate_bundle(members, sid, None, TIMEOUT_TERM_GRACE)
+                try:
+                    rc = proc.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    rc = proc.poll()
+                rc = -signal.SIGTERM if rc is None else rc
+                tail = ("%d초 안에 모두 끝남" % TIMEOUT_TERM_GRACE) if not nkill else \
+                       ("%d초 뒤 남은 %d개 SIGKILL" % (TIMEOUT_TERM_GRACE, nkill))
+                if surv:
+                    tail += " · 그래도 남음 %d(%s)" % (len(surv), ", ".join(surv))
+                out.flush()
+                out.write(("\nrun.sh: 시간 제한 %d초 넘음 — SIGTERM(묶음 %d개) → %s\n" % (int(limit), n, tail)).encode())
+                out.flush()
+        except (KeyboardInterrupt, _Stop) as ex:
+            res["interrupted"] = True
+            # 시험의 trap 정리(덤프·임시 DB 삭제)가 끝나도록 기다린다. 새 세션이라 터미널의 Ctrl-C 가 시험에 닿지 않으므로
+            # 같은 신호를 묶음에 넘긴다. SIGKILL 은 여기서 쓰지 않는다(정리 기회를 준 뒤 아래 남은 프로세스 정리에서만).
+            sig = signal.SIGTERM if isinstance(ex, _Stop) else signal.SIGINT
+            try:
+                os.killpg(sid, sig)
+            except OSError:
+                pass
+            try:
                 rc = proc.wait(timeout=30)
             except subprocess.TimeoutExpired:
                 try:
-                    proc.send_signal(signal.SIGTERM)
+                    os.killpg(sid, signal.SIGTERM)
+                except OSError:
+                    pass
+                try:
                     rc = proc.wait(timeout=120)
                 except (subprocess.TimeoutExpired, KeyboardInterrupt, _Stop):
                     rc = proc.poll()
@@ -934,7 +1235,19 @@ def execute(e, root, raw_path):
             except (KeyboardInterrupt, _Stop):
                 rc = proc.poll()
                 rc = 130 if rc is None else rc
-    return rc, time.time() - t0, interrupted
+        finally:
+            res["elapsed"] = time.time() - t0
+            try:
+                res["leftover"] = cleanup_leftover(sid, token, ports_before)
+            except (KeyboardInterrupt, _Stop):
+                res["interrupted"] = True
+            if proc.poll() is None:
+                try:
+                    rc = proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    rc = 130 if rc is None else rc
+    res["rc"] = rc
+    return res
 
 
 def read_text(path):
@@ -970,7 +1283,46 @@ def find_cache(d, key, now, current):
     return None
 
 
+def kf_active(e, today=None):
+    """만료 전 known_fail 이면 (사유, 만료일) · 아니면 None (만료일 없음·지남 → None: 건너뛰지 않고 required 로 돈다)"""
+    if e_status(e) != "known_fail":
+        return None
+    kf = e.get("known_fail") if isinstance(e.get("known_fail"), dict) else {}
+    exp = _parse_date(kf.get("expires"))
+    today = today or _dt.date.today()
+    if exp is None or today > exp:
+        return None
+    return str(kf.get("reason") or "사유 없음"), exp.isoformat()
+
+
+def check_env_src(path, root):
+    """--env-src 판정(RC-6): 있는 일반 파일 · 내 소유 · 모드 0600 · 저장소 밖 → 절대 경로. 아니면 UsageError(rc 2).
+    파일 내용은 열지 않는다(lstat·realpath 만)."""
+    import stat as _st
+    ap = os.path.abspath(os.path.expanduser(path))
+    try:
+        st = os.lstat(ap)
+    except OSError:
+        raise UsageError("--env-src 파일이 없다: %s" % ap)
+    if _st.S_ISLNK(st.st_mode):
+        raise UsageError("--env-src 가 심볼릭 링크다 — 거부(실제 파일 경로를 준다): %s" % ap)
+    if not _st.S_ISREG(st.st_mode):
+        raise UsageError("--env-src 가 일반 파일이 아니다: %s" % ap)
+    if st.st_uid != os.getuid():
+        raise UsageError("--env-src 가 내 소유가 아니다: %s" % ap)
+    if (st.st_mode & 0o7777) != 0o600:
+        raise UsageError("--env-src 모드가 0600 이 아니다(%04o): %s" % (st.st_mode & 0o7777, ap))
+    if inside(ap, root):
+        raise UsageError("--env-src 가 저장소 안이다 — 거부(비밀 사본은 저장소 밖에): %s" % ap)
+    return os.path.realpath(ap)
+
+
 def cmd_run(a, root):
+    env_src = check_env_src(a.env_src, root) if a.env_src else None
+    if a.timeout_min is not None and a.timeout_min <= 0:
+        raise UsageError("--timeout-min 은 0 보다 커야 한다")
+    if a.timeout_factor is not None and a.timeout_factor <= 0:
+        raise UsageError("--timeout-factor 는 0 보다 커야 한다")
     entries = load_catalog(a.catalog)
     selected, info = select(entries, a.select or [], root)
     if not selected:
@@ -999,6 +1351,9 @@ def cmd_run(a, root):
          "catalog_sha256": cat_sha, "tree": tree, "head": head, "dirty": dirty,
          "started_at": now, "finished_at": None, "selectors": a.select or [],
          "include_manual": a.include_manual, "allow_writes_prod": a.allow_writes_prod, "fresh": a.fresh, "fail_fast": a.fail_fast,
+         "skip_known_fail": a.skip_known_fail, "env_src": _short_home(env_src) if env_src else None,
+         "timeout": None if a.no_timeout else {"min": a.timeout_min if a.timeout_min is not None else TIMEOUT_MIN_DEFAULT,
+                                               "factor": a.timeout_factor if a.timeout_factor is not None else TIMEOUT_FACTOR_DEFAULT},
          "total": len(entries), "selected": len(selected), "diff": info["diff"], "no_test": info["no_test"],
          "tests": [], "interrupted": False, "exit_code": None}
     idx = {e["id"]: i for i, e in enumerate(entries)}
@@ -1014,6 +1369,13 @@ def cmd_run(a, root):
         elif e_status(e) in DEFAULT_EXCLUDED and not a.include_manual:
             r = base_record(e)
             r.update(verdict="unverified", code=e_status(e), note="기본 제외(--include-manual)",
+                     counts={"pass": 0, "fail": 0, "skip": 0}, rc=None)
+            S["tests"].append(r)
+        elif a.skip_known_fail and kf_active(e):
+            reason, exp = kf_active(e)
+            r = base_record(e)
+            r.update(verdict="unverified", code="known_fail_skipped",
+                     note="「%s」 만료 %s — --skip-known-fail 로 돌리지 않음" % (reason, exp),
                      counts={"pass": 0, "fail": 0, "skip": 0}, rc=None)
             S["tests"].append(r)
         else:
@@ -1045,16 +1407,24 @@ def cmd_run(a, root):
         if tty:
             sys.stderr.write("… %d/%d %s\n" % (k + 1, len(to_run), e["id"]))
         raw_rel = "raw/%s.log" % e["id"]
+        limit = time_limit(e, a)
+        X = {"rc": 2, "elapsed": 0.0, "interrupted": False, "timed_out": False, "limit": limit, "leftover": None}
         try:
-            rc, el, intr = execute(e, root, os.path.join(rdir, raw_rel))
+            X = execute(e, root, os.path.join(rdir, raw_rel), limit=limit, env_src=env_src)
         except (UsageError, ValueError) as ex:
-            rc, el, intr = 2, 0.0, False
             efd = os.open(os.path.join(rdir, raw_rel), os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
             with os.fdopen(efd, "a", encoding="utf-8") as fh:
                 fh.write("run.sh: cmd 오류: %s\n" % ex)
+        rc, el, intr = X["rc"], X["elapsed"], X["interrupted"]
         J = judge(read_text(os.path.join(rdir, raw_rel)), rc, e)
+        if X["timed_out"]:
+            # 멈춘 시험 — 합계가 있어도 통과·실패로 세지 않는다(③ timeout)
+            J["verdict"], J["code"] = "unverified", "timeout"
+            J["note"] = redact("시간 제한 %d초 넘음 — 묶음에 SIGTERM(→120초 뒤 SIGKILL)" % int(limit))
+            J["first_fail"] = ""
         r.update(J)
-        r.update(raw=raw_rel, raw_run=n, elapsed_sec=round(el, 1), cache_key=key,
+        r.update(raw=raw_rel, raw_run=n, elapsed_sec=round(el, 1), cache_key=key, time_limit=limit,
+                 leftover=X["leftover"],
                  passed_at=(time.time() if J["verdict"] == "pass" else None), cached_from=None)
         S["tests"].append(r)
         write_private(sp, json.dumps(S, ensure_ascii=False, indent=1))
@@ -1094,12 +1464,42 @@ def _join_ids(ids, limit=6):
     return s + (" … 외 %d" % (len(ids) - limit) if len(ids) > limit else "")
 
 
-CODE_ORDER = ("known_fail", "skipped_by_test", "refused", "prep_failed", "not_run", "writes_prod", "manual_only", "orphan")
+CODE_ORDER = ("timeout", "known_fail", "known_fail_skipped", "skipped_by_test", "refused", "prep_failed", "not_run",
+              "writes_prod", "manual_only", "orphan")
 CODE_HINT = {"skipped_by_test": "→ ai", "prep_failed": "→ ai",
+             "timeout": "멈춘 시험 — 원문 끝 줄과 남은 프로세스를 보고 원인을 적는다 → ai",
              "writes_prod": "운영에 씀 — 기본 거부 · --allow-writes-prod(대상 prod 만) · → user",
              "manual_only": "기본 제외 · --include-manual · → user",
              "orphan": "기본 제외 · 부르는 곳 없음"}
-PER_ITEM_CODES = ("known_fail", "skipped_by_test", "refused", "prep_failed")
+PER_ITEM_CODES = ("timeout", "known_fail", "known_fail_skipped", "skipped_by_test", "refused", "prep_failed")
+
+
+def _names_short(names, limit=4):
+    """['php', 'php', 'sleep'] → 'php×2, sleep'"""
+    cnt = {}
+    for x in names or []:
+        cnt[x] = cnt.get(x, 0) + 1
+    parts = [("%s×%d" % (k, v)) if v > 1 else k for k, v in sorted(cnt.items())]
+    return ", ".join(parts[:limit]) + (" …" if len(parts) > limit else "")
+
+
+def leftover_lines(T):
+    """남은 프로세스·새로 열린 포트 정보 줄(판정은 바꾸지 않는다)"""
+    out = []
+    for t in T:
+        lo = t.get("leftover") or {}
+        if lo.get("count"):
+            extra = ""
+            if lo.get("survived"):
+                extra += " · 그래도 남음 %s" % _names_short(lo["survived"])
+            if lo.get("report_only"):
+                extra += " · 보고만 %s" % _names_short(lo["report_only"])
+            out.append("· 남은 프로세스 %d 정리 — %s (%s)%s" % (lo.get("cleaned", 0), t["id"], _names_short(lo.get("names")),
+                                                          extra))
+        for po in lo.get("ports_open") or []:
+            out.append("· 끝난 뒤 열린 127.0.0.1 포트 %s — %s (%s · 표식 없음, 보고만 — 다른 실행의 것일 수 있다)" % (
+                po.get("port"), t["id"], _names_short(po.get("names")) or "주인 모름"))
+    return out
 
 
 def tally(S):
@@ -1137,6 +1537,12 @@ def render_summary(S, show_all=False):
     top.append("시험 통과 %d%s · 실패 %d · ③ %d │ 항목 통과 %d · 실패 %d · SKIP %d%s" % (
         c["pass"], (" (캐시 %d)" % c["cached"]) if c["cached"] else "", c["fail"], c["unv"],
         c["ip"], c["if"], c["is"], " · 중단됨" if S.get("interrupted") else ""))
+    kfs = [t for t in T if t.get("code") == "known_fail_skipped"]
+    if kfs:
+        # 늘 보인다(잘리지 않는 머리 줄) — 하나하나의 사유·만료는 아래 ③ 줄 · summary --all · report --md
+        exps = sorted({str((t.get("known_fail") or {}).get("expires") or "?") for t in kfs})
+        top.append("③ known_fail 건너뜀 %d — %s · 만료 %s (--skip-known-fail · 사유 » summary %s --all)" % (
+            len(kfs), _join_ids([t["id"] for t in kfs], 4), "~".join([exps[0], exps[-1]] if len(exps) > 1 else exps), n))
     body = []
     for t in T:
         if t.get("verdict") != "fail":
@@ -1169,6 +1575,7 @@ def render_summary(S, show_all=False):
     nt = S.get("no_test") or []
     if nt:
         body.append("③ no_test %d — %s (→ ai)" % (len(nt), _join_ids(nt, 5)))
+    body += leftover_lines(T)
     helpers = groups.get("helper") or []
     if helpers:
         body.append("· helper %d 는 부르는 시험 안에서 돎(따로 안 돌림)" % len(helpers))
@@ -1248,8 +1655,15 @@ def render_report(S):
     codes = {t.get("code") for t in unv}
     if "skipped_by_test" in codes:
         nxt.append("- skipped_by_test: 필수 시험의 SKIP 을 없앨 조건(검토 계정·환경)을 채우거나 시험을 보완한다(AI)")
+    if "timeout" in codes:
+        nxt.append("- timeout: 멈춘 시험 — 원문 끝 줄과 남은 프로세스를 보고 원인을 적는다(`tests/run.sh show %s <id> --lines` 로 끝 줄)" % n)
     if "known_fail" in codes:
         nxt.append("- known_fail: 만료일 전에 원인을 고치거나 사용자 승인으로 연장한다(완화는 사용자 승인)")
+    if "known_fail_skipped" in codes:
+        nxt.append("- known_fail 건너뜀(--skip-known-fail): 돌리지 않았다 — 만료일 전에 옛 기대값을 고치고 known_fail 을 푼다(옛 시험 수리는 따로)")
+    lol = leftover_lines(T)
+    if lol:
+        nxt.append("- 남은 프로세스·열린 포트: 시험의 정리(trap) 결함 후보 — " + " / ".join(x.lstrip("· ") for x in lol[:6]))
     if "refused" in codes:
         nxt.append("- 시작 거부(rc 3): 가드 사유(R-73 사용자 활동·R-80 디스크·동시 실행)가 풀린 뒤 다시 돌린다")
     if "prep_failed" in codes:
@@ -1344,19 +1758,25 @@ def cmd_show(a):
 def cmd_list(a, root):
     entries = load_catalog(a.catalog)
     selected, info = select(entries, a.select or [], root)
-    run_, excl, wp = [], [], []
+    run_, excl, wp, kfs = [], [], [], []
     wp_files = writes_prod_files(root, entries)
     for e in selected:
         why, _allowed = prod_write_decision(e, wp_files, root, a.allow_writes_prod)
         if why:
             wp.append((e, why))
             continue
-        (excl if (e_status(e) in DEFAULT_EXCLUDED and not a.include_manual) else run_).append(e)
+        if e_status(e) in DEFAULT_EXCLUDED and not a.include_manual:
+            excl.append(e)
+        elif a.skip_known_fail and kf_active(e):
+            kfs.append(e)
+        else:
+            run_.append(e)
     idx = {e["id"]: i for i, e in enumerate(entries)}
     run_ = [e for _, e in sorted(((idx[e["id"]], e) for e in run_), key=run_order)]
     w = max([len(e["id"]) for e in selected] + [4])
-    print("카탈로그 %s · 전체 %d · 고름 %d · 돌릴 것 %d · 기본 제외 %d · 선택 %s" % (
+    print("카탈로그 %s · 전체 %d · 고름 %d · 돌릴 것 %d · 기본 제외 %d%s · 선택 %s" % (
         _short_home(os.path.abspath(a.catalog)), len(entries), len(selected), len(run_), len(excl),
+        (" · known_fail 건너뜀 %d" % len(kfs)) if a.skip_known_fail else "",
         " ∪ ".join(a.select) if a.select else "전체"))
     for dinfo in info["diff"]:
         print("diff %s · 바뀐 파일 %d" % (dinfo["spec"], dinfo["files"]))
@@ -1368,6 +1788,11 @@ def cmd_list(a, root):
         print("운영에 쓰는 시험 — 돌리지 않음(기본 거부 · --allow-writes-prod 와 대상 prod 일 때만) %d:" % len(wp))
         for e, why in wp:
             print("  %s  %-11s %s" % (e["id"].ljust(w), e_status(e), _snip(why, 80)))
+    if kfs:
+        print("known_fail 건너뜀(--skip-known-fail · 만료 전) %d:" % len(kfs))
+        for e in kfs:
+            reason, exp = kf_active(e)
+            print("  %s  만료 %s  %s" % (e["id"].ljust(w), exp, _snip(reason, 80)))
     if excl:
         print("기본 제외(--include-manual 없이는 안 돌림) %d:" % len(excl))
         for e in excl:
@@ -1382,6 +1807,132 @@ def cmd_list(a, root):
         # 선택과 상관없이 카탈로그 전체와 대조한다 — 실리지 않은 시험은 어느 선택자로도 돌지 않는다
         print("⚠ 카탈로그 밖 시험 %d개(어느 cmd 도 부르지 않음 — tests/catalog.json 에 싣기): %s" % (len(out), _join_ids(out, 8)))
     return RC_OK
+
+
+# ─── compare (RC-7) ───────────────────────────────────────────────────────
+RE_EXPECT_TAIL = re.compile(r"[ \t]+\(기대=.*$")   # 기대값 꼬리 — 닫는 괄호 없이 잘린 줄도 뗀다
+COMPARE_NAMES_TXT = 4      # 글 출력에서 DIFF 하나에 보이는 +/− 단언 이름 수
+COMPARE_NAMES_MD = 12
+
+
+def fail_names(S, t):
+    """원문 전체의 실패 표시 줄(RE_FAIL_MARK — first_mark 와 같은 정규식) → 이름 집합.
+    기대값 꼬리 ` (기대=…)` 를 떼고, 그 실행의 저장소 뿌리 경로를 ‹root› 로 바꾸고(worktree 가 달라도 같은 이름),
+    가림을 거친다. 원문이 없으면 빈 집합."""
+    if not t.get("raw"):
+        return set()
+    root = str(S.get("root") or "")
+    rr = t.get("raw_run") or S.get("run")
+    text = read_text(os.path.join(runs_dir(), str(rr), t["raw"]))
+    out = set()
+    for ln in _lines(text):
+        if is_noise(ln) or not RE_FAIL_MARK.search(ln):
+            continue
+        name = RE_EXPECT_TAIL.sub("", ln).strip()
+        if len(root) > 1:
+            name = name.replace(root.rstrip("/") + "/", "‹root›/").replace(root.rstrip("/"), "‹root›")
+        name = redact(name)
+        if name:
+            out.add(name)
+    return out
+
+
+def _cnt_txt(c):
+    c = c or {}
+    return "%s/%s/%s" % (c.get("pass", 0), c.get("fail", 0), c.get("skip", 0))
+
+
+def compare_runs(SA, SB):
+    """→ (줄 목록 [(kind, id, what, plus, minus)], 셈 dict)"""
+    A = {t["id"]: t for t in SA.get("tests", [])}
+    B = {t["id"]: t for t in SB.get("tests", [])}
+    order = [t["id"] for t in SB.get("tests", [])] + [i for i in A if i not in B]
+    rows, cnt = [], {"DIFF": 0, "SAME": 0, "ONLY_A": 0, "ONLY_B": 0}
+    for tid in order:
+        ta, tb = A.get(tid), B.get(tid)
+        if ta is None:
+            rows.append(("ONLY_B", tid, "", [], []))
+            cnt["ONLY_B"] += 1
+            continue
+        if tb is None:
+            rows.append(("ONLY_A", tid, "", [], []))
+            cnt["ONLY_A"] += 1
+            continue
+        what = []
+        if ta.get("verdict") != tb.get("verdict"):
+            what.append("verdict %s→%s" % (ta.get("verdict") or "-", tb.get("verdict") or "-"))
+        if ta.get("code") != tb.get("code"):
+            what.append("code %s→%s" % (ta.get("code") or "-", tb.get("code") or "-"))
+        if ta.get("rc") != tb.get("rc"):
+            what.append("rc %s→%s" % ("-" if ta.get("rc") is None else ta.get("rc"),
+                                      "-" if tb.get("rc") is None else tb.get("rc")))
+        if _cnt_txt(ta.get("counts")) != _cnt_txt(tb.get("counts")):
+            what.append("합계 %s→%s" % (_cnt_txt(ta.get("counts")), _cnt_txt(tb.get("counts"))))
+        na, nb = fail_names(SA, ta), fail_names(SB, tb)
+        plus, minus = sorted(nb - na), sorted(na - nb)
+        if plus or minus:
+            what.append("+단언 %d / −단언 %d" % (len(plus), len(minus)))
+        kind = "DIFF" if what else "SAME"
+        cnt[kind] += 1
+        rows.append((kind, tid, " · ".join(what), plus, minus))
+    return rows, cnt
+
+
+def _run_label(S):
+    return "#%s(%s%s)" % (S.get("run"), (S.get("tree") or "")[:7] or "tree?", "+dirty" if S.get("dirty") else "")
+
+
+def cmd_compare(a):
+    SA, SB = resolve_run(a.run_a), resolve_run(a.run_b)
+    rows, cnt = compare_runs(SA, SB)
+    head = "DIFF %d · SAME %d · ONLY_A %d · ONLY_B %d — A %s → B %s" % (
+        cnt["DIFF"], cnt["SAME"], cnt["ONLY_A"], cnt["ONLY_B"], _run_label(SA), _run_label(SB))
+    rank = {"DIFF": 0, "ONLY_A": 1, "ONLY_B": 2, "SAME": 3}
+    rows = sorted(rows, key=lambda r: rank[r[0]])          # 안정 정렬 — 같은 갈래 안은 B 의 실행 순서
+    L = []
+    if a.md:
+        L += ["### 대조 %s → %s" % (_run_label(SA), _run_label(SB)), "",
+              "- " + head,
+              "- 판정·코드·rc·합계는 두 실행의 기록(summary.json) 그대로, 단언 이름은 원문 전체의 ✖/FAIL 줄(기대값 꼬리 뗌 · 가림 뒤). "
+              + FOOTER + ".", "",
+              "| 결과 | 시험 | 무엇이 다른가 |", "|---|---|---|"]
+        for kind, tid, what, _p, _m in rows:
+            if kind != "SAME":
+                L.append("| %s | `%s` | %s |" % (kind, tid, (what or "").replace("|", "\\|")))
+        same = [r[1] for r in rows if r[0] == "SAME"]
+        if same:
+            L.append("| SAME | %s | — |" % " · ".join("`%s`" % x for x in same))
+        details = [r for r in rows if r[0] == "DIFF" and (r[3] or r[4])]
+        if details:
+            L += ["", "**단언 이름 차이**"]
+            for kind, tid, what, plus, minus in details:
+                L.append("- `%s`" % tid)
+                for x in plus[:COMPARE_NAMES_MD]:
+                    L.append("  - \\+ %s" % _snip(x, 200))
+                if len(plus) > COMPARE_NAMES_MD:
+                    L.append("  - \\+ … 외 %d" % (len(plus) - COMPARE_NAMES_MD))
+                for x in minus[:COMPARE_NAMES_MD]:
+                    L.append("  - − %s" % _snip(x, 200))
+                if len(minus) > COMPARE_NAMES_MD:
+                    L.append("  - − … 외 %d" % (len(minus) - COMPARE_NAMES_MD))
+    else:
+        L.append(head)
+        for kind, tid, what, plus, minus in rows:
+            L.append("%-6s %s%s" % (kind, tid, ("  " + what) if what else ""))
+            if kind == "DIFF":
+                for x in plus[:COMPARE_NAMES_TXT]:
+                    L.append("         + " + _snip(x))
+                if len(plus) > COMPARE_NAMES_TXT:
+                    L.append("         + … 외 %d" % (len(plus) - COMPARE_NAMES_TXT))
+                for x in minus[:COMPARE_NAMES_TXT]:
+                    L.append("         − " + _snip(x))
+                if len(minus) > COMPARE_NAMES_TXT:
+                    L.append("         − … 외 %d" % (len(minus) - COMPARE_NAMES_TXT))
+        L.append("» 단언 이름 전부: tests/run.sh compare %s %s --md · 원문: tests/run.sh show <실행> <id>" % (
+            SA.get("run"), SB.get("run")))
+        L.append(FOOTER)
+    print("\n".join(redact(x) for x in L))
+    return RC_OK if cnt["DIFF"] == 0 and cnt["ONLY_A"] == 0 and cnt["ONLY_B"] == 0 else RC_FAIL
 
 
 # ─── CLI ──────────────────────────────────────────────────────────────────
@@ -1400,6 +1951,7 @@ def _cli(argv):
     p.add_argument("--select", action="append")
     p.add_argument("--include-manual", action="store_true")
     p.add_argument("--allow-writes-prod", action="store_true")
+    p.add_argument("--skip-known-fail", action="store_true")
     p.add_argument("--catalog")
     p = sub.add_parser("run", help="고른 시험을 돌리고 요약")
     p.add_argument("--select", action="append")
@@ -1408,6 +1960,11 @@ def _cli(argv):
     p.add_argument("--fail-fast", action="store_true")
     p.add_argument("--fresh", action="store_true")
     p.add_argument("--catalog")
+    p.add_argument("--skip-known-fail", action="store_true")
+    p.add_argument("--env-src")
+    p.add_argument("--timeout-factor", type=float)
+    p.add_argument("--timeout-min", type=float)
+    p.add_argument("--no-timeout", action="store_true")
     p = sub.add_parser("show", help="실패 조각(한 번에 200줄 이하)")
     p.add_argument("run")
     p.add_argument("id")
@@ -1420,6 +1977,10 @@ def _cli(argv):
     p.add_argument("--all", action="store_true")
     p = sub.add_parser("report", help="CLAUDE.md 3장 ①~④ 조각")
     p.add_argument("run")
+    p.add_argument("--md", action="store_true")
+    p = sub.add_parser("compare", help="두 실행을 시험마다 대조(SAME·DIFF·ONLY_A·ONLY_B)")
+    p.add_argument("run_a")
+    p.add_argument("run_b")
     p.add_argument("--md", action="store_true")
     a = ap.parse_args(argv)
     if not a.cmd:
@@ -1442,6 +2003,8 @@ def _cli(argv):
         if a.cmd == "report":
             print(render_report(resolve_run(a.run)))
             return RC_OK
+        if a.cmd == "compare":
+            return cmd_compare(a)
     except UsageError as ex:
         sys.stderr.write("run.sh: %s\n" % ex)
         return RC_USAGE

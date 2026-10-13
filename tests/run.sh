@@ -4,13 +4,16 @@
 # AI 세션이 지금 권한 그대로 쓰는 것이다. 시험을 고치거나 대상(BASE·DB·계정)을 바꾸지 않는다.
 # 카탈로그(tests/catalog.json)에서 고르고 · 돌리고 · 세고 · 줄여서 보인다. 몸체는 tests/lib/results.py.
 #
-#   tests/run.sh list    [--select …] [--include-manual] [--allow-writes-prod] [--catalog <경로>]   고른 목록만(실행 0)
+#   tests/run.sh list    [--select …] [--include-manual] [--allow-writes-prod] [--skip-known-fail] [--catalog <경로>]   고른 목록만(실행 0)
 #   tests/run.sh run     [--select …] [--include-manual] [--allow-writes-prod] [--fail-fast] [--fresh] [--catalog <경로>]
+#                        [--skip-known-fail] [--env-src <0600 파일>] [--timeout-factor 3] [--timeout-min 600] [--no-timeout]
 #   tests/run.sh show    <run|last> <id> [--context 8 | --lines a-b | --grep PAT]  실패 조각(200줄 이하)
 #   tests/run.sh summary <run|last> [--all]                                     요약 다시 보기
 #   tests/run.sh report  <run|last> --md                                        CLAUDE.md 3장 ①~④ 조각
+#   tests/run.sh compare <run_a> <run_b> [--md]                                 두 실행 대조(SAME·DIFF·ONLY_A·ONLY_B)
 #   선택자(여러 번 = 합집합): id:<id|glob> · module:<m> · env:<e> · status:<s> · path:<glob>(covers 와 겹침)
 #                            · diff:<a>..<b> · diff:auto
+#   회귀 권장: tests/run.sh run --select diff:<기준>..<후보> --skip-known-fail
 #
 # 실행 폴더: ${QCHECK_RUNS:-$HOME/.cache/qaredi-check/runs}/<번호>/ (0700) — raw/<id>.log(0600, 원문)
 #            · summary.json · summary.txt. 저장소 안이면 거부한다. 출력은 모두 가림 뒤다.
@@ -23,6 +26,7 @@
 # 동시성: run 은 flock 으로 한 번에 하나. 다른 실행이 있으면 rc 3. 잠금은 실행 폴더가 아니라 사용자 단위
 #         한 곳 ${XDG_RUNTIME_DIR:-$HOME/.cache}/qaredi-check/run.lock (폴더 0700) — QCHECK_RUNS 를 달리 줘도 막는다.
 # 종료 코드: 0 전부 통과(③ 제외) · 1 실패 있음 · 2 사용법(선택자가 0개를 고름 포함) · 3 거부.
+#          compare: 0 모두 SAME · 1 DIFF·ONLY 있음 · 2 사용법(없는 실행 번호).
 set -u
 # 요약기(실행 폴더·원문·요약·잠금)는 umask 077. 시험 자식은 부른 쪽 umask 그대로 돈다(results.py execute).
 QCHECK_CHILD_UMASK=$(umask); export QCHECK_CHILD_UMASK
@@ -32,15 +36,15 @@ HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P) || exit 2
 ROOT=$(cd "$HERE/.." && pwd -P) || exit 2
 PY="$HERE/lib/results.py"
 
-usage() { sed -n '7,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '7,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; }
 
 command -v python3 >/dev/null 2>&1 || { echo "run.sh: python3 가 없다" >&2; exit 2; }
 [ -f "$PY" ] || { echo "run.sh: $PY 가 없다" >&2; exit 2; }
 [ "$#" -ge 1 ] || { usage >&2; exit 2; }
 case "$1" in
   -h|--help|help) usage; exit 0 ;;
-  list|run|show|summary|report) ;;
-  *) echo "run.sh: 첫 인자는 list|run|show|summary|report 중 하나다: $1" >&2; usage >&2; exit 2 ;;
+  list|run|show|summary|report|compare) ;;
+  *) echo "run.sh: 첫 인자는 list|run|show|summary|report|compare 중 하나다: $1" >&2; usage >&2; exit 2 ;;
 esac
 
 if [ "$1" = run ]; then

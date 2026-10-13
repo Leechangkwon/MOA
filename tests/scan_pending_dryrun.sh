@@ -28,7 +28,7 @@ expect() {
 psqlq() { sudo -n -u postgres psql -d "$DB" -t -A -c "$1" 2>/dev/null; }
 
 sudo -n -u postgres psql -d "$SRC_DB" -tAc "SELECT 1" >/dev/null 2>&1 || { echo "psql(postgres) 을 쓸 수 없다"; exit 3; }
-[ -f "$ROOT/.env" ] || { echo "$ROOT/.env 가 없다 — 임시 .env 를 만들 원본이 없다"; exit 3; }
+[ -f "${QCHECK_ENV_SRC:-$ROOT/.env}" ] || { echo "${QCHECK_ENV_SRC:-$ROOT/.env} 가 없다 — 임시 .env 를 만들 원본이 없다"; exit 3; }
 
 echo "── 준비: 임시 DB · 임시 저장소·격리 폴더 · 임시 .env"
 sudo -n -u postgres dropdb --if-exists "$DB" >/dev/null 2>&1
@@ -41,7 +41,7 @@ mkdir -p "$INST/app" "$INST/data/storage" "$INST/data/quarantine" "$INST/log"
 tar -C "$ROOT" -cf - --exclude=.git --exclude=jar --exclude=api-test.txt --exclude=./.env scripts src | tar -C "$INST/app" -xf -
 # qcheck-allow: R20 — 임시 인스턴스용 사본(0700·0600 · trap 정리) · kill -9 뒤 남는 창은 받아들인 위험(HO-B1-004)
 sed -e "s#^DB_NAME=.*#DB_NAME=$DB#" -e "s#^STORAGE_DIR=.*#STORAGE_DIR=$INST/data/storage#" \
-    -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" -e '/^SCAN_ENABLED=/d' "$ROOT/.env" > "$INST/app/.env"
+    -e "s#^AUDIT_LOG_FILE=.*#AUDIT_LOG_FILE=$INST/log/audit.log#" -e '/^SCAN_ENABLED=/d' "${QCHECK_ENV_SRC:-$ROOT/.env}" > "$INST/app/.env"
 echo "SCAN_ENABLED=1" >> "$INST/app/.env"
 chmod 600 "$INST/app/.env"
 grep -q "^DB_NAME=$DB\$" "$INST/app/.env" || { echo "임시 .env 에 임시 DB 이름이 없다 — 중단"; exit 3; }
