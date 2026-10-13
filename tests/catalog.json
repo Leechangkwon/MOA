@@ -5810,7 +5810,7 @@
       "cmd": "python3 tests/community/memories_harness.py --suite messenger_window_browser.py --output /tmp/qaredi-messenger-window-results",
       "module": "tbox",
       "env": "temp-instance",
-      "status": "known_fail",
+      "status": "required",
       "needs": [
         "browser"
       ],
@@ -5877,13 +5877,7 @@
       ],
       "est_sec": 600,
       "writes_prod": false,
-      "notes": "사이트 Q:F-11 지시서 B-5·B-6 「messenger_window_browser.py」 — tests/community/messenger_browser.py(커뮤니티 모달·모의 HTTP)를 대체. memories_harness 의 빈 합성 DB + 로컬 php -S + Chromium(CHROMIUM_EXECUTABLE). fixture claude_ 계정과 합성 대화 상대 둘만. 떠 있는 창: 셸(두 모드)·커뮤니티 9·시작 안내·런처의 같은 id 단추(손님·역할로 보기·미로그인 런처 0 · Set-Cookie 0) · 같은 탭 이동 복원(열림·상대·초안·스크롤·AI 스레드, 초점 그대로) · 여러 탭(BroadcastChannel 로 초안 지움·배지 같음 · 같은 UUID 동시 전송 1행 · navigator.locks 대표 탭 승계) · 로그아웃·계정 바뀜 · 390/412(터치·마우스)/820/1440 × 밝게·어둡게 × 고대비(아래 시트·사용 안내 단추와 겹침 0·누름 44) · 비모달(확인·AI 도구·재인증 창이 위) · 폴링 65초 관찰(닫힘 30초·열림 8초·숨김 0·last_seen 불변) · 커뮤니티 사람 대화 라우트 6개 404·GPT 휴면 · 꾸미기 → 모아 AI. dbg_u2 MODAL_RULE·ui_snapshot AUDIT_JS 를 글자 그대로 읽어 같은 인스턴스에서. 결과 파일은 단언 이름·참/거짓과 수치(metrics)만. QF11B_ONLY=t11,t12,… 로 묶음만 돌릴 수 있다.",
-      "known_fail": {
-        "reason": "Q:T-19 「GPT/OpenAI 글자 0」 17 · snap AUDIT_JS 16 · Q:T-11 런처 타일에서 멈춤 — RV-U2-1 · RV-U2-2 에서 기준 판과 이름까지 같음",
-        "since": "2026-10-13",
-        "expires": "2026-11-12",
-        "evidence": "run6-run7-compare.json"
-      }
+      "notes": "사이트 Q:F-11 지시서 B-5·B-6 「messenger_window_browser.py」 — tests/community/messenger_browser.py(커뮤니티 모달·모의 HTTP)를 대체. memories_harness 의 빈 합성 DB + 로컬 php -S + Chromium(CHROMIUM_EXECUTABLE). fixture claude_ 계정과 합성 대화 상대 둘만. 떠 있는 창: 셸(두 모드)·커뮤니티 9·시작 안내·런처의 같은 id 단추(손님·역할로 보기·미로그인 런처 0 · Set-Cookie 0) · 같은 탭 이동 복원(열림·상대·초안·스크롤·AI 스레드, 초점 그대로) · 여러 탭(BroadcastChannel 로 초안 지움·배지 같음 · 같은 UUID 동시 전송 1행 · navigator.locks 대표 탭 승계) · 로그아웃·계정 바뀜 · 390/412(터치·마우스)/820/1440 × 밝게·어둡게 × 고대비(아래 시트·사용 안내 단추와 겹침 0·누름 44) · 비모달(확인·AI 도구·재인증 창이 위) · 폴링 65초 관찰(닫힘 30초·열림 8초·숨김 0·last_seen 불변) · 커뮤니티 사람 대화 라우트 6개 404·GPT 휴면 · 꾸미기 → 모아 AI. dbg_u2 MODAL_RULE·ui_snapshot AUDIT_JS 를 글자 그대로 읽어 같은 인스턴스에서. 결과 파일은 단언 이름·참/거짓과 수치(metrics)만. QF11B_ONLY=t11,t12,… 로 묶음만 돌릴 수 있다. · 2026-10-13 RC 검토(메인): known_fail 에서 뺌 — 셸 · 메신저 화면을 재는 주 시험이라 회귀에서 건너뛰지 않는다. 기준 판부터 있던 실패(Q:T-19 GPT 글자 17 · snap 16 · Q:T-11 런처 타일)는 `tests/run.sh compare` 로 이름 대조"
     },
     {
       "id": "community.memory_ai_http",
