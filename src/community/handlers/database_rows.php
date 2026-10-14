@@ -142,6 +142,15 @@ foreach (Db::instance()->run($sqlList, $listBind)->fetchAll() as $r) {
     ];
 }
 
+// Q:F-12 W1 — 행(작업)의 시작 예정 · 실제 시작 · 끝난 날: 위 목록 조건절을 지난 행의 번호만 모아 **한 질의**(N+1 0)
+$taskDates = community_task_dates(array_map(static fn (array $r): string => $r['id'], $rows));
+foreach ($rows as &$dateRow) {
+    $dateRow['start']    = $taskDates[$dateRow['id']]['start'] ?? null;
+    $dateRow['started']  = $taskDates[$dateRow['id']]['started'] ?? null;
+    $dateRow['finished'] = $taskDates[$dateRow['id']]['finished'] ?? null;
+}
+unset($dateRow);
+
 // 6-B — 관계·파일 값의 제목은 **보는 사람 권한으로** 거른 지도로만(못 보는 행·파일은 지도에 없다)
 [$relTitles, $fileTitles] = community_db_ref_titles($schema, array_map(static fn (array $r) => $r['values'], $rows), $user);
 

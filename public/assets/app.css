@@ -2559,6 +2559,9 @@ button.task-inbox__star:hover { background: var(--muted-bg); color: var(--fg); }
 .task-pane__props dt { color: var(--muted); font-size: 13px; }
 .task-pane__props dd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; margin: 0; font-size: 14px; overflow-wrap: anywhere; }
 .task-pane__props input[type="date"], .task-pane__props select { height: 32px; padding: 0 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: var(--surface); color: var(--fg); font: inherit; font-size: 13px; }
+/* Q:F-12 W1 (DESIGN 2.34) — 「시작 예정」 칸 아래 읽기 줄(실제 시작 · 끝난 날)과 알림은 줄을 바꿔 칸 폭 전체로. 빈 알림은 자리 0 */
+.task-pane__props dd > .help, .task-pane__props dd > .msg { flex-basis: 100%; margin: 0; }
+.task-pane__props dd > .msg:empty { display: none; }
 .task-pane__note { margin: 0; padding: 8px 12px; border-radius: var(--r-ctl); background: var(--surface-2); color: var(--muted); font-size: 13px; }
 .task-pane__section { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
 .task-pane__section-head { display: flex; align-items: center; gap: 8px; margin: 0; font-size: 14px; font-weight: 600; }

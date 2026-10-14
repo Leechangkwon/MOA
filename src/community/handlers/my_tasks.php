@@ -20,7 +20,7 @@ declare(strict_types=1);
  * 응답 200
  *   {"today":"Y-m-d","done":false,
  *    "buckets":[{"key":"overdue","name":"지난 기한","items":[<줄>…],"next_cursor":"100"|null}, …]}
- *   <줄> = {"public_id","title","status","due","project":{"public_id","title","color"}|null,
+ *   <줄> = {"public_id","title","status","due","start","started","finished"(Q:F-12 W1 — 날짜 또는 null),"project":{"public_id","title","color"}|null,
  *           "doc_space":"문서 · <공간 이름>"|null,"assigned_by":"<표시 이름>"|null,"comments_n","sub_done","sub_total"}
  *
  * @var array<string,mixed> $user   라우터가 넘긴 현재 사용자
@@ -147,6 +147,9 @@ if ($mineIds !== []) {
     }
 }
 
+// Q:F-12 W1 — 시작 예정 · 실제 시작 · 끝난 날: 위 줄(조건절을 지난 것)의 번호만 모아 **한 질의**(작업 수와 상관없이 하나)
+$taskDates = community_task_dates(array_map(static fn (array $r): string => (string) $r['public_id'], $rows));
+
 $grouped = [];
 foreach (array_keys(COMMUNITY_MY_TASK_BUCKETS) as $key) {
     $grouped[$key] = [];
@@ -165,6 +168,9 @@ foreach ($rows as $r) {
         'title'       => (string) $r['title'],
         'status'      => $r['status'] === null ? null : (string) $r['status'],
         'due'         => $r['due_date'] === null ? null : (string) $r['due_date'],
+        'start'       => $taskDates[(string) $r['public_id']]['start'] ?? null,
+        'started'     => $taskDates[(string) $r['public_id']]['started'] ?? null,
+        'finished'    => $taskDates[(string) $r['public_id']]['finished'] ?? null,
         'project'     => $isRow ? ($projects[(int) $r['database_id']] ?? null) : null,
         'doc_space'   => $isRow ? null : '문서 · ' . (string) $r['space_name'],
         'assigned_by' => $assignedBy[$id] ?? null,

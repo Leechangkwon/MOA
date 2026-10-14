@@ -167,8 +167,9 @@ try:
           'Q:T-29 owner sees sub 1/2 · comments_n 1')
     item_keys = sorted(fa[old_doc['id']][1]) if old_doc['id'] in fa else []
     codes['my_tasks_item_keys'] = item_keys
-    check(item_keys == sorted(['public_id', 'title', 'status', 'due', 'project', 'doc_space', 'assigned_by', 'comments_n', 'sub_done', 'sub_total']),
-          'Q:T-29 item keys exactly (public_id title status due project doc_space assigned_by comments_n sub_done sub_total)')
+    # Q:F-12 W1 — 날짜 셋(start · started · finished)이 더해졌다(전: 열 키)
+    check(item_keys == sorted(['public_id', 'title', 'status', 'due', 'start', 'started', 'finished', 'project', 'doc_space', 'assigned_by', 'comments_n', 'sub_done', 'sub_total']),
+          'Q:T-29 item keys exactly (public_id title status due start started finished project doc_space assigned_by comments_n sub_done sub_total)')
     check(fa.get(tb['id'], ('∅', {}))[1].get('assigned_by') is not None and fa.get(old_doc['id'], ('∅', {}))[1].get('assigned_by') is None,
           'Q:T-29 assigned_by only on tasks someone else assigned')
     done_resp = my_tasks('A', '?done=1')

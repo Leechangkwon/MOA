@@ -1,0 +1,408 @@
+#!/usr/bin/env python3
+"""Q:F-12 W1 — 화면 수락 시험: 달력의 작업 기간(예정 · 실제 막대) · 작업 칸 「시작 예정」 (실제 PHP · PostgreSQL + Chromium · 격리 틀 memories_harness.py 만)
+
+  python3 tests/community/memories_harness.py --suite qf12_w1_browser.py --output <결과 폴더>
+
+합성 DB · 임시 복사본 · 로컬 php -S 만 친다(운영 8082 · tbox_re · 시드 계정 0). 계정은 fixture 의 claude_ 와 UA tbox-review/<날짜>.
+결과 파일에는 단언 이름 · 참/거짓 · 측정값(클래스 · 수 · 좌표 · 대비)만 — 세션 · CSRF · 응답 본문 0. 스크린샷은 결과 폴더 shots/.
+지시서 docs/qf12-w1-directive.md 「완료 기준 — 브라우저」 · DESIGN 2.34 · 기획 work-ux-plan.md 19.2.
+날짜는 서울 오늘 기준 상대값(사건 시각은 합성 — SQL 로 맞춘다). 달 경계에 걸린 조각은 기대값도 같은 규칙으로 잘라 센다.
+
+  [pane]    1440 밝게: 작업 칸 「마감」 앞 「시작 예정」 칸 → 바꿔 저장 → 칸을 다시 열어도 그 값 · 실제 시작 줄 「실제 시작 M월 D일 — 진행 중으로 바꾼 날」 ·
+            시작 전 작업 「아직 시작 전」 · 끝난 작업 「끝난 날 M월 D일」 · 시작 예정 > 마감 = 칸 아래 알림 「시작 예정일이 기한보다 늦어요」 + 값 되돌림 · 활동 문장
+  [cal]     내 작업 달력 1440 · 412 × 밝게 · 어둡게 · 고대비: 예정 막대(점선 · 시작 예정 ~ 마감) · 실제 막대(첫 doing ~ 오늘 · 진한 칠) · 기한 넘김 조각(경고 칠) ·
+            기한 깃발 · 주 줄 넘김(앞 줄 --more · 다음 줄 첫 칸 --cont) · 층(예정 위 · 실제 바로 아래) · +N · 범례 셋 · 막대 누름 → 오른쪽 칸 · aria-label 문장 ·
+            기한만 있는 작업 = 기한 하루 · 412 막대 글자 0 · 넘침 0 · 대비 4.5(막대 글자 · 범례) · 인라인 style 0 · 콘솔 0 · 스크린샷
+  [project] 프로젝트 달력(데이터베이스 달력 보기 — 같은 calendar.js): 끝난 작업 실제 막대(첫 doing ~ 끝난 날) · 막대 누름 → 오른쪽 칸 · 끝난 날 줄
+"""
+from pathlib import Path
+exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
+import re, secrets, datetime
+from zoneinfo import ZoneInfo
+from urllib.parse import urlsplit
+from playwright.sync_api import sync_playwright
+assert str(root).startswith('/tmp/qaredi-stage13-') and manifest['database'].startswith('tbox_memories_test_')
+host = urlsplit(site).hostname
+UA = 'tbox-review/' + time.strftime('%Y-%m-%d')
+ONLY = set(filter(None, os.environ.get('QF12W1_ONLY', '').split(',')))
+shots = out / 'shots'
+shots.mkdir(exist_ok=True)
+metrics = {}
+
+
+def check(ok, name):
+    checks.append({'pass': bool(ok), 'name': name})
+    print(('PASS ' if ok else 'FAIL ') + name, flush=True)
+    return bool(ok)
+
+
+def want(group): return not ONLY or group in ONLY
+
+
+def guard(name, fn):
+    try:
+        fn()
+    except Exception as error:   # noqa: BLE001 — 시험 흐름의 어떤 예외든 실패로 센다
+        check(False, name + ' raised ' + type(error).__name__ + ': ' + str(error).splitlines()[0][:200])
+
+
+def uid(key): return int(users[key]['id'])
+def lit(v): return "'" + str(v).replace("'", "''") + "'"
+def pk(public_id): return int(sql('SELECT id FROM community.pages WHERE public_id=' + lit(public_id)))
+
+
+def new_session(key):
+    token = secrets.token_hex(32)
+    sql("INSERT INTO sessions(id,user_id,expires_at,ip,user_agent) VALUES('" + hashlib.sha256(token.encode()).hexdigest() + "'," + str(uid(key))
+        + ",clock_timestamp()+interval '8 hours','127.0.0.1','" + UA + "')")
+    return token
+
+
+def code_console(lines):
+    return [t for t, _ in lines if not t.startswith('Failed to load resource') and not t.startswith('[DOM] ')]
+
+
+class Tab:
+    def __init__(self, ctx):
+        self.page = ctx.new_page()
+        self.console, self.errors, self.bad = [], [], []
+        p = self.page
+        p.on('console', lambda m: self.console.append((m.text, urlsplit(m.location.get('url', '')).path)) if m.type in ('error', 'warning') else None)
+        p.on('pageerror', lambda e: self.errors.append(str(e)))
+        p.on('response', lambda r: self.bad.append(urlsplit(r.url).path) if r.status >= 500 else None)
+
+    def clean(self, tag=''):
+        ok = not self.errors and not self.bad and code_console(self.console) == []
+        if not ok:
+            metrics['unclean-' + tag + '-' + str(len(metrics))] = {'errors': [e[:200] for e in self.errors], 'bad': self.bad, 'console': [c[0][:200] for c in self.console]}
+        return ok
+
+
+CONTRAST_JS = r"""(el) => {
+  const parse = (c) => { const s = String(c); let m = s.match(/rgba?\(([^)]+)\)/);
+    if (m) { const v = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1]; }
+    m = s.match(/color\(srgb ([^)]+)\)/);
+    if (m) { const v = m[1].split(/[ /]+/).filter(Boolean).map(Number); return [v[0] * 255, v[1] * 255, v[2] * 255, v.length > 3 ? v[3] : 1]; }
+    return [0, 0, 0, 0]; };
+  const lum = (rgb) => { const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]); };
+  const over = (top, under) => { const a = top[3]; return [0, 1, 2].map(i => top[i] * a + under[i] * (1 - a)).concat(1); };
+  const layers = []; for (let n = el; n && n.nodeType === 1; n = n.parentElement) { const b = parse(getComputedStyle(n).backgroundColor); if (b[3] > 0) layers.push(b); if (b[3] >= 1) break; }
+  let bg = [255, 255, 255, 1]; for (let i = layers.length - 1; i >= 0; i--) bg = over(layers[i], bg);
+  const fg = over(parse(getComputedStyle(el).color), bg); const l1 = lum(fg), l2 = lum(bg);
+  return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+}"""
+
+# 달력 한 장의 막대 · 칸 · 범례를 한 번에 잰다
+CAL_JS = r"""(sel) => { const root = document.querySelector(sel); if (!root) return null;
+  const vis = el => { const r = el.getBoundingClientRect(); const c = getComputedStyle(el); return r.width > 0 && r.height > 0 && c.display !== 'none' && c.visibility !== 'hidden'; };
+  const weeks = [...root.querySelectorAll('.cal-week')];
+  const bars = []; weeks.forEach((w, wi) => { for (const b of w.querySelectorAll('.cal-bar')) { const c = getComputedStyle(b); const r = b.getBoundingClientRect(); const t = b.querySelector('.cal-bar__text');
+    const cls = [...b.classList]; const num = p => { const k = cls.find(x => x.startsWith(p)); return k ? Number(k.slice(p.length)) : null; };
+    bars.push({week: wi, kind: (cls.find(x => /^cal-bar--(plan|actual|late|base)$/.test(x)) || '').slice(9), col: num('cal-col-'), span: num('cal-span-'), lane: num('cal-lane-'),
+      cont: cls.includes('cal-bar--cont'), more: cls.includes('cal-bar--more'), label: b.getAttribute('aria-label'), href: b.getAttribute('href'),
+      text: t ? t.textContent : null, textShown: !!t && vis(t), borderStyle: c.borderTopStyle, bg: c.backgroundColor, w: r.width, h: r.height, l: r.left, r: r.right}); } });
+  const cells = weeks.map(w => [...w.querySelectorAll('.db-calendar__day')].map(d => ({day: d.getAttribute('aria-label'), due: !!d.querySelector('.cal-due'),
+    flag: (() => { const f = d.querySelector('.cal-due'); if (!f) return null; const fr = f.getBoundingClientRect(), dr = d.getBoundingClientRect(); return {w: fr.width, h: fr.height, right: dr.right - fr.right, top: fr.top - dr.top}; })()})));
+  const more = weeks.map((w, wi) => [...w.querySelectorAll('.cal-more')].map(m => ({week: wi, col: Number([...m.classList].find(x => x.startsWith('cal-col-')).slice(8)), text: m.textContent})));
+  const legend = [...document.querySelectorAll('.cal-legend .cal-legend__item')].filter(vis).map(i => ({text: i.textContent.trim(), sw: (() => { const s = i.querySelector('.cal-legend__swatch'); const r = s.getBoundingClientRect(); return {w: r.width, h: r.height, style: getComputedStyle(s).borderTopStyle}; })()}));
+  const lg = document.querySelector('.cal-legend'); const tb = lg ? lg.parentElement.getBoundingClientRect() : null; const lr = lg ? lg.getBoundingClientRect() : null;
+  return {weeks: weeks.length, bars, cells, more: more.flat(), legend, legendRightGap: lg ? tb.right - lr.right : null,
+          inline: root.querySelectorAll('[style]').length + (lg ? lg.querySelectorAll('[style]').length : 0),
+          overflow: document.documentElement.scrollWidth - window.innerWidth,
+          accent: getComputedStyle(document.documentElement).getPropertyValue('--accent').trim()}; }"""
+
+SEOUL = ZoneInfo('Asia/Seoul')
+TODAY = datetime.datetime.now(SEOUL).date()
+def D(n): return (TODAY + datetime.timedelta(days=n)).isoformat()
+def md(day): return '%d월 %d일' % (int(day[5:7]), int(day[8:10]))
+def rng(a, b):
+    if a == b: return md(a)
+    return md(a) + ' ~ ' + (str(int(b[8:10])) + '일' if a[:7] == b[:7] else md(b))
+MONTH_FROM = TODAY.replace(day=1)
+MONTH_TO = (MONTH_FROM + datetime.timedelta(days=32)).replace(day=1) - datetime.timedelta(days=1)
+
+
+def segments(a, b):
+    """[a, b] 를 이 달 격자의 주 줄로 자른 조각 — (줄 번호, 시작 칸 1~7, 칸 수, cont, more). 달력 그리기와 같은 규칙."""
+    a_, b_ = datetime.date.fromisoformat(a), datetime.date.fromisoformat(b)
+    lead = (MONTH_FROM.weekday() + 1) % 7          # 일요일 0
+    out_ = []
+    d = max(a_, MONTH_FROM)
+    end = min(b_, MONTH_TO)
+    while d <= end:
+        idx = lead + (d - MONTH_FROM).days
+        week, c0 = idx // 7, idx % 7
+        last_in_row = d + datetime.timedelta(days=6 - c0)
+        week_last = min(last_in_row, MONTH_TO)
+        week_first = d - datetime.timedelta(days=c0) if d - datetime.timedelta(days=c0) >= MONTH_FROM else MONTH_FROM
+        seg_end = min(end, week_last)
+        out_.append((week, c0 + 1, (seg_end - d).days + 1, max(a_, MONTH_FROM) < d or a_ < week_first, b_ > seg_end))
+        d = seg_end + datetime.timedelta(days=1)
+    return out_
+
+
+try:
+    for u in users:
+        users[u]['username'] = sql('SELECT username FROM users WHERE id=' + str(users[u]['id']))
+        call('GET', '/api/me/space', user=u)
+    emp = uid('employee')
+    sql("INSERT INTO community.usage_guides(user_id,version,status,context) SELECT id,1,'dismissed','overview' FROM users ON CONFLICT DO NOTHING")
+
+    # ─── 합성 준비 — 직원 개인 프로젝트 · 작업들(날짜는 서울 오늘 기준) ───────────────────────────────
+    proj = call('POST', '/api/pages', {'database': True, 'preset': 'project', 'title': 'W1 달력 프로젝트'}, expected=201)['page']
+    proj_db = call('GET', '/api/pages/' + proj['id'])['database']['id']
+
+    def task(title, **propsv):
+        tid = call('POST', '/api/pages', {'parent_id': proj['id'], 'title': title, 'properties': {'section': '01. 진행'}}, expected=201)['page']['id']
+        return tid
+
+    def setp(tid, body): return call('PATCH', '/api/pages/' + tid + '/properties', body)
+
+    def status_at(tid, status, day, hour=10):
+        setp(tid, {'status': status})
+        sql("UPDATE community.page_property_events SET at=" + lit('%s %02d:00:00+09' % (day, hour)) + "::timestamptz WHERE id=(SELECT max(id) FROM community.page_property_events WHERE page_id="
+            + str(pk(tid)) + " AND prop='status')")
+
+    T1 = task('디버깅')
+    setp(T1, {'start': D(-2), 'due': D(2)})
+    status_at(T1, 'todo', D(-3)); status_at(T1, 'doing', D(-1))
+    T2 = task('늦은 작업')
+    setp(T2, {'start': D(-6), 'due': D(-3)})
+    status_at(T2, 'doing', D(-5))
+    T3 = task('끝난 작업')
+    setp(T3, {'start': D(-10), 'due': D(-8)})
+    status_at(T3, 'doing', D(-10)); status_at(T3, 'done', D(-9), 15)
+    T4 = task('기한만 작업')
+    setp(T4, {'status': 'todo', 'due': D(1)})
+    # 주 줄 넘김 — 이번 주(또는 앞 주) 토요일 → 다음 월요일(둘 다 이 달 안)
+    sat = TODAY + datetime.timedelta(days=(5 - TODAY.weekday()) % 7)
+    if sat + datetime.timedelta(days=2) > MONTH_TO:
+        sat -= datetime.timedelta(days=7)
+    T5 = task('주 넘김 작업')
+    setp(T5, {'status': 'todo', 'start': sat.isoformat(), 'due': (sat + datetime.timedelta(days=2)).isoformat()})
+    # +N — 다른 작업이 없는 주의 수요일에 기한 6개
+    busy = set()
+    for a, b in ((D(-10), D(2)), (sat.isoformat(), (sat + datetime.timedelta(days=2)).isoformat())):
+        for s in segments(a, b):
+            busy.add(s[0])
+    pile_day = None
+    for shift in (7, 14, -7, -14, 21, -21):
+        cand = TODAY + datetime.timedelta(days=shift)
+        cand = cand + datetime.timedelta(days=(2 - cand.weekday()) % 7 - (7 if (2 - cand.weekday()) % 7 > 3 else 0))
+        if MONTH_FROM <= cand <= MONTH_TO and segments(cand.isoformat(), cand.isoformat())[0][0] not in busy:
+            pile_day = cand.isoformat()
+            break
+    pile = []
+    if pile_day:
+        for k in range(6):
+            t = task('묶음 %d' % (k + 1))
+            setp(t, {'status': 'todo', 'due': pile_day})
+            pile.append(t)
+    metrics['fixture'] = {'today': TODAY.isoformat(), 'sat': sat.isoformat(), 'pile_day': pile_day}
+    check(pile_day is not None, 'fixture: a quiet week for the +N pile (%s)' % pile_day)
+
+    t1_label = '디버깅 — 예정 ' + rng(D(-2), D(2)) + ' · 실제 ' + md(D(-1)) + ' ~ 진행 중'
+    t2_label = '늦은 작업 — 예정 ' + rng(D(-6), D(-3)) + ' · 실제 ' + md(D(-5)) + ' ~ 진행 중 · 기한 넘김 3일'
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'))
+
+        def context(key, width, theme, touch=False):
+            ctx = browser.new_context(viewport={'width': width, 'height': 900 if width > 800 else 915}, has_touch=touch, is_mobile=touch, user_agent=UA,
+                                      reduced_motion='reduce', color_scheme=theme)
+            jar = [{'name': '__Host-tbox_session', 'value': new_session(key), 'domain': host, 'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}]
+            for name, value in (('qaredi_motion', 'reduce'), ('tbox_theme', theme)):
+                jar.append({'name': name, 'value': value, 'domain': host, 'path': '/'})
+            ctx.add_cookies(jar)
+            return ctx
+
+        def open_my_calendar(p):
+            p.goto(site + '/community/my-tasks', wait_until='networkidle')
+            p.locator('[data-my-view="calendar"]').click()
+            p.wait_for_selector('#my-tasks-calendar .cal-week', timeout=15000)
+            p.wait_for_timeout(250)
+
+        def pane_title(p):
+            p.wait_for_selector('#task-pane .task-pane__title', timeout=15000)
+            p.wait_for_timeout(250)
+            return p.locator('#task-pane .task-pane__title').inner_text().strip()
+
+        def bar_of(cal, label_prefix, kind=None):
+            return [b for b in cal['bars'] if (b['label'] or '').startswith(label_prefix) and (kind is None or b['kind'] == kind)]
+
+        # ─── [cal] 내 작업 달력 ─────────────────────────────────────────────────────────────
+        if want('cal'):
+            def cal():
+                summary = {}
+                for mode in ('light', 'dark', 'hc'):
+                    sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(emp))
+                    for width in (1440, 412):
+                        tag = '%d-%s' % (width, mode)
+                        ctx = context('employee', width, 'dark' if mode == 'dark' else 'light', width < 800)
+                        t = Tab(ctx)
+                        p = t.page
+                        open_my_calendar(p)
+                        c = p.evaluate(CAL_JS, '#my-tasks-calendar')
+                        summary[tag] = {'bars': len(c['bars']), 'more': c['more'], 'legend': c['legend'], 'overflow': c['overflow']}
+                        if width == 1440 and mode in ('light', 'dark') or (width == 412 and mode == 'light'):
+                            p.locator('#my-tasks-calendar').screenshot(path=str(shots / ('calendar-my-tasks-%s.png' % tag)))
+                        # 예정 · 실제 · 기한 넘김
+                        b1p, b1a = bar_of(c, '디버깅 —', 'plan'), bar_of(c, '디버깅 —', 'actual')
+                        want_p, want_a = segments(D(-2), D(2)), segments(D(-1), TODAY.isoformat())
+                        check([(b['week'], b['col'], b['span']) for b in b1p] == [(s[0], s[1], s[2]) for s in want_p] and all(b['borderStyle'] == 'dashed' for b in b1p),
+                              'cal %s: 디버깅 plan bar = start ~ due %s · dashed border' % (tag, [(b['week'], b['col'], b['span']) for b in b1p]))
+                        check([(b['week'], b['col'], b['span']) for b in b1a] == [(s[0], s[1], s[2]) for s in want_a] and all(b['borderStyle'] == 'solid' for b in b1a),
+                              'cal %s: 디버깅 actual bar = first doing ~ today %s · solid' % (tag, [(b['week'], b['col'], b['span']) for b in b1a]))
+                        same_week = [(x, y) for x in b1p for y in b1a if x['week'] == y['week']]
+                        check(same_week and all(y['lane'] == x['lane'] + 1 for x, y in same_week), 'cal %s: 디버깅 plan above actual (lanes %s)' % (tag, [(x['lane'], y['lane']) for x, y in same_week]))
+                        check(all(b['label'] == t1_label for b in b1p + b1a), 'cal %s: aria-label 「%s」' % (tag, t1_label))
+                        b2l = bar_of(c, '늦은 작업 —', 'late')
+                        want_l = segments(D(-2), TODAY.isoformat())
+                        check([(b['week'], b['col'], b['span']) for b in b2l] == [(s[0], s[1], s[2]) for s in want_l] and all(b['label'] == t2_label for b in bar_of(c, '늦은 작업 —')),
+                              'cal %s: 늦은 작업 late segment = due+1 ~ today %s · label 「%s」' % (tag, [(b['week'], b['col'], b['span']) for b in b2l], t2_label))
+                        late_bg = p.evaluate("() => { const d = document.createElement('div'); d.style.background = 'var(--danger-soft)'; document.body.append(d); const v = getComputedStyle(d).backgroundColor; d.remove(); return v; }")
+                        check(b2l and all(b['bg'] == late_bg for b in b2l), 'cal %s: late segment background = --danger-soft (%s)' % (tag, late_bg))
+                        acc_bg = p.evaluate("() => { const d = document.createElement('div'); d.style.background = 'var(--accent)'; document.body.append(d); const v = getComputedStyle(d).backgroundColor; d.remove(); return v; }")
+                        check(b1a and all(b['bg'] == acc_bg for b in b1a), 'cal %s: actual bar background = --accent' % tag)
+                        # 기한만 — 기한 하루(지금과 같음)
+                        b4 = bar_of(c, '기한만 작업 —')
+                        want4 = segments(D(1), D(1))
+                        check([(b['kind'], b['week'], b['col'], b['span']) for b in b4] == [('base', s[0], s[1], 1) for s in want4]
+                              and all(b['label'] == '기한만 작업 — 기한 ' + md(D(1)) for b in b4), 'cal %s: due-only task = one-day bar on the due day' % tag)
+                        # 기한 깃발 — 이 달 안의 기한 날 칸마다(그 밖 0)
+                        dues = {D(2), D(-3), D(1), (sat + datetime.timedelta(days=2)).isoformat()} | ({pile_day} if pile_day else set())
+                        dues = {d for d in dues if MONTH_FROM.isoformat() <= d <= MONTH_TO.isoformat()}
+                        flagged = {x['day'] for w in c['cells'] for x in w if x['due']}
+                        fl = [x['flag'] for w in c['cells'] for x in w if x['flag']]
+                        check(flagged == dues and all(abs(f['w'] - 12) <= 0.5 and abs(f['h'] - 12) <= 0.5 and f['right'] <= 8 and f['top'] <= 8 for f in fl),
+                              'cal %s: due flag (12×12, top-right) exactly on due days %s' % (tag, sorted(flagged)))
+                        # 주 줄 넘김
+                        b5 = bar_of(c, '주 넘김 작업 —')
+                        want5 = segments(sat.isoformat(), (sat + datetime.timedelta(days=2)).isoformat())
+                        check(len(b5) == 2 and [(b['week'], b['col'], b['span'], b['cont'], b['more']) for b in b5] == [(s[0], s[1], s[2], s[3], s[4]) for s in want5]
+                              and b5[1]['col'] == 1 and b5[0]['more'] and b5[1]['cont'], 'cal %s: week wrap — Saturday piece --more, next row starts at column 1 --cont %s'
+                              % (tag, [(b['week'], b['col'], b['span'], b['cont'], b['more']) for b in b5]))
+                        # 층 · +N
+                        if pile_day:
+                            ps = segments(pile_day, pile_day)[0]
+                            in_col = [b for b in c['bars'] if b['week'] == ps[0] and b['col'] <= ps[1] < b['col'] + b['span']]
+                            mr = [m for m in c['more'] if m['week'] == ps[0] and m['col'] == ps[1]]
+                            check(len(in_col) == 4 and sorted(b['lane'] for b in in_col) == [1, 2, 3, 4] and [m['text'] for m in mr] == ['+2'],
+                                  'cal %s: 6 tasks on one day → lanes 1-4 shown · 「+2」 in that cell (%s · %s)' % (tag, len(in_col), [m['text'] for m in mr]))
+                        check([x['text'] for x in c['legend']] == ['예정', '실제', '기한 넘김'] and all(abs(x['sw']['w'] - 16) <= 0.5 and abs(x['sw']['h'] - 10) <= 0.5 for x in c['legend'])
+                              and c['legend'][0]['sw']['style'] == 'dashed' and c['legendRightGap'] is not None and c['legendRightGap'] <= 1,
+                              'cal %s: legend 예정 · 실제 · 기한 넘김 (swatch 16×10 · plan dashed) at the toolbar right' % tag)
+                        check(c['inline'] == 0, 'cal %s: inline style 0 in the calendar' % tag)
+                        check(c['overflow'] <= 0, 'cal %s: horizontal overflow 0 (%s)' % (tag, c['overflow']))
+                        check(all(b['h'] > 0 and abs(b['h'] - 20) <= 0.5 for b in c['bars']), 'cal %s: every bar height 20' % tag)
+                        if width == 412:
+                            check(not any(b['textShown'] for b in c['bars']) and all(b['w'] > 0 for b in c['bars']), 'cal 412-%s: bar text 0 (colour bars only) · bars still drawn' % mode)
+                        else:
+                            shown = [b for b in c['bars'] if b['textShown']]
+                            check(shown and all(b['text'] for b in shown), 'cal %s: bar titles shown (%d)' % (tag, len(shown)))
+                            cr = [round(h.evaluate(CONTRAST_JS), 2) for h in p.query_selector_all('#my-tasks-calendar .cal-bar__text') if h.is_visible()]
+                            cr_l = [round(h.evaluate(CONTRAST_JS), 2) for h in p.query_selector_all('.cal-legend__item') if h.is_visible()]
+                            summary[tag]['contrast'] = [min(cr) if cr else None, min(cr_l) if cr_l else None]
+                            check(cr and min(cr) >= 4.5 and cr_l and min(cr_l) >= 4.5, 'cal %s: contrast ≥ 4.5 — bar text min %.2f · legend min %.2f' % (tag, min(cr) if cr else -1, min(cr_l) if cr_l else -1))
+                        # 막대 누름 → 오른쪽 칸(어느 조각이든)
+                        target = '#my-tasks-calendar .cal-bar--actual[aria-label^="디버깅 —"]'
+                        p.locator(target).first.click()
+                        check(pane_title(p) == '디버깅' and '/my-tasks' in p.url, 'cal %s: clicking the actual bar opens the task in the right pane (stays on my-tasks)' % tag)
+                        if width == 1440 and mode == 'light':
+                            p.screenshot(path=str(shots / 'calendar-my-tasks-pane-1440-light.png'))
+                        check(t.clean('cal-' + tag), 'cal %s console 0 · page errors 0 · 5xx 0' % tag)
+                        ctx.close()
+                sql('UPDATE users SET high_contrast=false WHERE id=' + str(emp))
+                metrics['cal'] = summary
+            guard('cal', cal)
+
+        # ─── [pane] 작업 칸 「시작 예정」 ───────────────────────────────────────────────────
+        if want('pane'):
+            def pane():
+                ctx = context('employee', 1440, 'light')
+                t = Tab(ctx)
+                p = t.page
+                open_my_calendar(p)
+                p.locator('#my-tasks-calendar .cal-bar--plan[aria-label^="디버깅 —"]').first.click()
+                check(pane_title(p) == '디버깅', 'pane: plan bar click opens 디버깅')
+                dts = [x.strip() for x in p.locator('#task-pane .task-pane__props dt').all_inner_texts()]
+                check('시작 예정' in dts and '마감' in dts and dts.index('시작 예정') == dts.index('마감') - 1, 'pane: 「시작 예정」 right before 「마감」 %s' % dts)
+                inp = p.locator('#task-pane input[aria-label="시작 예정 날짜"]')
+                check(inp.input_value() == D(-2), 'pane: start input shows %s' % D(-2))
+                help_ = p.locator('#task-pane .task-pane__started').inner_text().strip()
+                check(help_ == '실제 시작 ' + md(D(-1)) + ' — 진행 중으로 바꾼 날', 'pane: started line 「%s」' % help_)
+                check(p.locator('#task-pane .task-pane__finished').count() == 0, 'pane: no finished line while in progress')
+                # 바꿔 저장 → 다시 열어도
+                inp.fill(D(-3))
+                inp.dispatch_event('change')
+                p.wait_for_timeout(900)
+                check(sql('SELECT start_date FROM community.pages WHERE id=' + str(pk(T1))) == D(-3), 'pane: change saved (DB start_date %s)' % D(-3))
+                p.keyboard.press('Escape')
+                p.wait_for_timeout(300)
+                p.reload(wait_until='networkidle')
+                p.locator('[data-my-view="calendar"]').click()
+                p.wait_for_selector('#my-tasks-calendar .cal-week', timeout=15000)
+                p.locator('#my-tasks-calendar .cal-bar--plan[aria-label^="디버깅 —"]').first.click()
+                pane_title(p)
+                check(p.locator('#task-pane input[aria-label="시작 예정 날짜"]').input_value() == D(-3), 'pane: reopened after reload → start still %s' % D(-3))
+                # 시작 예정 > 마감 — 칸 아래 알림 · 값 되돌림 · 저장 0
+                inp = p.locator('#task-pane input[aria-label="시작 예정 날짜"]')
+                inp.fill(D(5))
+                inp.dispatch_event('change')
+                p.wait_for_timeout(900)
+                dd_msg = p.locator('#task-pane .task-pane__props dd .msg').first.inner_text().strip()
+                check(dd_msg == '시작 예정일이 기한보다 늦어요' and inp.input_value() == D(-3) and sql('SELECT start_date FROM community.pages WHERE id=' + str(pk(T1))) == D(-3),
+                      'pane: start > due → 「%s」 under the field · input back to %s · DB unchanged' % (dd_msg, D(-3)))
+                p.screenshot(path=str(shots / 'pane-start-1440-light.png'))
+                # 활동 문장
+                p.get_by_role('tab', name='모든 활동').click()
+                p.wait_for_timeout(400)
+                acts = p.locator('#task-pane .task-pane__activity').inner_text()
+                check(('시작 예정을 ' + D(-2) + '에서 ' + D(-3) + '로 바꿨어요') in acts, 'pane: activity 「…님이 시작 예정을 %s에서 %s로 바꿨어요」' % (D(-2), D(-3)))
+                # 시작 전
+                p.keyboard.press('Escape')
+                p.locator('#my-tasks-calendar .cal-bar[aria-label^="기한만 작업 —"]').first.click()
+                pane_title(p)
+                check(p.locator('#task-pane .task-pane__started').inner_text().strip() == '아직 시작 전', 'pane: not started → 「아직 시작 전」')
+                check(t.clean('pane'), 'pane console 0 · page errors 0 · 5xx 0')
+                ctx.close()
+            guard('pane', pane)
+
+        # ─── [project] 프로젝트 달력 ────────────────────────────────────────────────────────
+        if want('project'):
+            def project():
+                views = call('GET', '/api/databases/' + proj_db + '/rows')['views']
+                cal_view = next(v for v in views if v['type'] == 'calendar')
+                for width in (1440, 412):
+                    ctx = context('employee', width, 'light', width < 800)
+                    t = Tab(ctx)
+                    p = t.page
+                    p.goto(site + '/community/p/' + proj['id'], wait_until='networkidle')
+                    p.wait_for_selector('#project-list .task-row[data-task]', timeout=15000)
+                    p.locator('[data-db-view="' + cal_view['id'] + '"]').click()
+                    p.wait_for_selector('.db-calendar .cal-week', timeout=15000)
+                    p.wait_for_timeout(300)
+                    c = p.evaluate(CAL_JS, '.db-calendar')
+                    b3 = bar_of(c, '끝난 작업 —', 'actual')
+                    lbl3 = '끝난 작업 — 예정 ' + rng(D(-10), D(-8)) + ' · 실제 ' + md(D(-10)) + ' ~ ' + (str(int(D(-9)[8:10])) + '일' if D(-10)[:7] == D(-9)[:7] else md(D(-9)))
+                    check([(b['week'], b['col'], b['span']) for b in b3] == [(s[0], s[1], s[2]) for s in segments(D(-10), D(-9))] and all(b['label'] == lbl3 + ' · 좌우 화살표로 하루 이동' for b in b3),
+                          'project %d: finished task actual bar = first doing ~ finished day · label 「%s」 + edit hint (owner can move the due)' % (width, lbl3))
+                    check(bar_of(c, '디버깅 —', 'plan') and [x['text'] for x in c['legend']] == ['예정', '실제', '기한 넘김'], 'project %d: same renderer (plan bars · legend)' % width)
+                    check(c['overflow'] <= 0 and c['inline'] == 0, 'project %d: overflow 0 · inline style 0' % width)
+                    if width == 1440:
+                        p.locator('.db-calendar').screenshot(path=str(shots / 'calendar-project-1440-light.png'))
+                    p.locator('.db-calendar .cal-bar--actual[aria-label^="끝난 작업 —"]').first.click()
+                    check(pane_title(p) == '끝난 작업' and proj['id'] in p.url, 'project %d: bar click → task in the right pane (project page stays)' % width)
+                    fin = p.locator('#task-pane .task-pane__finished')
+                    check(fin.count() == 1 and fin.inner_text().strip() == '끝난 날 ' + md(D(-9)), 'project %d: finished line 「끝난 날 %s」' % (width, md(D(-9))))
+                    check(t.clean('project-%d' % width), 'project %d console 0 · page errors 0 · 5xx 0' % width)
+                    ctx.close()
+            guard('project', project)
+
+        browser.close()
+finally:
+    (out / 'qf12-w1-browser-metrics.json').write_text(json.dumps(metrics, ensure_ascii=False, indent=1))
+    (out / 'qf12-w1-browser-results.json').write_text(json.dumps(checks, ensure_ascii=False, indent=2))
+    print('RESULT pass=' + str(sum(x['pass'] for x in checks)) + ' fail=' + str(sum(not x['pass'] for x in checks)), flush=True)
+if any(not x['pass'] for x in checks):
+    raise SystemExit(1)

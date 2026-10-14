@@ -6441,6 +6441,66 @@
       "est_sec": 900,
       "writes_prod": false,
       "notes": "사이트 H1 「모아 홈 — 구글 첫 화면 방식」(docs/home-google-directive.md 완료 기준 ①~⑤ · DESIGN 2.31 · 2.30 「테마」 타일) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. [grid] 1440 · 1280 · 960 · 720 · 412 · 360 × 밝게 · 어둡게 · 고대비: 머리 = div.shell-tools 하나(메신저 · 앱 · 칩 · 44) · 「m. 모아」 · 「전체 서비스」 · 「테마」 글자 단추 · 「내 홈」 0 · 「Qaredi」 64(<720 44) · h1 화면 읽기 「모아 홈」 · 검색 칸 52 · 반경 26 · 폭 min(720) · 자동 초점 0 · 원 56 · 아이콘 24 · 이름 13 · 기본 다섯 + 「＋ 바로가기」 · 줄 [6] / <720 [4,2] · 최대 8(824px) · 대시보드 접힘 · 접힌 동안 위젯 창구 0(요청 기록) · 넘침 0 · 누름 자리 < 44 0 · 대비 4.5 · 콘솔 0. [tools] 서버 HTML 의 div.shell-tools 가 / · /tbox/ · /community/ 에서 같음(aria-current 만 다름) · 검색 창 · #messenger-open 하나 · 「모아 홈」 aria-current · 칩 → 내 계정 · 내 활동 · 테마 · 로그아웃 · 하나만 열림 · 「테마」 → 테마 창 · 셸 두 화면에도 「테마」 · 관리자 타일 관리자만 · 412 판 전체 폭 · Esc 초점. [search] `/` 초점 · 칸 안 `/` 는 글자 · Enter → 공통 검색 창 그 글자 · 페이지 · 파일 묶음 · 앱 판 「검색」 타일. [short] 메신저 바로가기 → 메신저 창(주소 그대로) · 「＋ 바로가기」 → 펼침 + 홈 편집 + 상단 바로가기 설정(1440 옆 칸 · 412 창) · 설정 순서 · 여덟 개 한 줄 · 편집 중 접기 막힘 · 취소 쓰기 0. [dash] 펼친 뒤에만 위젯 창구 · 「접기 ▴」 · 홈 편집 · 내용 새로고침 · localStorage qaredi-home-dashboard:v1:<아이디> · 새로 고침 뒤 펼침 기억 · 접고 새로 고침 → 접힘. [before] 로그인 전 · 동의 전 런처 서버 HTML 이 main 의 launcher.php 와 글자 그대로 같음 + 실제 서버 머리 · 소개 화면. [logout] 모아 홈 「로그아웃」 → 로그인 화면. 결과: home-h1-browser-results.json · home-h1-browser-metrics.json · shots/."
+    },
+    {
+      "id": "community.qf12_w1_http",
+      "cmd": "python3 tests/community/memories_harness.py --suite qf12_w1_http.py --output /tmp/qaredi-qf12-w1-http-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "db/migrations/2026-10-14_task_start_date.sql",
+        "db/community/schema.sql",
+        "src/community/handlers/pages_properties.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/my_tasks.php",
+        "src/community/handlers/database_rows.php",
+        "src/community/routes.php",
+        "tests/community/qf12_w1_http.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        ".env.example"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 90,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-12 W1 서버 수락(docs/qf12-w1-directive.md 완료 기준 HTTP · 기획 work-ux-plan.md 19.2 · 결정 WK-29) — memories_harness.py 격리 틀. [save] PATCH …/properties {start} 저장 200 · 날짜 아님 400 · start > due 400 「시작 예정일이 기한보다 늦어요」 · due 를 앞으로 400 · 같은 값 사건 0 · null 지움 · 사건 'start' · 감사 allow · 보기 공유 403 + deny(due 와 같은 갈래) · 못 보는 사람 403. [calc] todo → doing → review → doing → done: started = 첫 doing 날(Asia/Seoul) · finished = 마지막 done 날 · done → doing = finished null · 바로 done = started null. [lists] my-tasks · 프로젝트 행 · pages_get 세 값 같음. [n+1] my_tasks.php · database_rows.php 질의 수 작업 3 = 30. [authz] 못 보는 사람 목록 0(담당을 DB 에 박아도). [mig] 두 번 + 세 번째 적용 · CHECK 'start' 한 번 · 옛 prop 그대로. 결과 qf12-w1-http-results.json."
+    },
+    {
+      "id": "community.qf12_w1_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite qf12_w1_browser.py --output /tmp/qaredi-qf12-w1-browser-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/community/calendar.js",
+        "public/assets/community/work.js",
+        "public/assets/community/database.js",
+        "public/assets/community/community.css",
+        "public/assets/app.css",
+        "src/community/handlers/my_tasks.php",
+        "src/community/handlers/database_rows.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/pages_properties.php",
+        "tests/community/qf12_w1_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        ".env.example"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 360,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-12 W1 화면 수락(DESIGN 2.34 · 기획 19.2) — memories_harness.py 격리 틀 + Chromium(env.sh). 날짜는 서울 오늘 기준 상대(사건 시각 합성). [cal] 내 작업 달력 1440 · 412 × 밝게 · 어둡게 · 고대비: 예정 막대 점선 · 실제 막대 진한 칠 · 기한 넘김 조각 --danger-soft · 기한 깃발 12×12 · 주 줄 넘김(--more · 다음 줄 첫 칸 --cont) · 예정 위 실제 아래 층 · 6개 → 층 4 + 「+2」 · 범례 셋 · aria-label 문장 · 기한만 = 하루 · 412 글자 0 · 넘침 0 · 대비 4.5 · 인라인 style 0 · 막대 누름 → 오른쪽 칸 · 콘솔 0. [pane] 「마감」 앞 「시작 예정」 · 저장 → 다시 열어도 · 실제 시작 줄 · 아직 시작 전 · 시작 예정 > 마감 알림 + 되돌림 · 활동 문장. [project] 프로젝트 달력(같은 calendar.js) · 끝난 작업 막대 · 누름 → 오른쪽 칸 · 끝난 날 줄. QF12W1_ONLY=cal,pane,project. 결과 qf12-w1-browser-results.json · metrics · shots/."
     }
   ]
 }

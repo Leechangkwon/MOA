@@ -1,7 +1,7 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=d0ff5dce7bf1';
-import { renderDoc } from './doc-render.js?v=d0ff5dce7bf1';
-import { createMentionInput } from './mention-input.js?v=d0ff5dce7bf1';
-import { personText } from './cafe.js?v=d0ff5dce7bf1';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=edbbaf7f039c';
+import { renderDoc } from './doc-render.js?v=edbbaf7f039c';
+import { createMentionInput } from './mention-input.js?v=edbbaf7f039c';
+import { personText } from './cafe.js?v=edbbaf7f039c';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -29,6 +29,8 @@ import { personText } from './cafe.js?v=d0ff5dce7bf1';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+/** Q:F-12 W1 — 「10월 12일」(작업 칸의 실제 시작 · 끝난 날 줄) */
+function monthDayText(day) { return Number(day.slice(5, 7)) + '월 ' + Number(day.slice(8, 10)) + '일'; }
 const PROJECT_COLORS = ['peach', 'lilac', 'mint', 'sand'];
 /** 프로젝트 상태 다섯(ARCH 23.6 · DESIGN 2.22) — 값은 서버 CHECK 그대로, 글자만 한글 */
 const PROJECT_STATUS = { on_track: '순조로움', at_risk: '위험', off_track: '늦어짐', on_hold: '보류', complete: '완료' };
@@ -951,6 +953,32 @@ export function createWork(deps) {
         ddAssignee.appendChild(el('span', 'badge badge--exec', '담당자가 이 작업을 고칠 수 없어요 — 다시 맡기세요'));
       }
       if (canAssign) { ddAssignee.appendChild(assignPicker(id, page.assignee, msg)); }
+      /* Q:F-12 W1 (DESIGN 2.34 · 결정 WK-29) — 「마감」 앞 「시작 예정」(같은 모양 · 비우기 가능) + 읽기 줄 둘:
+         실제 시작(처음 「진행 중」으로 바꾼 날 — 서버 계산) · 끝난 날(끝났을 때만). 시작 예정 > 마감이면 칸 아래 알림(서버 문구 그대로) */
+      const ddStart = addProp('시작 예정');
+      const startMsg = el('p', 'msg');
+      startMsg.setAttribute('role', 'alert');
+      startMsg.setAttribute('aria-live', 'polite');
+      if (canEdit) {
+        const input = el('input');
+        input.type = 'date';
+        input.value = typeof data.start === 'string' ? data.start : '';
+        input.setAttribute('aria-label', '시작 예정 날짜');
+        input.addEventListener('change', () => {
+          patchProps(id, { start: input.value === '' ? null : input.value }, startMsg).then((ok) => {
+            if (!ok) { input.value = typeof data.start === 'string' ? data.start : ''; }
+          });
+        });
+        ddStart.appendChild(input);
+      } else {
+        ddStart.appendChild(el('span', typeof data.start === 'string' ? null : 'muted', typeof data.start === 'string' ? data.start : '없음'));
+      }
+      ddStart.appendChild(el('p', 'help task-pane__started',
+        typeof data.started === 'string' && DATE_RE.test(data.started) ? '실제 시작 ' + monthDayText(data.started) + ' — 진행 중으로 바꾼 날' : '아직 시작 전'));
+      if (typeof data.finished === 'string' && DATE_RE.test(data.finished)) {
+        ddStart.appendChild(el('p', 'help task-pane__finished', '끝난 날 ' + monthDayText(data.finished)));
+      }
+      ddStart.appendChild(startMsg);
       // 마감
       const ddDue = addProp('마감');
       if (canEdit) {
@@ -1323,6 +1351,7 @@ export function createWork(deps) {
           if (e.prop === 'assignee') { return e.to ? by + ' 님이 ' + e.to + ' 님에게 맡겼어요' : by + ' 님이 담당을 비웠어요'; }
           if (e.prop === 'status') { return by + ' 님이 상태를 「' + label(e.from) + '」에서 「' + label(e.to) + '」로 바꿨어요'; }
           if (e.prop === 'due') { return by + ' 님이 마감을 ' + label(e.from) + '에서 ' + label(e.to) + '로 바꿨어요'; }
+          if (e.prop === 'start') { return by + ' 님이 시작 예정을 ' + label(e.from) + '에서 ' + label(e.to) + '로 바꿨어요'; }
           return by + ' 님이 ' + e.prop + ' 값을 바꿨어요';
         }
         if (e.kind === 'check') { return by + ' 님이 할 일을 ' + (e.checked ? '체크했어요' : '체크 해제했어요'); }
@@ -1706,12 +1735,23 @@ export function createWork(deps) {
         tools.appendChild(b);
       }
       tools.appendChild(el('span', 'muted', range.join(' ~ ')));
+      tools.appendChild(drawLegend());
       calEl.appendChild(tools);
       const host = el('div');
       calEl.appendChild(host);
+      // Q:F-12 W1 — 기한 · 시작 예정 · 실제 시작 중 하나라도 있는 작업(막대 자료는 창구가 준 세 값 그대로) · 누르면 오른쪽 칸
       const rows = [];
-      for (const b of data.buckets || []) { for (const it of b.items || []) { if (it.due) { rows.push({ id: it.public_id, title: it.title, due: it.due }); } } }
-      drawCalendar(host, { type: 'calendar', date_prop: 'due', mode: 'month' }, rows, range, { base: base, edit: false });
+      for (const b of data.buckets || []) {
+        for (const it of b.items || []) {
+          if (it.due || it.start || it.started) {
+            rows.push({ id: it.public_id, title: it.title, due: it.due, start: it.start, started: it.started, finished: it.finished });
+          }
+        }
+      }
+      drawCalendar(host, { type: 'calendar', date_prop: 'due', mode: 'month' }, rows, range, {
+        base: base, edit: false, today: typeof data.today === 'string' ? data.today : seoulToday(),
+        open: (taskId) => { pane.open(taskId, { push: true }); }
+      });
     }
     for (const b of root.querySelectorAll('[data-my-view]')) {
       b.addEventListener('click', () => {
@@ -2182,7 +2222,8 @@ export function createWork(deps) {
 
   /** database.js 에 넘기는 고리 — 행 목록 답마다 · 목록 보기 그리기 */
   function projectHooks() {
-    return { onRows: onRows, drawList: drawProjectList };
+    // Q:F-12 W1 — 프로젝트 달력 막대 누름 = 그 작업을 오른쪽 칸으로(목록 줄과 같은 칸)
+    return { onRows: onRows, drawList: drawProjectList, openTask: (taskId) => { if (projectPane) { projectPane.open(taskId, { push: true }); } } };
   }
 
   /* ════════════════ 포트폴리오 ════════════════ */

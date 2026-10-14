@@ -1094,9 +1094,50 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 }
 
 /* Stage 11 layouts reuse existing color tokens; responsive wrappers prevent page overflow. */
-.db-calendar { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:var(--space-2,8px); }
-.db-calendar__day { min-width:0; min-height:100px; border:1px solid var(--line); padding:6px; border-radius:var(--radius-sm,6px); }
+/* Q:F-12 W1 (DESIGN 2.34) — 달력은 주 줄(`.cal-week`) 7칸 격자. 날짜 칸은 줄 전체 높이(1~6 줄), 막대는 층 줄(2~5) · 「+N」은 6 줄.
+   막대 위치 · 폭은 클래스(`cal-col-N` 시작 칸 · `cal-span-N` 칸 수 · `cal-lane-N` 층) — 인라인 style 0 · 새 색값 0(1.1 토큰만). */
+.db-calendar { display:grid; gap:4px; }
+.db-calendar__head { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); column-gap:4px; font-size:12px; text-align:center; }
+.cal-week { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); grid-template-rows:26px repeat(4,22px) 18px; column-gap:4px; row-gap:2px; }
+.db-calendar__day, .cal-blank { grid-row:1 / -1; min-width:0; }
+.db-calendar__day { position:relative; border:1px solid var(--line); border-radius:var(--r-sm); padding:4px 6px; }
+.db-calendar__day h4 { margin:0; font-size:12px; font-weight:500; line-height:18px; }
+.db-calendar__day[aria-current="date"] h4 { color:var(--accent); font-weight:700; }
 .db-calendar__item { display:block; overflow-wrap:anywhere; margin-block:4px; }
+.cal-col-1 { grid-column-start:1; } .cal-col-2 { grid-column-start:2; } .cal-col-3 { grid-column-start:3; } .cal-col-4 { grid-column-start:4; }
+.cal-col-5 { grid-column-start:5; } .cal-col-6 { grid-column-start:6; } .cal-col-7 { grid-column-start:7; }
+.cal-span-1 { grid-column-end:span 1; } .cal-span-2 { grid-column-end:span 2; } .cal-span-3 { grid-column-end:span 3; } .cal-span-4 { grid-column-end:span 4; }
+.cal-span-5 { grid-column-end:span 5; } .cal-span-6 { grid-column-end:span 6; } .cal-span-7 { grid-column-end:span 7; }
+.cal-lane-1 { grid-row:2; } .cal-lane-2 { grid-row:3; } .cal-lane-3 { grid-row:4; } .cal-lane-4 { grid-row:5; }
+.cal-bar { position:relative; z-index:1; display:flex; align-items:center; min-width:0; height:20px; margin:0 3px; padding:0 6px;
+  border:1px solid var(--line); border-radius:4px; background:var(--muted-bg); color:var(--fg); font-size:12px; line-height:18px; text-decoration:none; overflow:hidden; }
+.cal-bar__text { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.cal-bar--plan { background:var(--accent-soft); border:1px dashed var(--accent); color:var(--fg); }
+.cal-bar--actual { background:var(--accent); border:1px solid var(--accent); color:var(--primary-fg); }
+.cal-bar--late { background:var(--danger-soft); border:1px solid var(--danger); color:var(--fg); }
+.cal-bar.cal-bar--cont { margin-left:0; border-top-left-radius:0; border-bottom-left-radius:0; }
+.cal-bar.cal-bar--more { margin-right:0; border-top-right-radius:0; border-bottom-right-radius:0; }
+.cal-bar.cal-bar--actual:has(+ .cal-bar--late) { margin-right:0; border-top-right-radius:0; border-bottom-right-radius:0; }
+.cal-bar--actual + .cal-bar.cal-bar--late { margin-left:0; border-top-left-radius:0; border-bottom-left-radius:0; }
+.cal-bar:hover { text-decoration:none; border-style:solid; }
+.cal-bar--plan:hover { border-style:dashed; border-color:var(--accent-dark); }
+.cal-bar:focus-visible { outline:3px solid var(--ring-soft); outline-offset:1px; }
+.cal-more { grid-row:6; z-index:1; align-self:center; padding-inline:6px; font-size:11px; line-height:16px; color:var(--muted); }
+/* 기한 깃발(아이콘 12 — 깃대 + 삼각 깃발, 색은 currentColor) · 기한 날 칸 오른쪽 위 */
+.cal-due { position:absolute; top:6px; right:6px; width:12px; height:12px; color:var(--fg-2); }
+.cal-due::before { content:""; position:absolute; left:2px; top:0; width:2px; height:12px; border-radius:1px; background:currentColor; }
+.cal-due::after { content:""; position:absolute; left:4px; top:1px; border-left:7px solid currentColor; border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; }
+/* 범례 — 달력 도구 줄 오른쪽(견본 16×10 + 12px 글자) */
+.cal-legend { display:inline-flex; flex-wrap:wrap; align-items:center; gap:12px; margin-left:auto; font-size:12px; color:var(--muted); }
+.cal-legend__item { display:inline-flex; align-items:center; gap:6px; }
+.cal-legend__swatch { display:inline-block; flex:none; width:16px; height:10px; border-radius:3px; }   /* 칠 · 테두리는 막대 갈래 클래스(--plan · --actual · --late) 그대로 */
+@media (max-width:719.98px) {
+  /* 폰 — 칸이 좁으면 막대 글자 0(색 막대만 · 누르면 같은 동작) */
+  .cal-bar__text { display:none; }
+  .cal-bar { margin:0 1px; padding:0; }
+  .db-calendar__day { padding:3px 4px; }
+  .cal-due { top:4px; right:3px; }
+}
 .db-timeline { display:grid; gap:6px; }
 .db-timeline__graphic,.db-chart { display:block; width:100%; max-height:560px; color:var(--accent); }
 .db-timeline__graphic text { fill:var(--fg); font-size:11px; }
@@ -1109,9 +1150,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 .db-view-config { display:grid; gap:12px; max-height:65vh; overflow:auto; }
 .db-timeline-canvas { max-width:100%; overflow-x:auto; }
 @media(max-width:600px) {
-  .db-calendar { grid-template-columns:1fr; }
-  .db-calendar > span { display:none; }
-  .db-calendar__day { min-height:48px; }
+  /* Q:F-12 W1 — 달 격자는 폰에서도 7칸(막대가 주 줄을 이어 그린다 · DESIGN 2.34 「폰」). 예전 한 줄 목록 갈래는 걷었다 */
   .db-timeline__graphic { width:720px; min-width:720px; }
 }
 
