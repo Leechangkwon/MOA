@@ -100,3 +100,82 @@ C1(`dabdea8`)의 검토 결과 — 설계대로 된 것: 이름표 · 안전망 
               정적: security_lint 0 · php -l · node --check · asset_version --check · wiki_check · git diff --check
 보고 형식   : docs/cafe-report.md C2 절 — 변경 파일 / 수락 시험과 결과 / 못 한 것 / DESIGN 과 다르게 한 것. 짧게.
 ```
+
+## C3 — 오른쪽 위 「앱」 단추 (사용자 지적 2026-10-14 · C2 뒤 · 같은 worktree)
+
+사용자(스크린샷): 「ㅁ 9개가 각 앱 아이콘보다 작고 시각적으로 못생김 — 좀 더 좋은 아이콘으로, 좀 더 크게, 색상으로 강조해서 클릭해야 하는 것임을 직관적으로 알 수 있게」.
+
+```
+목표        : 오른쪽 위 앱 격자 단추를 2×2 둥근 네모 아이콘 24 · 글자 15/600 · 높이 44 · 파란 강조 바탕으로 바꿔 누르는 단추임이 바로 보이게 한다.
+요구사항    : DESIGN 2.28 「앱 단추」 줄(2026-10-14 고침 — main 의 DESIGN.md 를 읽는다) · 2.16 고대비 · 6장.
+수정 파일   : src/Apps.php(ICON_PATHS 에 'apps' 한 줄 — 채움 path) · src/views/shell_top.php(summary 의 data-icon 과 클래스만) · public/assets/app.css(2.28 값 · 채움 아이콘 규칙) ·
+              app.js 가 아이콘을 그리는 곳이 채움을 지원하지 않으면 그 함수에 채움 갈래 하나 · tests/community/cafe_c2_browser.py(C3 단언 더함) · docs/cafe-report.md(C3 절)
+금지 패턴   : 새 색값 · 인라인 style · 아이콘 두 벌 · 옛 'grid' 를 바꾸기(다른 자리가 씀)
+완료 기준   : 1440 · 1280 · 960 에서 summary 높이 44 · 아이콘 24 · 바탕이 --accent-soft 계산값 · 글자 대비 4.5 이상(밝게 · 어둡게 · 고대비 · 열림 상태 포함) ·
+              타일 아이콘(20)보다 단추 아이콘이 큼 · 412 에서 summary 0(그대로) · 안 읽은 점 자리 그대로 · 넘침 0 · 스크린샷 3장(밝게 · 어둡게 · 열림)
+```
+
+## C4 — 편집 중 그림 「검사 중」 · 남긴 댓글의 멘션 표시 (사용자 지적 2026-10-14 · C3 뒤 · 같은 worktree)
+
+사용자(스크린샷 — 작업 칸): 「업무에서 이미지 삽입 시 계속 검사 중임 — 편집 중에는 이미지를 어디에 어떻게 배치할지, 이미지를 보며 글을 쓴 뒤 편집 완료했을 때 검증하면 될 것 같은데」 ·
+「댓글을 @ 해서 태그했을 때만 파란 글씨가 뜨고, 정작 작성된 글은 검은색으로 태그가 된 건지 직관적으로 보여지지 않음 — 실패인지 오타인지 제대로 된 건지 구분 필요」.
+메인 조사: 운영 첨부 3개 모두 DB 는 `clean`(검사 cron `scan_pending.php` 1분마다) — **편집기가 올린 순간의 pending 을 기억한 채 다시 묻지 않는 화면 버그**. 댓글은 평문 저장 · 멘션은 알림에만 해석 · `comments_list` 에 해석 결과 없음.
+
+```
+목표        : 올린 사람은 편집 중 그림을 바로 보고(브라우저 사본) 검사가 끝나면 저절로 서버 그림으로 바뀌며, 남긴 댓글의 @아이디 가 확인됨(파랑) · 못 찾음(빨강)으로 보이게 한다.
+요구사항    : DESIGN 2.26 「검사 중 미리보기」 줄 · 2.27 「남긴 댓글의 멘션」 줄(main 의 DESIGN.md — 2026-10-14) · 커뮤니티 ARCH 24장(첨부 판정 그대로).
+수정 파일   : 서버 — src/community/handlers/attachments_list.php(새 — GET /api/pages/{id}/attachments · 판정 decideAttachmentRead · 응답 {attachment_titles} 만 · 감사 0) ·
+                 src/community/routes.php(라우트 줄 하나 · community.read) · src/community/handlers/comments_list.php(mention_status — 목록 안 아이디만 · 질의 고정 · 익명게시판 빈 지도) ·
+              화면 — public/assets/community/editor.js(올리기 → data: 사본 · 그림 NodeView 가 사본을 쓰는 갈래 · 확인 반복 · 저장 뒤 한 번 · 댓글 멘션 표시) ·
+                 public/assets/community/work.js(칸 댓글 멘션 표시 — 같은 함수) · public/assets/community/doc-render.js(필요하면 사본 지도 인자 하나) · community.css · app.css ·
+                 커뮤니티 JS import 버전 줄 ·
+              시험 — tests/community/cafe_c4_browser.py(새 수락 — HTTP + 브라우저) · memories_harness.py(choices) · tests/catalog.json · docs/cafe-report.md(C4 절)
+금지 패턴   : 검사 전 서버 사본을 내보내기(raw · download 의 423 그대로) · CSP 바꾸기 · blob: · innerHTML · 인라인 style · 새 색값 · 렌더러 · 멘션 표시 두 벌 ·
+              mention_status 에 볼 수 없는 사람의 이름 싣기(못 보는 사람은 ok:false — 존재 여부를 드러내지 않음) · N+1 · git add -A.
+완료 기준   : HTTP — attachments 목록: 볼 수 있는 사람 200(지도 · scan_status) · 못 보는 사람 404 · 손님 규칙 그대로 · 응답에 다른 문서 첨부 0 ·
+                 comments_list mention_status: 있는 · 볼 수 있는 아이디 ok:true+이름 · 없는 아이디 ok:false · 그 문서를 못 보는 사람의 아이디 ok:false(이름 0) · 익명게시판 {} · 질의 수 댓글 3 · 30 같음
+              브라우저(1440 · 412) — 그림을 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」 셋 다: 즉시 img(data:) + 「검사 중 · 나만 보여요」 배지 · 손잡이로 폭 바꿈 ·
+                 서버 scan_status 를 clean 으로 바꾸면(틀이 scan_pending 실행 또는 DB) 5초 안에 서버 주소 img 로 바뀜 · 배지 0 · 폭 그대로 · 저장 뒤 다시 열어도 그림 ·
+                 새로 고침 뒤 pending 이면 「검사 중이에요」 상자 → clean 이 되면 바뀜 · 다른 사람 화면은 clean 전 상자 · 콘솔 0 ·
+                 댓글(전체 화면 · 칸): `@있는아이디` 파랑 + aria-label 「… 알림이 갔어요」 · `@없는아이디` 빨강 + 물결 · `@아이디.te` 처럼 붙은 글자도 서버 규칙(community_mentions_in)대로 끊어 표시 ·
+                 대비 4.5 이상(밝게 · 어둡게 · 고대비) · 넘침 0
+              정적: security_lint 0 · php -l · node --check · asset_version --check · git diff --check
+```
+
+## C5 — 접힌 사이드바 「＋」 풍선 · 기본 접힘 (사용자 지적 2026-10-14 · C4 뒤 · 같은 worktree)
+
+사용자(스크린샷 셋 — 접힌 「＋」에 마우스를 올리면 단추 안에 「로 만들」 잘린 글자 · 「홈」은 옆에 풍선): 「다른 건 마우스를 올리면 『홈』처럼 설명 글이 나오는 방식이 되어야 함, 단 펼쳐서 칸 크기가 충분할 때만 『새로 만들기』로 · 페이지 접근했을 당시 가장 기본은 사이드바가 전부 간소화된 상태로」.
+
+```
+목표        : 접힌 레일의 「＋」를 다른 줄과 같은 아이콘 + 오른쪽 풍선으로 만들고, 저장된 선택이 없으면 모든 셸이 접힌 레일로(첫 HTML 부터) 시작하게 한다.
+요구사항    : DESIGN 2.19 ⑨ 「2026-10-14 사용자 지적 보정」 세 줄(main 의 DESIGN.md) · 2.8 툴팁.
+수정 파일   : src/views/shell_top.php(쿠키 `qaredi_sidebar` === 'open' 이 아니면 body 에 data-sidebar="collapsed" · ☰ aria 첫 값 — 값은 비교만, 출력 0) ·
+              public/assets/app.js(☰ 누름 → 쿠키 쓰기 · 옛 localStorage 키 한 번 지움 · 끝 스크립트의 임시 속성 갈래 정리) · public/assets/app.css(접힌 「＋」 — 글자 숨김 · 풍선) ·
+              이 셸을 그리는 다른 뷰가 body 를 따로 그리면 그 자리(구현자가 grep — 보고서에) ·
+              시험 — tests/community/cafe_c4_browser.py 에 C5 단언 · 접힘 기본이 깨뜨리는 옛 단언(펼침을 가정한 셸 시험)은 시험 시작 때 쿠키 `qaredi_sidebar=open` 을 넣는 한 줄로 · 이유를 보고서에 · docs/cafe-report.md(C5 절)
+금지 패턴   : 머리 인라인 스크립트(CSP) · 인라인 style · 새 색값 · 쿠키에 사용자 정보 · 쿠키 값을 HTML 에 그대로 출력 · git add -A.
+완료 기준   : 1440 · 1280 · 960(업무 · 이야기 · 자료실 셸): 쿠키 없음 → 첫 HTML(서버 응답 원문)에 data-sidebar="collapsed" · 레일 64 · 첫 프레임 스크린샷도 접힘 ·
+              ☰ 펼침 → 쿠키 open → 다른 화면 · 새로 고침 펼침(첫 HTML 에 속성 0) · 다시 접기 → 접힘 ·
+              접힌 「＋」: 올리기 · 초점 때 단추 안 보이는 글자 0(계산된 폭 · 글자 노드 보임 0) · 오른쪽 풍선 「새로 만들기」(「홈」 풍선과 같은 top · left 기준) · 누르면 메뉴 그대로 ·
+              펼침 폭 240 에서 「＋ 새로 만들기」 글자 · 412 는 서랍 그대로(쿠키 무관) · 넘침 0 · 콘솔 0
+```
+
+## C6 — 오른쪽 위 셋: 메신저 · 앱 · 내 계정 (사용자 지적 2026-10-14 · C5 뒤 · 같은 worktree)
+
+사용자(스크린샷 — 앱 판): 「앱에 내 계정 경로가 있는데 오른쪽 아이디를 눌러도 내 계정으로 감. 내 계정 · 내 활동 같은 내 계정 관련 정보를 앱 표현 방식과 같게 — 아이디를 클릭하면 모달이 뜨고 골라서 접근. 메신저는 다른 페이지로 가는 경로가 아니라 전역 팝업 기능이니 모달에서 제거하고 앱 왼쪽에 메신저 단추를 따로」.
+
+```
+목표        : 오른쪽 위를 메신저 단추 · 앱 단추 · 내 계정 칩(누르면 앱 판과 같은 모양의 내 계정 판)으로 나누고, 앱 판에는 앱과 도구만 남긴다.
+요구사항    : DESIGN 2.30(main 의 DESIGN.md — 2026-10-14) · 2.18 · 2.28(C3 의 앱 단추) · 2.17 메신저 창 · 6장.
+수정 파일   : src/views/shell_top.php(셋 · 판 둘 · 폰 #appbar-account) · public/assets/app.js(판 하나만 열림 · 닫기 · 초점 · 폰 단추 — 지금 앱 판 함수를 두 판에 쓰도록 넓힘 · 두 벌 0) ·
+              public/assets/messenger.js · messenger-access.js(여는 단추가 타일에서 단추로 바뀐 데 따른 선택자 · aria-expanded · 초점 되돌림 · 안 읽은 수 자리) · public/assets/app.css ·
+              이 셸 말고 런처(`src/views/launcher.php` · 모아 머리 `member_top.php`)에 같은 칩 · 앱 판이 있으면 같은 부품으로(구현자가 grep — 보고서에) ·
+              시험 — tests/community/cafe_c4_browser.py 에 C6 단언 · 앱 판 타일 수 · 메신저 타일 · 내 계정 타일을 재던 옛 단언(qf12_shell_browser · messenger_* · q_launcher 등)은
+              **그 단언만** 새 규칙으로(파일 · 단언 이름 목록을 보고서에 — 그 시험들을 통째로 돌리지는 않는다) · docs/cafe-report.md(C6 절)
+금지 패턴   : 판 · 메뉴 부품 두 벌 · 인라인 style · 새 색값 · innerHTML · 메신저 창을 여는 길 두 벌 · git add -A.
+완료 기준   : 1440 · 1280 · 960: 순서 메신저 · 앱 · 칩 · 높이 44 셋 · 메신저 단추 누름 → 창 열림(aria-expanded true) · 다시 → 닫힘 · Esc 초점 단추로 · 안 읽은 수 배지가 메신저 단추에(앱 단추에 0) ·
+              앱 판 타일에 메신저 · 내 계정 · 내 활동 · 로그아웃 0 · 관리자 타일은 관리자만 ·
+              칩 누름 → 내 계정 판(머리 이름 · 아이디 · 역할 · 타일 내 계정 · 내 활동 · 로그아웃 줄) · 타일 누르면 이동 · 로그아웃 동작 그대로 · 앱 판과 같은 폭 · 같은 클래스 ·
+              두 판 동시 열림 0 · 바깥 누름 · Esc 닫힘 · /tbox/settings 에서 「내 계정」 타일 aria-current ·
+              412: 윗줄 메신저 · 아바타 단추 · 아바타 → 판 전체 폭 · 서랍 · 앱 판 · 계정 판 하나만 · 손님(메신저 없음) · 직원 · 관리자 세 계정 · 밝게 · 어둡게 · 고대비 넘침 0 · 대비 4.5 · 콘솔 0 · 누름 자리 < 44 0
+```
