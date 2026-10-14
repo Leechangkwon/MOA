@@ -814,7 +814,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
     <div class="shell-tools">
       <details class="appbar__apps" id="app-grid">
         <summary class="btn btn--quiet" aria-label="앱 — 앱 바꾸기와 계정">
-          <span class="icon" data-icon="grid"></span><span aria-hidden="true">앱</span><span class="badge badge--internal" data-message-unread hidden></span>
+          <span class="icon" data-icon="apps"><?php /* 카페 C3 (DESIGN 2.28 「앱 단추」) — 채움 아이콘 apps(Apps::ICON_PATHS · moa_icon.php 한 벌). 아이콘 틀(shell_bottom)에 없는 키라 이 자리에서 그린다 — 채운 자리는 app.js paintIcons 가 건너뛴다 */ $moaIcon = 'apps'; require __DIR__ . '/moa_icon.php'; ?></span><span aria-hidden="true">앱</span><span class="badge badge--internal" data-message-unread hidden></span>
         </summary>
         <div class="panel app-menu">
           <ul class="app-menu__apps">

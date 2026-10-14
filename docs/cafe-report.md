@@ -80,3 +80,20 @@ board_pages_create(page.create) · SaveDoc(page.update — pages_update 의 몸)
 - 「우리 공간」 사이드바에 **받은 알림**을 둔다(2.29 목록에는 없음) — 익명 댓글 · 「관리자가 숨겼어요」 알림을 받는 길이고 종 · 창은 업무와 같은 한 벌.
 - 신고함 표의 「대상」 칸은 `.btn--quiet.btn--small` 단추(키보드로 칸을 여는 자리) · 줄 전체 누름도 같은 칸.
 - 「우리 공간」 화면의 머리글 순서: 카페 `h2` → 「내 공간」 `h2` → 지금 공간 이름 `h1`(지금 화면 그대로 두라는 지시라 h1 을 옮기지 않았다).
+
+## C3 — 오른쪽 위 「앱」 단추 · 2026-10-14 · Opus 구현 에이전트 (메인 추가 지시 · 기준 main 의 DESIGN 2.28 「앱 단추」 · 지시서 C3)
+
+### 변경 파일
+- `src/Apps.php` — `ICON_PATHS` 에 `apps`(2×2 둥근 네모 넷 · 각 8×8 · 반경 2.5 · 간격 4 · 채움용 path). 옛 `grid` 그대로.
+- `src/views/shell_top.php` — 앱 단추 summary 의 `data-icon="apps"` · 그 자리에 `moa_icon.php`(Apps::ICON_PATHS 한 벌)로 svg 를 그린다(클래스 `btn btn--quiet` · aria-label 그대로).
+- `public/assets/app.css` — 2.28 값: summary 높이 44 · 안 여백 0 16 0 12 · 15px 600 · 반경 --r-ctl · 바탕 --accent-soft · 테두리 --accent-line · 글자 · 아이콘 --accent-dark · 올림 --accent-line · 열림 --accent 위 --primary-fg · 초점 --ring-soft 3px · 아이콘 24 **채움 규칙**(fill currentColor · stroke none) · `.shell-tools` 줄 44 · 이름 칩 44(아바타 34). 색값 0(토큰뿐).
+- `tests/community/cafe_c2_browser.py` — [apps] 묶음 더함. 옛 시험 단언 바꿈: `tests/community/qf12_u5_browser.py` [shell] 의 셋(앱 단추 40 · 14px 500 · 아이콘 20 → 44 · 15px 600 · 24 / 줄 40 → 44 / 이름 칩 40 · 아바타 32 → 44 · 34) — DESIGN 2.28 이 바뀐 값이라(그 시험은 돌리지 않음).
+
+### 수락 시험
+- `CAFE_C2_ONLY=apps` 개발 실행 `c3-dev1` pass 102 · fail 0 → 최종 판(C2 + C3 전부) 한 번: `python3 tests/community/memories_harness.py --suite cafe_c2_browser.py --output /home/changkwon/qaredi-cafe-results-20261014/c3-run1` → **pass 380 · fail 0**(rc 0).
+- [apps] 1440 · 1280 · 960 × 밝게 · 어둡게 · 고대비: summary 높이 44 · 아이콘 apps 24×24 채움(fill = 글자색 · stroke none) · 바탕 = --accent-soft 계산값 · 글자 --accent-dark · 테두리 --accent-line · 15/600 · 여백 12/16 · 대비 닫힘 5.85 / 7.00 / 16.67 · 열림(--accent 위 --primary-fg) 6.70 / 7.88 / 18.88(밝게 / 어둡게 / 고대비 — 모두 ≥ 4.5) · 단추 아이콘 24 > 타일 아이콘 20 · 이름 칩 44 · 아바타 34 · 안 읽은 점 오른쪽 위 3px · 8px 그대로 · 넘침 0 · 콘솔 0 / 412: 줄 숨김(summary 0) · 윗줄 앱 이름 ▾ 그대로. 스크린샷 셋: `c3-run1/shots/apps-button-light.png` · `apps-button-dark.png` · `apps-button-open.png`.
+- 정적: security_lint 0 · php -l 0 · asset_version --check 0 · wiki_check 0 · git diff --check 0 · Apps::all() 읽기 정상 — `c3-static.txt`.
+
+### DESIGN 과 다르게 한 것 · 못 한 것
+- 지시서는 shell_top 에서 「data-icon 과 클래스만」이었지만, 아이콘 틀(`<template id="tpl-icon-…">`)은 허용 목록 밖 `shell_bottom.php` 에 고정 목록으로 있어 `apps` 틀이 없다 — summary 안에서 `moa_icon.php` 로 svg 를 바로 그렸다(채운 자리는 app.js `paintIcons` 가 건너뛴다 · app.js 무변경).
+- summary 클래스는 `btn btn--quiet` 를 그대로 둔다 — 빼면 테마(design.css)의 검정 단추 꾸밈(반짝 ::before · overflow hidden · 들림)이 붙는다. 보이는 모양은 app.css 가 덮는다(qf12_shell_browser 의 summary 클래스 문자열 단언도 그대로 성립).

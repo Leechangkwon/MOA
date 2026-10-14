@@ -18,6 +18,8 @@
   [matrix]  360 · 412(터치) · 820 · 1199 · 1280 · 1440 × 밝게 · 어둡게 · 고대비 — 카페 홈 · 익명 글 · 신고함(칸 열림) 가로 넘침 0 · 누름 자리 < 44 0 · 인라인 style 0 · 콘솔 0
   [reports] 신고함(관리자만 — 직원 403) · 탭 셋 · 행 → 오른쪽 칸 · 메모 필수 · 숨기기 · 반려 · 작성자 확인(재인증 창 → 사유 20자 → 이름 → 닫으면 DOM 0 · 저장소 · 주소 0)
   [request] 「게시판 만들어 주세요」 → 관리자 「게시판 요청」 만들기 → 카페 홈에 카드 · 반려(메모 필수)
+  [apps]    C3 — 오른쪽 위 「앱」 단추(DESIGN 2.28): 1440 · 1280 · 960 × 밝게 · 어둡게 · 고대비 — 높이 44 · 아이콘 24(채움 · 타일 아이콘 20 보다 큼) ·
+            바탕 = --accent-soft 계산값 · 글자 대비 ≥ 4.5(닫힘 · 열림) · 이름 칩 44(아바타 34) · 안 읽은 점 자리 · 넘침 0 / 412 summary 0 · 스크린샷 셋
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -705,6 +707,87 @@ try:
                 check('독서 모임 C2' in names, 'request: created board card appears on the cafe home ' + json.dumps(names, ensure_ascii=False))
                 ctx.close()
             guard('request', request)
+
+        # ─── [apps] C3 — 오른쪽 위 「앱」 단추 ───────────────────────────────────────────────
+        if want('apps'):
+            def apps():
+                APPS_JS = r"""() => {
+                  const parse = (c) => { const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const v = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1]; };
+                  const lum = (rgb) => { const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]); };
+                  const over = (top, under) => { const a = top[3]; return [0, 1, 2].map(i => top[i] * a + under[i] * (1 - a)).concat(1); };
+                  const bodyBg = parse(getComputedStyle(document.body).backgroundColor) || [255, 255, 255, 1];
+                  const pageBg = bodyBg[3] === 0 ? [255, 255, 255, 1] : bodyBg;
+                  const ratio = (fg, bg) => { const b = over(bg, pageBg); const f = over(fg, b); const l1 = lum(f), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+                  const probe = (token) => { const d = document.createElement('div'); d.style.backgroundColor = 'var(' + token + ')'; document.body.appendChild(d); const v = getComputedStyle(d).backgroundColor; d.remove(); return v; };
+                  const s = document.querySelector('.shell-tools > .appbar__apps > summary'); const cs = getComputedStyle(s); const r = s.getBoundingClientRect();
+                  const svg = s.querySelector('svg'); const sr = svg ? svg.getBoundingClientRect() : {width: 0, height: 0};
+                  const label = [...s.querySelectorAll('span')].find(x => x.textContent === '앱');
+                  const me = document.querySelector('.shell-tools__me'); const av = me ? me.querySelector('span').getBoundingClientRect() : {width: 0};
+                  return {h: r.height, svgW: sr.width, svgH: sr.height, fill: svg ? getComputedStyle(svg).fill : null, stroke: svg ? getComputedStyle(svg).stroke : null,
+                          icon: s.querySelector('[data-icon]') ? s.querySelector('[data-icon]').getAttribute('data-icon') : null,
+                          bg: cs.backgroundColor, soft: probe('--accent-soft'), color: cs.color, dark: probe('--accent-dark'), border: cs.borderTopColor, line: probe('--accent-line'),
+                          font: label ? [getComputedStyle(label).fontSize, getComputedStyle(label).fontWeight] : [cs.fontSize, cs.fontWeight], pad: [cs.paddingLeft, cs.paddingRight],
+                          contrast: ratio(parse(cs.color), parse(cs.backgroundColor)), meH: me ? me.getBoundingClientRect().height : 0, avatar: av.width,
+                          overflow: document.documentElement.scrollWidth - window.innerWidth, visible: cs.display !== 'none' && r.width > 0}; }"""
+                OPEN_JS = r"""() => {
+                  const parse = (c) => { const m = c.match(/rgba?\(([^)]+)\)/); if (!m) return null; const v = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return [v[0], v[1], v[2], v.length > 3 ? v[3] : 1]; };
+                  const lum = (rgb) => { const f = (x) => { x /= 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); }; return 0.2126 * f(rgb[0]) + 0.7152 * f(rgb[1]) + 0.0722 * f(rgb[2]); };
+                  const s = document.querySelector('.shell-tools > .appbar__apps > summary'); const cs = getComputedStyle(s);
+                  const probe = (token) => { const d = document.createElement('div'); d.style.backgroundColor = 'var(' + token + ')'; document.body.appendChild(d); const v = getComputedStyle(d).backgroundColor; d.remove(); return v; };
+                  const f = parse(cs.color), b = parse(cs.backgroundColor); const l1 = lum(f), l2 = lum(b);
+                  const tile = document.querySelector('.app-menu__icon svg'); const tr = tile ? tile.getBoundingClientRect() : {width: 0};
+                  return {bg: cs.backgroundColor, accent: probe('--accent'), color: cs.color, fg: probe('--primary-fg'), contrast: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05), tile: tr.width,
+                          icon: s.querySelector('svg').getBoundingClientRect().width, overflow: document.documentElement.scrollWidth - window.innerWidth}; }"""
+                DOT_JS = r"""() => { const s = document.querySelector('.shell-tools > .appbar__apps > summary'); const d = s.querySelector('[data-message-unread]');
+                  d.hidden = false; d.textContent = '3'; const r = s.getBoundingClientRect(); const q = d.getBoundingClientRect();
+                  const out = {top: Math.round(q.top - r.top), right: Math.round(r.right - q.right), w: Math.round(q.width), h: Math.round(q.height)}; d.hidden = true; d.textContent = ''; return out; }"""
+                summary = {}
+                for mode in ('light', 'dark', 'hc'):
+                    sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(uid('W')))
+                    for width in (1440, 1280, 960):
+                        tag = '%d-%s' % (width, mode)
+                        ctx = context('W', width, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
+                        t = Tab(ctx)
+                        p = t.page
+
+                        def one():
+                            t.go('/community/workspace')
+                            a = p.evaluate(APPS_JS)
+                            dot = p.evaluate(DOT_JS)
+                            if width == 1440 and mode in ('light', 'dark'):
+                                p.locator('.shell-tools').screenshot(path=str(shots / ('apps-button-%s.png' % mode)))
+                            p.locator('.shell-tools > .appbar__apps > summary').click()
+                            p.wait_for_selector('.appbar__apps[open] .app-menu', timeout=5000)
+                            p.mouse.move(5, 5)
+                            p.wait_for_timeout(150)
+                            o = p.evaluate(OPEN_JS)
+                            if width == 1440 and mode == 'light':
+                                p.screenshot(path=str(shots / 'apps-button-open.png'), clip={'x': width - 480, 'y': 0, 'width': 480, 'height': 520})
+                            p.keyboard.press('Escape')
+                            summary[tag] = {'closed': a, 'open': o, 'dot': dot}
+                            check(abs(a['h'] - 44) < 0.6 and abs(a['svgW'] - 24) < 0.6 and abs(a['svgH'] - 24) < 0.6 and a['icon'] == 'apps' and a['stroke'] == 'none' and a['fill'] == a['color'],
+                                  'apps %s: summary h 44 · icon apps 24×24 filled currentColor %s' % (tag, json.dumps({k: a[k] for k in ('h', 'svgW', 'icon', 'fill', 'stroke')})))
+                            check(a['bg'] == a['soft'] and a['color'] == a['dark'] and a['border'] == a['line'] and a['font'] == ['15px', '600'] and a['pad'] == ['12px', '16px'],
+                                  'apps %s: bg = --accent-soft · text --accent-dark · border --accent-line · 15/600 · padding 12/16 %s' % (tag, json.dumps({k: a[k] for k in ('bg', 'soft', 'color', 'dark', 'font', 'pad')})))
+                            check(a['contrast'] >= 4.5, 'apps %s: closed text contrast %.2f ≥ 4.5' % (tag, a['contrast']))
+                            check(o['bg'] == o['accent'] and o['color'] == o['fg'] and o['contrast'] >= 4.5, 'apps %s: open bg --accent · text --primary-fg · contrast %.2f ≥ 4.5' % (tag, o['contrast']))
+                            check(o['icon'] > o['tile'] > 0, 'apps %s: button icon %.0f > tile icon %.0f' % (tag, o['icon'], o['tile']))
+                            check(abs(a['meH'] - 44) < 0.6 and abs(a['avatar'] - 34) < 0.6, 'apps %s: name chip h 44 · avatar 34 (%.1f · %.1f)' % (tag, a['meH'], a['avatar']))
+                            check(dot['top'] == 3 and dot['right'] == 3 and dot['w'] == 8, 'apps %s: unread dot top-right 3px · 8px %s' % (tag, json.dumps(dot)))
+                            check(a['overflow'] <= 0 and o['overflow'] <= 0, 'apps %s: horizontal overflow 0' % tag)
+                        guard('apps ' + tag, one)
+                        check(t.clean('apps-' + tag), 'apps %s: console 0' % tag)
+                        ctx.close()
+                sql('UPDATE users SET high_contrast=false WHERE id=' + str(uid('W')))
+                ctx = context('W', 412, 915, touch=True)
+                t = Tab(ctx)
+                t.go('/community/workspace')
+                st = t.page.evaluate("() => { const s = document.querySelector('.shell-tools > .appbar__apps > summary'); return {summary: getComputedStyle(s).display, tools: getComputedStyle(document.querySelector('.shell-tools')).display, appbar: getComputedStyle(document.getElementById('appbar-apps')).display, overflow: document.documentElement.scrollWidth - innerWidth}; }")
+                summary['412'] = st
+                check(st['tools'] == 'none' and st['appbar'] != 'none' and st['overflow'] <= 0, 'apps 412: summary 0 (row hidden · phone app name ▾ as before) %s' % json.dumps(st))
+                ctx.close()
+                metrics['apps'] = summary
+            guard('apps', apps)
 
         browser.close()
 finally:

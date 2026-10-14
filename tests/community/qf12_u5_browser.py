@@ -234,14 +234,15 @@ try:
                         summary['%s%s' % (tag, path.replace('/', '_'))] = st
                         name = users['employee']['display']
                         if width >= 960:
-                            check(st['sumText'] == '앱' and abs(st['sum']['h'] - 40) <= 0.5 and st['sum']['fs'] == '14px' and st['sum']['fw'] == '500'
-                                  and st['svg'] and abs(st['svg']['w'] - 20) <= 0.5 and abs(st['svg']['h'] - 20) <= 0.5,
-                                  'shell %s %s: app button shows 「앱」 · height 40 · 14px 500 · icon 20 (%s · h %.1f · svg %s)' % (tag, path, st['sumText'], st['sum']['h'], st['svg'] and st['svg']['w']))
-                            check(abs(st['tools']['h'] - 40) <= 0.5 and abs(st['tools']['r'] - st['mainInnerRight']) <= 2, 'shell %s %s: shell-tools row height 40 · right-aligned' % (tag, path))
-                            check(st['me'] and abs(st['me']['h'] - 40) <= 0.5 and st['av'] and abs(st['av']['w'] - 32) <= 0.5 and abs(st['av']['h'] - 32) <= 0.5
+                            # 카페 C3(DESIGN 2.28 「앱 단추」 2026-10-14 고침) — 높이 44 · 15px 600 · 아이콘 24 · 줄 44 · 이름 칩 44(아바타 34). 전: 40 · 14px 500 · 20 · 40 · 40(32)
+                            check(st['sumText'] == '앱' and abs(st['sum']['h'] - 44) <= 0.5 and st['sum']['fs'] == '15px' and st['sum']['fw'] == '600'
+                                  and st['svg'] and abs(st['svg']['w'] - 24) <= 0.5 and abs(st['svg']['h'] - 24) <= 0.5,
+                                  'shell %s %s: app button shows 「앱」 · height 44 · 15px 600 · icon 24 (%s · h %.1f · svg %s)' % (tag, path, st['sumText'], st['sum']['h'], st['svg'] and st['svg']['w']))
+                            check(abs(st['tools']['h'] - 44) <= 0.5 and abs(st['tools']['r'] - st['mainInnerRight']) <= 2, 'shell %s %s: shell-tools row height 44 · right-aligned' % (tag, path))
+                            check(st['me'] and abs(st['me']['h'] - 44) <= 0.5 and st['av'] and abs(st['av']['w'] - 34) <= 0.5 and abs(st['av']['h'] - 34) <= 0.5
                                   and st['name'] == name and st['meText'].endswith('님') and name in st['meText'] and st['meHref'] == '/tbox/settings'
                                   and st['meLabel'] == '내 계정 — ' + name,
-                                  'shell %s %s: user chip = avatar 32 + 「%s 님」 · height 40 · href /tbox/settings · aria-label 「내 계정 — 이름」 (%s)' % (tag, path, name, st['meText']))
+                                  'shell %s %s: user chip = avatar 34 + 「%s 님」 · height 44 · href /tbox/settings · aria-label 「내 계정 — 이름」 (%s)' % (tag, path, name, st['meText']))
                             check(st['me']['r'] <= width and st['sum']['r'] <= st['me']['l'] and st['overflow'] <= 0 and st['inline'] == 0,
                                   'shell %s %s: app button left of the chip · overflow 0 · inline style 0' % (tag, path))
                             if path == '/community/' and theme == 'light':
