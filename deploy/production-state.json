@@ -177,5 +177,35 @@
     "last_fetched_origin_main": "588f6e0d10f6bb555b8ce0d996bf594d87fdebe3",
     "reason": "운영 검증과 기록을 main/작업 브랜치/릴리스 및 기준 태그와 함께 원격에 원자적으로 올렸음을 확인했다. 이 문서 후속 커밋은 동기화 확인 기록이다.",
     "verified_at": "2026-10-12T14:34:17.509439+09:00"
-  }
+  },
+  "targeted_hotfixes": [
+    {
+      "scope": "gemini_flash_model_only",
+      "version": "2.67.1",
+      "implementation_commit": "2f5e99ae3649ff4d5ad8570b29afff72bf6e993e",
+      "release_commit": "3dd482a3500b5803dd5a0cfe1ebd039115f20da0",
+      "base": "0a33f08f89f031477e40b8874bed97edc44dbee2",
+      "verified_at": "2026-10-14T15:01:12.637418+09:00",
+      "runtime_files": {
+        "src/Ai.php": "b00488b536132f675ec6fba57e5f356a085b1b92c93ddbb346708724d3157e68",
+        "src/Fetch.php": "578000fe1e9675367a24990790c83e07c78e16045c10bb504c10f884a3611862",
+        "src/MemberAi.php": "f99e0720c1fc6b62f20e9f417ed99d76f15d16d56a2fa794e1c284d5d1820e2d"
+      },
+      "provider_actual_model": "gemini-3.6-flash",
+      "provider_finish": "STOP",
+      "public_health_http": 200,
+      "local_health_http": 200,
+      "assistant_unauthenticated_http": 401,
+      "existing_chat_rows_preserved": 22,
+      "db_migrations": 0,
+      "credential_changes": 0,
+      "unverified": [
+        "full previous runtime drift",
+        "document AI key not configured",
+        "live audio transcription timed out",
+        "actual Windows user chat"
+      ],
+      "details": "docs/work-items/gemini-36-flash.md"
+    }
+  ]
 }

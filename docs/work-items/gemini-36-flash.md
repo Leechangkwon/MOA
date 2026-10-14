@@ -1,6 +1,6 @@
 # Gemini 3.6 Flash 직접 호출 전환
 
-- 상태: 서버 검증 완료·배포 대기
+- 상태: 배포 완료
 - 작업 브랜치: `codex/gemini-36-flash`
 - 기준 main: 최초 `fa9e3ab9d037`, 서버의 병행 문서 변경 `b66e275f5d4a`를 fast-forward로 보존.
 - 담당 환경: Windows `C:\vibe`의 격리 clone, Qaredi SSH 서버, ERP2 SSH 서버.
@@ -25,7 +25,7 @@
 - PC 비서 기존 Python Gemini 시험 11/0. ERP2 격리 계약 3/0(주 모델·대화 정규화·기존 fallback).
 - 실제 Google API: ERP2 이전/새 모델 각 단문·대화 4/4 HTTP200/STOP, 요청 모델 3.5도 실제 모델3.6. 설치된 기존 SDK의 후보 코드로 새 모델 단문·대화 2/2 완료. 운영 파일 반영 후 대화 이력도 실제 새 모델에서 완료.
 - Qaredi 공용 키: 이전 이름의 단문·이력·요약 완료, 직접3.6 이력/단문/요약 완료. 빠른 연속 요청 일부429. 간격을 둔 3.6 단문/요약은 완료. 실제 무음 WAV 전사는55초 시간초과; 전사 품질/실제 사용자 녹음 미검증. 문서 전용 키 미설정이므로 그 기능의 운영 실사용 성공으로 보고하지 않음.
-- 합성 DB assistant 전체 시험에서 integration376/0 뒤 chat23번째 완료 단언 실패. chat만 격리 실행하면38/0. baseline/하네스 영향 원인 조사와 구분하여 기록하며, 운영 데이터 삭제·복구는 하지 않음.
+- 합성 DB assistant 재실행 integration376/0→chat38/0, 기준 fa9e3ab도376/0→38/0. 최초 실행의 완료 단언 실패 원인은 미확정이고 재현되지 않았다. 진단 증거 `/tmp/qaredi-gemini36-chatdiag-uh883tho/diagnostic-summary.json`. 모든 자기 시험 HTTP/DB 정리 완료.
 - 기존 회귀는 Qaredi의 이미 승인된 밤 회귀 정책에 따라 기존 대기열에 추가한다. 새 예약 자동화는 만들지 않는다.
 
 ## 비용
@@ -48,3 +48,10 @@ Standard, USD/백만 토큰 기준. 입력은 기본1.50으로 동일, 출력 �
 3. 설정 저장소 밖의 다른 서버·GitHub 비기본 브랜치·외부 SaaS 설정·현재 실행 중인 Windows 앱이 이 경로를 실제로 사용하는지는 이번 정적/서버 조사 범위 밖이다.
 
 공식 근거: [모델 종료/자동 전달](https://ai.google.dev/gemini-api/docs/deprecations), [3.6 이행/기본 가격](https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.6), [현재 가격/할인 기간](https://ai.google.dev/gemini-api/docs/pricing).
+
+## 배포 결과 (서버 검증 기록)
+
+- Qaredi 기능 커밋 `2f5e99ae3649`, 발행 `3dd482a3500b` / v2.67.1. 적용 직전 기준 `0a33f08f89f0`. 본 작업14파일 백업·바이트검증·git apply --check·fresh HEAD/원본hash 후 FF, PHP3구문/FPM reload 통과. 백업 `/home/changkwon/.cache/qaredi-check/gemini36-backup-20261014-145942`.
+- 운영 원본 Fetch로3.6 실제 요청: model/modelVersion3.6, STOP, 합성답변 「검증 완료」. 기존 대화 행22개 보존. 실제 공개/로컬 health200, 무토큰 assistant창구401. security lint/자산/위키 재확인 통과.
+- ERP2 파일 원자 교체·backend 재시작, local health200/server·DB up. 실제 설치 SDK의 운영 파일로3.6 응답 완료. 공용 HTTPS는 Cloudflare challenge403; 이 경계는 미검증으로 유지한다.
+- 기존 배포 스냅샷은 전체111개 이전차이를 검증한 자료가 아니므로 전역 verified_snapshot 값을 덮어쓰지 않고 production-state에 이번 targeted_hotfixes 기록만 추가한다.

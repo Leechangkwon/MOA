@@ -1201,4 +1201,4 @@ v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`. 최종 독립 검토 manifes
 
 ## 2026-10-14 Gemini 3.6 Flash 직접 호출 — 보안 검토
 
-실제 사용 중인 MemberAi/Fetch와 문서 Ai의 고정 모델을3.6으로 전환. 키·동의·한도·사용자/스레드 판정·SSRF/TLS 방어는 기존 계약 유지. 이미지/임베딩/DB/키/패키지 변경0. 원본 Ai TLS10/0, PHP3파일·security lint·자산/위키0, PC11/0, ERP2계약3/0. 실제3.6 단문·대화·요약 완료, 전사55초 timeout 미검증. assistant 전체 integration376/0 후 chat완료 단언 실패는 독립 chat38/0과 구분; 원인 조사 결과는 작업 인계에 기록. 회귀: 기존 밤 대기열에 해당 AI 창구 목록 추가. 상세 `docs/work-items/gemini-36-flash.md`.
+실제 사용 중인 MemberAi/Fetch와 문서 Ai의 고정 모델을3.6으로 전환. 키·동의·한도·사용자/스레드 판정·SSRF/TLS 방어는 기존 계약 유지. 이미지/임베딩/DB/키/패키지 변경0. 원본 Ai TLS10/0, PHP3파일·security lint·자산/위키0, PC11/0, ERP2계약3/0. 실제3.6 단문·대화·요약 완료, 전사55초 timeout 미검증. assistant 재실행376/0→chat38/0 및 baseline376/0→38/0. 최초 단언 실패 원인미확정·미재현. 운영v2.67.1 적용 및 원본Fetch 실제3.6/STOP, 공개·로컬 health200, 기존22대화 보존. 회귀: 기존 밤 대기열에 해당 AI 창구 목록 추가. 상세 `docs/work-items/gemini-36-flash.md`.
