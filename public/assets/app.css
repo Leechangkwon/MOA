@@ -654,7 +654,11 @@ td.actions .btn--icon:last-child::after,
   .menu > summary.btn--icon[aria-label] { anchor-name: --menu, --tip; }
   /* 항목이 많은 목록(화면 머리 「더보기」 16줄 · 폰)도 창 안 — 위 · 아래 중 자리가 더 큰 쪽에 펴고, 그 자리(앵커 칸 — 100%)보다 길면 목록 안에서 스크롤.
      14px = 위 여백 6 + 창 가장자리 8 */
-  .menu__list { max-height: calc(100% - 14px); overflow-y: auto; position-try-order: most-height; }
+  /* R1(2026-10-15) — 「더보기」류 메뉴(details.menu 의 목록)만. 댓글 멘션 후보 목록(.mention-field > .menu__list — 입력 칸 **바로 아래**, 2.15 · U4)까지
+     most-height 로 위로 뒤집히던 것을 되돌린다. 또 목록은 세로 flex 라 max-height 에 걸리면 줄이 **줄어들었다**(폰 44 → 21 — 손가락 자리 위반) →
+     줄은 제 높이 그대로 두고 목록 안에서 스크롤한다(위 주석의 뜻) */
+  .menu > .menu__list { max-height: calc(100% - 14px); overflow-y: auto; position-try-order: most-height; }
+  .menu > .menu__list > * { flex-shrink: 0; }
 }
 /* 열린 동안 그 단추의 풍선(aria-label · data-tip 툴팁) 0 — 목록과 겹쳐 보이던 것 */
 .menu[open] > summary:is([aria-label], [data-tip])::after { display: none; }
