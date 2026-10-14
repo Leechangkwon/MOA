@@ -6526,6 +6526,42 @@
       "est_sec": 900,
       "writes_prod": false,
       "notes": "사이트 H2 「로그인 전 첫 화면 · 초대 요청」(DESIGN 2.32) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [same] 동의 전 · 로그인 뒤 런처 서버 HTML = main launcher.php(바이트). [grid] 1440 · 1200 · 720 · 412 · 360 × 밝게 · 어둡게 · 고대비: ①~⑥ · 옛 블록 0 · 카드 4/2/1열 같은 높이 · 세 걸음 · 안전 넷 · 질문 넷 접힘 · 초대 요청 화면(폭 480 · 미끼 숨김) · 요청 확인 화면 · 관리자 「초대 요청」 표 — 넘침 0 · 대비 4.5 · 누름 자리 < 44 0 · 콘솔 0. [flow] 1440 · 412 폼 → 완료 · 복사 · 확인 화면 다섯 상태 · 가입하기 → 가입 화면에 초대 코드. [admin] 이유 60자 → 펼침 · 승인 창(팀) · 반려 창(메모) · Esc 초점. 결과: results.json · metrics · shots/."
+    },
+    {
+      "id": "community.cafe_h3_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite cafe_h3_browser.py --output /tmp/qaredi-cafe-h3-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/cafe_page.php",
+        "src/community/routes.php",
+        "src/handlers/product_spaces_page.php",
+        "src/views/space_page.php",
+        "src/views/shell_top.php",
+        "src/views/shell_tools.php",
+        "src/views/icon_templates.php",
+        "src/views/launcher.php",
+        "config/apps.json",
+        "public/assets/space-page.js",
+        "public/assets/space-page.css",
+        "public/assets/community/cafe.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/community.css",
+        "tests/community/cafe_h3_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 300,
+      "writes_prod": false,
+      "notes": "사이트 H3 「우리 공간」 = 카페(DESIGN 2.29 · 지시서 H3) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [links] 앱 판(/ · /tbox/ · /community/) · 홈 바로가기 · 셸 브랜드 · 카페 사이드바 「카페 홈」 → /community/cafe(aria-current). [cafe] 카페 셸 · h1 「우리 공간」 · 카드 = 사이드바 카페 게시판 · 새 글 · 인기 · 「게시판 만들어 주세요」(손님 0) · 「내 공간」 · 고르개 0. [old] /tbox/spaces 302 · ?space= 공간 화면(카페 0) · 비회원 거부 그대로 · 위젯 「전체 보기」 링크 모양. [grid] 손님 · 직원 · 관리자 × 1440 · 412 × 밝게 · 어둡게 · 고대비 넘침 0 · 콘솔 0."
     }
   ]
 }

@@ -21,7 +21,7 @@ $launcherLive=$signed&&!$launcherConsent;
 // 설명 한 문장 · 「우리 공간」 아이콘 `spaces`(사람 셋). 줄은 가운데 정렬(dashboard-widgets.css `.home-shortcuts`).
 // 저장된 옛 구성의 `tasks` 는 서버 저장 검증(ProductSpaces · dashboard-canvas.js 허용 목록)에 그대로 남지만, home-dashboard.js 가 이 틀에 없는 id 를
 // 건너뛰므로 화면 · 홈 편집 설정에는 0 이다(기본 바로가기에서도 뺐다) — 주소 · 판정 변경 0.
-$homeShortcuts=[ 'spaces'=>['우리 공간',Http::url('/spaces'),'spaces'], 'work'=>['업무 홈',Http::communityUrl('/'),'work'], 'library'=>['자료실',Http::url('/'),'library'], 'story'=>['이야기', $storyHref,'community'], 'messages'=>['메신저',Http::url('/messages'),'messages'], 'assistant'=>['AI 비서',Http::url('/welcome?section=pc-assistant'),'assistant'], 'account'=>['계정',Http::url('/settings'),'shield'] ];
+$homeShortcuts=[ 'spaces'=>['우리 공간',Http::communityUrl('/cafe'),'spaces'], 'work'=>['업무 홈',Http::communityUrl('/'),'work'], 'library'=>['자료실',Http::url('/'),'library'], 'story'=>['이야기', $storyHref,'community'], 'messages'=>['메신저',Http::url('/messages'),'messages'], 'assistant'=>['AI 비서',Http::url('/welcome?section=pc-assistant'),'assistant'], 'account'=>['계정',Http::url('/settings'),'shield'] ];
 $homeShortcutDescriptions=['work'=>'작업 요약 · 프로젝트 · 공지와 내 할 일 · 담당 작업을 함께 확인해요.'];
 if($launcherConsent){$launcherMessenger=false;}
 // 사이트 H1 (DESIGN 2.31 「머리」 · 2.30) — 오른쪽 위 셋(메신저 · 앱 · 내 계정)은 셸과 **같은 파일** shell_tools.php 를 require 한다. 그 파일이 받는 값을

@@ -22,5 +22,13 @@
     "path": "/community/memories",
     "icon": "community",
     "order": 3
+  },
+  {
+    "key": "spaces",
+    "name": "우리 공간",
+    "desc": "카페 · 게시판 · 익명게시판",
+    "path": "/community/cafe",
+    "icon": "spaces",
+    "order": 4
   }
 ]

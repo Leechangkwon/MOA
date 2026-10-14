@@ -68,7 +68,7 @@ require_once __DIR__ . '/../Design.php';
  *   · 받는 변수 `$shellArea`(string) — 허용 목록 한 값 `'cafe'` 만 통과하고 업무 셸(`$shellModule = 'community'`)에서만 뜻이 있다.
  *     넘기는 쪽은 카페 게시판 화면 · 카페 글 화면(**읽기 판정을 지난 때만** — board_view.php · page_view.php)과 관리자 화면 둘(신고함 ·
  *     게시판 요청 — 라우트 정책 role:Admin)뿐이다. 이 파일에는 판정이 없다 — 값이 오면 `<body data-area="cafe">` 와 「우리 공간」 모드 사이드바를 그린다.
- *   · 「우리 공간」 모드: 브랜드 「우리 공간」(아이콘 spaces · 첫 화면 `/tbox/spaces`) · 카페 홈 · 받은 알림 · (공용) 검색 · 카페 게시판 목록
+ *   · 「우리 공간」 모드: 브랜드 「우리 공간」(아이콘 spaces · 첫 화면 `/community/cafe` — 사이트 H3) · 카페 홈 · 받은 알림 · (공용) 검색 · 카페 게시판 목록
  *     (editor.js 가 `GET /api/boards?area=cafe` 의 답으로 채운다) · 관리 묶음(신고함 · 게시판 요청 — hidden 으로 나가고 `/api/me` 의 can_admin 이
  *     참일 때만 화면이 연다. 막는 것은 라우트 정책 role:Admin + 재인증). 업무 트리 · 프로젝트 · 포트폴리오 · 팀 · 문서 · 즐겨찾기 · 최근 · 더보기 · 「＋ 새로 만들기」는 그리지 않는다.
  */
@@ -83,6 +83,8 @@ $shellKeys = [
     'community-board',
     // 카페 C2 (DESIGN 2.29) — 관리자 화면 둘(신고함 · 게시판 요청). app.js 는 모르는 키라 셸만 그리고 물러나고 editor.js 가 cafe.js 로 그린다
     'community-reports', 'community-board-requests',
+    // 사이트 H3 (DESIGN 2.29 「「우리 공간」 = 카페」) — 카페 홈 화면(/community/cafe). editor.js 가 cafe.js initHome 으로 그린다
+    'community-cafe',
 ];
 
 /**
@@ -138,8 +140,12 @@ if ($shellCafe) {
 }
 /** 브랜드 표시의 색 갈래(moa.css 의 `.moa-module-mark--tbox|community` 둘뿐 — 이야기는 옛 커뮤니티 것 그대로) */
 $shellMarkKey = $shellCurrentApp === 'tbox' ? 'tbox' : 'community';
+// 사이트 H3 — 「우리 공간」 모드면 앱 판의 「우리 공간」 타일(config/apps.json 의 spaces — /community/cafe)에 aria-current
+if ($shellCafe) {
+    $shellCurrentApp = 'spaces';
+}
 /** 브랜드를 누르면 가는 그 앱의 첫 화면 — 고정 경로뿐 */
-$shellBrandHref = $shellCafe ? Http::url('/spaces') : ($shellMod === 'community' ? Http::communityUrl('/')
+$shellBrandHref = $shellCafe ? Http::communityUrl('/cafe') : ($shellMod === 'community' ? Http::communityUrl('/')
     : ($shellMod === 'story' ? Http::communityUrl('/memories') : Http::url('/')));
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
@@ -457,7 +463,7 @@ if ($shellMod === 'community'): ?>
     <!-- ─── 「우리 공간」 모드 사이드바 위쪽 (카페 C2 · DESIGN 2.29 「카페 셸」) — 카페 홈 · 받은 알림 → (아래 공용) 검색.
          「＋ 새로 만들기」 · 홈 · 내 작업은 업무 앱의 것이라 그리지 않는다. 받은 알림은 익명 댓글 · 신고 처리 알림을 받는 길이라 둔다(종 · 창은 업무와 같은 한 벌). -->
     <nav class="nav" aria-label="우리 공간">
-      <a id="nav-cafe-home" class="nav__item" href="<?= Http::url('/spaces') ?>" data-tip="카페 홈"><span class="icon" data-icon="home"></span><span>카페 홈</span></a>
+      <a id="nav-cafe-home" class="<?= $shellNavClass('community-cafe') ?>" href="<?= Http::communityUrl('/cafe') ?>"<?= $shellActive === 'community-cafe' ? ' aria-current="page"' : '' ?> data-tip="카페 홈"><span class="icon" data-icon="home"></span><span>카페 홈</span></a>
       <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog" data-tip="받은 알림">
         <span class="icon" data-icon="bell"></span><span>받은 알림</span>
         <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>

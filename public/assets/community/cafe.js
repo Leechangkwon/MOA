@@ -641,5 +641,84 @@ export function createCafe(deps) {
     pickTab('open');
   }
 
-  return { openReport, openBoardRequest, startReveal, bindShell, initReports, initBoardRequests };
+  /* ── 카페 홈 (사이트 H3 · DESIGN 2.29 「「우리 공간」 = 카페」 · 카페 홈 ①②) — `/community/cafe` 화면(카페 셸 안). space-page.js 에서 옮겨 온 한 벌.
+     창구 `GET /api/cafe` 가 준 것만 그린다(읽을 수 있는 카페 게시판 · 그 글 — 거르는 것은 창구의 SQL WHERE). 익명게시판 글의 쓴 사람은 창구가
+     이름표(「글쓴이」 · is_me)로 준다 — 화면은 「(나)」만 붙인다. 「게시판 만들어 주세요」는 창구가 준 can_request_board 가 참일 때만(창구가 다시 막는다).
+     요소는 createElement · textContent 뿐 */
+  function cafeWhen(value) {
+    const d = new Date(String(value || ''));
+    if (Number.isNaN(d.getTime())) { return String(value || ''); }
+    const two = (n) => String(n).padStart(2, '0');
+    return d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) + ' ' + two(d.getHours()) + ':' + two(d.getMinutes());
+  }
+  function cafeWriter(w) {
+    const span = el('span', 'muted');
+    if (!w) { span.textContent = '—'; return span; }
+    if (w.anon === true) { span.textContent = String(w.display_name || '익명') + (w.is_me === true ? ' (나)' : ''); return span; }
+    span.textContent = w.display_name ? w.display_name + '(' + w.username + ')' : String(w.username || '');
+    return span;
+  }
+  function cafeRow(item) {
+    const li = el('li');
+    const a = el('a');
+    a.setAttribute('href', base + '/p/' + encodeURIComponent(item.id));
+    const board = el('span', item.board && item.board.anonymous ? 'badge' : 'badge badge--internal', item.board && item.board.name ? item.board.name : '');
+    const title = el('span', null, (item.icon ? item.icon + ' ' : '') + item.title);
+    const when = el('span', 'muted', cafeWhen(item.posted_at));
+    when.title = String(item.posted_at || '');
+    a.append(board, title, cafeWriter(item.writer), when);
+    li.appendChild(a);
+    return li;
+  }
+  function cafeBoardCard(b) {
+    const a = el('a', 'card card--link cafe-board');
+    a.setAttribute('href', base + '/b/' + String(Number(b.id)));
+    const body = el('span', 'card__body');
+    const head = el('span', 'card__head');
+    head.appendChild(el('span', 'card__title', b.name + (b.is_active ? '' : ' (보관)')));
+    if (b.anonymous) { head.appendChild(el('span', 'badge', '익명')); }
+    body.append(head, el('span', 'card__desc', b.description || '카페 게시판'));
+    const meta = el('span', 'card__meta');
+    const posts = el('span', null, '글 ');
+    const fresh = el('span', null, '오늘 새 글 ');
+    posts.appendChild(el('strong', null, String(b.post_count)));
+    fresh.appendChild(el('strong', null, String(b.new_count)));
+    meta.append(posts, fresh);
+    body.appendChild(meta);
+    a.appendChild(body);
+    return a;
+  }
+  function initHome() {
+    const host = document.getElementById('cafe-home');
+    if (!host) { return; }
+    const status = document.getElementById('cafe-status');
+    const boards = document.getElementById('cafe-boards');
+    const feed = document.getElementById('cafe-feed');
+    const request = document.getElementById('cafe-request');
+    if (request) {
+      request.addEventListener('click', () => openBoardRequest({ onDone: (text) => { status.hidden = false; status.textContent = text; } }));
+    }
+    api('GET', '/api/cafe').then((r) => {
+      if (r.status !== 200) {
+        status.textContent = r.data && typeof r.data.error === 'string' ? r.data.error : '카페를 불러오지 못했습니다.';
+        return;
+      }
+      const d = r.data;
+      boards.replaceChildren();
+      for (const b of d.boards || []) { boards.appendChild(cafeBoardCard(b)); }
+      for (const [id, list] of [['cafe-recent', d.recent || []], ['cafe-popular', d.popular || []]]) {
+        const ul = document.getElementById(id);
+        ul.replaceChildren();
+        for (const item of list) { ul.appendChild(cafeRow(item)); }
+        document.getElementById(id + '-empty').hidden = list.length > 0;
+      }
+      feed.hidden = false;
+      const any = (d.boards || []).length > 0;
+      status.textContent = any ? '' : '볼 수 있는 카페 게시판이 없어요.';
+      status.hidden = any;
+      if (request) { request.hidden = d.can_request_board !== true; }
+    }).catch(() => { status.textContent = '카페를 불러오지 못했습니다.'; });
+  }
+
+  return { openReport, openBoardRequest, startReveal, bindShell, initReports, initBoardRequests, initHome };
 }

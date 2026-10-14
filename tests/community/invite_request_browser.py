@@ -220,6 +220,11 @@ try:
                     finally:
                         target.write_bytes(mine)
                     again = fetch()
+                    # 뒤 묶음이 일부러 바꾼 로그인 뒤 갈래의 글자(그 묶음의 수락 시험이 잰다) — 견주기 전에 옛 쪽을 같은 글자로 바꾼다
+                    LATER = [(b'href="/tbox/spaces"', b'href="/community/cafe"')]   # H3 — 홈 바로가기 「우리 공간」 = 카페
+                    for k in ('live', 'consent'):
+                        for a_, b_ in LATER:
+                            old[k] = old[k].replace(a_, b_)
                     for k in ('live', 'consent'):
                         check(len(new[k]) > 3000 and new[k] == old[k] == again[k], '[same] %s launcher: server HTML byte-identical to main launcher.php (%d bytes)' % (k, len(new[k])))
                     check(new['out'] != old['out'] and b'landing-hero' in new['out'] and b'landing-hero' not in old['out'], '[same] signed-out launcher changed (landing) — %d → %d bytes' % (len(old['out']), len(new['out'])))

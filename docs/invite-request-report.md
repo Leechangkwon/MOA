@@ -19,7 +19,7 @@
 | 시험 | 명령 | 결과 | 폴더 |
 |---|---|---|---|
 | HTTP(격리) | `python3 tests/community/memories_harness.py --suite invite_request_http.py --output …/http-run2` | **120 / 0** | `http-run2/`(results · metrics · al25-dryrun.txt · purge-dry/run.txt · http.log) |
-| 브라우저(격리) | `… --suite invite_request_browser.py --output …/h2-browser-final` | 아래 「최종」 줄 | `h2-browser-final/`(results · metrics · shots/) |
+| 브라우저(격리) | `… --suite invite_request_browser.py --output …/h2-browser-final` | **458 / 0** | `h2-browser-final/`(results · metrics · shots/) |
 | 정적 | `scripts/security_lint.sh` · `php -l`(바뀐 PHP 전부) · `node --check`(JS 둘) · `php scripts/wiki_check.php` · `git diff --check` | 0건 · 통과 · 통과 · 0건 · 통과 | — |
 | 마이그레이션 두 번 | 틀이 schema.sql 위에 2회 적용 → grants | 오류 0 · 모양 · 권한 단언(HTTP 시험 앞 넷) | `http-run2/schema.log` |
 
@@ -56,3 +56,46 @@ HTTP 시험이 잰 것: 요청 201 `{status_path}` · 코드 64 16진 · 표엔 
 8. 로그인 전 머리 「로그인」의 크기(44)를 맞추려고 옛 `.moa-nav-join` 의 560px `!important` 글자 크기를 그 갈래에서만 덮었다 · ⑥ 「함께 보는 이야기」 머리는 로그인 전 갈래에서만 44(`.landing-faq ~ .moa-home-extra > summary`).
 9. 시험 파일은 지시서의 `tests/invite_request_*.py` 가 아니라 틀이 읽는 자리 **`tests/community/`** 에 두었다(틀의 `suite_directory` 를 고치지 않으려고).
 10. ④ 「안전하게 써요」 아이콘은 `Apps::ICON_PATHS` 에 있는 것(사람 셋 · 방패 · 자료실 · 업무 체크)을 빌렸다 — 새 그림 0.
+
+---
+
+# H3 — 「우리 공간」 = 카페 (2026-10-14)
+
+지시서(main `fa9e3ab` 의 `docs/invite-request-directive.md` 「H3」) · DESIGN 2.29 「「우리 공간」 = 카페」 줄(main). 문서 둘은 이 worktree 에서 고치지 않았다(메인이 합친다).
+
+## H3 — 변경 파일
+
+| 갈래 | 파일 |
+|---|---|
+| 서버 | `src/community/routes.php`(`GET /cafe` 한 줄 · community.read) · 새 `src/community/handlers/cafe_page.php`(카페 셸 · 카페 홈 뼈대 · 판정 0) · `src/handlers/product_spaces_page.php`(쿼리 `space` 없으면 302 `/community/cafe`) · `src/views/space_page.php`(카페 묶음 · 「내 공간」 머리 뺌 · 머리 「공간」) |
+| 셸 · 링크 | `src/views/shell_top.php`(셸 키 `community-cafe` · 셸 브랜드 · 카페 사이드바 「카페 홈」 → `/community/cafe` · 그 화면에서 is-active + aria-current · 카페 모드면 앱 판 「우리 공간」 aria-current) · `config/apps.json`(앱 판 타일 「우리 공간」 `/community/cafe` · order 4) · `src/views/icon_templates.php`(타일 아이콘 `spaces` 템플릿 한 이름) · `src/views/launcher.php`(홈 바로가기 `spaces` 주소 한 줄) |
+| 화면 JS · CSS | `public/assets/community/cafe.js`(`initHome` — space-page.js 의 카페 홈 그리기를 옮긴 한 벌) · `public/assets/space-page.js`(그 부분 지움) · `public/assets/community/editor.js`(부팅 허용 키 · `community-cafe` → `cafe.initHome()` 두 자리) · `public/assets/space-page.css` → `public/assets/community/community.css`(카페 홈 규칙 옮김 · h1 · h2) · 부품 버전 다시 찍기(`scripts/community_asset_version.php` — dashboard · database · editor · suggestions · table-editor · templates · work · messenger 의 import `?v=` 만) |
+| 시험 | 새 `tests/community/cafe_h3_browser.py` · `tests/community/memories_harness.py`(choices) · `tests/catalog.json` |
+
+## H3 — 수락 시험과 결과
+
+| 시험 | 결과 | 폴더 |
+|---|---|---|
+| `python3 tests/community/memories_harness.py --suite cafe_h3_browser.py --output …/h3-final` | **78 / 0** | `h3-final/`(results · metrics · shots/) |
+| 정적 — security_lint · php -l · node --check · `community_asset_version.php --check` · wiki_check · git diff --check | 0건 · 통과 · 통과 · 부품 버전 맞음(4bc6fa2d21d1) · 0건 · 통과 | — |
+
+잰 것: [links] 앱 판(`/` · `/tbox/` · `/community/`) 「우리 공간」 → `/community/cafe` · 홈 바로가기 → 누르면 카페 · 셸 브랜드 · 카페 사이드바 「카페 홈」(카페 화면 · 카페 게시판 화면) → `/community/cafe` · 카페에서 「카페 홈」 · 앱 판 「우리 공간」 aria-current · [cafe] 직원 · 관리자 · 손님: `body[data-area=cafe]` · h1 「우리 공간」 · 카드 = 사이드바 카페 게시판 = 읽을 수 있는 카페 게시판 · 새 글 · 인기 · 「게시판 만들어 주세요」(직원 · 관리자 보임 → 요청 창 · 손님 0) · 업무 사이드바 0 · 「내 공간」 · 공간 고르개 0 · [old] `/tbox/spaces` 302 · 로그인 전은 로그인 먼저 · `?space=<id>` → 그 공간(제목 · 고르개 · 카페 0 · 「내 공간」 0) · 비회원은 공간 자료 0(창구 404 그대로) · 위젯 「전체 보기」 링크 모양 그대로 · [grid] 손님 · 직원 · 관리자 × 1440 · 412 × 밝게 · 어둡게 · 고대비 넘침 0 · 콘솔 0.
+
+## H3 — 고친 옛 단언 (돌리지 않았다)
+
+| 시험 | 고친 내용 |
+|---|---|
+| `tests/community/cafe_c2_browser.py` | 카페 홈 자리 `t.go('/tbox/spaces')` 여섯 곳 · 화면 크기 표의 `/tbox/spaces` → `/community/cafe` · 머리 `#cafe-home h2` 「카페」 → `h1` 「우리 공간」 · 「「내 공간」 below the cafe home · space picker kept」 → 「내 공간」 · 고르개 0 |
+| `tests/community/product_spaces_http.py` | 「authenticated real space page renders」 은 `/spaces?space=<id>` 로 · `/spaces` 302 `/community/cafe` 단언 하나 더함 |
+| `tests/community/qf12_shell_browser.py` | 앱 판 타일 목록 셋에 「우리 공간」(이야기 다음) |
+| `tests/community/invite_request_browser.py` [same](H2 의 것) | 로그인 뒤 런처를 main 과 견주기 전에 옛 쪽의 홈 바로가기 `href="/tbox/spaces"` 를 `/community/cafe` 로(H3 의 의도한 바뀜 하나) — `H2_ONLY=same` 다시 실행 8/0(`h3-h2same/` · 첫 실행은 fixture 세션 401 로 흔들림 — 같은 코드 다시 실행에서 통과) |
+
+(`cafe_c4_browser.py` 는 이미 「우리 공간」 타일을 걸러 보므로 그대로. 공간 화면을 직접 그리는 모의 시험들(`tests/fixtures/space_home_render.php` 를 쓰는 space_dashboard_* · dashboard_* 등)은 대시보드만 재므로 고치지 않았다 — 밤 회귀에서 확인.)
+
+## H3 — 못 한 것 · 다르게 한 것
+
+- 지시서의 「위키에서 /tbox/spaces 를 가리키는 카페 안내 글의 링크」 — `wiki/` · `src/help/` 에 그런 링크가 없었다(grep 0).
+- **허용 목록 밖 두 파일을 한 줄씩**: `src/views/icon_templates.php`(앱 판 타일 아이콘 `spaces` 템플릿 — 없으면 타일 아이콘이 빈다) · `public/assets/community/editor.js`(카페 화면 키 부팅 · dispatch 두 자리 — cafe.js 는 editor.js 가 만든 부품이라 진입이 그쪽뿐). 부품 버전 다시 찍기로 커뮤니티 JS 여덟 파일의 import 버전 글자가 바뀌었다(기계적).
+- 앱 판 「우리 공간」 타일은 지금까지 없었다(`config/apps.json` 셋) — 완료 기준 「앱 판 … → /community/cafe」 를 위해 앱 목록 원본에 넷째 줄로 더했다(지시서 「Apps.php 또는 앱 목록 원본」 자리).
+- 카페 홈의 「새 글」 · 「인기 글」 머리는 h3 → h2(화면 h1 「우리 공간」 바로 아래라 단계 건너뛰기 0).
+- 셸 키 `community-cafe` 는 업무 셸 사이드바 강조(`is-active`)에도 쓴다.
