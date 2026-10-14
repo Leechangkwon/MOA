@@ -738,9 +738,9 @@ try:
                   const tile = document.querySelector('.app-menu__icon svg'); const tr = tile ? tile.getBoundingClientRect() : {width: 0};
                   return {bg: cs.backgroundColor, accent: probe('--accent'), color: cs.color, fg: probe('--primary-fg'), contrast: (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05), tile: tr.width,
                           icon: s.querySelector('svg').getBoundingClientRect().width, overflow: document.documentElement.scrollWidth - window.innerWidth}; }"""
-                DOT_JS = r"""() => { const s = document.querySelector('.shell-tools > .appbar__apps > summary'); const d = s.querySelector('[data-message-unread]');
-                  d.hidden = false; d.textContent = '3'; const r = s.getBoundingClientRect(); const q = d.getBoundingClientRect();
-                  const out = {top: Math.round(q.top - r.top), right: Math.round(r.right - q.right), w: Math.round(q.width), h: Math.round(q.height)}; d.hidden = true; d.textContent = ''; return out; }"""
+                # 카페 C6 (DESIGN 2.30) — 안 읽은 수는 앱 단추에서 메신저 단추 오른쪽 위 숫자 배지로 옮겼다(앱 단추 0)
+                DOT_JS = r"""() => { const s = document.querySelector('.shell-tools > .appbar__apps > summary'); const m = document.querySelector('.shell-tools > .shell-tools__messenger');
+                  const d = m ? m.querySelector('[data-message-unread]') : null; return {onApps: s.querySelectorAll('[data-message-unread]').length, onMessenger: d ? 1 : 0}; }"""
                 summary = {}
                 for mode in ('light', 'dark', 'hc'):
                     sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(uid('W')))
@@ -773,7 +773,7 @@ try:
                             check(o['bg'] == o['accent'] and o['color'] == o['fg'] and o['contrast'] >= 4.5, 'apps %s: open bg --accent · text --primary-fg · contrast %.2f ≥ 4.5' % (tag, o['contrast']))
                             check(o['icon'] > o['tile'] > 0, 'apps %s: button icon %.0f > tile icon %.0f' % (tag, o['icon'], o['tile']))
                             check(abs(a['meH'] - 44) < 0.6 and abs(a['avatar'] - 34) < 0.6, 'apps %s: name chip h 44 · avatar 34 (%.1f · %.1f)' % (tag, a['meH'], a['avatar']))
-                            check(dot['top'] == 3 and dot['right'] == 3 and dot['w'] == 8, 'apps %s: unread dot top-right 3px · 8px %s' % (tag, json.dumps(dot)))
+                            check(dot['onApps'] == 0 and dot['onMessenger'] == 1, 'apps %s: unread badge moved to the messenger button (app button 0 — C6) %s' % (tag, json.dumps(dot)))
                             check(a['overflow'] <= 0 and o['overflow'] <= 0, 'apps %s: horizontal overflow 0' % tag)
                         guard('apps ' + tag, one)
                         check(t.clean('apps-' + tag), 'apps %s: console 0' % tag)

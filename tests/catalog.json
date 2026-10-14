@@ -6394,6 +6394,9 @@
         "src/views/shell_top.php",
         "public/assets/app.js",
         "public/assets/app.css",
+        "public/assets/messenger.js",
+        "public/assets/messenger-access.js",
+        "public/assets/design.css",
         "tests/community/cafe_c4_browser.py",
         "tests/community/memories_harness.py",
         "tests/community/memories_http.py",
@@ -6404,7 +6407,7 @@
       "risks": [],
       "est_sec": 600,
       "writes_prod": false,
-      "notes": "카페 묶음 C4 「편집 중 그림 · 남긴 댓글의 멘션」(docs/cafe-directive.md C4 · DESIGN 2.26 「검사 중 미리보기」 · 2.27 「남긴 댓글의 멘션」 · 커뮤니티 ARCH 24장) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. [http] GET /api/pages/{id}/attachments(주인 · 보기 공유 200 · 지도 한 칸 · 다른 문서 첨부 0 · 다른 팀 · 손님 · 관리자 특권 404 · pending raw/download 423 그대로) · comments_list mention_status(ok+이름 · 없음 · 못 봄 · 특권 · 손님 ok:false 이름 0 · `@아이디.te` 한 토큰 · 손님 시점 {} · 익명게시판 {} · 질의 수 댓글 3 = 30 — 리플렉션으로 PDO 문장 수) · [image] 1440 · 412: 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」(SCAN_ENABLED=1 — 틀 사본 .env) → 즉시 img data: + 「검사 중 · 나만 보여요」 · 손잡이 폭 · clean(DB) → 5초 안에 서버 img · 배지 0 · 폭 그대로 · 저장 · 다시 열기 · 새로 고침 뒤 상자 → 바뀜 · 다른 사람 상자 · 작업 칸 편집기 · 콘솔 0 · [mention] 전체 화면 · 작업 칸: ok 파랑 · miss 빨강 물결 · aria-label · 대비 ≥ 4.5(밝게 · 어둡게 · 고대비) · 넘침 0. · [c5] 카페 C5 접힌 사이드바(DESIGN 2.19 ⑨ 2026-10-14 보정): 업무 · 이야기 · 자료실 × 1440 · 1280 · 960 쿠키 없음 → 첫 HTML data-sidebar=collapsed · ☰ aria 첫 값 · 첫 프레임 접힘 · 레일 64 · 옛 localStorage 키 지움 / ☰ → 쿠키 open → 다음 화면 첫 HTML 속성 0 · 새로 고침 펼침 · 다시 접기 → 쿠키 지움 / 접힌 「＋」 올리기 · 초점 — 단추 안 글자 0 · 들림 0 · 오른쪽 풍선(CDP ::after 상자 — 「홈」과 같은 간격) · 메뉴 / 펼침 240 글자 · 412 서랍 그대로. 결과: cafe-c4-browser-results.json · cafe-c4-browser-metrics.json · shots/."
+      "notes": "카페 묶음 C4 「편집 중 그림 · 남긴 댓글의 멘션」(docs/cafe-directive.md C4 · DESIGN 2.26 「검사 중 미리보기」 · 2.27 「남긴 댓글의 멘션」 · 커뮤니티 ARCH 24장) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. [http] GET /api/pages/{id}/attachments(주인 · 보기 공유 200 · 지도 한 칸 · 다른 문서 첨부 0 · 다른 팀 · 손님 · 관리자 특권 404 · pending raw/download 423 그대로) · comments_list mention_status(ok+이름 · 없음 · 못 봄 · 특권 · 손님 ok:false 이름 0 · `@아이디.te` 한 토큰 · 손님 시점 {} · 익명게시판 {} · 질의 수 댓글 3 = 30 — 리플렉션으로 PDO 문장 수) · [image] 1440 · 412: 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」(SCAN_ENABLED=1 — 틀 사본 .env) → 즉시 img data: + 「검사 중 · 나만 보여요」 · 손잡이 폭 · clean(DB) → 5초 안에 서버 img · 배지 0 · 폭 그대로 · 저장 · 다시 열기 · 새로 고침 뒤 상자 → 바뀜 · 다른 사람 상자 · 작업 칸 편집기 · 콘솔 0 · [mention] 전체 화면 · 작업 칸: ok 파랑 · miss 빨강 물결 · aria-label · 대비 ≥ 4.5(밝게 · 어둡게 · 고대비) · 넘침 0. · [c5] 카페 C5 접힌 사이드바(DESIGN 2.19 ⑨ 2026-10-14 보정): 업무 · 이야기 · 자료실 × 1440 · 1280 · 960 쿠키 없음 → 첫 HTML data-sidebar=collapsed · ☰ aria 첫 값 · 첫 프레임 접힘 · 레일 64 · 옛 localStorage 키 지움 / ☰ → 쿠키 open → 다음 화면 첫 HTML 속성 0 · 새로 고침 펼침 · 다시 접기 → 쿠키 지움 / 접힌 「＋」 올리기 · 초점 — 단추 안 글자 0 · 들림 0 · 오른쪽 풍선(CDP ::after 상자 — 「홈」과 같은 간격) · 메뉴 / 펼침 240 글자 · 412 서랍 그대로. · [c6] 카페 C6 오른쪽 위 셋(DESIGN 2.30): 1440 · 1280 · 960 × 밝게 · 어둡게 · 고대비 — 순서 메신저 · 앱 · 칩 · 높이 44 · 사이 8 · 메신저 단추 열고 닫기 · Esc 초점 · 안 읽은 수 = 메신저 단추 · 앱 판 = 앱과 도구만 · 관리자 타일 관리자만 · 칩 → 내 계정 판(머리 · 내 계정 · 내 활동 · 로그아웃 · 같은 폭 · 같은 클래스) · 하나만 열림 · 바깥 · Esc · 타일 이동 · aria-current · 로그아웃 / 412 윗줄 메신저 · 아바타 → 판 전체 폭 · 서랍 · 앱 판 · 계정 판 하나만 · 손님 · 직원 · 관리자 · 대비 4.5 · 넘침 0 · 누름 자리 < 44 0(검정 단추 「댓글 달기」 — design.css 반짝 조각 보정 · 넓은 화면은 그대로). 결과: cafe-c4-browser-results.json · cafe-c4-browser-metrics.json · shots/."
     }
   ]
 }

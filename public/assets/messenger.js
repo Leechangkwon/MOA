@@ -1169,6 +1169,8 @@ async function mount(options) {
       const b = e.target instanceof Element ? e.target.closest('[data-messenger-open]') : null;
       if (b === null || loggedOut) { return; }
       e.preventDefault();
+      // 카페 C6 (DESIGN 2.30 「메신저 단추」) — 여는 단추는 열고 닫는다(aria-expanded 와 같은 뜻). 닫으면 초점은 그 단추에 그대로
+      if (dialog.open) { hide(); return; }
       openWindow(true, b).catch((err) => say(err.message));
     });
     for (const b of dialog.querySelectorAll('[data-messenger-close]')) { b.addEventListener('click', () => hide()); }

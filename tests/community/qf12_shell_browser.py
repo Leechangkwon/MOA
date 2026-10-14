@@ -172,7 +172,7 @@ GRID_STATE_JS = r"""() => {
   const panel = d ? d.querySelector('.app-menu') : null;
   const tiles = d ? [...d.querySelectorAll('.app-menu__apps > li')].filter(li => getComputedStyle(li).display !== 'none').map(li => { const a = li.firstElementChild; const n = a.querySelector('.app-menu__name'); const s = getComputedStyle(n); const ts = getComputedStyle(a);
     return {name: n.textContent.trim(), href: a.getAttribute('href'), current: a.getAttribute('aria-current'), tag: a.tagName, id: a.id, color: s.color, bg: ts.backgroundColor, size: s.fontSize}; }) : [];
-  const out = d ? d.querySelector('.app-menu__logout') : null;
+  const out = d ? d.querySelector('.app-menu__logout') : null;   // 카페 C6 — 앱 판에는 로그아웃 줄이 없다(내 계정 판으로 옮김) → null
   const ms = getComputedStyle(main);
   const mr = main.getBoundingClientRect();
   const root = getComputedStyle(document.documentElement);
@@ -181,7 +181,7 @@ GRID_STATE_JS = r"""() => {
           tools: box(tools), mainInnerRight: Math.round(mr.right - parseFloat(ms.paddingRight)), sum: box(sum), panel: box(panel), tiles: tiles,
           panelBg: panel ? getComputedStyle(panel).backgroundColor : null, bodyBg: getComputedStyle(document.body).backgroundColor,
           logout: out ? {text: out.textContent.trim(), color: getComputedStyle(out).color, vis: vis(out), last: out === panel.lastElementChild} : null,
-          me: (() => { const m = document.querySelector('a.shell-tools__me'); return m ? {href: m.getAttribute('href'), label: m.getAttribute('aria-label'), vis: vis(m)} : null; })(),
+          me: (() => { const m = document.querySelector('.shell-tools__me'); return m ? {href: m.getAttribute('href'), label: m.getAttribute('aria-label'), vis: vis(m)} : null; })(),
           design: document.documentElement.getAttribute('data-design'), theme: document.documentElement.getAttribute('data-theme'), contrast: document.documentElement.getAttribute('data-contrast'),
           overflow: document.documentElement.scrollWidth > window.innerWidth, scrollWidth: document.documentElement.scrollWidth, innerWidth: window.innerWidth,
           appsExpanded: (document.getElementById('appbar-apps') || {getAttribute: () => null}).getAttribute('aria-expanded')};
@@ -272,29 +272,32 @@ try:
                 lr = get('/tbox/login?to=%2Fcommunity%2Fmemories')
                 check(lr.status_code == 200 and 'data-to="/community/memories"' in lr.text, 'Q:T-38 signed-out 이야기 tile → login page keeps the return address /community/memories (returnPath allow-list as before)')
         # 셸의 앱 격자(HTML) — 세 앱 (U2 · DESIGN 2.18 — 옛 아이콘 줄 · 사이드바 앱 메뉴 단언을 격자 단언으로 바꿈)
-        TILES = ['모아 홈', '자료실', '업무', '이야기', '메신저', '내 계정', '내 활동', '관리자 페이지', '검색']
+        TILES = ['모아 홈', '자료실', '업무', '이야기', '관리자 페이지', '검색']   # 카페 C6 (DESIGN 2.30) — 앱 판 = 앱과 도구만(메신저 · 내 계정 · 내 활동은 밖으로)
         for path, here in (('/tbox/', 'tbox'), ('/community/', 'community'), ('/community/memories', 'story')):
             r = get(path, users['employee']['session'])
             tiles = grid_tiles(r.text)
             metrics['grid_html' + path.replace('/', '_')] = tiles
             want_href = {'tbox': '/tbox/', 'community': '/community/', 'story': '/community/memories'}[here]
             check([t_[0] for t_ in tiles] == TILES, 'Q:T-38 app grid ' + path + ' tile order (HTML — 관리자 is hidden until can_admin) ' + json.dumps([t_[0] for t_ in tiles], ensure_ascii=False))
-            check([t_[1] for t_ in tiles[:4]] == ['/', '/tbox/', '/community/', '/community/memories'] and tiles[5][3] == 'menu-settings' and tiles[6][3] == 'menu-activity' and tiles[7][3] == 'menu-admin',
-                  'Q:T-38 app grid ' + path + ' links (Apps::all() order) · ids menu-settings · menu-activity · menu-admin kept')
+            acct = re.search(r'<details class="shell-account" id="account-menu">(.*?)</details>', r.text, re.S)   # 카페 C6 (DESIGN 2.30) — 내 계정 · 내 활동 · 로그아웃은 내 계정 판에
+            check([t_[1] for t_ in tiles[:4]] == ['/', '/tbox/', '/community/', '/community/memories'] and tiles[4][3] == 'menu-admin'
+                  and acct is not None and 'id="menu-settings"' in acct.group(1) and 'id="menu-activity"' in acct.group(1),
+                  'Q:T-38 app grid ' + path + ' links (Apps::all() order) · id menu-admin kept · menu-settings · menu-activity in the account panel')
             check([t_[1] for t_ in tiles if t_[2]] == [want_href], 'Q:T-38 app grid ' + path + ' aria-current only on the current app = ' + want_href)
-            check(re.search(r'<li><span class="app-menu__app[^"]*"[^>]*>|data-search-tile', r.text) is not None and 'id="messenger-open"' in r.text, 'Q:T-38 ' + path + ' messenger tile (button) · search tile present')
+            check(re.search(r'<li><span class="app-menu__app[^"]*"[^>]*>|data-search-tile', r.text) is not None and re.search(r'<button id="messenger-open" class="btn btn--quiet shell-tools__messenger"', r.text) is not None,
+                  'Q:T-38 ' + path + ' messenger = own button in the tool row (C6) · search tile present')
             check(r.text.count('<details class="appbar__apps"') == 1 and 'app-rail' not in r.text and r.text.count('class="moa-space-nav"') == 0 and 'moa-shell-links' not in r.text,
                   'Q:T-38 ' + path + ' one app menu (moved, not copied) · rail 0 · nav.moa-space-nav 0 · .moa-shell-links 0')
             check(re.search(r'<main id="main" class="main">\s*(?:<!--.*?-->\s*)?<div class="shell-tools">', r.text, re.S) is not None, 'Q:T-38 ' + path + ' div.shell-tools is the first child of <main>')
-            check(r.text.count('id="logout"') == 1 and re.search(r'<button id="logout" class="app-menu__logout"', r.text) is not None, 'Q:T-38 ' + path + ' 로그아웃 one row inside the grid panel')
+            check(r.text.count('id="logout"') == 1 and acct is not None and re.search(r'<button id="logout" class="app-menu__logout"', acct.group(1)) is not None, 'Q:T-38 ' + path + ' 로그아웃 one row inside the account panel (C6)')
             check('data-mobile-nav-mode' not in r.text, 'Q:T-38 ' + path + ' drawer 「메뉴 / 앱·계정」 switch removed')
             brand = {'tbox': '모아 자료실', 'community': '모아 업무', 'story': '모아 이야기'}[here]
             check(('aria-label="' + brand + ' — 앱 전환"') in r.text, 'C-2 ' + path + ' phone app-name button aria-label 「' + brand + ' — 앱 전환」')
             check('<summary class="btn btn--quiet" aria-label="앱 — 앱 바꾸기와 계정"' in r.text and 'brand__switch' not in r.text, 'C-2 ' + path + ' grid summary = ⋮⋮⋮ + 「앱」 outline button 「앱 — 앱 바꾸기와 계정」 (U5-2 · DESIGN 2.28) · brand is no longer a menu (DESIGN 2.19 ① U2)')
             # 카페 C5 — 쿠키 없는 첫 HTML 은 접힘이 기본(☰ aria 첫 값 = 펼치기)
             check(re.search(r'<button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="메뉴 펼치기">', r.text) is not None, 'C-2 ' + path + ' sidebar head ☰ #sidebar-collapse')
-            me = re.search(r'<a class="shell-tools__me" href="([^"]+)" aria-label="([^"]+)">', r.text)
-            check(me is not None and me.group(1) == '/tbox/settings' and me.group(2) == '내 계정 — ' + users['employee']['display'], 'Q:T-38 grid row 「내 계정」 avatar → /tbox/settings with display name label')
+            me = re.search(r'<summary class="shell-tools__me" aria-label="([^"]+)">', r.text)   # 카페 C6 (DESIGN 2.30) — 칩은 내 계정 판의 summary
+            check(me is not None and me.group(1) == '내 계정 메뉴 — ' + users['employee']['display'], 'Q:T-38 grid row 「내 계정」 chip = account panel summary with display name label')
         # 손님 · 역할로 보기도 같은 목록(앱 안 판정은 앱이 한다)
         for label, token in (('guest', users['guest']['session']), ('acting', acting)):
             for path in ('/tbox/', '/community/', '/community/memories'):
@@ -378,7 +381,7 @@ try:
                         g = p.evaluate(GRID_STATE_JS)
                         check(g['open'] and g['details'] == 1 and g['panel']['vis'] and not p.locator(main_link).is_visible(), 'mobile %d %s app name ▾ opens the same app grid (drawer closed)' % (width,path))
                         check(abs(g['panel']['w'] - width) <= 2 and g['panel']['t'] >= 51, 'mobile %d %s grid panel full width under the top bar %s' % (width,path,json.dumps(g['panel'])))
-                        check(p.locator('#menu-settings').is_visible() and p.locator('#menu-admin').is_visible(), 'mobile %d %s account/admin reachable' % (width,path))
+                        check(p.locator('#appbar-account').is_visible() and p.locator('#menu-admin').is_visible(), 'mobile %d %s account (avatar button — C6)/admin reachable' % (width,path))
                         check(p.locator('#appbar-apps').get_attribute('aria-expanded')=='true' and p.locator('#nav-toggle').get_attribute('aria-expanded')=='false', 'mobile %d %s exclusive expanded state' % (width,path))
                         check(p.evaluate('document.documentElement.scrollWidth<=innerWidth'), 'mobile %d %s no horizontal overflow' % (width,path))
                         p.screenshot(path=str(shots/('mobile-apps-%d-%s.png' % (width,path.split('/')[1]))))
@@ -436,7 +439,7 @@ try:
             tok = new_session('employee')
             tok_admin = new_session('admin')
             screens = (('/tbox/', '/tbox/', '자료실'), ('/community/', '/community/', '업무'), ('/community/memories', '/community/memories', '이야기'))
-            TILES_EMP = ['모아 홈', '자료실', '업무', '이야기', '메신저', '내 계정', '내 활동', '검색']
+            TILES_EMP = ['모아 홈', '자료실', '업무', '이야기', '검색']   # 카페 C6 (DESIGN 2.30)
             for width in (1440, 1280, 960, 959, 820, 412, 360):
                 ctx = browser.new_context(viewport={'width': width, 'height': 900}, locale='ko-KR', user_agent=UA, has_touch=width <= 412, is_mobile=width <= 412)
                 ctx.add_cookies(cookie(tok, {'qaredi_motion': 'reduce'}))
@@ -461,9 +464,9 @@ try:
                             metrics[key]['tiles'] = [x['name'] for x in st['tiles']]
                             check(st['open'] and st['panel']['vis'] and abs(st['panel']['w'] - 300) <= 8 and abs(st['panel']['r'] - st['sum']['r']) <= 8 and st['panel']['t'] >= st['sum']['b'],
                                   'Q:T-40 %d %s click → panel opens (width 300 ±8 · right-aligned under the button) %s' % (width, label, json.dumps([st['panel'], st['sum']])))
-                            check([x['name'] for x in st['tiles']] == TILES_EMP, 'Q:T-40 %d %s tile order 모아 홈 · 자료실 · 업무 · 이야기 · 메신저 · 내 계정 · 내 활동 · 검색 (관리자 hidden for employee) %s' % (width, label, json.dumps([x['name'] for x in st['tiles']], ensure_ascii=False)))
+                            check([x['name'] for x in st['tiles']] == TILES_EMP, 'Q:T-40 %d %s tile order 모아 홈 · 자료실 · 업무 · 이야기 · 검색 (C6 — 관리자 hidden for employee) %s' % (width, label, json.dumps([x['name'] for x in st['tiles']], ensure_ascii=False)))
                             check([x['href'] for x in st['tiles'] if x['current'] == 'page'] == [current], 'Q:T-40 %d %s aria-current = %s only' % (width, label, current))
-                            check(st['logout'] and st['logout']['vis'] and st['logout']['last'] and st['logout']['text'] == '로그아웃', 'Q:T-40 %d %s 로그아웃 = last row under a divider' % (width, label))
+                            check(st['logout'] is None and p.locator('details.shell-account .app-menu__logout').count() == 1, 'Q:T-40 %d %s 로그아웃 row moved to the account panel (C6)' % (width, label))
                             if width in (1440, 412) or (width == 960 and path == '/community/'):
                                 p.screenshot(path=str(shots / ('grid-open-%d%s.png' % (width, path.replace('/', '_')))))
                             p.keyboard.press('Escape')
@@ -512,7 +515,7 @@ try:
                     p.wait_for_timeout(150)
                     st = p.evaluate(GRID_STATE_JS)
                     names = [x['name'] for x in st['tiles']]
-                    check(names == ['모아 홈', '자료실', '업무', '이야기', '메신저', '내 계정', '내 활동', '관리자 페이지', '검색'], 'Q:T-40 admin %s tiles include 관리자 페이지 (can_admin) %s' % (path, json.dumps(names, ensure_ascii=False)))
+                    check(names == ['모아 홈', '자료실', '업무', '이야기', '관리자 페이지', '검색'], 'Q:T-40 admin %s tiles include 관리자 페이지 (can_admin) %s' % (path, json.dumps(names, ensure_ascii=False)))
                     p.keyboard.press('Escape')
                 # 검색 타일 → 사이드바 「검색」과 같은 창 · 메신저 타일 → 떠 있는 창
                 p.locator('details.appbar__apps > summary').click()
@@ -520,10 +523,9 @@ try:
                 p.wait_for_timeout(300)
                 check(p.evaluate("document.getElementById('search-dialog').open") and not p.evaluate("document.querySelector('details.appbar__apps').open"), 'Q:T-40 search tile opens the same search dialog (grid closes)')
                 p.keyboard.press('Escape')
-                p.locator('details.appbar__apps > summary').click()
-                p.locator('details.appbar__apps [data-messenger-open]').click()
+                p.locator('.shell-tools #messenger-open').click()   # 카페 C6 (DESIGN 2.30) — 메신저는 앱 판 밖의 단추
                 p.wait_for_timeout(600)
-                check(p.evaluate("document.getElementById('messenger-window').open") and not p.evaluate("document.querySelector('details.appbar__apps').open"), 'Q:T-40 messenger tile opens the floating messenger (grid closes)')
+                check(p.evaluate("document.getElementById('messenger-window').open") and not p.evaluate("document.querySelector('details.appbar__apps').open"), 'Q:T-40 messenger button opens the floating messenger (grid stays closed)')
             guard('Q:T-40 admin tiles', admin_tiles)
             check(t.clean('t40-admin'), 'Q:T-40 admin no page errors / 5xx / script console output')
             ctx.close()
@@ -552,7 +554,7 @@ try:
                             panel_bg = parse_color(st['panelBg'])
                             panel_eff = over(panel_bg, body_bg) if panel_bg and body_bg and panel_bg[3] < 1 else panel_bg
                             items = []
-                            for it in st['tiles'] + [{'name': '로그아웃', 'current': None, 'color': st['logout']['color'], 'bg': 'rgba(0, 0, 0, 0)'}]:
+                            for it in st['tiles'] + ([{'name': '로그아웃', 'current': None, 'color': st['logout']['color'], 'bg': 'rgba(0, 0, 0, 0)'}] if st['logout'] else []):   # C6 — 로그아웃 줄은 내 계정 판
                                 fg = parse_color(it['color'])
                                 bg = parse_color(it['bg'])
                                 eff = over(bg, panel_eff) if bg and panel_eff else None

@@ -441,13 +441,14 @@ try:
         # 상대를 고른 open() 은 대화 · 목록을 다 읽은 뒤 입력 칸에 초점을 준다(messenger.js) — 그 전에 ▾ 를 누르면 늦게 온 초점이 격자 밖으로 나가
         # 격자가 닫힌다(app.js focusout · RV-U2-2 에서 찾은 경합). 「시트가 다 열린 뒤 ▾」를 재려고 입력 칸 초점을 기다린다.
         expect(p.locator('#message-text')).to_be_focused()
-        p.locator('#appbar-apps').click();p.wait_for_timeout(200)
+        # 카페 C6 (DESIGN 2.30 「폰」) — 로그아웃 줄은 내 계정 판(윗줄 아바타 #appbar-account 가 연다 · 앱 판과 같은 자리 · 같은 층)
+        p.locator('#appbar-account').click();p.wait_for_timeout(200)
         if p.locator('#logout').is_visible():p.locator('#logout').scroll_into_view_if_needed();p.wait_for_timeout(200)
-        hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);const d=document.getElementById('messenger-window');const g=document.getElementById('app-grid');return {hit:!!(e&&e.closest('#logout')),window:d.open,grid:g.open,on:e?(e.id||String(e.className)||e.tagName):null,on_sheet:!!(e&&e.closest('#messenger-window'))};})()")
+        hit=p.evaluate("(()=>{const b=document.getElementById('logout').getBoundingClientRect();const e=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);const d=document.getElementById('messenger-window');const g=document.getElementById('account-menu');return {hit:!!(e&&e.closest('#logout')),window:d.open,grid:g.open,on:e?(e.id||String(e.className)||e.tagName):null,on_sheet:!!(e&&e.closest('#messenger-window'))};})()")
         metrics['t16-grid-over-sheet-'+tag]=hit
-        check(hit['hit'] and hit['window'] and hit['grid'],'Q:T-16 '+tag+': app grid sits above the sheet (logout hit-testable, window state still open) '+json.dumps(hit,ensure_ascii=False))
+        check(hit['hit'] and hit['window'] and hit['grid'],'Q:T-16 '+tag+': account panel sits above the sheet (logout hit-testable, window state still open — C6) '+json.dumps(hit,ensure_ascii=False))
         p.keyboard.press('Escape');p.wait_for_timeout(300)
-        check(p.locator('#messenger-window').is_visible() and t.is_open() and not p.locator('#app-grid').evaluate('(n)=>n.open'),'Q:T-16 '+tag+': closing the app grid shows the sheet again')
+        check(p.locator('#messenger-window').is_visible() and t.is_open() and not p.locator('#account-menu').evaluate('(n)=>n.open'),'Q:T-16 '+tag+': closing the account panel shows the sheet again')
       else:
        g=geo['guide']
        overlap=0 if g is None else max(0,min(geo['right'],g['right'])-max(geo['left'],g['left']))*max(0,min(geo['bottom'],g['bottom'])-max(geo['top'],g['top']))
@@ -750,11 +751,12 @@ try:
       const ui=s.cloneNode(true);ui.querySelectorAll('#nav-community-tree,#nav-community-fav,#nav-community-recent,#nav-work-projects,#nav-community-shared,#nav-community-boards,#nav-community-teams').forEach(n=>n.remove());
       return {links:links,text:(ui.textContent.match(/메신저/g)||[]).length,openers:s.querySelectorAll('[data-messenger-open]').length,
       // Q:F-12 U2 (DESIGN 2.18) — 옛 아이콘 줄(nav.app-rail) 대신 본문 오른쪽 위 앱 격자(#app-grid)의 타일 이름 · 창 여는 단추 수
-      grid:[...document.querySelectorAll('#app-grid .app-menu__apps .app-menu__name')].map(n=>n.textContent.replace(/\\s+/g,' ').trim()),gridOpeners:document.querySelectorAll('#app-grid [data-messenger-open]').length,rail:document.querySelectorAll('nav.app-rail').length};})()""")
+      grid:[...document.querySelectorAll('#app-grid .app-menu__apps .app-menu__name')].map(n=>n.textContent.replace(/\\s+/g,' ').trim()),gridOpeners:document.querySelectorAll('#app-grid [data-messenger-open]').length,toolOpeners:document.querySelectorAll('.shell-tools > [data-messenger-open]').length,rail:document.querySelectorAll('nav.app-rail').length};})()""")
     metrics['c6_sidebar'+path.replace('/','_')]=side
     check(side['links']==0,'C-6 '+path+' sidebar: /messages link 0 '+json.dumps(side,ensure_ascii=False))
     # U2 — 「메신저」 는 사이드바가 아니라 앱 격자의 타일 하나(떠 있는 창을 여는 단추). 사이드바에는 글자 · 단추 0(두 벌 금지)
-    check(side['text']==0 and side['openers']==0 and side['rail']==0 and side['grid'].count('메신저')==1 and side['gridOpeners']==1,'C-6 '+path+' 「메신저」 once — the floating window opener tile in the app grid (sidebar 0 · old rail 0)')
+    # 카페 C6 (DESIGN 2.30) — 그 하나는 앱 판의 타일이 아니라 앱 단추 왼쪽 메신저 단추
+    check(side['text']==0 and side['openers']==0 and side['rail']==0 and side['grid'].count('메신저')==0 and side['gridOpeners']==0 and side['toolOpeners']==1,'C-6 '+path+' 「메신저」 once — the floating window opener button in the tool row (grid 0 · sidebar 0 · old rail 0)')
    t.open();p.locator('#messenger-window .modal__head a').filter(has_text='크게 보기').click();p.wait_for_url('**/tbox/messages',timeout=10000)
    check(p.url.endswith('/tbox/messages') and p.locator('#message-form').count()==1,'C-6 full screen is reached from the window head 「크게 보기」 (/messages)')
    check(t.clean('c6'),'C-6 no page errors / 5xx / script console output')

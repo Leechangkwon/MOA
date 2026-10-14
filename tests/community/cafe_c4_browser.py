@@ -22,6 +22,11 @@
              첫 프레임부터 접힘 · 레일 64 / ☰ 펼침 → 쿠키 open → 다른 화면 · 새로 고침 펼침(첫 HTML 속성 0) · 다시 접기 → 쿠키 지움 → 접힘 /
              접힌 「＋」: 올리기 · 초점 때 단추 안 글자 0 · 오른쪽 풍선 「새로 만들기」(「홈」 풍선과 같은 자리 규칙 — CDP 로 ::after 상자) · 누르면 메뉴 /
              펼침 240 에서 「＋ 새로 만들기」 글자 · 412 서랍 그대로(쿠키 무관) · 옛 localStorage 키 지움 · 넘침 0 · 콘솔 0
+  [c6]       C6 오른쪽 위 셋 — 1440 · 1280 · 960 × 밝게 · 어둡게 · 고대비: 순서 메신저 · 앱 · 칩 · 높이 44 · 사이 8 · 메신저 단추 열고 닫기(aria-expanded) · Esc 초점 ·
+             안 읽은 수 배지 = 메신저 단추(앱 단추 0) · 앱 판 = 앱과 도구만(메신저 · 내 계정 · 내 활동 · 로그아웃 0 · 관리자 타일은 관리자만) ·
+             칩 → 내 계정 판(머리 이름 · 아이디 · 역할 · 내 계정 · 내 활동 · 로그아웃 · 앱 판과 같은 폭 · 같은 클래스) · 두 판 동시 0 · 바깥 · Esc 닫힘 ·
+             타일 이동 · /tbox/settings aria-current · 로그아웃 그대로 / 412: 윗줄 메신저 · 아바타 → 판 전체 폭 · 서랍 · 앱 판 · 계정 판 하나만 /
+             손님 · 직원 · 관리자 · 대비 4.5 · 넘침 0 · 콘솔 0 · 누름 자리 < 44 0(검정 단추 「댓글 달기」 포함 — design.css 반짝 조각 보정)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -154,6 +159,28 @@ CONTRAST_JS = r"""(el) => {
   return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
 }"""
 
+
+# 누름 자리(DESIGN 4장 ①) — 보이는 누르는 것의 (자기 상자 ∪ ::before) ≥ 44 (cafe_c2_browser 와 같은 셈 — C6 보정 뒤에는 검정 단추도 따로 세지 않는다)
+AUDIT_JS = r"""([touch, scope]) => {
+  const vis = el => { if (!el.isConnected) return false; const r = el.getBoundingClientRect(); const s = getComputedStyle(el);
+    return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none' && !el.closest('[hidden]:not(#sidebar)'); };
+  const small = [];
+  if (touch) {
+    const sel = ['button', 'summary', 'a[class]', 'input[type=checkbox]', 'input[type=radio]'];
+    for (const root of document.querySelectorAll(scope)) for (const el of root.querySelectorAll(sel.join(','))) {
+      if (!vis(el) || el.closest('.doc') || el.closest('dialog:not([open])')) continue;
+      const r = el.getBoundingClientRect(); const b = getComputedStyle(el, '::before');
+      let w = r.width, h = r.height;
+      if (b.content && b.content !== 'none' && b.position === 'absolute') {
+        const px = v => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+        w = r.width - px(b.left) - px(b.right); h = r.height - px(b.top) - px(b.bottom);
+      }
+      if ((el.matches('input[type=checkbox], input[type=radio]')) && el.closest('label')) { const lr = el.closest('label').getBoundingClientRect(); w = Math.max(w, lr.width); h = Math.max(h, lr.height); }
+      if (w < 43.5 || h < 43.5) small.push((el.id || el.className || el.tagName).toString().slice(0, 60) + ' ' + Math.round(w) + 'x' + Math.round(h));
+    }
+  }
+  return {small: small.slice(0, 12), smallCount: small.length};
+}"""
 
 try:
     for k, key in KEY.items():
@@ -703,6 +730,240 @@ try:
                     ctx.close()
                 metrics['c5'] = res
             guard('c5', c5)
+
+        # ─── [c6] 오른쪽 위 셋 — 메신저 · 앱 · 내 계정 ───────────────────────────────────────
+        if want('c6'):
+            def c6():
+                CP = new_page('C6 터치 시험 문서')   # 「댓글 달기」(검정 단추)가 있는 화면
+                TOOLS_JS = r"""() => { const row = document.querySelector('.shell-tools'); const kids = [...row.children].filter(e => getComputedStyle(e).display !== 'none');
+                    const box = (e) => { const r = e.getBoundingClientRect(); return {l: r.left, r: r.right, t: r.top, h: Math.round(r.height * 10) / 10, w: Math.round(r.width)}; };
+                    const m = row.querySelector('.shell-tools__messenger'); const a = row.querySelector('.appbar__apps > summary'); const c = row.querySelector('.shell-account > summary');
+                    const ms = m ? getComputedStyle(m) : null; const lab = m ? [...m.children].find(x => !x.classList.contains('icon') && !x.classList.contains('badge')) : null;
+                    return {order: kids.map(e => e.tagName.toLowerCase() + '.' + (e.className || '').toString().split(' ').filter(c => ['shell-tools__messenger', 'appbar__apps', 'shell-account'].includes(c)).join('')),
+                            m: m ? box(m) : null, a: box(a), c: box(c), gapMA: m ? Math.round(a.getBoundingClientRect().left - m.getBoundingClientRect().right) : null,
+                            gapAC: Math.round(c.getBoundingClientRect().left - a.getBoundingClientRect().right),
+                            mIcon: m ? Math.round(m.querySelector('svg').getBoundingClientRect().width) : null, mFont: lab ? [getComputedStyle(lab).fontSize, getComputedStyle(lab).fontWeight] : null,
+                            mBorder: ms ? ms.borderTopColor : null, mBg: ms ? ms.backgroundColor : null, mTag: m ? m.tagName : null, mLabel: m ? (m.getAttribute('aria-label') || m.textContent.trim()) : null,
+                            unreadIn: [...document.querySelectorAll('.shell-tools [data-message-unread]')].map(e => e.parentElement.className),
+                            chipLabel: c.getAttribute('aria-label'), chipTag: c.tagName, chevron: !!c.querySelector('[data-icon="chevron"] svg'),
+                            overflow: document.documentElement.scrollWidth - innerWidth}; }"""
+                PANEL_JS = r"""(sel) => { const d = document.querySelector(sel); const p = d.querySelector('.app-menu'); const r = p.getBoundingClientRect(); const s = d.querySelector('summary').getBoundingClientRect();
+                    const vis = (e) => e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none';
+                    const head = p.querySelector('.app-menu__head');
+                    return {open: d.open, cls: p.className, w: Math.round(r.width), right: Math.round(r.right), sumRight: Math.round(s.right), top: Math.round(r.top), left: Math.round(r.left),
+                            tiles: [...p.querySelectorAll('.app-menu__app')].filter(vis).map(e => e.querySelector('.app-menu__name').textContent),
+                            current: [...p.querySelectorAll('.app-menu__app[aria-current="page"]')].map(e => e.querySelector('.app-menu__name').textContent),
+                            logout: [...p.querySelectorAll('.app-menu__logout')].filter(vis).map(e => e.textContent.trim()),
+                            head: head ? {name: head.querySelector('strong').textContent, meta: head.querySelector('strong + span').textContent,
+                                          avatar: Math.round(head.firstElementChild.getBoundingClientRect().width), nameFont: [getComputedStyle(head.querySelector('strong')).fontSize, getComputedStyle(head.querySelector('strong')).fontWeight],
+                                          metaFont: getComputedStyle(head.querySelector('strong + span')).fontSize} : null}; }"""
+                PROBE_JS = "(t) => { const d = document.createElement('div'); d.style.color = 'var(' + t + ')'; document.body.appendChild(d); const v = getComputedStyle(d).color; d.remove(); return v; }"
+                ROLE = {'W': '직원', 'M': '관리자', 'G': '손님'}
+                res = {}
+
+                def contrast_of(p, sel):
+                    return [round(h.evaluate(CONTRAST_JS), 2) for h in p.query_selector_all(sel) if h.is_visible()]
+
+                for mode in ('light', 'dark', 'hc'):
+                    for k in ('W', 'M', 'G'):
+                        sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(uid(k)))
+                    for width in (1440, 1280, 960):
+                        for k in (('W', 'M', 'G') if (width == 1440 and mode == 'light') else ('W',)):
+                            tag = '%s-%d-%s' % (k, width, mode)
+                            ctx = context(k, width, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
+                            t = Tab(ctx)
+                            p = t.page
+
+                            def one():
+                                t.go('/community/workspace')
+                                p.wait_for_selector('.shell-tools .shell-account > summary', timeout=10000)
+                                st = p.evaluate(TOOLS_JS)
+                                res[tag] = {'tools': st}
+                                check(st['order'] == ['button.shell-tools__messenger' if k != 'G' else 'a.shell-tools__messenger', 'details.appbar__apps', 'details.shell-account'],
+                                      'c6 %s: row order messenger · apps · account chip %s' % (tag, json.dumps(st['order'])))
+                                check(all(abs(x['h'] - 44) < 0.6 for x in (st['m'], st['a'], st['c'])) and st['gapMA'] == 8 and st['gapAC'] == 8,
+                                      'c6 %s: three heights 44 · gaps 8 %s' % (tag, json.dumps([st['m']['h'], st['a']['h'], st['c']['h'], st['gapMA'], st['gapAC']])))
+                                quiet = p.evaluate("() => { const b = document.createElement('button'); b.className = 'btn btn--quiet'; b.textContent = 'x'; document.querySelector('.shell-tools').appendChild(b); const s = getComputedStyle(b); const o = [s.borderTopColor, s.backgroundColor]; b.remove(); return o; }")
+                                check(st['mIcon'] == 22 and st['mFont'] == ['15px', '500'] and [st['mBorder'], st['mBg']] == quiet,
+                                      'c6 %s: messenger button icon 22 · 15px 500 · .btn--quiet look (not the blue app button) %s' % (tag, json.dumps({'icon': st['mIcon'], 'font': st['mFont'], 'look': [st['mBorder'], st['mBg']], 'quiet': quiet})))
+                                check(st['unreadIn'] == (['btn btn--quiet shell-tools__messenger'] if k != 'G' else []), 'c6 %s: unread badge only on the messenger button (apps button 0) %s' % (tag, json.dumps(st['unreadIn'])))
+                                check(st['chipTag'] == 'SUMMARY' and st['chipLabel'].startswith('내 계정 메뉴 — ') and st['chevron'], 'c6 %s: name chip = summary of details.shell-account · aria-label 「내 계정 메뉴 — 이름」 · ▾' % tag)
+                                check(st['overflow'] <= 0, 'c6 %s: horizontal overflow 0' % tag)
+                                cr = contrast_of(p, '.shell-tools__messenger > span:not(.icon):not(.badge), .shell-tools__name > span, .shell-tools > .appbar__apps > summary')
+                                # 앱 판
+                                p.locator('.shell-tools .appbar__apps > summary').click()
+                                p.wait_for_timeout(150)
+                                ap = p.evaluate(PANEL_JS, '.shell-tools .appbar__apps')
+                                want_tiles = ['모아 홈', '자료실', '업무', '이야기'] + (['관리자 페이지'] if k == 'M' else []) + ['검색']
+                                check([x for x in ap['tiles'] if x != '우리 공간'] == want_tiles and ap['logout'] == [] and ap['head'] is None,
+                                      'c6 %s: app panel = apps and tools only (messenger · 내 계정 · 내 활동 · 로그아웃 0 · admin tile only for admin) %s' % (tag, json.dumps(ap['tiles'], ensure_ascii=False)))
+                                # 칩 → 내 계정 판 · 두 판 동시 0
+                                p.locator('.shell-tools .shell-account > summary').click()
+                                p.wait_for_timeout(150)
+                                ac = p.evaluate(PANEL_JS, '.shell-tools .shell-account')
+                                ap2 = p.evaluate("document.querySelector('.shell-tools .appbar__apps').open")
+                                res[tag]['apps'] = ap
+                                res[tag]['account'] = ac
+                                check(ac['open'] and not ap2, 'c6 %s: opening the account panel closes the app panel (one at a time)' % tag)
+                                check(ac['cls'] == ap['cls'] == 'panel app-menu' and ac['w'] == ap['w'] == 300 and ac['right'] == ac['sumRight'],
+                                      'c6 %s: account panel = same component · same class · same width 300 · right-aligned %s' % (tag, json.dumps({k_: ac[k_] for k_ in ('cls', 'w', 'right', 'sumRight')})))
+                                h = ac['head'] or {}
+                                check(h.get('name') == (DN[k] or UN[k]) and h.get('meta') == UN[k] + ' · ' + ROLE[k] and h.get('avatar') == 40 and h.get('nameFont') == ['16px', '600'] and h.get('metaFont') == '13px',
+                                      'c6 %s: account head avatar 40 · name 16/600 · 「아이디 · 역할」 13px %s' % (tag, json.dumps(h, ensure_ascii=False)))
+                                check(ac['tiles'] == ['내 계정', '내 활동'] and ac['logout'] == ['로그아웃'] and ac['current'] == [], 'c6 %s: account tiles 내 계정 · 내 활동 + 로그아웃 row %s' % (tag, json.dumps(ac['tiles'], ensure_ascii=False)))
+                                cr += contrast_of(p, '.shell-account .app-menu__head strong, .shell-account .app-menu__head strong + span, .shell-account .app-menu__name, .shell-account .app-menu__logout > span:not(.icon)')
+                                check(min(cr) >= 4.5, 'c6 %s: contrast ≥ 4.5 (messenger · chip · apps button · account panel — min %.2f)' % (tag, min(cr)))
+                                if width == 1440 and k == 'W' and mode in ('light', 'dark'):
+                                    p.screenshot(path=str(shots / ('c6-account-%s.png' % mode)), clip={'x': width - 560, 'y': 0, 'width': 560, 'height': 420})
+                                # 바깥 누름 · Esc
+                                p.mouse.click(width / 2, 600)
+                                p.wait_for_timeout(150)
+                                closed = not p.evaluate("document.querySelector('.shell-tools .shell-account').open")
+                                p.locator('.shell-tools .shell-account > summary').click()
+                                p.keyboard.press('Escape')
+                                p.wait_for_timeout(150)
+                                esc = p.evaluate("({open: document.querySelector('.shell-tools .shell-account').open, focus: document.activeElement === document.querySelector('.shell-tools .shell-account > summary')})")
+                                check(closed and not esc['open'] and esc['focus'], 'c6 %s: outside click closes · Esc closes and focus returns to the chip' % tag)
+                                p.locator('.shell-tools .appbar__apps > summary').click()
+                                p.keyboard.press('Escape')
+                                p.wait_for_timeout(150)
+                                check(p.evaluate("document.activeElement === document.querySelector('.shell-tools .appbar__apps > summary') && !document.querySelector('.shell-tools .appbar__apps').open"),
+                                      'c6 %s: app panel Esc → focus back to the app button (same function)' % tag)
+                                # 메신저 단추 — 열고 닫기
+                                if k != 'G':
+                                    p.locator('#messenger-open').click()
+                                    p.wait_for_selector('#messenger-window[open]', timeout=8000)
+                                    a1 = p.evaluate("document.getElementById('messenger-open').getAttribute('aria-expanded')")
+                                    p.wait_for_timeout(300)
+                                    p.locator('#messenger-open').click()
+                                    p.wait_for_timeout(300)
+                                    a2 = p.evaluate("[document.getElementById('messenger-window').open, document.getElementById('messenger-open').getAttribute('aria-expanded')]")
+                                    p.locator('#messenger-open').click()
+                                    p.wait_for_selector('#messenger-window[open]', timeout=8000)
+                                    p.wait_for_timeout(500)
+                                    inside = p.evaluate("document.getElementById('messenger-window').contains(document.activeElement)")
+                                    p.keyboard.press('Escape')
+                                    p.wait_for_timeout(300)
+                                    a3 = p.evaluate("[document.getElementById('messenger-window').open, document.activeElement && document.activeElement.id]")
+                                    check(a1 == 'true' and a2 == [False, 'false'] and inside and a3 == [False, 'messenger-open'],
+                                          'c6 %s: messenger button opens (aria-expanded true) · again closes · Esc from inside → closed · focus on the button %s' % (tag, json.dumps([a1, a2, a3])))
+                                    dot = p.evaluate("""() => { const b = document.getElementById('messenger-open'); const d = b.querySelector('[data-message-unread]'); d.hidden = false; d.textContent = '3';
+                                        const r = b.getBoundingClientRect(), q = d.getBoundingClientRect(); const out = {top: Math.round(q.top - r.top), right: Math.round(r.right - q.right), h: Math.round(q.height), text: d.textContent};
+                                        d.hidden = true; d.textContent = ''; return out; }""")
+                                    check(-7 <= dot['top'] <= -4 and -7 <= dot['right'] <= -4 and dot['h'] == 18, 'c6 %s: unread number badge at the messenger button top-right %s' % (tag, json.dumps(dot)))
+                                else:
+                                    lk = p.evaluate("(() => { const a = document.querySelector('.shell-tools__messenger'); return {href: a.getAttribute('href'), label: a.getAttribute('aria-label'), note: !!a.querySelector('.messenger-access-note')}; })()")
+                                    check(lk['href'] == '/tbox/messages' and lk['label'] == '메신저 이용 안내' and not lk['note'], 'c6 %s: guest — 「메신저 이용 안내」 link button (same look) %s' % (tag, json.dumps(lk, ensure_ascii=False)))
+                                if width == 1440 and mode == 'light' and k == 'W':
+                                    # 타일 이동 · aria-current
+                                    p.locator('.shell-tools .shell-account > summary').click()
+                                    p.locator('#menu-activity').click()
+                                    p.wait_for_url('**/tbox/activity', timeout=10000)
+                                    p.wait_for_timeout(300)
+                                    p.locator('.shell-tools .shell-account > summary').click()
+                                    cur = p.evaluate(PANEL_JS, '.shell-tools .shell-account')['current']
+                                    t.go('/tbox/settings')
+                                    p.locator('.shell-tools .shell-account > summary').click()
+                                    cur2 = p.evaluate(PANEL_JS, '.shell-tools .shell-account')['current']
+                                    check(cur == ['내 활동'] and cur2 == ['내 계정'], 'c6 %s: tile navigates · on /tbox/activity 「내 활동」 · on /tbox/settings 「내 계정」 aria-current %s' % (tag, json.dumps([cur, cur2], ensure_ascii=False)))
+                            guard('c6 ' + tag, one)
+                            check(t.clean('c6-' + tag), 'c6 %s: console 0' % tag)
+                            ctx.close()
+                for k in ('W', 'M', 'G'):
+                    sql('UPDATE users SET high_contrast=false WHERE id=' + str(uid(k)))
+                # 로그아웃 — 내 계정 판의 줄이 그대로 로그아웃한다(따로 만든 세션)
+                ctx = context('W', 1440)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/workspace')
+                tok_count = int(sql('SELECT count(*) FROM sessions WHERE user_id=' + str(uid('W'))))
+                p.locator('.shell-tools .shell-account > summary').click()
+                p.locator('#logout').click()
+                p.wait_for_url('**/login**', timeout=10000)
+                after = int(sql('SELECT count(*) FROM sessions WHERE user_id=' + str(uid('W'))))
+                check(after == tok_count - 1, 'c6: 로그아웃 row logs out as before (→ login · session row removed %d → %d)' % (tok_count, after))
+                ctx.close()
+                # 412 — 윗줄 메신저 · 아바타 · 판 하나만 · 누름 자리
+                for mode in ('light', 'dark', 'hc'):
+                    for k in (('W', 'M', 'G') if mode == 'light' else ('W',)):
+                        sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id=' + str(uid(k)))
+                        tag = '%s-412-%s' % (k, mode)
+                        ctx = context(k, 412, 915, touch=True, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
+                        t = Tab(ctx)
+                        p = t.page
+
+                        def phone():
+                            t.go('/community/workspace')
+                            p.wait_for_selector('#appbar-account', timeout=10000)
+                            top = p.evaluate("""() => ({tools: getComputedStyle(document.querySelector('.shell-tools')).display, msg: !!document.getElementById('appbar-messenger') && document.getElementById('appbar-messenger').getClientRects().length > 0,
+                                acct: document.getElementById('appbar-account').getAttribute('aria-controls'), label: document.getElementById('appbar-account').getAttribute('aria-label'),
+                                av: Math.round(document.querySelector('#appbar-account > span').getBoundingClientRect().width)})""")
+                            check(top['tools'] == 'none' and top['msg'] and top['acct'] == 'account-menu' and top['label'].startswith('내 계정 메뉴 — ') and top['av'] == 32,
+                                  'c6 %s: top bar messenger · avatar 32 button (aria-controls account-menu) · tools row hidden %s' % (tag, json.dumps(top, ensure_ascii=False)))
+                            p.locator('#appbar-account').click()
+                            p.wait_for_timeout(200)
+                            ac = p.evaluate(PANEL_JS, '.shell-account')
+                            ex = p.evaluate("document.getElementById('appbar-account').getAttribute('aria-expanded')")
+                            check(ac['open'] and ac['left'] == 0 and ac['w'] == 412 and ac['top'] == 52 and ac['tiles'] == ['내 계정', '내 활동'] and ac['logout'] == ['로그아웃'] and ex == 'true',
+                                  'c6 %s: avatar → account panel full width under the top bar %s' % (tag, json.dumps({k_: ac[k_] for k_ in ('left', 'w', 'top')})))
+                            cr = contrast_of(p, '.shell-account .app-menu__head strong, .shell-account .app-menu__head strong + span, .shell-account .app-menu__name')
+                            p.locator('#appbar-apps').click()
+                            p.wait_for_timeout(200)
+                            one_ = p.evaluate("[document.querySelector('.shell-account').open, document.querySelector('.appbar__apps').open, document.getElementById('appbar-account').getAttribute('aria-expanded')]")
+                            p.locator('#nav-toggle').click()
+                            p.wait_for_timeout(300)
+                            two_ = p.evaluate("[document.querySelector('.shell-account').open, document.querySelector('.appbar__apps').open, !!document.querySelector('#mobile-nav-dialog[open]')]")
+                            p.locator('#mobile-nav-close').click()
+                            p.wait_for_timeout(200)
+                            p.locator('#appbar-account').click()
+                            p.wait_for_timeout(200)
+                            p.locator('#nav-toggle').click()
+                            p.wait_for_timeout(300)
+                            three_ = p.evaluate("[document.querySelector('.shell-account').open, !!document.querySelector('#mobile-nav-dialog[open]')]")
+                            p.locator('#mobile-nav-close').click()
+                            check(one_ == [False, True, 'false'] and two_ == [False, False, True] and three_ == [False, True],
+                                  'c6 %s: drawer · app panel · account panel — only one open %s' % (tag, json.dumps([one_, two_, three_])))
+                            check(min(cr) >= 4.5, 'c6 %s: account panel contrast ≥ 4.5 (min %.2f)' % (tag, min(cr)))
+                            ov = p.evaluate("document.documentElement.scrollWidth - innerWidth")
+                            check(ov <= 0, 'c6 %s: horizontal overflow 0' % tag)
+                            if mode == 'light' and k == 'W':
+                                p.locator('#appbar-account').click()
+                                p.wait_for_timeout(200)
+                                p.screenshot(path=str(shots / 'c6-account-412.png'))
+                                p.keyboard.press('Escape')
+                            if k == 'G':
+                                return   # 손님은 이 문서를 볼 수 없다(댓글 칸 0) — 누름 자리는 직원 · 관리자 문맥에서
+                            # 누름 자리 — 윗줄 · 판 · 검정 단추(「댓글 달기」)
+                            t.go('/community/p/' + CP)
+                            p.wait_for_selector('#comment-submit', timeout=10000)
+                            p.locator('#appbar-account').click()
+                            p.wait_for_timeout(200)
+                            au = p.evaluate(AUDIT_JS, [True, '.appbar, .shell-tools, #page-comments, .page-head'])
+                            p.keyboard.press('Escape')
+                            cs = p.evaluate("""() => { const b = document.getElementById('comment-submit'); const r = b.getBoundingClientRect(); const a = getComputedStyle(b, '::before');
+                                const px = (v) => { const n = parseFloat(v); return isNaN(n) ? 0 : n; };
+                                return {w: Math.round(r.width - px(a.left) - px(a.right)), h: Math.round(r.height - px(a.top) - px(a.bottom)), visH: Math.round(r.height), z: a.zIndex, bg: a.backgroundImage}; }""")
+                            res[tag] = {'top': top, 'audit': au, 'comment_submit': cs}
+                            check(au['smallCount'] == 0, 'c6 %s: touch targets < 44 = 0 (top bar · panel · comments · head) %s' % (tag, json.dumps(au['small'], ensure_ascii=False)))
+                            check(cs['h'] >= 44 and cs['w'] >= 44 and cs['visH'] < 44 and cs['bg'] == 'none',
+                                  'c6 %s: black button 「댓글 달기」 touch area %d×%d ≥ 44 (visible height %d kept · shine piece yields) ' % (tag, cs['w'], cs['h'], cs['visH']))
+                        guard('c6 ' + tag, phone)
+                        check(t.clean('c6-' + tag), 'c6 %s: console 0' % tag)
+                        ctx.close()
+                for k in ('W', 'M', 'G'):
+                    sql('UPDATE users SET high_contrast=false WHERE id=' + str(uid(k)))
+                # 넓은 화면 정밀 포인터 — 검정 단추 모양 그대로(반짝 조각 · overflow hidden)
+                ctx = context('W', 1440)
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/p/' + CP)
+                p.wait_for_selector('#comment-submit', timeout=10000)
+                dk = p.evaluate("() => { const b = document.getElementById('comment-submit'); const a = getComputedStyle(b, '::before'); return {ov: getComputedStyle(b).overflow, z: a.zIndex, bg: a.backgroundImage.slice(0, 15), h: Math.round(b.getBoundingClientRect().height)}; }")
+                metrics['c6_desktop_black_btn'] = dk
+                check(dk['ov'] == 'hidden' and dk['z'] == '-1' and dk['bg'].startswith('linear-gradient'), 'c6 1440: desktop black button look unchanged (shine piece · overflow hidden) %s' % json.dumps(dk))
+                ctx.close()
+                metrics['c6'] = res
+            guard('c6', c6)
 
         browser.close()
 finally:

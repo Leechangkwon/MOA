@@ -208,7 +208,7 @@ try:
 
         # ─── [shell] 오른쪽 위 도구 ──────────────────────────────────────────────────────────
         TOOLS_JS = r"""() => { const tools = document.querySelector('div.shell-tools'); const sum = document.querySelector('div.shell-tools > details.appbar__apps > summary');
-  const me = document.querySelector('a.shell-tools__me'); const main = document.getElementById('main');
+  const me = document.querySelector('.shell-tools__me'); const main = document.getElementById('main');   // 카페 C6 — 칩은 details.shell-account 의 summary
   const box = el => { if (!el) return null; const r = el.getBoundingClientRect(); const c = getComputedStyle(el); return {l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, h: r.height, display: c.display, fs: c.fontSize, fw: c.fontWeight}; };
   const svg = sum ? sum.querySelector('svg') : null; const av = me ? me.firstElementChild : null; const nm = me ? me.querySelector('.shell-tools__name') : null; const inner = nm ? nm.firstElementChild : null;
   const ms = main ? getComputedStyle(main) : null; const mr = main ? main.getBoundingClientRect() : null;
@@ -240,17 +240,19 @@ try:
                                   'shell %s %s: app button shows 「앱」 · height 44 · 15px 600 · icon 24 (%s · h %.1f · svg %s)' % (tag, path, st['sumText'], st['sum']['h'], st['svg'] and st['svg']['w']))
                             check(abs(st['tools']['h'] - 44) <= 0.5 and abs(st['tools']['r'] - st['mainInnerRight']) <= 2, 'shell %s %s: shell-tools row height 44 · right-aligned' % (tag, path))
                             check(st['me'] and abs(st['me']['h'] - 44) <= 0.5 and st['av'] and abs(st['av']['w'] - 34) <= 0.5 and abs(st['av']['h'] - 34) <= 0.5
-                                  and st['name'] == name and st['meText'].endswith('님') and name in st['meText'] and st['meHref'] == '/tbox/settings'
-                                  and st['meLabel'] == '내 계정 — ' + name,
-                                  'shell %s %s: user chip = avatar 34 + 「%s 님」 · height 44 · href /tbox/settings · aria-label 「내 계정 — 이름」 (%s)' % (tag, path, name, st['meText']))
+                                  and st['name'] == name and st['meText'].endswith('님') and name in st['meText'] and st['meHref'] is None
+                                  and st['meLabel'] == '내 계정 메뉴 — ' + name,
+                                  'shell %s %s: user chip = avatar 34 + 「%s 님」 · height 44 · summary of the account panel (C6) · aria-label 「내 계정 메뉴 — 이름」 (%s)' % (tag, path, name, st['meText']))
                             check(st['me']['r'] <= width and st['sum']['r'] <= st['me']['l'] and st['overflow'] <= 0 and st['inline'] == 0,
                                   'shell %s %s: app button left of the chip · overflow 0 · inline style 0' % (tag, path))
                             if path == '/community/' and theme == 'light':
                                 p.screenshot(path=str(shots / ('shell-%s.png' % tag)), clip={'x': width - 520, 'y': 0, 'width': 520, 'height': 90})
                             if path == '/community/':
-                                p.locator('a.shell-tools__me').click()
+                                # 카페 C6 (DESIGN 2.30) — 칩을 누르면 내 계정 판 → 「내 계정」 타일로 /tbox/settings
+                                p.locator('.shell-tools__me').click()
+                                p.locator('#menu-settings').click()
                                 p.wait_for_url(re.compile(r'.*/tbox/settings$'), timeout=10000)
-                                check(urlsplit(p.url).path == '/tbox/settings', 'shell %s: clicking the chip opens /tbox/settings' % tag)
+                                check(urlsplit(p.url).path == '/tbox/settings', 'shell %s: chip → account panel → 「내 계정」 opens /tbox/settings' % tag)
                         else:
                             check(st['tools']['display'] == 'none' and st['apps'] and st['apps']['w'] > 0, 'shell %s %s: phone — shell-tools hidden · top app-name button shown (unchanged)' % (tag, path))
                             p.locator('#appbar-apps').click()

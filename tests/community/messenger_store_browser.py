@@ -267,8 +267,8 @@ try:
    tab.goto(base+'/',wait_until='networkidle')
    check(KA in ls() and A_STATE in ss(),'⑤ draft and state survive same-tab navigation to community home '+W)
    logout=tab.locator('#logout')
-   if not logout.is_visible() and tab.locator('#appbar-apps').is_visible():tab.locator('#appbar-apps').click()  # 좁은 화면: 서랍 + 앱 메뉴
-   if not logout.is_visible():tab.locator('details.appbar__apps > summary').click()
+   if not logout.is_visible() and tab.locator('#appbar-account').is_visible():tab.locator('#appbar-account').click()  # 카페 C6 (DESIGN 2.30) — 로그아웃 줄은 내 계정 판(넓은 화면 칩 · 폰 아바타)
+   if not logout.is_visible():tab.locator('details.shell-account > summary').click()
    expect(logout).to_be_visible();logout.click();tab.wait_for_url('**/login**',timeout=15000)
    check(not [k for k in ls() if k.startswith(A_PREFIX)] and A_STATE not in ss(),'⑤ shell logout (app.js) clears drafts and messenger state '+W)
    check(not errors and not bad,'⑧ no page errors or 5xx '+W)

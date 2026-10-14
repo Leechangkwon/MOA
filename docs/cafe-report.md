@@ -157,3 +157,37 @@ board_pages_create(page.create) · SaveDoc(page.update — pages_update 의 몸)
 - 쿠키는 브라우저 하나에 하나다(전의 사용자별 localStorage 와 달리 같은 브라우저의 다른 계정도 같은 값) — DESIGN 2.19 ⑨ 의 결정 그대로.
 - 앵커 위치 지정을 모르는 브라우저는 풍선이 옛 absolute 규칙이라 단추의 `overflow:hidden` 에 잘릴 수 있다(2.8 「받아들인 한계」 그대로 — 사내 기본 Chromium 은 해당 없음).
 - 「들림」을 끈 것은 접힌 레일의 글자 단추뿐 — 펼친 240 의 「＋ 새로 만들기」는 테마 모양 그대로.
+
+## C6 — 오른쪽 위 셋: 메신저 · 앱 · 내 계정 · 2026-10-14 · Opus 구현 에이전트 (DESIGN 2.30 · 2.18 · 2.28 · 2.17 · 지시서 C6) + 덧: 검정 단추 터치 44
+
+### 변경 파일
+- `src/views/shell_top.php` — `div.shell-tools` = ① `button#messenger-open.btn.btn--quiet.shell-tools__messenger`(옛 타일의 id · `data-messenger-open` · aria-haspopup · aria-controls · aria-expanded 그대로 옮김 · 아이콘 messages + 「메신저」 · 안 읽은 수 `[data-message-unread]` 를 앱 단추에서 옮김) / 메신저를 못 쓰는 로그인 사용자는 같은 모양 `a.shell-tools__messenger[href=/tbox/messages][aria-label=메신저 이용 안내]` ② 앱 판(타일 = 모아 홈 · `Apps::all()` · 관리자 페이지(hidden — can_admin) · 검색 — 메신저 · 내 계정 · 내 활동 타일과 로그아웃 줄 뺌) ③ `details#account-menu.shell-account` — summary 는 옛 칩 모양(`.shell-tools__me` · 아바타 34 + 이름 + 님 + ▾ `chevron`) · aria-label 「내 계정 메뉴 — 이름」, 판은 같은 `.panel.app-menu` + `.app-menu__head`(아바타 40 · 이름 · 「아이디 · 역할」) + 타일 `#menu-settings` · `#menu-activity`(`$activeNav` 가 settings/activity 면 aria-current — 고정 비교) + `#logout` 줄(옮김). 폰 윗줄에 `button#appbar-account.btn.btn--icon.btn--plain`(이니셜 32 · aria-controls account-menu). 새 동적 값 0(전부 위에서 이스케이프한 이름 · 이니셜 · 아이디 · 역할).
+- `public/assets/app.js` — `initMenus` 의 앱 판 닫기 갈래를 **판 둘의 한 함수**로 넓힘(타일 · 로그아웃 누름 · 바깥 · Esc(초점 = 그 판의 summary 또는 폰 단추) · focusout · `toggle` 로 하나만 열림) · `initMobileSidebar` 에 `#appbar-account`(열면 첫 타일 초점 · 앱 판 · 서랍과 하나만 · aria-expanded).
+- `public/assets/messenger.js` — 여는 단추 누름이 창이 열려 있으면 닫음(열고 닫기 · aria-expanded 그대로 markOpeners). `public/assets/messenger-access.js` — 「이용 제한」 작은 글자를 `.shell-tools__messenger` 에 붙이지 않음 · 주석.
+- `public/assets/app.css` — `.shell-tools__messenger`(높이 44 · 15px 500 · 아이콘 22 — 옛 `#messenger-open .moa-module-icon` 18 규칙 옆에 22 한 줄 · 배지 오른쪽 위) · `.shell-account`(details · 열림 바탕 --muted-bg) · `.shell-tools__me > .icon` ▾ 16 --muted · `.app-menu__head` · `#appbar-account` · 폰 미디어: 두 판 중 열린 것만 윗줄 아래 전체 폭 · 앱 단추 위 안 읽은 점 규칙 지움. 색값 0(토큰만).
+- **덧(허용 파일 `public/assets/design.css`)** — 폰 폭(<720) · `pointer: coarse` 에서만 검정 단추의 반짝 `::before`(z-index −1 · inset 0 · overflow hidden)를 걷고 그 자리를 터치 넓힘(app.css 끝과 같은 식 — 보이는 상자 그대로 · 모자란 만큼 사방)에 돌려준다(`.btn.btn` 무게 · 파일 끝). 넓은 화면 · 정밀 포인터는 그대로(시험이 잰다).
+- 런처(`launcher.php`)와 모아 머리(`member_top.php`)는 grep 결과 이 칩 · 앱 판 부품이 없다(런처는 자기 `a.moa-account` · 「전체 서비스」 메뉴 · 모아 머리는 nav 링크) — 바꾼 것 0.
+- 시험: `cafe_c4_browser.py` [c6] · `tests/catalog.json`(covers · notes).
+
+### 옛 시험 — 바꾼 단언만 (돌리지 않음)
+- `tests/community/cafe_c2_browser.py` [apps] 「unread dot top-right 3px · 8px」 → 「앱 단추 0 · 메신저 단추 1」.
+- `tests/community/qf12_shell_browser.py` — Q:T-38 HTML: 타일 목록 `TILES`(모아 홈 · 자료실 · 업무 · 이야기 · 관리자 페이지 · 검색) · 「links … ids」(menu-admin 은 앱 판 · menu-settings · menu-activity 는 계정 판) · 「messenger tile (button)」→ 줄의 메신저 단추 · 「로그아웃 one row inside the grid panel」→ 계정 판 · 「grid row 내 계정 avatar → /tbox/settings」→ summary aria-label / Q:T-40: `TILES_EMP` · 「로그아웃 = last row」→ 계정 판으로 옮김 · admin 타일 목록 · 「messenger tile opens」→ 메신저 단추 · 대비 묶음의 로그아웃 줄(없으면 건너뜀) · 폰 「account/admin reachable」(#menu-settings → #appbar-account) · `GRID_STATE_JS` 의 `a.shell-tools__me` → `.shell-tools__me`.
+- `tests/community/qf12_u5_browser.py` [shell] — 칩 `a.shell-tools__me` → `.shell-tools__me`(href 0 · aria-label 「내 계정 메뉴 — 이름」) · 「clicking the chip opens /tbox/settings」→ 칩 → 판 → 「내 계정」.
+- `tests/community/messenger_rail_browser.py` — 「one visible common entry」(넓은 화면 = 메신저 단추) · 「grid has one messenger tile」→ 0 · 「grid messenger tile is the opener」→ 줄 단추 · 「unread badge on the tile and on the ⋮⋮⋮」→ 메신저 단추만 · 「tile press closes the grid」 지움 · 초점 되돌림(보이는 단추로) · 제한 계정: 줄 링크(「이용 제한」 글자 0 · aria-label).
+- `tests/community/messenger_window_browser.py` — Q:T-16 「app grid sits above the sheet (logout …)」→ 폰 아바타로 연 계정 판 · C-6 「메신저 once — tile in the app grid」→ 줄 단추.
+- `tests/community/messenger_store_browser.py` · `qf13h_privacy_browser.py` — 로그아웃을 찾으려고 여는 판: 앱 판 → 계정 판(폰은 `#appbar-account`).
+- 그대로 둔 것: `qf3a_bulk` · `qf4_drafts` · `qf4_round_a` 의 `#logout` 직접 누름(U2 부터 닫힌 판 안 — 이번 변경 전후가 같은 상태) · `browser_5a2` 의 `.app-menu__me`(이미 없던 클래스 — 이번과 무관).
+
+### 수락 시험
+- 개발 실행: `c6-dev1`(c6 209/26 — 아이콘 18(옛 `#messenger-open .moa-module-icon` 규칙) · 폰 아바타 30(아이콘 단추 안 여백) 은 화면 쪽 고침, 배지 위치 ±1 · 손님 문서 접근 · `.btn--quiet` 비교는 시험 쪽) · `c6-dev2`(c6 234/0).
+- **최종 판 한 번(C4 · C5 · C6 전부)**: `python3 tests/community/memories_harness.py --suite cafe_c4_browser.py --output /home/changkwon/qaredi-cafe-results-20261014/c6-run1` → **pass 520 · fail 0**(rc 0 · http/준비 84 · image 35 · mention 56 · c5 118 · c6 227) — `c6-run1/cafe-c4-browser-results.json` · `metrics` · `stdout.txt` · `shots/`(8).
+  - [c6] 1440 · 1280 · 960 × 밝게 · 어둡게 · 고대비(1440 밝게는 직원 · 관리자 · 손님): 순서 메신저 · 앱 · 칩 · 높이 44 셋 · 사이 8 · 메신저 아이콘 22 · 15px 500 · `.btn--quiet` 모양 · 안 읽은 수 배지 = 메신저 단추(앱 단추 0) · 칩 = summary(▾) · 앱 판 타일 = 모아 홈 · 자료실 · 업무 · 이야기 · (관리자만 관리자 페이지) · 검색 · 로그아웃 0 / 칩 → 계정 판(앱 판 닫힘 · `panel app-menu` · 폭 300 · 오른쪽 맞춤 · 머리 아바타 40 · 이름 16/600 · 「아이디 · 역할」 13 · 타일 내 계정 · 내 활동 · 로그아웃) · 바깥 누름 · Esc(초점 칩) · 앱 판 Esc(초점 앱 단추) / 메신저 단추 → 창(aria-expanded true) → 다시 → 닫힘(false) → Esc(창 안 초점) → 닫힘 · 초점 단추 · 배지 오른쪽 위 / 손님 「메신저 이용 안내」 링크 단추 / 내 활동 타일 → /tbox/activity(aria-current 내 활동) · /tbox/settings(aria-current 내 계정) · 로그아웃 → 로그인 화면 · 세션 행 −1 / 대비 최소 밝게 5.55 · 어둡게 7.00 · 고대비 11.57 · 넘침 0 · 콘솔 0.
+  - [c6] 412(터치) × 밝게(직원 · 관리자 · 손님) · 어둡게 · 고대비: 줄 숨김 · 윗줄 메신저 · 아바타 32 → 계정 판 left 0 · 폭 412 · top 52 · 앱 이름 ▾ → 앱 판(계정 판 닫힘) · ☰ → 서랍(두 판 닫힘) · 계정 판 → ☰ → 서랍만 · 대비 최소 5.55/8.21/11.57 · 넘침 0 · **누름 자리 < 44 = 0**(윗줄 · 판 · 댓글 · 머리) · 「댓글 달기」 보이는 36 그대로 · 누름 자리 94×46 · 1440 정밀 포인터의 검정 단추는 반짝 조각 · overflow hidden 그대로.
+- 정적: security_lint 통과 0건 · php -l 0 · node --check 0 · 바꾼 시험 py_compile · asset_version --check 0 · wiki_check 0 · git diff --check 0 · 더한 CSS 줄의 색 리터럴 0 · 인라인 style · innerHTML 0 — `c6-static.txt`.
+
+### 못 한 것 · 한계 · DESIGN 과 다르게 한 것
+- 실제 안 읽은 메시지(다른 사람이 보낸 글)로 배지를 띄우지는 않았다 — 배지 자리 · 수는 같은 `[data-message-unread]` 를 시험이 채워 잰다(폴링 · 숫자 글자는 messenger_rail_browser 가 합성 응답으로 재는 그대로).
+- 폰 윗줄 순서는 지금 마크업(검색 · 메신저 · 알림 종) 뒤에 아바타를 더했다 — DESIGN 2.30 의 「검색 · 알림 종 · 메신저 · 아바타」 순서로 종 · 메신저를 바꾸지는 않았다(옛 터치 간격 단언이 재는 자리라 · 메인 판단).
+- 앱 단추 접근 이름은 「앱 — 앱 바꾸기와 계정」 그대로(옛 단언이 재는 글자) — 계정이 판 밖으로 나갔으니 「앱 — 앱 바꾸기와 도구」 같은 글자로 바꿀지 메인 판단.
+- 메신저 여는 단추가 열고 닫기(토글)로 바뀐 것은 모든 `[data-messenger-open]`(런처 「동료에게 연락하기」 · 모아 머리 메신저 링크 · 폰 윗줄)에 함께 적용된다(한 함수).
+- 계정 판 타일 설명 글(화면 읽기용)은 「비밀번호 · 보안 · 화면 설정」 · 「내가 한 일 기록」(옛 내 계정 타일 설명은 이름 · 역할이었는데 그 값은 머리 줄로 옮겼다).

@@ -129,7 +129,7 @@ try:
    tab.keyboard.press('Escape');expect(tab.locator('#compose-dialog')).not_to_be_visible()
   def logout():
    button=tab.locator('#logout')
-   if not button.is_visible():tab.locator('details.appbar__apps > summary').click()
+   if not button.is_visible():tab.locator('details.shell-account > summary').click()  # 카페 C6 (DESIGN 2.30) — 로그아웃 줄은 내 계정 판(넓은 화면 칩 · 폰 아바타)
    expect(button).to_be_visible();button.click();tab.wait_for_url('**/login**',timeout=15000)
 
   # ① 커뮤니티 홈(사진 기록 모듈 없음, app.js 만)의 로그아웃
@@ -193,8 +193,8 @@ try:
   tab.goto(base+'/',wait_until='networkidle')
   check(not tab.evaluate("indexedDB.databases().then((l)=>l.some((d)=>d.name==='"+DB_NAME+"'))"),'G-3 precondition: fresh browser has no travel draft store')
   button=tab.locator('#logout')
-  if not button.is_visible() and tab.locator('#appbar-apps').is_visible():tab.locator('#appbar-apps').click()  # 좁은 화면: 서랍 + 앱 메뉴
-  if not button.is_visible():tab.locator('details.appbar__apps > summary').click()
+  if not button.is_visible() and tab.locator('#appbar-account').is_visible():tab.locator('#appbar-account').click()  # 카페 C6 (DESIGN 2.30) — 로그아웃 줄은 내 계정 판(넓은 화면 칩 · 폰 아바타)
+  if not button.is_visible():tab.locator('details.shell-account > summary').click()
   expect(button).to_be_visible();button.click();tab.wait_for_url('**/login**',timeout=15000)
   check(not tab.evaluate("indexedDB.databases().then((l)=>l.some((d)=>d.name==='"+DB_NAME+"'))"),'G-3 ⑤ logout on a browser without drafts does not create an empty travel draft store (390px)')
   check(not errors and not bad and code_console(console)==[],'G-3 ⑥ 390px logout: no page errors, 5xx or console output from page scripts')

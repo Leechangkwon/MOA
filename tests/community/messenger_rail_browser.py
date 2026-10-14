@@ -1,6 +1,7 @@
 """Actual PHP shell/production assets, synthetic readonly API; never sends a message.
 Q:F-12 U2 RV-1 — the left app rail (nav.app-rail) is gone; the messenger entry now lives as a tile in the top-right app grid
-(div.shell-tools > details.appbar__apps#app-grid, DESIGN 2.18). Same properties as before, measured at the new place."""
+(div.shell-tools > details.appbar__apps#app-grid, DESIGN 2.18). Same properties as before, measured at the new place.
+카페 C6 (DESIGN 2.30): the messenger entry is its own button left of the app button (no grid tile) — only those assertions changed."""
 import json,os,subprocess,hashlib
 from pathlib import Path
 from urllib.parse import urlsplit,parse_qs
@@ -40,55 +41,50 @@ with sync_playwright()as pw:
     check(page.locator('#sidebar [data-messenger-open],#sidebar nav[aria-label="메신저"]').count()==0,'no inner duplicate '+tag)
     check(page.locator('nav.app-rail,.app-rail__messenger').count()==0,'old app rail gone (U2) '+tag)
     check(page.locator('div.shell-tools > details.appbar__apps#app-grid').count()==1 and page.locator('details.appbar__apps').count()==1,'one app grid in the top-right tool row '+tag)
-    # 넓은 화면은 ⋮⋮⋮(격자 summary), 폰은 윗줄 말풍선 — 보이는 공통 입구는 늘 하나
-    check(page.locator('#app-grid > summary:visible,#appbar-messenger:visible').count()==1 and page.locator(('#app-grid > summary' if wide else '#appbar-messenger')+':visible').count()==1,'one visible common entry '+tag)
+    # 카페 C6 (DESIGN 2.30) — 넓은 화면은 오른쪽 위 메신저 단추(앱 판의 타일은 없어졌다), 폰은 윗줄 말풍선 — 보이는 공통 입구는 늘 하나
+    entry='.shell-tools > .shell-tools__messenger'
+    check(page.locator(entry+':visible,#appbar-messenger:visible').count()==1 and page.locator((entry if wide else '#appbar-messenger')+':visible').count()==1,'one visible common entry '+tag)
     names=page.locator('#app-grid .app-menu__apps .app-menu__name').evaluate_all('(ns)=>ns.map(n=>n.textContent.trim())')
     metrics['tiles-'+tag]=names
-    check(names.count('메신저')==1 and '이야기' in names and names.index('메신저')==names.index('이야기')+1,'grid has one messenger tile right after the app tiles '+tag+' '+json.dumps(names,ensure_ascii=False))
+    check('메신저' not in names and '이야기' in names,'app grid has no messenger tile (C6 — own button left of the app button) '+tag+' '+json.dumps(names,ensure_ascii=False))
     if not page.evaluate('document.documentElement.scrollWidth<=innerWidth'):
      page.screenshot(path=str(OUT/('overflow-'+tag+'.png')));print('OVERFLOW',page.evaluate('''()=>[...document.querySelectorAll('body *')].filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.right>innerWidth+1}).map(n=>[n.tagName,n.id,n.className,n.getBoundingClientRect().right]).slice(0,12)'''),flush=True)
     check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'no page overflow '+tag)
     check(page.locator('#messenger-open').count()==(1 if kind=='employee'else 0),'permitted opener ID remains unique '+tag)
     if kind=='employee':
-     tile=page.locator('#app-grid button#messenger-open[data-messenger-open]')
-     check(tile.count()==1,'grid messenger tile is the window opener button (page context kept) '+tag)
-     badges=page.locator('#app-grid [data-message-unread]')
-     check(badges.count()==2 and tile.locator('[data-message-unread]').count()==1 and summary.locator('[data-message-unread]').count()==1,'unread badge on the tile and on the ⋮⋮⋮ summary '+tag)
-     if wide:summary.click();page.wait_for_selector('#messenger-open:visible');trigger=tile
-     else:trigger=page.locator('#appbar-messenger')
+     tile=page.locator('.shell-tools > button#messenger-open[data-messenger-open]')
+     check(tile.count()==1,'top-right messenger button is the window opener button (page context kept) '+tag)
+     badges=page.locator('.shell-tools [data-message-unread]')
+     check(badges.count()==1 and tile.locator('[data-message-unread]').count()==1 and summary.locator('[data-message-unread]').count()==0,'unread badge on the messenger button only (app button 0) '+tag)
+     trigger=tile if wide else page.locator('#appbar-messenger')
      trigger.click();page.wait_for_selector('#messenger-window:visible')
      check(page.locator('#messenger-window').evaluate('(n)=>n.open'),'production messenger opens '+tag)
-     if wide:check(not page.locator('#app-grid').evaluate('(n)=>n.open'),'tile press closes the grid '+tag)
      check(page.locator('#synthetic-context').input_value()=='검색·폴더 상태'and urlsplit(page.url).path=='/','folder/search context unchanged '+tag)
      check(trigger.get_attribute('aria-expanded')=='true' and tile.get_attribute('aria-expanded')=='true','opener expanded state '+tag)
      unread=badges.evaluate_all('(ns)=>ns.map(n=>n.textContent)')
-     check(unread==['3','3'],'existing unread observer paints tile and ⋮⋮⋮ badges '+tag+' '+json.dumps(unread))
+     check(unread==['3'],'existing unread observer paints the messenger button badge '+tag+' '+json.dumps(unread))
      if not wide:check(trigger.locator('[data-message-unread]').inner_text()=='3','existing unread observer paints mobile badge '+tag)
      check(not page.locator('#messenger-window').evaluate('(n)=>n.matches(":modal")'),'existing nonmodal window/sheet contract '+tag)
      page.keyboard.press('Escape');page.wait_for_timeout(100)
      check(not page.locator('#messenger-window').evaluate('(n)=>n.open'),'Escape closes '+tag)
      focus=page.evaluate(FOCUS_JS);metrics['focus-after-close-'+tag]=focus
-     # 넓은 화면: 연 타일은 격자가 닫혀 보이지 않는다 → messenger.js 가 본문 첫 초점 = 격자를 연 ⋮⋮⋮(summary)로 돌린다(RV-U2-2 ③). 폰: 윗줄 말풍선 그대로
-     if wide:check(focus['in_tools'] and summary.evaluate('(n)=>document.activeElement===n'),'focus returns to the ⋮⋮⋮ summary '+tag+' '+json.dumps(focus))
-     else:check(trigger.evaluate('(n)=>document.activeElement===n'),'focus returns to common opener '+tag)
+     # 넓은 화면 · 폰 모두 연 단추가 보이니 초점은 그 단추로
+     check(trigger.evaluate('(n)=>document.activeElement===n'),'focus returns to common opener '+tag+' '+json.dumps(focus))
     else:
-     tile=page.locator('#app-grid a.app-menu__app[href="/tbox/messages"]')
-     check(tile.count()==1,'restricted grid tile retains existing information route '+tag)
-     check(tile.locator('small.messenger-access-note').count()==1 and tile.locator('small.messenger-access-note').text_content()=='이용 제한','restricted grid tile shows the 「이용 제한」 note '+tag)
+     tile=page.locator('.shell-tools > a.shell-tools__messenger[href="/tbox/messages"]')
+     check(tile.count()==1,'restricted top-right messenger link retains existing information route '+tag)
+     check(tile.locator('small.messenger-access-note').count()==0 and tile.get_attribute('aria-label')=='메신저 이용 안내','restricted top-right link: same look · 「메신저 이용 안내」 (no inline note) '+tag)
      check(page.locator('#appbar-messenger .messenger-access-note').count()==0,'icon-only mobile entry gets no note '+tag)
      check(page.locator('#messenger-window').count()==0,'restricted account has no floating window '+tag)
      check(not any(p.startswith('/tbox/api/messages')for _,p in requests),'restricted account sends no messaging API requests '+tag)
      if width<960:check(page.locator('#appbar-messenger').get_attribute('href')=='/tbox/messages','mobile restricted information entry retained '+tag)
-     if wide:summary.click();page.wait_for_selector('#app-grid a.app-menu__app[href="/tbox/messages"]:visible');trigger=tile
-     else:trigger=page.locator('#appbar-messenger')
+     trigger=tile if wide else page.locator('#appbar-messenger')
      trigger.click();page.wait_for_selector('#messenger-unavailable:visible')
      check(page.locator('#messenger-unavailable').evaluate('(n)=>n.matches(":modal")'),'restricted entry opens existing information dialog '+tag)
      check(urlsplit(page.url).path=='/','restricted information retains current context '+tag)
      page.keyboard.press('Escape');page.wait_for_timeout(100)
      focus=page.evaluate(FOCUS_JS);metrics['restricted-focus-after-close-'+tag]=focus
-     # 넓은 화면: 안내 창을 닫으면 messenger-access.js 가 안 보이는 타일 대신 ⋮⋮⋮(summary)로 돌린다(RV-U2-2 ①)
-     if wide:check(focus['in_tools'] and summary.evaluate('(n)=>document.activeElement===n'),'restricted information focus returns to the ⋮⋮⋮ summary '+tag+' '+json.dumps(focus))
-     else:check(trigger.evaluate('(n)=>document.activeElement===n'),'restricted information focus returns '+tag)
+     check(trigger.evaluate('(n)=>document.activeElement===n'),'restricted information focus returns '+tag)
     check(not any(method not in ['GET','HEAD']for method,_ in requests),'no message or other API write '+tag)
     if module=='files'and kind=='employee'and width in [1280,390]:page.screenshot(path=str(OUT/f'rail-{width}.png'))
  kind='employee';module='files';next_step='mfa_setup';requests.clear();page.goto('https://rail.example/',wait_until='networkidle')

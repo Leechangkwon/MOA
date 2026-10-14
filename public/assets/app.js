@@ -12034,6 +12034,9 @@ function initMobileSidebar(sidebar, navToggle, owner) {
   var media = window.matchMedia('(max-width: 959.98px)');
   var appsButton = document.getElementById('appbar-apps');
   var appsBox = document.querySelector('details.appbar__apps');
+  // 카페 C6 (DESIGN 2.30 「폰」) — 윗줄 아바타 단추 → 내 계정 판(같은 자리 · 같은 모양). 서랍 · 앱 판 · 내 계정 판은 하나만 열린다
+  var accountButton = document.getElementById('appbar-account');
+  var accountBox = document.querySelector('details.shell-account');
   var groups = Array.from(sidebar.querySelectorAll('details[data-sidebar-group]'));
   var foldIds = ['nav-community-recent-group','nav-work-projects-group','nav-community-documents-box'];
   var foldKey = typeof owner === 'string' && owner.length <= 64 && owner !== '' ? 'qaredi-sidebar-folds:v1:' + owner : null;
@@ -12075,6 +12078,7 @@ function initMobileSidebar(sidebar, navToggle, owner) {
     navToggle.setAttribute('aria-expanded', mode === 'nav' ? 'true' : 'false');
     navToggle.setAttribute('aria-label', mode === 'nav' ? '메뉴 닫기' : '메뉴 열기');
     if (mode && appsBox && appsBox.open) { appsBox.open = false; }
+    if (mode && accountBox && accountBox.open) { accountBox.open = false; }
     sidebar.querySelectorAll('details.menu[open]').forEach(function (menu) { menu.open = false; });
     if (modal && mode && media.matches) {
       modal.appendChild(sidebar);
@@ -12108,12 +12112,27 @@ function initMobileSidebar(sidebar, navToggle, owner) {
     appsButton.addEventListener('click', function () {
       if (appsBox.open) { appsBox.open = false; return; }
       if (!sidebar.hidden) { setDrawer(null); }
+      if (accountBox) { accountBox.open = false; }
       appsBox.open = true;
       var other = appsBox.querySelector('a.app-menu__app:not([aria-current])[href]:not([href="/"])');
       if (other && media.matches) { other.focus({preventScroll: true}); }
     });
     appsBox.addEventListener('toggle', function () {
       appsButton.setAttribute('aria-expanded', appsBox.open ? 'true' : 'false');
+    });
+  }
+  if (accountButton && accountBox) {
+    // 아바타 — 내 계정 판을 연다/닫는다(열면 첫 타일에 초점 · 폰에서만 — 앱 이름 ▾ 와 같은 방식)
+    accountButton.addEventListener('click', function () {
+      if (accountBox.open) { accountBox.open = false; return; }
+      if (!sidebar.hidden) { setDrawer(null); }
+      if (appsBox) { appsBox.open = false; }
+      accountBox.open = true;
+      var first = accountBox.querySelector('a.app-menu__app[href]');
+      if (first && media.matches) { first.focus({preventScroll: true}); }
+    });
+    accountBox.addEventListener('toggle', function () {
+      accountButton.setAttribute('aria-expanded', accountBox.open ? 'true' : 'false');
     });
   }
   groups.forEach(function (group) {
@@ -12154,6 +12173,7 @@ function initMobileSidebar(sidebar, navToggle, owner) {
     }
     setDrawer(null);
     if (appsBox && appsBox.open) { appsBox.open = false; }
+    if (accountBox && accountBox.open) { accountBox.open = false; }
     sidebar.dispatchEvent(new Event('qaredi:sidebar-layout'));
   });
 }
@@ -12660,40 +12680,63 @@ function initMenus() {
     if (summary) { summary.focus(); }
   });
 
-  /* Q:F-12 U2 (DESIGN 2.18) — 본문 오른쪽 위 앱 격자 `details.appbar__apps`(문서에 하나)도 같은 세 길로 닫는다: 타일 · 로그아웃을 누르면 · 밖을 누르면 · Esc.
-     폰 윗줄 앱 이름 ▾(#appbar-apps)는 격자를 여는 단추라 「밖」으로 치지 않는다(initMobileSidebar 가 연다). 닫으면 초점은 연 단추로 —
-     넓은 화면은 ⋮⋮⋮(summary), 폰은 앱 이름 ▾. 검색 타일은 사이드바 「검색」(#nav-search)과 같은 창을 연다(같은 단추를 누른다 — 창 두 벌 0). */
-  var grid = document.querySelector('details.appbar__apps');
-  if (!grid) { return; }
-  function gridOpener() {
-    var phone = document.getElementById('appbar-apps');
-    return phone && phone.getClientRects().length > 0 ? phone : grid.querySelector('summary');
+  /* Q:F-12 U2 (DESIGN 2.18) · 카페 C6 (DESIGN 2.30) — 본문 오른쪽 위 판 둘(앱 판 `details.appbar__apps` · 내 계정 판 `details.shell-account` — 문서에 하나씩)을
+     **같은 함수**로 닫는다: 타일 · 로그아웃을 누르면 · 밖을 누르면 · Esc · 초점이 판 밖으로. 하나를 열면 다른 하나는 닫힌다(하나만 열림).
+     폰 윗줄 단추(앱 이름 ▾ #appbar-apps · 아바타 #appbar-account)는 그 판을 여는 단추라 「밖」으로 치지 않는다(initMobileSidebar 가 연다).
+     닫으면 초점은 연 단추로 — 넓은 화면은 그 판의 summary, 폰은 윗줄 단추. 검색 타일은 사이드바 「검색」(#nav-search)과 같은 창을 연다(같은 단추를 누른다 — 창 두 벌 0). */
+  var panels = [
+    { box: document.querySelector('details.appbar__apps'), phone: 'appbar-apps' },
+    { box: document.querySelector('details.shell-account'), phone: 'appbar-account' }
+  ].filter(function (x) { return x.box !== null; });
+  if (panels.length === 0) { return; }
+  function panelOpener(panel) {
+    var phone = document.getElementById(panel.phone);
+    return phone && phone.getClientRects().length > 0 ? phone : panel.box.querySelector('summary');
   }
+  function isOpener(target) {
+    return panels.some(function (x) { return target.closest('#' + x.phone); });
+  }
+  panels.forEach(function (panel) {
+    panel.box.addEventListener('toggle', function () {
+      if (!panel.box.open) { return; }
+      panels.forEach(function (other) { if (other !== panel && other.box.open) { other.box.open = false; } });
+    });
+  });
   document.addEventListener('click', function (event) {
     var target = event.target;
-    if (!grid.open || !target || !target.closest) { return; }
-    var tile = target.closest('details.appbar__apps .app-menu__app, details.appbar__apps .app-menu__logout');
-    if (tile) {
-      grid.open = false;
-      if (tile.hasAttribute('data-search-tile')) {
-        var search = document.getElementById('nav-search');
-        if (search) { search.click(); }
+    if (!target || !target.closest) { return; }
+    panels.forEach(function (panel) {
+      var box = panel.box;
+      if (!box.open) { return; }
+      var tile = target.closest('.app-menu__app, .app-menu__logout');
+      if (tile && box.contains(tile)) {
+        box.open = false;
+        if (tile.hasAttribute('data-search-tile')) {
+          var search = document.getElementById('nav-search');
+          if (search) { search.click(); }
+        }
+        return;
       }
-      return;
-    }
-    if (target.closest('details.appbar__apps') || target.closest('#appbar-apps')) { return; }
-    grid.open = false;
+      if (box.contains(target) || isOpener(target)) { return; }
+      box.open = false;
+    });
   }, true);
   document.addEventListener('keydown', function (event) {
-    if (event.key !== 'Escape' || !grid.open || document.querySelector('details.menu[open]')) { return; }
-    grid.open = false;
-    var back = gridOpener();
-    if (back) { back.focus(); }
+    if (event.key !== 'Escape' || document.querySelector('details.menu[open]')) { return; }
+    panels.forEach(function (panel) {
+      if (!panel.box.open) { return; }
+      panel.box.open = false;
+      var back = panelOpener(panel);
+      if (back) { back.focus(); }
+    });
   });
   document.addEventListener('focusout', function (event) {
-    if (!grid.open || !event.target || !grid.contains(event.target)) { return; }
-    if (event.relatedTarget && (grid.contains(event.relatedTarget) || event.relatedTarget.id === 'appbar-apps')) { return; }
-    if (event.relatedTarget) { grid.open = false; }
+    panels.forEach(function (panel) {
+      var box = panel.box;
+      if (!box.open || !event.target || !box.contains(event.target)) { return; }
+      if (event.relatedTarget && (box.contains(event.relatedTarget) || event.relatedTarget.id === panel.phone)) { return; }
+      if (event.relatedTarget) { box.open = false; }
+    });
   });
 }
 

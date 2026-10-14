@@ -308,3 +308,17 @@
 @media(max-width:600px) { :root:not([data-design="claude"]) .q-start { padding:20px; margin-top:24px; } .q-start-list { grid-template-columns:1fr; } .q-start-head h2 { font-size:18px; } }
 
 @media(min-width:960px) { :root:not([data-design="claude"]) .q-file-when { max-width:9rem; white-space:normal; overflow-wrap:anywhere; font-size:12px; color:var(--muted); } }
+
+/* 카페 C6 덧 — 터치 대상 44(DESIGN 4장 「터치 대상」 ①). 폰 폭(<720) · 터치 기기(pointer: coarse)에서는 검정 단추의 「반짝」 ::before(z-index -1 · inset 0 ·
+   overflow hidden)가 app.css 끝의 터치 넓힘 ::before 자리를 빼앗아 보이는 36px 그대로였다(예: 「댓글 달기」 94×36). 이 폭 · 기기에서만 반짝 조각을 걷고
+   그 자리를 터치 넓힘(보이는 상자 그대로 · 모자란 만큼 사방으로 — app.css 와 같은 식)에 돌려준다. 넓은 화면 · 정밀 포인터의 모양 · 반짝 · 들림은 그대로.
+   `.btn.btn` — 위 반짝 규칙(올림 · nova 의 지연 반짝 포함)보다 무겁게 · 파일 끝이라 같은 무게도 이긴다 */
+@media (max-width:719.98px), (pointer:coarse) {
+  :root:not([data-design="claude"]) .btn.btn:not(.btn--quiet):not(.btn--plain):not(.btn--danger):not(.btn--icon):not(:disabled) { overflow:visible; }
+  :root:not([data-design="claude"]) .btn.btn:not(.btn--quiet):not(.btn--plain):not(.btn--danger):not(.btn--icon)::before,
+  :root:not([data-design="claude"]) .btn.btn:not(.btn--quiet):not(.btn--plain):not(.btn--danger):not(.btn--icon):hover::before {
+    content:""; inset:auto; top:min(0px, calc((100% - 44px) / 2)); bottom:min(0px, calc((100% - 44px) / 2));
+    left:min(0px, calc((100% - 44px) / 2)); right:min(0px, calc((100% - 44px) / 2));
+    z-index:auto; background:none; transform:none; animation:none;
+  }
+}

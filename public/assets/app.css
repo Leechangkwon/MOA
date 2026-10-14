@@ -1158,6 +1158,7 @@ dialog.floating > .modal__head > .btn--icon:last-child { position: relative; top
 #messenger-open.nav__item:hover { background: var(--muted-bg); color: var(--fg); }
 #messenger-open.nav__item > .badge { margin-left: auto; }
 #messenger-open .moa-module-icon, #appbar-messenger .moa-module-icon { width: 18px; height: 18px; }
+#messenger-open.shell-tools__messenger .moa-module-icon, a.shell-tools__messenger .moa-module-icon { width: 22px; height: 22px; }   /* 카페 C6 — 오른쪽 위 메신저 단추 아이콘 22(DESIGN 2.30) */
 #appbar-messenger { position: relative; }
 
 /* ─── 미리보기 (12-2, F-18) — 모달 본문 + 우측 정보 패널 ─────────── */
@@ -2246,8 +2247,7 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 /* ⋮⋮⋮ 의 CSS 툴팁(2.8 규칙 그대로)은 짧은 이름 「앱」 — 접근 이름(aria-label)은 「앱 — 앱 바꾸기와 계정」 그대로. 판이 열려 있는 동안은 툴팁을 끈다(판을 가리지 않게) */
 .appbar__apps > summary[data-tip]::after { content: attr(data-tip); }
 .appbar__apps[open] > summary::after { display: none !important; }
-/* ⋮⋮⋮ 위 안 읽은 메시지 점 — 숫자(messenger.js 가 넣는 글자)는 그리지 않고 8px 점만(`.badge--internal` 색 · 새 색값 0) */
-.appbar__apps > summary > [data-message-unread] { position: absolute; top: 3px; right: 3px; width: 8px; min-width: 0; height: 8px; padding: 0; border: 0; border-radius: 50%; background: var(--accent-dark); font-size: 0; line-height: 0; overflow: hidden; pointer-events: none; }
+/* (카페 C6 — 앱 단추 위 안 읽은 메시지 점은 메신저 단추 오른쪽 위 숫자 배지로 옮겼다 · DESIGN 2.30) */
 .app-menu {
   position: absolute;
   top: calc(100% + 6px);
@@ -2338,14 +2338,41 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 .shell-tools__me:hover { background: var(--muted-bg); color: var(--fg); text-decoration: none; }
 .shell-tools__me:hover > span:first-child { background: var(--line); }
 .shell-tools__me:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
-/* 폰(960px 미만) — 줄은 숨는다. 윗줄 앱 이름 ▾(#appbar-apps)가 같은 details 를 열면 그때만 판이 윗줄(52px) 바로 아래 전체 폭으로 뜬다(세로 스크롤).
-   닫힌 동안에는 줄째 display:none(화면 읽기에 같은 메뉴가 두 번 나오지 않게) — summary · 아바타는 열려도 그리지 않는다(윗줄 단추가 그 자리다). */
+/* ─── 오른쪽 위 셋 — 메신저 · 앱 · 내 계정 (카페 C6 · DESIGN 2.30 · 사용자 지적 2026-10-14) ─────────────────────────────────────────
+   줄 순서 = 메신저 단추 · 앱 단추 · 내 계정 칩(사이 8 · 높이 44 셋). 메신저 단추 = `.btn--quiet` 모양(테두리 --line · 바탕 --surface — 앱 단추의 파란 강조와 구별) +
+   아이콘 messages 22 + 「메신저」 15px 500 · 안 읽은 수는 오른쪽 위 숫자 배지(`.badge--internal` 색). 내 계정 칩은 `details.shell-account` 의 summary(옛 링크 모양 그대로 +
+   끝에 작은 ▾ 16 --muted · 열림 바탕 --muted-bg). 내 계정 판은 앱 판과 같은 `.panel.app-menu`(위 규칙 그대로 — 오른쪽 맞춤 · 폭 300 · 그림자) + 머리 한 줄
+   `.app-menu__head`(아바타 40 · 이름 16/600 · 아이디 · 역할 13 --muted · 아래 구분선). 색은 토큰뿐 — 새 색값 0 */
+.shell-tools__messenger { position: relative; flex: none; height: 44px; padding: 0 14px 0 12px; gap: 6px; font-size: 15px; font-weight: 500; }
+.shell-tools__messenger > .badge { position: absolute; top: -6px; right: -6px; height: 18px; min-width: 18px; padding: 0 4px; justify-content: center; font-size: 12px; line-height: 16px; pointer-events: none; }
+.shell-account { position: relative; flex: 0 1 auto; min-width: 0; }
+.shell-account > summary { list-style: none; cursor: pointer; }
+.shell-account > summary::-webkit-details-marker { display: none; }
+.shell-account:not([open]) > .app-menu { display: none; }
+.shell-account[open] > summary.shell-tools__me { background: var(--muted-bg); }
+.shell-tools__me > .icon { display: inline-flex; flex: none; color: var(--muted); }
+.shell-tools__me > .icon svg { width: 16px; height: 16px; }
+.app-menu__head { display: flex; align-items: center; gap: 12px; min-width: 0; padding: 4px 6px 12px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.app-menu__head > span:first-child { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--muted-bg); color: var(--fg); font-size: 15px; font-weight: 600; }
+.app-menu__head > span:last-child { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.app-menu__head strong { overflow: hidden; color: var(--fg); font-size: 16px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.app-menu__head strong + span { overflow: hidden; color: var(--muted); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+/* 폰 윗줄 아바타 32 단추(#appbar-account) — 이니셜 원(아이콘 단추 자리 · 터치 넓힘은 아이콘 단추 규칙 그대로) */
+#appbar-account { padding: 0; }
+#appbar-account > span { display: inline-flex; flex: none; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 50%; background: var(--muted-bg); color: var(--fg); font-size: 13px; font-weight: 600; }
+#appbar-account[aria-expanded="true"] > span { background: var(--line); }
+
+/* 폰(960px 미만) — 줄은 숨는다. 윗줄 앱 이름 ▾(#appbar-apps) · 아바타(#appbar-account)가 같은 details 를 열면 그때만 그 판이 윗줄(52px) 바로 아래 전체 폭으로 뜬다
+   (세로 스크롤 · 둘 중 하나만 열린다). 닫힌 동안에는 줄째 display:none(화면 읽기에 같은 메뉴가 두 번 나오지 않게) — summary · 메신저 단추는 열려도 그리지 않는다(윗줄 단추가 그 자리다). */
 @media (max-width: 959.98px) {
   .shell-tools { display: none; }
-  /* z 는 메신저 아래 시트(`--z-floating` 60) 위 — 시트가 열린 채 앱 이름 ▾ 를 눌러도 격자 판(로그아웃까지)이 시트 위에 뜬다. 닫으면 시트가 그대로 보인다 */
-  .shell-tools:has(> .appbar__apps[open]) { display: block; position: fixed; top: 52px; left: 0; right: 0; z-index: calc(var(--z-floating) + 1); height: auto; margin: 0; }
+  /* z 는 메신저 아래 시트(`--z-floating` 60) 위 — 시트가 열린 채 앱 이름 ▾ · 아바타를 눌러도 판(로그아웃까지)이 시트 위에 뜬다. 닫으면 시트가 그대로 보인다 */
+  .shell-tools:has(> .appbar__apps[open]),
+  .shell-tools:has(> .shell-account[open]) { display: block; position: fixed; top: 52px; left: 0; right: 0; z-index: calc(var(--z-floating) + 1); height: auto; margin: 0; }
   .shell-tools > .appbar__apps > summary,
-  .shell-tools > .shell-tools__me { display: none; }
+  .shell-tools > .shell-account > summary,
+  .shell-tools > .shell-tools__messenger,
+  .shell-tools > :is(.appbar__apps, .shell-account):not([open]) { display: none; }
   .shell-tools .app-menu { position: static; width: auto; max-height: calc(100dvh - 52px); padding: 12px 16px; border-width: 0 0 1px; border-radius: 0; }
 }
 
