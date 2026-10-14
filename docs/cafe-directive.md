@@ -72,7 +72,7 @@ C1(`dabdea8`)의 검토 결과 — 설계대로 된 것: 이름표 · 안전망 
 목표        : 익명게시판 글의 AI 넣기 감사 행에도 익명 표식을 달고, 수락 시험의 이름 단언을 댓글 쓴 사람까지 넓힌다.
 수정 파일   : src/community/ai_helpers.php(`ai.insert` 의 detail 을 community_anon_audit_detail 로 — 한 줄) · tests/community/cafe_c1_http.py · docs/cafe-report.md(C1b 절)
 완료 기준   : ① ai.insert 를 익명게시판 글에 부르면 감사 행 detail.anon_board = true · 감사 목록 `actor=<W>` 필터에 그 행 0
-                 (AI 열쇠 없이 — 합성 ai_log 행(status ok · feature summary · output_text)을 틀에서 넣고 `POST /api/pages/{id}/ai/insert` 를 부른다. 이 길이 틀에서 막히면 「미검증」으로 보고)
+                 (AI 열쇠 없이 — 합성 ai_log 행(status ok · feature summary · output_text)을 틀에서 넣고 `POST /community/api/pages/{id}/ai-insert` 를 부른다. 이 길이 틀에서 막히면 「미검증」으로 보고)
               ② ② 의 카나리아 단언에 A · B 의 아이디 · 표시 이름도 더함(E · M 시점 모든 자리 — 본인 시점 제외)
               ③ cafe_c1_http 한 번 · php -l · security_lint 0
 ```
