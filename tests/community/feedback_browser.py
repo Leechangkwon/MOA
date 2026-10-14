@@ -31,19 +31,16 @@ try:
      check(page.locator('#memory-toast').evaluate('(n)=>n.closest("dialog").matches(":modal")'),'toast belongs to modal top layer '+str(width))
      page.screenshot(path=str(out/f'guest-notice-{width}.png'));page.keyboard.press('Escape')
     page.goto(base+'/memories/p/'+pid,wait_until='networkidle')
-    page.locator('[data-comment-post]').first.click();expect(page.locator('#comments-list .comment')).to_have_count(30)
+    # S1b — 댓글은 창 없이 카드 아래 펼침: 최근 3 → 「이전 댓글 N개 더 보기」(불러 둔 30 → 커서로 60) · 창 안 고정 입력 줄 단언은 창이 없어져 뺐다
+    page.locator('[data-comment-post]').first.click();expect(page.locator('.post-comments .comment')).to_have_count(3)
     if user=='employee':
-     for height in (844,440):
-      page.set_viewport_size({'width':width,'height':height})
-      before=page.locator('#comment-form').bounding_box();page.locator('#comments-scroll').evaluate('(n)=>n.scrollTop=0')
-      after=page.locator('#comment-form').bounding_box()
-      check(abs(before['y']-after['y'])<2 and after['y']+after['height']<=height,'composer fixed within viewport '+str((width,height)))
-     page.set_viewport_size({'width':width,'height':844})
-     page.locator('#comments-older').click();expect(page.locator('#comments-list .comment')).to_have_count(60)
-     page.locator('#comment-body').fill('새 댓글 입력 검증');page.locator('#comment-form [type="submit"]').click()
-     expect(page.locator('#comment-body')).to_have_value('');expect(page.locator('#comment-body')).to_be_focused()
-     expect(page.locator('#comments-list')).to_contain_text('새 댓글 입력 검증')
-    else: expect(page.locator('#comments-readonly')).to_be_visible()
+     page.locator('.post-comments > .text-button').click();expect(page.locator('.post-comments .comment')).to_have_count(30)
+     page.locator('.post-comments > .text-button').click();expect(page.locator('.post-comments .comment')).to_have_count(60)
+     page.locator('.post-comments textarea').fill('새 댓글 입력 검증');page.locator('.post-comments [type="submit"]').click()
+     expect(page.locator('.post-comments textarea')).to_have_value('')
+     if width>700:expect(page.locator('.post-comments textarea')).to_be_focused()
+     expect(page.locator('.post-comments')).to_contain_text('새 댓글 입력 검증')
+    else: expect(page.locator('.post-comments .comments-readonly')).to_be_visible()
     page.screenshot(path=str(out/f'comments-{user}-{width}.png'));page.keyboard.press('Escape')
     if user=='employee':
      page.locator('.threads-quick [data-messenger-open]').click()

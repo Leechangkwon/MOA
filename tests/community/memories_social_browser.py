@@ -236,13 +236,14 @@ def main():
         opener.click();page.locator('#detail-content [aria-label="좋아요"]').click()
         page.wait_for_function("() => document.querySelector('#feed .likes-label').textContent.includes('4')")
         assert page.locator('#detail-content .likes-label').text_content()=='좋아요 4개'
+        # S1b — 댓글은 창 없이 자세히 보기 카드 아래 펼침(새 창 0)
         page.locator('#detail-content [aria-label^="댓글"]').click()
-        assert page.locator('#detail-dialog').is_hidden()
+        assert page.locator('#detail-dialog').is_visible()
         assert page.locator('dialog[open]').count()==1
-        page.locator('#comment-body').fill('다음 여행도 함께해요');page.locator('#comment-form button').click();page.locator('.comment').wait_for()
+        page.locator('#detail-content .post-comments textarea').fill('다음 여행도 함께해요');page.locator('#detail-content .post-comments button[type="submit"]').click();page.locator('#detail-content .comment').wait_for()
         page.keyboard.press('Escape')
         assert opener.evaluate('(el)=>el===document.activeElement')
-        checks.append('Detail likes synchronize preview; comment modal opens without stacked stale detail and restores feed focus')
+        checks.append('Detail likes synchronize preview; comments expand inside the detail card (no stacked dialog) and closing restores feed focus')
         page.locator('#feed .share-post').click();page.locator('#share-dialog').wait_for()
         assert page.locator('#share-link-field').is_hidden() and page.locator('#share-edit-privacy').is_visible()
         page.locator('#share-edit-privacy').click();page.locator('#compose-dialog').wait_for()

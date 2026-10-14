@@ -12,6 +12,10 @@
           화면 머리 · 탭 · 글쓰기 칸 · 프로필 · 피드 머리 · 도구 · 피드 카드의 왼끝 · 폭이 같은 열(≤ 680 · 가운데) · 넘침 0 · 대비 4.5 · 콘솔 0
   [act]   글쓰기 · 사진 이야기(사진 고르기 → 미리보기 → 저장) · AI로 꾸미기 창 · 좋아요 · 댓글 · 공유 · 팔로우 동작 그대로
   [shot]  나의 스레드 1440 밝게 · 어둡게 · 412
+  [s1b]   댓글 — 창 없이 카드 안에서(DESIGN 2.36 · 지시서 S1b): dialog#comments-dialog 0(모든 [grid] 화면) · 댓글 아이콘 → 그 카드 아래 펼침
+          (다른 카드 그대로) · 다시 → 접힘 · 최근 3 + 「이전 댓글 N개 더 보기」(불러 둔 것 → 커서 창구) · 빈 입력 「게시」 흐림 · 게시 → 끝에 붙음 ·
+          입력 비움 · 초점 · 댓글 수 갱신 · Ctrl+Enter 게시 · 한글 조합 중 Enter 보내지 않음 · 실패 .msg · 읽기 전용 안내 · 폰 초점 0 ·
+          공유 공개 화면 창 0(공개 댓글 창구 없음 — 지금과 같음) · 1440 · 412 넘침 0 · 콘솔 0
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -114,7 +118,7 @@ MEASURE_JS = r"""(banned) => {
     for (const e of s.querySelectorAll(sel)) if (vis(e) && !e.closest('dialog')) contrast.push({sel, r: Math.round(ratio(e) * 100) / 100});
   }
   return {sec: {l: sec.left, w: sec.width}, parts, stats, eyebrows, banned: banned.filter((b) => screenText.includes(b) || shown.includes(b)),
-    cover: document.querySelectorAll('.profile-cover').length, aside: document.querySelectorAll('.journal-aside').length,
+    commentsDialog: document.querySelectorAll('#comments-dialog').length, cover: document.querySelectorAll('.profile-cover').length, aside: document.querySelectorAll('.journal-aside').length,
     btns: {follow: btn('follow-profile'), settings: btn('profile-settings'), travel: [...document.querySelectorAll('#profile-panel [data-travel-open]')].some(vis)},
     title: (document.getElementById('profile-title') || {}).textContent, minContrast: contrast.length ? Math.min(...contrast.map((c) => c.r)) : null,
     lowContrast: contrast.filter((c) => c.r < 4.5), overflow: document.documentElement.scrollWidth - innerWidth,
@@ -169,8 +173,8 @@ try:
                         open_view(t, url)
                         m = p.evaluate(MEASURE_JS, list(BANNED))
                         metrics[tag] = m
-                        check(m['cover'] == 0 and m['aside'] == 0 and m['banned'] == [] and m['eyebrows'] == [],
-                              '[grid] %s: .profile-cover 0 · .journal-aside 0 · banned text 0 · eyebrow 0 %s' % (tag, json.dumps([m['banned'], m['eyebrows']], ensure_ascii=False)))
+                        check(m['cover'] == 0 and m['aside'] == 0 and m['banned'] == [] and m['eyebrows'] == [] and m['commentsDialog'] == 0,
+                              '[grid] %s: .profile-cover 0 · .journal-aside 0 · banned text 0 · eyebrow 0 · dialog#comments-dialog 0 %s' % (tag, json.dumps([m['banned'], m['eyebrows']], ensure_ascii=False)))
                         parts = m['parts']
                         col = parts.get('column')
                         want = {'feed': ['hero', 'tabs', 'quick', 'head', 'tools', 'card'], 'discover': ['hero', 'tabs', 'quick', 'head', 'tools', 'card'],
@@ -243,14 +247,13 @@ try:
             until(p, "() => document.querySelector('#memory-%s [data-like-post]').getAttribute('aria-pressed') === 'true'" % mine_photo)
             check(sql("SELECT count(*) FROM community.memory_likes WHERE post_id='" + mine_photo + "'") == '1' and card.locator('[data-like-count]').text_content() == '좋아요 1개',
                   '[act] like: pressed · row · count')
-            # 댓글
+            # 댓글(S1b — 카드 안 펼침)
             card.locator('[data-comment-post]').click()
-            p.wait_for_selector('#comments-dialog[open]', timeout=8000)
-            p.fill('#comment-body', 'S1 댓글')
-            p.click('#comment-form [type="submit"]')
-            until(p, "() => document.getElementById('comments-list').textContent.includes('S1 댓글')")
+            card.locator('.post-comments textarea').fill('S1 댓글')
+            card.locator('.post-comments [type="submit"]').click()
+            until(p, "() => document.querySelector('#memory-%s .post-comments').textContent.includes('S1 댓글')" % mine_photo)
             check(sql("SELECT count(*) FROM community.memory_comments WHERE post_id='" + mine_photo + "'") == '1', '[act] comment: posted · row · listed')
-            p.click('[data-close="comments-dialog"]')
+            card.locator('[data-comment-post]').click()
             # 공유
             card.locator('.share-post').click()
             p.wait_for_selector('#share-dialog[open]', timeout=8000)
@@ -282,6 +285,150 @@ try:
             check(t.clean('act-other'), '[act] other profile: console 0')
             ctx.close()
         guard('actions', actions)
+
+        # ── [s1b] 댓글 — 창 없이 카드 안에서 ────────────────────────────────────
+        SEC = "#memory-%s .post-comments"
+
+        def shown_comments(p, pid):
+            return p.evaluate("(sel) => [...document.querySelectorAll(sel + ' .comment p')].map(n => n.textContent)", SEC % pid)
+
+        def n_comments(p, pid, n):
+            return until(p, "() => document.querySelectorAll(%s).length === %d" % (json.dumps(SEC % pid + ' .comment'), n))
+
+        def last_is(p, pid, text):
+            return until(p, "() => { const c = [...document.querySelectorAll(%s)]; return c.length > 0 && c.at(-1).textContent === %s; }" % (json.dumps(SEC % pid + ' .comment p'), json.dumps(text)))
+
+        SECTION_JS = r"""(id) => { const s = document.querySelector('#memory-' + id + ' .post-comments'), ta = s.querySelector('textarea'), b = s.querySelector('[type=submit]');
+            return {open: !s.hidden, others: [...document.querySelectorAll('.post-comments')].filter(n => n !== s && !n.hidden).length, dialogs: document.querySelectorAll('dialog[open]').length,
+              inCard: !!s.closest('#memory-' + id), expanded: document.querySelector('#memory-' + id + ' [data-comment-post]').getAttribute('aria-expanded'),
+              older: (s.querySelector(':scope > .text-button:not([hidden])') || {}).textContent || null, focus: !!ta && document.activeElement === ta,
+              placeholder: ta ? ta.placeholder : null, rows: ta ? ta.rows : null, value: ta ? ta.value : null, post: b ? b.textContent : null, disabled: b ? b.disabled : null,
+              label: document.querySelector('#memory-' + id + ' [data-comment-post]').getAttribute('aria-label'),
+              count: (document.querySelector('#memory-' + id + ' [data-comment-count]') || {}).textContent || null}; }"""
+
+        def s1b():
+            many = save(dict(payload(), caption='S1b 댓글 다섯', visibility='community', discoverable=True))
+            lots = save(dict(payload(), caption='S1b 댓글 서른다섯', visibility='community', discoverable=True))
+            sql("INSERT INTO community.memory_comments(id,post_id,user_id,body,created_at) SELECT md5('s1b-five-'||g)::uuid,'%s',%d,'다섯 '||g,clock_timestamp()-(10-g)*interval '1 minute' FROM generate_series(1,5) g" % (many, uid('other')))
+            sql("INSERT INTO community.memory_comments(id,post_id,user_id,body,created_at) SELECT md5('s1b-lots-'||g)::uuid,'%s',%d,'많이 '||g,clock_timestamp()-(40-g)*interval '1 minute' FROM generate_series(1,35) g" % (lots, uid('other')))
+
+            def rows(pid):
+                return sql("SELECT count(*) FROM community.memory_comments WHERE post_id='" + pid + "'")
+            ctx = context('employee', 1440)
+            t = Tab(ctx)
+            p = t.page
+            open_view(t, base + '/memories?view=mine')
+            card = p.locator('#memory-' + many)
+            icon = card.locator('[data-comment-post]')
+            check(p.locator('.post-comments:not([hidden])').count() == 0 and icon.get_attribute('aria-expanded') == 'false', '[s1b] cards start collapsed (aria-expanded false)')
+            icon.click()
+            n_comments(p, many, 3)
+            st = p.evaluate(SECTION_JS, many)
+            metrics['s1b-open'] = st
+            check(st['open'] and st['inCard'] and st['others'] == 0 and st['dialogs'] == 0 and st['expanded'] == 'true',
+                  '[s1b] icon → that card expands in place · other cards unchanged · dialog 0 %s' % json.dumps(st, ensure_ascii=False))
+            check(shown_comments(p, many) == ['다섯 3', '다섯 4', '다섯 5'] and st['older'] == '이전 댓글 2개 더 보기', '[s1b] latest 3 in order + 「이전 댓글 2개 더 보기」 (%s)' % st['older'])
+            check(st['focus'] and st['placeholder'] == '댓글 달기…' and st['rows'] == 1 and st['post'] == '게시' and st['disabled'] is True,
+                  '[s1b] one-line 「댓글 달기…」 focused on open (desktop) · 「게시」 dim when empty')
+            sec = p.locator(SEC % many)
+            sec.locator(':scope > .text-button').click()
+            n_comments(p, many, 5)
+            check(shown_comments(p, many) == ['다섯 %d' % i for i in range(1, 6)] and sec.locator(':scope > .text-button').is_hidden(), '[s1b] 「더 보기」 shows all 5 in order · button gone')
+            ta, btn = sec.locator('textarea'), sec.locator('[type=submit]')
+            ta.fill('   ')
+            check(btn.is_disabled(), '[s1b] whitespace only → 「게시」 stays disabled')
+            ta.press('Enter')
+            p.wait_for_timeout(400)
+            check(rows(many) == '5', '[s1b] empty Enter posts nothing (rows 5)')
+            ta.fill('S1b 게시 단추')
+            check(btn.is_enabled(), '[s1b] text → 「게시」 enabled')
+            btn.click()
+            last_is(p, many, 'S1b 게시 단추')
+            st = p.evaluate(SECTION_JS, many)
+            check(rows(many) == '6' and shown_comments(p, many)[-1] == 'S1b 게시 단추' and st['value'] == '' and st['focus'] and st['disabled'] is True
+                  and st['label'] == '댓글 6개 보기' and st['count'] == '댓글 6개', '[s1b] 「게시」 → appended at the end · input cleared · focus kept · count 6 %s' % json.dumps(st, ensure_ascii=False))
+            # 한글 조합 중 Enter — 보내지 않는다
+            ta.fill('조합 중인 글')
+            ta.evaluate("(n) => n.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', code: 'Enter', isComposing: true, keyCode: 229, bubbles: true, cancelable: true}))")
+            p.wait_for_timeout(500)
+            check(rows(many) == '6' and ta.input_value() == '조합 중인 글', '[s1b] Enter during IME composition does not post')
+            ta.press('Control+Enter')
+            last_is(p, many, '조합 중인 글')
+            check(rows(many) == '7' and ta.input_value() == '', '[s1b] Ctrl+Enter posts · appended last · rows 7')
+            ta.fill('첫 줄')
+            ta.press('Shift+Enter')
+            ta.type('둘째 줄')
+            check(rows(many) == '7' and ta.evaluate('(n) => n.rows') == 2, '[s1b] Shift+Enter = new line (grows to 2 rows, no post)')
+            ta.fill('')
+            # 실패 → 줄 아래 .msg (이 브라우저의 요청 하나만 가로막는다 — 창구는 그대로)
+            route = '**/api/memories/%s/comments' % many
+            p.route(route, lambda r: r.fulfill(status=429, content_type='application/json', body=json.dumps({'error': '댓글을 잠시 쉬었다가 남겨 주세요.'}, ensure_ascii=False))
+                    if r.request.method == 'POST' else r.continue_())
+            ta.fill('막힐 댓글')
+            btn.click()
+            until(p, "() => document.querySelector(%s).textContent !== ''" % json.dumps(SEC % many + ' .msg'))
+            check(sec.locator('.msg').text_content() == '댓글을 잠시 쉬었다가 남겨 주세요.' and ta.input_value() == '막힐 댓글' and rows(many) == '7', '[s1b] failure → .msg under the row · text kept')
+            p.unroute(route)
+            ta.fill('')
+            icon.click()
+            check(sec.is_hidden() and icon.get_attribute('aria-expanded') == 'false', '[s1b] icon again → collapses')
+            # 커서 — 35개: 최근 3 → 불러 둔 30 → 커서 창구로 35
+            p.locator('#memory-' + lots + ' [data-comment-post]').click()
+            n_comments(p, lots, 3)
+            more = p.locator(SEC % lots + ' > .text-button')
+            t1 = more.text_content()
+            more.click()
+            n_comments(p, lots, 30)
+            t2 = more.text_content() if more.is_visible() else None
+            more.click()
+            n_comments(p, lots, 35)
+            got = shown_comments(p, lots)
+            check(t1 == '이전 댓글 32개 더 보기' and t2 == '이전 댓글 5개 더 보기' and got == ['많이 %d' % i for i in range(1, 36)] and more.is_hidden(),
+                  '[s1b] 35 comments: 3 → 30 (loaded) → 35 via cursor endpoint · order kept (%s · %s)' % (t1, t2))
+            check(p.evaluate('document.documentElement.scrollWidth - innerWidth') <= 0, '[s1b] 1440 overflow 0 (expanded)')
+            p.screenshot(path=str(shots / 's1b-comments-1440.png'), full_page=True)
+            check(t.clean('s1b-1440'), '[s1b] 1440 console 0')
+            ctx.close()
+            # 폰 412(터치) — 펼쳐도 초점 0 · 넘침 0
+            ctx = context('employee', 412)
+            t = Tab(ctx)
+            p = t.page
+            open_view(t, base + '/memories?view=mine')
+            p.locator('#memory-' + many + ' [data-comment-post]').click()
+            n_comments(p, many, 3)
+            st = p.evaluate("(sel) => ({focus: document.activeElement === document.querySelector(sel + ' textarea'), o: document.documentElement.scrollWidth - innerWidth, dialogs: document.querySelectorAll('dialog[open]').length})", SEC % many)
+            check(not st['focus'] and st['o'] <= 0 and st['dialogs'] == 0, '[s1b] 412 touch: expands · no auto focus · overflow 0 · dialog 0 %s' % json.dumps(st))
+            sec = p.locator(SEC % many)
+            sec.locator('textarea').tap()
+            sec.locator('textarea').fill('폰에서 단 댓글')
+            sec.locator('[type=submit]').tap()
+            last_is(p, many, '폰에서 단 댓글')
+            check(rows(many) == '8', '[s1b] 412: tap → type → 「게시」 posts')
+            p.screenshot(path=str(shots / 's1b-comments-412.png'), full_page=True)
+            check(t.clean('s1b-412'), '[s1b] 412 console 0')
+            ctx.close()
+            # 읽기 전용(손님) — 입력 줄 대신 안내 한 줄
+            ctx = context('guest', 1440)
+            t = Tab(ctx)
+            p = t.page
+            open_view(t, base + '/memories/p/' + many)
+            p.locator('#memory-' + many + ' [data-comment-post]').first.click()
+            n_comments(p, many, 3)
+            sec = p.locator(SEC % many)
+            check(sec.locator('.comments-readonly').is_visible() and sec.locator('textarea').count() == 0 and sec.locator('[type=submit]').count() == 0,
+                  '[s1b] read-only account: notice line instead of the input row')
+            check(t.clean('s1b-guest'), '[s1b] read-only console 0')
+            ctx.close()
+            # 공유 공개 화면 — 창 0 · 공개 댓글 창구가 없어 댓글 칸도 없다(지금과 같음)
+            ctx = context(None, 1440)
+            t = Tab(ctx)
+            p = t.page
+            open_view(t, SHARED)
+            st = p.evaluate("() => ({dialog: document.querySelectorAll('#comments-dialog').length, sections: document.querySelectorAll('.post-comments').length, icons: document.querySelectorAll('[data-comment-post]').length, cards: document.querySelectorAll('#feed .post').length})")
+            check(st['dialog'] == 0 and st['sections'] == 0 and st['icons'] == 0 and st['cards'] >= 1, '[s1b] shared public page: comments dialog 0 · comment controls 0 (no public comment endpoint) %s' % json.dumps(st))
+            check(t.clean('s1b-shared'), '[s1b] shared console 0')
+            ctx.close()
+        guard('s1b', s1b)
         browser.close()
 finally:
     (out / 'story-s1-metrics.json').write_text(json.dumps(metrics, ensure_ascii=False, indent=1))

@@ -6,7 +6,7 @@
   const base = surface.dataset.base;
   const shared = surface.dataset.shared;
   const state = { me: null, posts: [], view: 'feed', grid: false, profile: surface.dataset.profile || '', post: surface.dataset.post || '', next: null, cursor: null, search: '', request: 0, controller: null };
-  let draft = null, editing = null, media = [], busy = false, draftTimer, dbPromise, commentPost, studioPost, imported = [], confirmAction;
+  let draft = null, editing = null, media = [], busy = false, draftTimer, dbPromise, studioPost, imported = [], confirmAction;
   let toastTimer, detailOpener = null, shareTarget = null;
   const detailReturnFocus = new Map();
   let socialView = 'members', socialProfile = '', socialOffset = 0, socialRequest = 0;
@@ -300,6 +300,7 @@
     else body.append(caption);
     if (!detailed) body.append(button('내용 더 보기' + (post.story ? ' · 이야기 전체' : ''), 'read-more', () => openDetail(post), 'arrow'));
     const actions = el('div', 'post-actions');
+    const thread = shared ? null : commentThread(post, detailed);
     if (!shared) {
       if (!detailed) actions.append(iconButton('내용 더 보기', 'photo', () => openDetail(post)));
       const like = iconButton('좋아요', 'heart', async () => {
@@ -313,11 +314,12 @@
         } catch (e) { toast(errorText(e)); } finally { like.disabled = false; }
       });
       like.dataset.likePost = post.id; like.classList.toggle('liked', post.liked); like.setAttribute('aria-pressed', String(post.liked));
-      const comments = iconButton(`댓글 ${post.comments}개 보기`, 'comment', () => openComments(post)); comments.dataset.commentPost = post.id; actions.append(like, comments);
+      const comments = iconButton(commentLabel(post), 'comment'); comments.dataset.commentPost = post.id; thread.bind(comments); actions.append(like, comments);
       const share = iconButton('기록 공유', 'share', () => sharePost(post)); share.classList.add('share-post'); actions.append(share);
       body.append(actions);
     }
     const count = el('p', 'likes-label', `좋아요 ${post.likes}개`); count.dataset.likeCount = post.id; body.append(count);
+    if (thread) { const more = button(`댓글 ${post.comments}개`, 'text-button'); more.dataset.commentCount = post.id; more.hidden = !post.comments; thread.bind(more); body.append(more); }
     const trip = el('div', 'post-trip', post.trip ? '# ' + post.trip : '조금 더 오래 기억하고 싶은 날');
     if (!shared) trip.append(el('span', 'privacy-badge', (labels[post.visibility] || '') + (post.discoverable ? ' · 발견' : ''))); body.append(trip);
     if (post.mine && state.me?.can_write) {
@@ -325,6 +327,7 @@
       owner.append(button('AI로 꾸미기', 'text-button', () => openStudio(post), 'spark'), button('수정', 'text-button', () => openCompose(post)), button('삭제', 'text-button danger', () => confirm('이 순간을 지울까요?', '피드와 공유 링크에서 더 이상 보이지 않아요.', '삭제하기', async () => { await api('/api/memories/' + post.id, { method: 'DELETE' }); if (state.post === post.id) state.post = ''; await load(); toast('기록을 삭제했어요.'); })));
       body.append(owner);
     }
+    if (thread) body.append(thread.section);
     card.append(body); return card;
   }
   function openDetail(post) {
@@ -523,44 +526,82 @@
       $('revoke-links').hidden = false; $('share-feedback').textContent = ''; showDialog('share-dialog');
     } catch (e) { toast(errorText(e)); }
   }
-  let commentsCursor = null, commentsTicket = 0, commentsLoading = false, commentsSending = false;
-  async function openComments(post) {
-    commentPost = post; ++commentsTicket; commentsLoading = false; commentsCursor = null;
-    $('comments-list').textContent = '댓글을 불러오는 중…'; $('comment-error').textContent = '';
-    $('comment-body').value = ''; $('comment-form').hidden = !state.me?.can_write;
-    $('comments-readonly').hidden = Boolean(state.me?.can_write); $('comments-older').hidden = true;
-    showDialog('comments-dialog'); await loadComments();
+  // DESIGN 2.36 S1b — 댓글은 창 없이 그 카드 아래 펼침: 최근 3개 + 「이전 댓글 N개 더 보기」(같은 창구 · 같은 커서) + 맨 아래 입력 줄.
+  // 상태는 카드마다(피드 카드와 자세히 보기 카드가 따로) — 댓글 수만 같은 글의 단추 전부에 맞춘다.
+  const commentLabel = (post) => `댓글 ${post.comments}개 보기`;
+  const commentKey = (c) => c.id || [c.created_at, c.username, c.body].join('\u0000');
+  const touchLike = () => matchMedia('(max-width: 700px), (pointer: coarse)').matches;
+  function syncCommentCount(post) {
+    surface.querySelectorAll('[data-comment-post]').forEach((n) => { if (n.dataset.commentPost === post.id) { n.setAttribute('aria-label', commentLabel(post)); n.title = commentLabel(post); } });
+    surface.querySelectorAll('[data-comment-count]').forEach((n) => { if (n.dataset.commentCount === post.id) { n.textContent = `댓글 ${post.comments}개`; n.hidden = !post.comments; } });
   }
-  async function loadComments(older = false) {
-    if (commentsLoading || !commentPost) return;
-    const ticket = commentsTicket, post = commentPost, scroll = $('comments-scroll');
-    const height = scroll.scrollHeight, top = scroll.scrollTop;
-    commentsLoading = true; $('comments-older').disabled = true;
-    try {
-      const suffix = older && commentsCursor ? '?before=' + encodeURIComponent(commentsCursor) : '';
-      const data = await api('/api/memories/' + post.id + '/comments' + suffix);
-      if (ticket !== commentsTicket) return;
-      renderComments(data.comments, older); commentsCursor = data.next_cursor || null;
-      $('comments-older').hidden = !commentsCursor;
-      scroll.scrollTop = older ? top + scroll.scrollHeight - height : scroll.scrollHeight;
-    } catch (e) {
-      if (ticket === commentsTicket) {
-        if (!older) $('comments-list').textContent = errorText(e);
-        else toast(errorText(e));
-        $('comments-older').hidden = false;
-        $('comments-older').textContent = '댓글 다시 불러오기';
-      }
-    } finally {
-      if (ticket === commentsTicket) { commentsLoading = false; $('comments-older').disabled = false; }
+  function commentNode(c) {
+    const n = el('article', 'comment'), time = el('time', '', date(c.created_at)); time.dateTime = c.created_at;
+    n.append(el('strong', '', c.display_name || c.username), time, el('p', '', c.body)); return n;
+  }
+  function commentThread(post, detailed) {
+    const section = el('section', 'post-comments'); section.id = 'post-comments-' + post.id + (detailed ? '-detail' : ''); section.hidden = true; section.setAttribute('aria-label', '댓글');
+    const older = button('', 'text-button', () => { if (!loaded) load(); else if (all.length > shown) { shown = all.length; render(); } else if (cursor) load(cursor); }); older.hidden = true;
+    const list = el('div'), status = el('p', 'msg'); status.setAttribute('role', 'alert');
+    const triggers = [];
+    let all = [], shown = 0, cursor = null, loaded = false, loading = false, sending = false, input = null;
+    section.append(older, list);
+    function render() {
+      if (!all.length) list.textContent = '아직 댓글이 없습니다. 첫 댓글을 남겨 보세요.';
+      else list.replaceChildren(...all.slice(Math.max(0, all.length - shown)).map(commentNode));
+      const rest = Math.max(post.comments - shown, all.length - shown, 0);
+      older.hidden = !(all.length > shown || cursor);
+      older.textContent = rest ? `이전 댓글 ${rest}개 더 보기` : '이전 댓글 더 보기';
     }
+    async function load(before = null) {
+      if (loading) return;
+      loading = true; older.disabled = true;
+      try {
+        const data = await api('/api/memories/' + post.id + '/comments' + (before ? '?before=' + encodeURIComponent(before) : ''));
+        const rows = data.comments || [], have = new Set(rows.map(commentKey));
+        if (before) { all = rows.concat(all.filter((c) => !have.has(commentKey(c)))); shown = all.length; }
+        else { all = rows.concat(all.filter((c) => !have.has(commentKey(c)))); shown = Math.min(all.length, Math.max(shown, 3)); }
+        cursor = data.next_cursor || null; loaded = true; status.textContent = ''; render();
+      } catch (e) {
+        if (!loaded) { list.textContent = errorText(e); older.hidden = false; older.textContent = '댓글 다시 불러오기'; } else status.textContent = errorText(e);
+      } finally { loading = false; older.disabled = false; }
+    }
+    if (state.me?.can_write) {
+      const form = el('form', 'comment-compose'), submit = el('button', 'primary', '게시');
+      input = el('textarea'); input.rows = 1; input.maxLength = 1000; input.placeholder = '댓글 달기…'; input.setAttribute('aria-label', '댓글 달기');
+      submit.type = 'submit'; submit.disabled = true;
+      const ready = () => { submit.disabled = sending || !input.value.trim(); input.rows = Math.min(6, input.value.split('\n').length); };
+      input.addEventListener('input', ready);
+      // Enter · Ctrl/⌘+Enter = 게시 · Shift+Enter = 줄바꿈 · 한글 조합 중 Enter 는 글자 확정만(보내지 않는다)
+      input.addEventListener('keydown', (e) => { if (e.key !== 'Enter' || e.shiftKey || e.isComposing || e.keyCode === 229) return; e.preventDefault(); form.requestSubmit(); });
+      form.addEventListener('submit', async (e) => {
+        e.preventDefault(); const text = input.value;
+        if (sending || !text.trim()) return;
+        sending = true; ready(); status.textContent = '';
+        try {
+          const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: text }) });
+          const have = new Set(all.map(commentKey)), fresh = (data.comments || []).filter((c) => !have.has(commentKey(c)));
+          all.push(...fresh); shown = Math.min(all.length, shown + fresh.length);
+          if (!loaded) { cursor = data.next_cursor || null; loaded = true; }
+          post.comments = Math.max(post.comments + 1, all.length); syncCommentCount(post);
+          if (input.value === text) input.value = '';
+          render(); if (!touchLike()) input.focus({ preventScroll: true });
+        } catch (err) { status.textContent = errorText(err); }
+        finally { sending = false; ready(); }
+      });
+      form.append(input, submit); section.append(form);
+    } else section.append(el('p', 'comments-readonly', '읽기 전용 계정입니다. 댓글은 읽을 수 있지만 작성할 수 없습니다.'));
+    section.append(status);
+    function toggle() {
+      const open = section.hidden; section.hidden = !open;
+      triggers.forEach((n) => n.setAttribute('aria-expanded', String(open)));
+      if (!open) return;
+      if (!loaded && !loading) { list.textContent = '댓글을 불러오는 중…'; load(); }
+      if (input && !touchLike()) input.focus();
+    }
+    function bind(n) { triggers.push(n); n.setAttribute('aria-controls', section.id); n.setAttribute('aria-expanded', 'false'); n.addEventListener('click', toggle); }
+    return { section, bind };
   }
-  function renderComments(comments, older = false) {
-    const nodes = comments.map((c) => { const n = el('article', 'comment'); n.append(el('strong', '', c.display_name || c.username), el('time', '', date(c.created_at)), el('p', '', c.body)); return n; });
-    if (older) $('comments-list').prepend(...nodes); else $('comments-list').replaceChildren(...nodes);
-    if (!$('comments-list').children.length) $('comments-list').textContent = '아직 댓글이 없습니다. 첫 댓글을 남겨 보세요.';
-    $('comments-older').textContent = '이전 댓글 불러오기';
-  }
-  $('comments-older').addEventListener('click', () => loadComments(Boolean(commentsCursor)));
   function studioPrompt() {
     if (!studioPost) return;
     const kind = $('studio-kind').value, tone = $('studio-tone').value;
@@ -661,25 +702,6 @@
   $('copy-link').addEventListener('click', async () => { $('share-feedback').textContent = await clipboard($('share-url').value, $('share-url')) ? '링크를 복사했어요.' : '주소를 길게 눌러 복사해 주세요.'; });
   $('native-share').addEventListener('click', async () => { try { if (navigator.share) await navigator.share({ title: '나의 여행 기록 · Qaredi', url: $('share-url').value }); else $('copy-link').click(); } catch (e) { if (e.name !== 'AbortError') $('share-feedback').textContent = '기기 공유를 열지 못했어요. 링크를 복사해 보내 주세요.'; } });
   $('revoke-links').addEventListener('click', () => confirm('모든 여행 공유 링크를 해제할까요?', '이전에 친구에게 보낸 여행 링크는 더 이상 열리지 않아요. 새 링크는 나중에 만들 수 있어요.', '공유 해제', async () => { await api('/api/memories/links', { method: 'DELETE' }); $('share-dialog').close(); toast('기존 여행 공유 링크를 해제했어요.'); }));
-  $('comment-form').addEventListener('submit', async (e) => {
-    e.preventDefault(); if (commentsSending || !commentPost) return;
-    const submit = $('comment-form').querySelector('[type="submit"]'), post = commentPost;
-    const ticket = ++commentsTicket, text = $('comment-body').value;
-    commentsLoading = false; commentsSending = true; submit.disabled = true; $('comments-older').disabled = true;
-    try {
-      const data = await api('/api/memories/' + post.id + '/comments', { method: 'POST', body: JSON.stringify({ body: text }) });
-      if (ticket === commentsTicket) {
-        renderComments(data.comments); commentsCursor = data.next_cursor || null;
-        $('comments-older').hidden = !commentsCursor; $('comments-older').disabled = false;
-        if ($('comment-body').value === text) $('comment-body').value = '';
-        $('comment-error').textContent = ''; $('comments-scroll').scrollTop = $('comments-scroll').scrollHeight;
-        if ($('comments-dialog').open && [submit, document.body, $('comment-body')].includes(document.activeElement)) $('comment-body').focus({ preventScroll: true });
-      }
-      post.comments++;
-      surface.querySelectorAll('[data-comment-post]').forEach((button) => { if (button.dataset.commentPost === post.id) { button.setAttribute('aria-label', `댓글 ${post.comments}개 보기`); button.title = `댓글 ${post.comments}개 보기`; } });
-    } catch (err) { if (ticket === commentsTicket) $('comment-error').textContent = errorText(err); }
-    finally { commentsSending = false; submit.disabled = false; if (ticket === commentsTicket) $('comments-older').disabled = false; }
-  });
   // Q:F-11 B-4 — 떠 있는 메신저 창의 모아 AI 칸에 요청문을 미리 채운다(보내기는 사람이 누른다). 답변의 「꾸미기 화면으로」가 qaredi:ai-result 로 돌아온다.
   $('studio-chat').addEventListener('click', () => { $('studio-dialog').close(); window.dispatchEvent(new CustomEvent('qaredi:messenger', { detail: { mode: 'ai', prompt: $('studio-prompt').value } })); });
   $('gemini-generate').addEventListener('click', generateCaption);
