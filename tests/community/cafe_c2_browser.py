@@ -411,9 +411,8 @@ try:
                 p.keyboard.press('Escape')
                 p.wait_for_timeout(200)
                 check(p.evaluate("document.querySelectorAll('dialog[data-cafe-modal]').length") == 0, 'report modal: Esc closes and removes the dialog')
-                # 댓글 「…」 › 신고 (E 의 댓글)
+                # 댓글 줄 글자 단추 「신고」 (E 의 댓글) — Q:F-12 W1d: 전엔 「…」 메뉴를 먼저 열었다
                 li = p.locator('#comment-' + cE)
-                li.locator('details.menu > summary').click()
                 li.locator('[data-comment-report]').click()
                 p.wait_for_selector('dialog[data-cafe-modal=report][open]', timeout=5000)
                 dlg = p.locator('dialog[data-cafe-modal=report]')
@@ -422,7 +421,7 @@ try:
                     dlg.locator('.modal__foot .btn:not(.btn--quiet)').click()
                 p.wait_for_timeout(300)
                 check(rr.value.status == 201 and rr.value.request.post_data_json.get('comment_id') == cE and p.locator('#comments-msg').inner_text() == '신고했어요 — 관리자가 확인해요',
-                      'comment report: 「…」 › 신고 → 201 (comment_id) · success line')
+                      'comment report: 「신고」 text button → 201 (comment_id) · success line')
                 p.screenshot(path=str(shots / 'anon-post-1440.png'), full_page=True)
                 check(t.clean('anon-A'), 'anon (A): console 0')
                 ctx.close()

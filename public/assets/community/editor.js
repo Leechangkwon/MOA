@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=c403de592d18';
-import { hydrateDashboard } from './dashboard.js?v=c403de592d18';
+import { createTableEditor } from './table-editor.js?v=01ac029100a8';
+import { hydrateDashboard } from './dashboard.js?v=01ac029100a8';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=c403de592d18';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=c403de592d18';
-import { createMentionInput, mentionTokens } from './mention-input.js?v=c403de592d18';
-import { createDatabaseView } from './database.js?v=c403de592d18';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=c403de592d18';
-import { bindEmbedAdmin } from './embeds.js?v=c403de592d18';
-import { bindPopular } from './popular.js?v=c403de592d18';
-import { bindPalettes } from './palettes.js?v=c403de592d18';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=c403de592d18';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=c403de592d18';
-import { drawTrust, bindProcedures } from './procedures.js?v=c403de592d18';
-import { createPageExport } from './export.js?v=c403de592d18';
-import { createDrafts } from './drafts.js?v=c403de592d18';
-import { drawPageAi, bindAiCenter } from './ai.js?v=c403de592d18';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=c403de592d18';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=01ac029100a8';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=01ac029100a8';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=01ac029100a8';
+import { createDatabaseView } from './database.js?v=01ac029100a8';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=01ac029100a8';
+import { bindEmbedAdmin } from './embeds.js?v=01ac029100a8';
+import { bindPopular } from './popular.js?v=01ac029100a8';
+import { bindPalettes } from './palettes.js?v=01ac029100a8';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=01ac029100a8';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=01ac029100a8';
+import { drawTrust, bindProcedures } from './procedures.js?v=01ac029100a8';
+import { createPageExport } from './export.js?v=01ac029100a8';
+import { createDrafts } from './drafts.js?v=01ac029100a8';
+import { drawPageAi, bindAiCenter } from './ai.js?v=01ac029100a8';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=01ac029100a8';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=c403de592d18';
-import { createCafe, personInto, isAnon } from './cafe.js?v=c403de592d18';
+import { createWork } from './work.js?v=01ac029100a8';
+import { createCafe, personInto, isAnon } from './cafe.js?v=01ac029100a8';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -6852,29 +6852,16 @@ function initPage() {
           commentCall(c.hidden ? 'DELETE' : 'POST', '/api/comments/' + c.id + '/hide');
         }));
       }
-      // 카페 C2 (DESIGN 2.29 「신고」) — 댓글 줄 「…」 메뉴(2.15)에 「신고」. 카페 글 · 쓰기 자격 · 내 댓글이 아님 · 보이는 댓글일 때만(표시용 — 창구가 다시 막는다)
-      if (IS_CAFE && meCanWrite && !c.hidden && c.body !== null && !mine(c.author, null)) {
-        const more = document.createElement('details');
-        more.className = 'menu';
-        const sum = document.createElement('summary');
-        sum.className = 'btn btn--icon btn--plain';
-        sum.setAttribute('aria-label', '댓글 더보기');
-        sum.appendChild(document.createTextNode('…'));
-        const list = document.createElement('div');
-        list.className = 'menu__list';
-        const rep = document.createElement('button');
-        rep.type = 'button';
-        rep.className = 'menu__item';
-        rep.setAttribute('aria-haspopup', 'dialog');
-        rep.setAttribute('data-comment-report', c.id);
-        rep.textContent = '신고';
-        rep.addEventListener('click', () => {
-          more.open = false;
+      /* 카페 C2 (DESIGN 2.29 「신고」) — 카페 글 · 쓰기 자격 · 내 댓글이 아님 · 보이는 댓글일 때만(표시용 — 창구가 다시 막는다).
+         Q:F-12 W1d(2026-10-14 사용자 확인 「댓글 신고 기능은 없어 보임」) — 「…」 메뉴 안에 숨기지 않고 「답글」 · 「고치기」와 같은 줄의 글자 단추.
+         숨긴 글(그 글의 머리 「신고」와 같은 조건 — state.board.hidden)의 댓글에도 0 */
+      if (IS_CAFE && meCanWrite && !c.hidden && c.body !== null && !mine(c.author, null) && !(state.board && state.board.hidden === true)) {
+        const rep = commentButton('신고', () => {
           if (cafe) { cafe.openReport({ pageId: pageId, commentId: c.id, onDone: (text) => { setText(commentsMsg, text); if (commentsMsg) { commentsMsg.classList.add('msg--ok'); } } }); }
         });
-        list.appendChild(rep);
-        more.append(sum, list);
-        actions.appendChild(more);
+        rep.setAttribute('aria-haspopup', 'dialog');
+        rep.setAttribute('data-comment-report', c.id);
+        actions.appendChild(rep);
       }
       if (actions.firstChild) { li.appendChild(actions); }
     }

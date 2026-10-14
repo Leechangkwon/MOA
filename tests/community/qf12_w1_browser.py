@@ -20,6 +20,8 @@
             읽기 본문 테두리 · 바탕 · 그림자 0 · 댓글 같은 열 · 상자 0 · 빈 문서 안내 누름 → 편집(도구 줄 상자 · 편집 칸 = 열 폭 · 16rem 이상 · 「편집 마침」 본문 머리 오른쪽 ·
             제목 줄 「편집」 숨김) → 마침 → 저장 · 읽기 흐름 · 작업 전체 화면 편집 칸과 같은 폭 · 보기만 하는 사람 「아직 내용이 없어요」 · 편집 0 ·
             종이 모드(A4)를 고른 사람 전과 같은 폭 · 데이터베이스 · 프로젝트 화면 폭 그대로 · 넘침 0 · 콘솔 0 · 스크린샷(카페 글 · 문서 읽기 · 편집 1440)
+  [report]  W1d(DESIGN 2.29 「신고」) — 카페 자유 · 익명 글의 남의 댓글 줄에 「신고」 글자 단추(답글 줄 · 「…」 메뉴 0 · 412 누름 자리 ≥ 44 · data-comment-report) →
+            신고 모달 → 201(comment_id) · 내 댓글 · 숨긴 댓글 · 숨긴 글 · 업무 게시판 · 손님 0 · 콘솔 0 · 스크린샷(익명 댓글 1440)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -611,6 +613,86 @@ try:
                 ctx.close()
                 metrics['doc'] = summary
             guard('doc', docs)
+
+        # ─── [report] W1d — 카페 댓글 「신고」 글자 단추(DESIGN 2.29 「신고」) ───────────────────────────────
+        if want('report'):
+            def report():
+                def board(where, make):
+                    got_ = sql("SELECT id FROM community.spaces WHERE kind='board' AND is_active AND " + where + " ORDER BY id LIMIT 1")
+                    if not got_:
+                        got_ = sql("INSERT INTO community.spaces (kind, name, description, access_level, notice, board_kind, area, created_by) VALUES " + make + " RETURNING id").splitlines()[0]
+                    return int(got_)
+                free = board("area='cafe' AND board_kind='discussion' AND access_level='internal'", "('board','W1d 카페 게시판','합성','internal',false,'discussion','cafe',NULL)")
+                anon = board("board_kind='anonymous'", "('board','W1d 익명 게시판','합성','internal',false,'anonymous','cafe',NULL)")
+                work = board("area='work' AND board_kind='discussion' AND access_level='internal'", "('board','W1d 업무 게시판','합성','internal',false,'discussion','work',NULL)")
+                def post(bid, title, who='employee'):
+                    return call('POST', '/api/boards/' + str(bid) + '/pages', {'title': title}, user=who, expected=201)['page']['id']
+                def comment(pid, body, who):
+                    return call('POST', '/api/pages/' + pid + '/comments', {'body': body}, user=who, expected=201)['comment']['id']
+                admin = uid('admin')
+                cases = {}
+                for key, bid in (('free', free), ('anon', anon)):
+                    pid = post(bid, 'W1d ' + key + ' 글')
+                    other = comment(pid, '남의 댓글 ' + key, 'manager')
+                    own = comment(pid, '내 댓글 ' + key, 'employee')
+                    hid = comment(pid, '숨긴 댓글 ' + key, 'manager')
+                    sql("UPDATE community.comments SET hidden_at=now(), hidden_by=" + str(admin) + " WHERE public_id=" + lit(hid))
+                    cases[key] = (pid, other, own, hid)
+                wpid = post(work, 'W1d 업무 글')
+                wcom = comment(wpid, '업무 글 남의 댓글', 'manager')
+                hpid = post(free, 'W1d 숨긴 글')
+                hcom = comment(hpid, '숨긴 글의 남의 댓글', 'manager')
+                sql("UPDATE community.pages SET hidden_at=now(), hidden_by=" + str(admin) + " WHERE id=" + str(pk(hpid)))
+                REP_JS = r"""(id) => { const b = document.querySelector('#comment-' + id + ' [data-comment-report]'); if (!b) return null; const r = b.getBoundingClientRect();
+  const cs = getComputedStyle(b, '::before'); const n = v => { const x = parseFloat(v); return isNaN(x) ? 0 : x; };
+  const before = cs.content !== 'none' && cs.position === 'absolute' ? {h: r.height - n(cs.top) - n(cs.bottom), w: r.width - n(cs.left) - n(cs.right)} : {h: r.height, w: r.width};
+  const row = b.parentElement; const sib = [...row.children].map(x => x.textContent.trim());
+  return {text: b.textContent.trim(), tag: b.tagName, inMenu: !!b.closest('details.menu'), shown: r.width > 0 && r.height > 0, h: Math.max(r.height, before.h), w: Math.max(r.width, before.w), row: sib}; }"""
+                for width in (1440, 412):
+                    ctx = context('employee', width, 'light', width < 800)
+                    t = Tab(ctx)
+                    p = t.page
+                    for key, (pid, other, own, hid) in cases.items():
+                        tag = '%s-%d' % (key, width)
+                        p.goto(site + '/community/p/' + pid, wait_until='networkidle')
+                        p.wait_for_selector('#comment-' + other, timeout=15000)
+                        p.wait_for_timeout(200)
+                        r = p.evaluate(REP_JS, other)
+                        metrics['report-' + tag] = r
+                        check(r and r['shown'] and r['text'] == '신고' and r['tag'] == 'BUTTON' and not r['inMenu'] and ('답글' in r['row'] or len(r['row']) >= 1),
+                              'W1d %s: other\'s comment shows a 「신고」 text button in the action row %s' % (tag, r and r['row']))
+                        if width < 800:
+                            check(r and r['h'] >= 44 and r['w'] >= 44, 'W1d %s: touch target ≥ 44 (%.0f × %.0f)' % (tag, r and r['w'] or 0, r and r['h'] or 0))
+                        check(p.evaluate(REP_JS, own) is None, 'W1d %s: my own comment → no 신고' % tag)
+                        check(p.locator('#comment-' + hid).count() == 0 or p.evaluate(REP_JS, hid) is None, 'W1d %s: hidden comment → no 신고' % tag)
+                        check(p.locator('#comment-' + other + ' details.menu').count() == 0, 'W1d %s: no 「…」 menu left on the comment row' % tag)
+                        if width == 1440:
+                            p.locator('#comment-' + other + ' [data-comment-report]').click()
+                            p.wait_for_selector('dialog[data-cafe-modal=report][open]', timeout=5000)
+                            dlg = p.locator('dialog[data-cafe-modal=report]')
+                            dlg.locator('input[type=radio]').nth(0).check()
+                            with p.expect_response(lambda rr: rr.url.endswith('/community/api/reports') and rr.request.method == 'POST') as resp:
+                                dlg.locator('.modal__foot .btn:not(.btn--quiet)').click()
+                            p.wait_for_timeout(300)
+                            check(resp.value.status == 201 and resp.value.request.post_data_json.get('comment_id') == other and p.locator('#comments-msg').inner_text() == '신고했어요 — 관리자가 확인해요',
+                                  'W1d %s: 신고 → report modal → 201 (comment_id) · 「신고했어요 — 관리자가 확인해요」' % tag)
+                            if key == 'anon':
+                                p.screenshot(path=str(shots / 'w1d-anon-comment-report-1440.png'), full_page=True)
+                    for label, pid, cid in (('work board', wpid, wcom), ('hidden post', hpid, hcom)):
+                        resp = p.goto(site + '/community/p/' + pid, wait_until='networkidle')
+                        p.wait_for_timeout(600)
+                        check(p.locator('[data-comment-report]').count() == 0, 'W1d %s-%d: no comment 신고 (comment row present %s)' % (label, width, p.locator('#comment-' + cid).count()))
+                    check(t.clean('report-%d' % width), 'W1d %d console 0 · page errors 0 · 5xx 0' % width)
+                    ctx.close()
+                # 손님 — 쓰기 자격 0 → 0
+                ctx = context('guest', 1440, 'light')
+                t = Tab(ctx)
+                p = t.page
+                p.goto(site + '/community/p/' + cases['free'][0], wait_until='networkidle')
+                p.wait_for_timeout(600)
+                check(p.locator('[data-comment-report]').count() == 0, 'W1d guest: no comment 신고 (comments shown %s)' % p.locator('#page-comments > li').count())
+                ctx.close()
+            guard('report', report)
 
         browser.close()
 finally:

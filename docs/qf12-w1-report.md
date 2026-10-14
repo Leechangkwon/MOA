@@ -113,3 +113,29 @@
 1. `public/assets/design.css`(목록 밖) — 지시서의 「옛 #page-editor 가운데 좁은 규칙 삭제」 대상이 이 파일에 있었다. 그 세 줄만 지웠다(다른 디자인 규칙 0).
 2. 용지 고르개 첫 값 「기본」(값 없음)을 더하고 「넓게」를 뺐다 — 기본이 곧 열 폭 편집 칸이라 「넓게」와 같은 일이다.
 3. 위 「못 한 것」 첫째 · 셋째.
+
+## W1d — 카페 댓글 「신고」를 글자 단추로 (DESIGN 2.29 「신고」)
+
+### 변경 파일
+- `public/assets/community/editor.js` `commentItem` — 댓글 줄 「…」(`details.menu` · 아이콘만) 메뉴를 걷고 `commentButton('신고', …)` 하나를 「답글」 · 「고치기」와 같은 동작 줄에.
+  `data-comment-report` · `aria-haspopup="dialog"` · 같은 `cafe.openReport({pageId, commentId, onDone})` · 조건(카페 · 쓰기 자격 · 내 댓글 아님 · 숨긴 댓글 아님 · 본문 있음) 그대로 +
+  **숨긴 글이면 0**(`state.board.hidden` — 글 머리 「신고」와 같은 조건. 옛 메뉴는 이 조건이 없어 숨긴 글을 볼 수 있는 사람(쓴 사람)에게 남의 댓글 신고가 떴다).
+- 커뮤니티 JS import 버전 줄 · `tests/community/qf12_w1_browser.py` `[report]` · `tests/catalog.json` 설명.
+
+### 수락 시험과 결과
+- `QF12W1_ONLY=report` → **pass=74 fail=0**: 1440 · 412 × 자유 · 익명 글 — 남의 댓글 줄에 「신고」 글자 단추(메뉴 밖 · 같은 줄) · 412 누름 자리 52 × 46 ≥ 44 · 「…」 메뉴 0 ·
+  누름 → 신고 모달 → 201(comment_id) · 「신고했어요 — 관리자가 확인해요」 · 내 댓글 · 숨긴 댓글 0 · 업무 게시판 글 0 · 숨긴 글(댓글 줄은 보임) 0 · 손님 0 · 콘솔 0.
+  스크린샷 `browser-w1d/shots/w1d-anon-comment-report-1440.png`.
+
+### 고친 옛 단언(돌리지 않음)
+- `tests/community/cafe_c2_browser.py` 「comment report: 「…」 › 신고」 — 메뉴(`details.menu > summary`)를 먼저 열던 한 줄을 빼고 글자 단추를 바로 누른다(이름도 「신고」 text button).
+
+### 못 한 것 · 다르게 한 것
+- 손님 단언은 손님이 그 카페 글을 볼 수 없어(사내 게시판) 「댓글 줄 0 → 신고 0」으로만 확인됐다 — 손님이 볼 수 있는 카페 게시판이 합성 DB 에 없다.
+- 「숨긴 글 0」 조건 한 줄을 더했다(지시서의 「조건 그대로」 + 완료 기준 「숨긴 글 0」을 함께 지키려면 필요했다).
+
+## 최종 판 한 번 (W1 · W1b · W1c · W1d 모두 들어간 판)
+- `python3 tests/community/memories_harness.py --port 8778 --suite qf12_w1_browser.py --output …/browser-final` → **RESULT pass=471 fail=0**(cal · pane · project · menu · doc · report 전부 · 콘솔 0).
+- 서버 쪽은 W1 뒤로 바뀌지 않아 `qf12_w1_http` 76/76(W1 판) 그대로.
+- 정적(최종 판): security_lint 금지 패턴 0 · php -l · node --check · `community_asset_version.php --check` rc 0 · wiki_check 통과 · git diff --check 0.
+- 남긴 것 0: 합성 DB · 임시 폴더 · PHP 서버는 실행마다 틀이 지웠다(`OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1`). W1 의 첫 HTTP 실행 뒤로 8778 만 썼다.
