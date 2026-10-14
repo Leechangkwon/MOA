@@ -629,6 +629,21 @@ td.actions .btn--icon:last-child::after,
   }
 }
 
+/* Q:F-12 W1b (DESIGN 2.15 「창 안에 머묾」 — 2026-10-14 사용자 지적 「우측 상단에 글씨가 잘려서 나감」).
+   메뉴 단추가 아이콘 단추(`summary.btn--icon[aria-label]` — 작업 칸 「더보기」 · 프로젝트 메뉴)면 바로 위 툴팁 규칙이 같은 summary 의
+   `anchor-name` 을 `--tip` 하나로 **덮어써** 목록(`position-anchor: --menu`)이 단추를 잃었다 — 앵커 없는 fixed 목록이 제자리(단추 왼끝)에서
+   오른쪽으로 펼쳐져 창 밖으로 나갔다. 이름을 둘 다 단다(접힌 사이드바 「＋」 와 같은 방식). 칸(aside)의 넘침 자르기 · 변형 상자와 상관없이
+   화면 기준(fixed)으로 단추 오른끝에 맞추고, 모자라면 위 .menu__list 의 폴백(오른쪽 · 위)으로 비킨다. */
+@supports (anchor-name: --menu) and (anchor-scope: --menu) {
+  .menu > summary.btn--icon[aria-label] { anchor-name: --menu, --tip; }
+  /* 항목이 많은 목록(화면 머리 「더보기」 16줄 · 폰)도 창 안 — 위 · 아래 중 자리가 더 큰 쪽에 펴고, 그 자리(앵커 칸 — 100%)보다 길면 목록 안에서 스크롤.
+     14px = 위 여백 6 + 창 가장자리 8 */
+  .menu__list { max-height: calc(100% - 14px); overflow-y: auto; position-try-order: most-height; }
+}
+/* 열린 동안 그 단추의 풍선(aria-label · data-tip 툴팁) 0 — 목록과 겹쳐 보이던 것 */
+.menu[open] > summary:is([aria-label], [data-tip])::after { display: none; }
+body[data-sidebar="collapsed"] #sidebar .menu[open] > summary[data-tip]::after { display: none; }
+
 .btn--small { height: 32px; padding: 0 12px; font-size: 13px; border-radius: var(--r-sm); }
 .btn--block { width: 100%; }   /* 독립 화면의 칸 하나~셋짜리 폼(로그인·재인증)의 제출 단추 */
 

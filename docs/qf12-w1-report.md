@@ -50,3 +50,28 @@
 3. 기한 깃발은 아이콘 템플릿(`icon_templates.php` — 목록 밖)에 깃발이 없어 CSS 도형(깃대 + 삼각, 12×12 · currentColor)으로 그렸다.
 4. `aria-label` 은 DESIGN 예 문장 그대로에 상황에 따라 「· 기한 넘김 n일」(넘겼을 때) · 「· 기한 …」(시작 예정 없이 실제만 있을 때) · 「기한 M월 D일」(기한만)을 붙인다.
 5. 날짜 칸 머리는 「10-14」 대신 날 수만(「14」) — 폰 7칸에서 잘리지 않게. 달은 도구 줄에 있다.
+
+## W1b — 「더보기」 메뉴가 창 밖으로 잘림 (DESIGN 2.15 「창 안에 머묾」)
+
+### 원인
+작업 칸 · 프로젝트 머리의 메뉴 단추는 아이콘 단추(`summary.btn btn--icon[aria-label]`)다. 공용 메뉴 규칙(app.css 2.15 — `.menu > summary { anchor-name: --menu }`)
+**뒤에** 있는 툴팁 규칙(2.8 — `.btn--icon[aria-label] { anchor-name: --tip; anchor-scope: --tip }`)이 같은 summary 의 `anchor-name` 을 `--tip` 하나로 덮어써,
+목록(`position: fixed; position-anchor: --menu`)이 앵커를 잃었다 → `position-area` 가 무시되고 fixed 목록이 제자리(단추 왼끝)에서 오른쪽으로 펼쳐져 창 밖으로 나갔다.
+칸(aside)의 transform · contain 은 없었다(넘침 `overflow-y: auto` 는 fixed 라 상관없음). 같은 summary 의 풍선(`::after`)도 열린 동안 hover 로 떠 목록과 겹쳤다.
+
+### 변경 파일
+- `public/assets/app.css` — 앵커 블록 하나 + 두 줄: `.menu > summary.btn--icon[aria-label] { anchor-name: --menu, --tip }`(접힌 사이드바 「＋」 와 같은 방식) ·
+  `.menu__list { max-height: calc(100% - 14px); overflow-y: auto; position-try-order: most-height }`(항목 16줄인 화면 머리 「더보기」가 폰 412 에서 아래로 2px 넘던 것 — 자리가 큰 쪽에 펴고 그보다 길면 목록 안 스크롤) ·
+  `.menu[open] > summary:is([aria-label], [data-tip])::after { display: none }` + 접힌 사이드바 갈래 한 줄. JS · 마크업 변경 0(work.js 메뉴 마크업은 2.15 그대로).
+- `tests/community/qf12_w1_browser.py` — `[menu]` 묶음 · `tests/catalog.json` 설명.
+
+### 수락 시험과 결과
+- 고치기 전 판(HEAD 의 app.css 로 같은 시험) `QF12W1_ONLY=menu` → **fail 32** — 예: 「pane-1440: 목록 l 1352 · r 1544 > 1432」(사용자 스크린샷 그대로 재현) · 풍선 `::after` block.
+- 고친 판 `QF12W1_ONLY=menu` → **pass=130 fail=0**: 1440 · 1280 · 960 · 412 × 작업 칸 · 넓게 보기(1200 이상) · 전체 화면 작업 · 프로젝트 머리 · 화면 머리 —
+  목록 상자 왼 ≥ 8 · 오른 ≤ 폭-8 · 아래 ≤ 높이-8(화면 머리 412 는 아래 907 = 915-8, 목록 안 스크롤) · 항목 글자 잘림 0 · 열린 동안 풍선 0 · Esc 닫힘 · 밖 누름 닫힘 · 콘솔 0.
+  스크린샷 `browser-w1b/shots/w1b-pane-menu-1440.png`.
+- 정적: security_lint 0 · asset_version --check rc 0 · git diff --check 0.
+
+### 고친 옛 단언 · 못 한 것 · 다르게 한 것
+- 고친 옛 단언 0. 못 한 것 0.
+- 다르게 한 것: 지시서의 「폴백」에 더해 `max-height` + `position-try-order: most-height` 를 공용 `.menu__list`(앵커 갈래)에 넣었다 — 항목이 많은 메뉴는 폰에서 위 · 아래 어느 쪽에도 다 들어가지 않아 그 둘 없이는 창 안을 지킬 수 없었다. 멘션 후보 목록(`.mention-field > .menu__list` — 자기 max-height 20rem)은 그 값이 이긴다.

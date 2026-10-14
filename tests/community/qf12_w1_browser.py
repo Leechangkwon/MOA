@@ -14,6 +14,8 @@
             기한 깃발 · 주 줄 넘김(앞 줄 --more · 다음 줄 첫 칸 --cont) · 층(예정 위 · 실제 바로 아래) · +N · 범례 셋 · 막대 누름 → 오른쪽 칸 · aria-label 문장 ·
             기한만 있는 작업 = 기한 하루 · 412 막대 글자 0 · 넘침 0 · 대비 4.5(막대 글자 · 범례) · 인라인 style 0 · 콘솔 0 · 스크린샷
   [project] 프로젝트 달력(데이터베이스 달력 보기 — 같은 calendar.js): 끝난 작업 실제 막대(첫 doing ~ 끝난 날) · 막대 누름 → 오른쪽 칸 · 끝난 날 줄
+  [menu]    W1b(DESIGN 2.15 「창 안에 머묾」) — 1440 · 1280 · 960 · 412 × 작업 칸 · 넓게 보기(1200 이상) · 전체 화면 작업 · 프로젝트 머리 · 화면 머리의 「더보기」:
+            열린 목록 상자가 창 안(왼 ≥ 8 · 오른 ≤ 폭-8 · 아래 ≤ 높이-8 또는 위로 펼침) · 항목 글자 잘림 0 · 열린 동안 풍선 0 · Esc · 밖 누름 닫힘 · 스크린샷(칸 메뉴 1440)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -398,6 +400,63 @@ try:
                     check(t.clean('project-%d' % width), 'project %d console 0 · page errors 0 · 5xx 0' % width)
                     ctx.close()
             guard('project', project)
+
+        # ─── [menu] W1b — 「더보기」 메뉴가 창 안에 머묾(DESIGN 2.15) ─────────────────────────────────
+        MENU_JS = r"""(sel) => { const sum = document.querySelector(sel); if (!sum) return null; const menu = sum.parentElement; const list = menu.querySelector('.menu__list');
+  const r = list.getBoundingClientRect(); const sr = sum.getBoundingClientRect();
+  const items = [...list.querySelectorAll('.menu__item')].filter(i => !i.hidden && getComputedStyle(i).display !== 'none').map(i => { const b = i.getBoundingClientRect();
+    const t = [...i.childNodes].map(n => n.textContent).join('').trim(); return {t, l: b.left, r: b.right, cut: i.scrollWidth > i.clientWidth + 1}; });
+  const tip = getComputedStyle(sum, '::after'); return {open: menu.open, l: r.left, r: r.right, t: r.top, b: r.bottom, w: r.width, vw: innerWidth, vh: innerHeight,
+    sumL: sr.left, sumR: sr.right, sumB: sr.bottom, sumT: sr.top, items, tip: tip.display, tipContent: tip.content, pos: getComputedStyle(list).position}; }"""
+        if want('menu'):
+            def menu():
+                summary = {}
+                doc = call('POST', '/api/pages', {'title': 'W1b 일반 문서'}, expected=201)['page']['id']
+                cases = [('pane', '/community/my-tasks?task=' + T4, '#task-pane .task-pane__head details.menu > summary', '#task-pane .task-pane__props dt'),
+                         ('wide', '/community/my-tasks?task=' + T4, '#task-pane .task-pane__head details.menu > summary', '#task-pane .task-pane__props dt'),
+                         ('full', '/community/p/' + T4, '#task-full .task-pane__head details.menu > summary', '#task-full .task-pane__props dt'),
+                         ('project', '/community/p/' + proj['id'], '#project-menu > summary', '#project-title'),
+                         ('page', '/community/p/' + doc, '#page-more > summary', '#page-title')]
+                for width in (1440, 1280, 960, 412):
+                    ctx = context('employee', width, 'light', width < 800)
+                    t = Tab(ctx)
+                    p = t.page
+                    for name, url, sel, outside in cases:
+                        if name == 'wide' and width < 1200:
+                            continue
+                        tag = '%s-%d' % (name, width)
+                        p.goto(site + url, wait_until='networkidle')
+                        p.wait_for_selector(sel, state='visible', timeout=15000)
+                        p.wait_for_timeout(300)
+                        if name == 'wide':
+                            p.locator('#task-pane [data-pane-wide]').click()
+                            p.wait_for_timeout(300)
+                        p.locator(sel).click()
+                        p.wait_for_timeout(250)
+                        m = p.evaluate(MENU_JS, sel)
+                        summary[tag] = m
+                        if name == 'pane' and width == 1440:
+                            p.screenshot(path=str(shots / 'w1b-pane-menu-1440.png'))
+                        inside_x = m and m['l'] >= 8 and m['r'] <= m['vw'] - 8
+                        inside_y = m and (m['b'] <= m['vh'] - 8 or (m['t'] >= 8 and m['b'] <= m['sumT']))
+                        check(m and m['open'] and inside_x and inside_y,
+                              'W1b %s: open list inside the window (l %.0f ≥ 8 · r %.0f ≤ %d · t %.0f · b %.0f ≤ %d or flipped up)'
+                              % (tag, m['l'], m['r'], m['vw'] - 8, m['t'], m['b'], m['vh'] - 8) if m else 'W1b %s: menu found' % tag)
+                        check(m and m['items'] and all(i['l'] >= 8 and i['r'] <= m['vw'] - 8 and not i['cut'] for i in m['items']),
+                              'W1b %s: every item fully visible · text not cut %s' % (tag, [i['t'] for i in (m['items'] if m else [])]))
+                        check(m and (m['tip'] == 'none' or m['tipContent'] in ('none', 'normal')), 'W1b %s: no tooltip on the button while open (::after %s · content %s)' % (tag, m and m['tip'], m and m['tipContent']))
+                        p.keyboard.press('Escape')
+                        p.wait_for_timeout(150)
+                        check(not p.evaluate('(s) => document.querySelector(s).parentElement.open', sel), 'W1b %s: Esc closes' % tag)
+                        p.locator(sel).click()
+                        p.wait_for_timeout(150)
+                        p.locator(outside).first.click(position={'x': 2, 'y': 2})
+                        p.wait_for_timeout(150)
+                        check(not p.evaluate('(s) => document.querySelector(s).parentElement.open', sel), 'W1b %s: outside click closes' % tag)
+                    check(t.clean('menu-%d' % width), 'W1b %d console 0 · page errors 0 · 5xx 0' % width)
+                    ctx.close()
+                metrics['menu'] = summary
+            guard('menu', menu)
 
         browser.close()
 finally:

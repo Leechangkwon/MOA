@@ -6498,9 +6498,9 @@
       ],
       "requirements": [],
       "risks": [],
-      "est_sec": 360,
+      "est_sec": 480,
       "writes_prod": false,
-      "notes": "사이트 Q:F-12 W1 화면 수락(DESIGN 2.34 · 기획 19.2) — memories_harness.py 격리 틀 + Chromium(env.sh). 날짜는 서울 오늘 기준 상대(사건 시각 합성). [cal] 내 작업 달력 1440 · 412 × 밝게 · 어둡게 · 고대비: 예정 막대 점선 · 실제 막대 진한 칠 · 기한 넘김 조각 --danger-soft · 기한 깃발 12×12 · 주 줄 넘김(--more · 다음 줄 첫 칸 --cont) · 예정 위 실제 아래 층 · 6개 → 층 4 + 「+2」 · 범례 셋 · aria-label 문장 · 기한만 = 하루 · 412 글자 0 · 넘침 0 · 대비 4.5 · 인라인 style 0 · 막대 누름 → 오른쪽 칸 · 콘솔 0. [pane] 「마감」 앞 「시작 예정」 · 저장 → 다시 열어도 · 실제 시작 줄 · 아직 시작 전 · 시작 예정 > 마감 알림 + 되돌림 · 활동 문장. [project] 프로젝트 달력(같은 calendar.js) · 끝난 작업 막대 · 누름 → 오른쪽 칸 · 끝난 날 줄. QF12W1_ONLY=cal,pane,project. 결과 qf12-w1-browser-results.json · metrics · shots/."
+      "notes": "사이트 Q:F-12 W1 화면 수락(DESIGN 2.34 · 기획 19.2) — memories_harness.py 격리 틀 + Chromium(env.sh). 날짜는 서울 오늘 기준 상대(사건 시각 합성). [cal] 내 작업 달력 1440 · 412 × 밝게 · 어둡게 · 고대비: 예정 막대 점선 · 실제 막대 진한 칠 · 기한 넘김 조각 --danger-soft · 기한 깃발 12×12 · 주 줄 넘김(--more · 다음 줄 첫 칸 --cont) · 예정 위 실제 아래 층 · 6개 → 층 4 + 「+2」 · 범례 셋 · aria-label 문장 · 기한만 = 하루 · 412 글자 0 · 넘침 0 · 대비 4.5 · 인라인 style 0 · 막대 누름 → 오른쪽 칸 · 콘솔 0. [pane] 「마감」 앞 「시작 예정」 · 저장 → 다시 열어도 · 실제 시작 줄 · 아직 시작 전 · 시작 예정 > 마감 알림 + 되돌림 · 활동 문장. [project] 프로젝트 달력(같은 calendar.js) · 끝난 작업 막대 · 누름 → 오른쪽 칸 · 끝난 날 줄. QF12W1_ONLY=cal,pane,project. 결과 qf12-w1-browser-results.json · metrics · shots/. [menu] W1b(DESIGN 2.15 「창 안에 머묾」) 1440 · 1280 · 960 · 412 × 작업 칸 · 넓게 보기 · 전체 화면 작업 · 프로젝트 머리 · 화면 머리 「더보기」: 목록 상자 창 안(8px) · 항목 잘림 0 · 열린 동안 풍선 0 · Esc · 밖 누름 닫힘. QF12W1_ONLY 에 menu."
     }
   ]
 }
