@@ -293,7 +293,7 @@ try:
             check('data-mobile-nav-mode' not in r.text, 'Q:T-38 ' + path + ' drawer 「메뉴 / 앱·계정」 switch removed')
             brand = {'tbox': '모아 자료실', 'community': '모아 업무', 'story': '모아 이야기'}[here]
             check(('aria-label="' + brand + ' — 앱 전환"') in r.text, 'C-2 ' + path + ' phone app-name button aria-label 「' + brand + ' — 앱 전환」')
-            check('<summary class="btn btn--quiet" aria-label="앱 — 앱 바꾸기와 계정"' in r.text and 'brand__switch' not in r.text, 'C-2 ' + path + ' grid summary = ⋮⋮⋮ + 「앱」 outline button 「앱 — 앱 바꾸기와 계정」 (U5-2 · DESIGN 2.28) · brand is no longer a menu (DESIGN 2.19 ① U2)')
+            check('<summary class="btn btn--quiet" aria-label="앱 — 앱 바꾸기"' in r.text and 'brand__switch' not in r.text, 'C-2 ' + path + ' grid summary = ⋮⋮⋮ + 「앱」 outline button 「앱 — 앱 바꾸기와 계정」 (U5-2 · DESIGN 2.28) · brand is no longer a menu (DESIGN 2.19 ① U2)')
             # 카페 C5 — 쿠키 없는 첫 HTML 은 접힘이 기본(☰ aria 첫 값 = 펼치기)
             check(re.search(r'<button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="메뉴 펼치기">', r.text) is not None, 'C-2 ' + path + ' sidebar head ☰ #sidebar-collapse')
             me = re.search(r'<summary class="shell-tools__me" aria-label="([^"]+)">', r.text)   # 카페 C6 (DESIGN 2.30) — 칩은 내 계정 판의 summary
