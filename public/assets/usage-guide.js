@@ -90,7 +90,7 @@
       step('#gemini-generate','선택한 사진으로 초안 만들기','버튼을 누를 때 사진의 축소본과 메모 등 안내된 내용을 Gemini에 전달해요. 결과는 검토한 뒤 저장하세요.'),
       step('#studio-story-editor,#studio-result','내 목소리로 다듬기','생성된 장면별 글이나 초안을 직접 고칠 수 있어요. 수정한 글을 확인하고 적용하세요.'),
       step('#studio-append,#apply-studio','원문을 보존하며 적용','기존 글에 추가하거나 교체 편집을 선택해요. 안내는 이 버튼을 누르거나 저장하지 않아요.'),
-      step('#comment-body','댓글로 마음 남기기','댓글을 적고 댓글 남기기를 눌러 전해요. 공개 범위와 내 권한 안에서 사용할 수 있어요.'),
+      step('[data-comment-post]','댓글로 마음 남기기','댓글 아이콘을 누르면 그 글 아래에서 바로 댓글을 적고 「게시」로 전해요. 공개 범위와 내 권한 안에서 사용할 수 있어요.'),
       step('#share-url','공유 가능한 기록만 나누기','링크가 있어도 소유자가 정한 범위를 우회할 수 없어요. 공유 안내와 링크 유효기간을 확인해 주세요.')
     ],
     travel: [
@@ -114,7 +114,7 @@
   tours.travel.push(step('#travel-ai-prompt','AI와 계획 다듬기','요청문을 복사해 ChatGPT 등에 상담할 수 있어요. MCP가 연결되어 있으면 허용한 여행 읽기·쓰기 범위 안에서 계획을 다룰 수 있어요.'));
   const modalContexts = new Map([
     ['messenger-window','messenger'],['compose-dialog','composer'],['studio-dialog','story'],
-    ['comments-dialog','story'],['share-dialog','story'],['memory-detail-dialog','story'],
+    ['share-dialog','story'],['memory-detail-dialog','story'],
     ['post-detail-dialog','story'],['detail-dialog','story'],['travel-dialog','travel'],['travel-plans-dialog','travel']
   ]);
   tours.threads.push(step('#social-search','함께 기록할 사람 찾기','이름이나 아이디로 찾고 프로필을 열어 팔로우할 수 있어요. 공개하지 않은 기록은 팔로워라도 볼 수 없어요.'));
