@@ -71,7 +71,8 @@ try:
                 card=page.locator('.db-calendar__item').first;card.focus();page.keyboard.press('ArrowRight');page.wait_for_timeout(400)
                 values=call('GET','/api/pages/'+row).json()['row']['values'];check(values[day]['start']==now[:-2]+'16','keyboard date move saved through API')
                 page.locator('.db-calendar__item').filter(has_text='월마감 검토 자료').first.drag_to(page.locator('.db-calendar__day[aria-label=\"'+now[:-2]+'17\"]'));page.wait_for_timeout(400);check(call('GET','/api/pages/'+row).json()['row']['values'][day]['start']==now[:-2]+'17','drag date move saved through API')
-            if width==390:check(page.locator('.db-calendar').evaluate('(e)=>getComputedStyle(e).gridTemplateColumns.trim().split(/\s+/).length===1'),'mobile calendar uses single column list')
+            # Q:F-12 W1 (DESIGN 2.34 「폰」) — 폰도 7칸 주 줄(막대가 주를 이어 그린다 · 글자 0). 전: 한 줄 목록
+            if width==390:check(page.locator('.db-calendar .cal-week').first.evaluate('(e)=>getComputedStyle(e).gridTemplateColumns.trim().split(/\s+/).length===7'),'mobile calendar keeps the 7-column week rows')
             page.screenshot(path=str(output/('calendar-'+str(width)+'-'+theme+'.png')),full_page=True)
             page.locator('[data-db-view="'+chart['id']+'"]').click();expect(page.locator('.db-chart')).to_be_visible();check(page.locator('.db-chart__bar').count()==1,'chart SVG rendered '+str(width))
             for saved,selector in [(line,'.db-chart__point'),(donut,'.db-chart__slice'),(number,'.db-chart__number')]:

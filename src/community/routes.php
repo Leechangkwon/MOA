@@ -738,7 +738,8 @@ function community_page_row_sql(bool $withDoc): string
                editor.username AS last_edited_by_name,
                editor.display_name AS last_edited_by_display_name,
                -- 4-D: 상태 칸 + (멈춘) 담당자 칸의 옛 값. 5-A 부터 담당자는 **읽기만** 한다.
-               p.status, p.assignee_id, p.due_date, p.page_kind, p.verified_by, p.verified_at, p.verify_expires_at,
+               -- Q:F-12 W1: 시작 예정(읽기 열 — 판정 재료 아님)
+               p.status, p.assignee_id, p.due_date, p.start_date, p.page_kind, p.verified_by, p.verified_at, p.verify_expires_at,
                verifier.display_name AS verified_by_display_name, verifier.username AS verified_by_name,
                CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
                assignee.username  AS assignee_name,
@@ -3150,6 +3151,45 @@ function community_my_tasks_sql(array $u, bool $done, string $today, string $sun
         $bind[':mt_bucket'] = $bucket;
     }
     return [$sql, $bind];
+}
+
+/**
+ * Q:F-12 W1 (결정 WK-29 · 기획 work-ux-plan.md 19.2) — 작업의 날짜 셋을 **한 질의로** 붙인다(N+1 0).
+ *   start    = `pages.start_date`(시작 예정 — 저장한 값)
+ *   started  = 상태를 **처음** `doing`(진행 중)으로 바꾼 속성 사건의 날짜(Asia/Seoul) — 없으면 null
+ *   finished = 지금 상태가 `done` 일 때만, **마지막** `done` 사건의 날짜 — 아니면 null
+ * 판정은 여기 없다 — 부르는 쪽이 이미 보는 사람의 조건절(목록) · 읽기 판정(pages_get)을 지난 행의 번호만 넘긴다.
+ * 번호는 DB 가 준 UUID 글자뿐이고 바인딩 하나로 들어간다(글자 잇기 0). 사건 표는 `page_property_events_page_at` 색인으로 읽는다.
+ *
+ * @param  list<string> $publicIds
+ * @return array<string,array{start:?string,started:?string,finished:?string}> public_id → 셋
+ */
+function community_task_dates(array $publicIds): array
+{
+    $ids = array_values(array_unique(array_filter(array_map('strval', $publicIds),
+        static fn (string $v): bool => preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $v) === 1)));
+    if ($ids === []) {
+        return [];
+    }
+    $sql = <<<'SQL'
+        SELECT p.public_id, p.start_date,
+               to_char((min(e.at) FILTER (WHERE e.to_value = 'doing')) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') AS started,
+               CASE WHEN p.status = 'done'
+                    THEN to_char((max(e.at) FILTER (WHERE e.to_value = 'done')) AT TIME ZONE 'Asia/Seoul', 'YYYY-MM-DD') END AS finished
+          FROM community.pages p
+          LEFT JOIN community.page_property_events e ON e.page_id = p.id AND e.prop = 'status'
+         WHERE p.public_id = ANY (CAST(string_to_array(CAST(:td_ids AS text), ',') AS uuid[]))
+         GROUP BY p.id
+        SQL;
+    $out = [];
+    foreach (Db::instance()->run($sql, [':td_ids' => implode(',', $ids)])->fetchAll() as $r) {
+        $out[(string) $r['public_id']] = [
+            'start'    => $r['start_date'] === null ? null : (string) $r['start_date'],
+            'started'  => $r['started'] === null ? null : (string) $r['started'],
+            'finished' => $r['finished'] === null ? null : (string) $r['finished'],
+        ];
+    }
+    return $out;
 }
 
 /**

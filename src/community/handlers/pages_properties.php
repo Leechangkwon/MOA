@@ -11,6 +11,9 @@ declare(strict_types=1);
  *
  * 받는 값 (JSON, **허용 키 밖이 하나라도 있으면 400**, 둘 중 **하나 이상** 필수)
  *   status    `todo`·`doing`·`review`·`done`·`hold` **다섯** 또는 `null`(없음)
+ *   start     시작 예정일 `YYYY-MM-DD` 또는 `null`(비우기) — Q:F-12 W1(결정 WK-29 · 기획 work-ux-plan.md 19.2).
+ *             판정은 `due` 와 같은 갈래(`decidePageChange`). 둘 다 있으면 **start ≤ due** — 아니면 400 「시작 예정일이 기한보다 늦어요」
+ *             (`due` 만 바꿔 시작 예정보다 앞으로 당겨도 같다). 바뀌면 속성 사건 `start` 한 줄 + 감사 `page.property`.
  *   resolved  `true`·`false` — 질문답변 게시판의 「해결됨」(5-C). 그 게시판에 걸린 페이지(게시판 글 ·
  *             게시된 개인 페이지)이고 **쓴 사람**(게시판 글의 작성자 · 개인 페이지의 주인)만이다.
  *             질문답변이 아닌 페이지는 400 `not_qa`, 쓴 사람이 아니면 403 + 감사 `page.property deny`.
@@ -53,7 +56,8 @@ $pid = (string) $params[0];
 // ─── [1] 허용 키·값 ───────────────────────────────────────────
 $body = Http::jsonBody();
 // 허용 키 — `status`·`resolved`(5-C)·`verify`·`kind`·`due` + Q:F-12 의 `assignee`(5-A 에서 빠졌다가 소유자와 따로 돌아왔다).
-if (array_diff(array_keys($body), ['status', 'resolved', 'verify', 'kind', 'due', 'assignee']) !== []) {
+// Q:F-12 W1 — `start`(시작 예정일)를 더했다.
+if (array_diff(array_keys($body), ['status', 'resolved', 'verify', 'kind', 'due', 'start', 'assignee']) !== []) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 $hasStatus   = array_key_exists('status', $body);
@@ -62,6 +66,7 @@ $hasResolved = array_key_exists('resolved', $body);
 $hasVerify = array_key_exists('verify', $body);
 $hasKind = array_key_exists('kind', $body);
 $hasDue = array_key_exists('due', $body);
+$hasStart = array_key_exists('start', $body);
 $hasAssignee = array_key_exists('assignee', $body);
 /* Q:F-12 — 담당은 계정명(`Auth::USERNAME_RE`) 또는 `null`(비우기). 모양이 틀린 값은 어떤 계정도 아니므로 「없는 계정」과
    **같은 문구**로 400 이다(있는 계정인지·맡길 수 있는 사람인지를 응답이 가르지 않는다 — 감사 없음, 형식 거부). */
@@ -77,9 +82,14 @@ if ($hasDue && $body['due'] !== null) {
     $d = is_string($body['due']) ? DateTimeImmutable::createFromFormat('!Y-m-d', $body['due']) : false;
     if (!$d || $d->format('Y-m-d') !== $body['due']) { Http::error(400, Http::MSG_BAD_REQUEST); }
 }
+// Q:F-12 W1 — 시작 예정일도 기한과 같은 모양(달력에 있는 날 · 그 밖은 형식 거부 400, 감사 없음)
+if ($hasStart && $body['start'] !== null) {
+    $d = is_string($body['start']) ? DateTimeImmutable::createFromFormat('!Y-m-d', $body['start']) : false;
+    if (!$d || $d->format('Y-m-d') !== $body['start']) { Http::error(400, Http::MSG_BAD_REQUEST); }
+}
 if ($hasVerify && $body['verify'] !== null && (!is_int($body['verify']) || !in_array($body['verify'], [0,30,90,180], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
 if ($hasKind && (!is_string($body['kind']) || !in_array($body['kind'], ['page','procedure','dashboard'], true))) { Http::error(400, Http::MSG_BAD_REQUEST); }
-if (!$hasStatus && !$hasResolved && !$hasVerify && !$hasKind && !$hasDue && !$hasAssignee) {
+if (!$hasStatus && !$hasResolved && !$hasVerify && !$hasKind && !$hasDue && !$hasStart && !$hasAssignee) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
 
@@ -184,7 +194,7 @@ if ($hasAssignee) {
 // ─── [권한 ✔ B] 고칠 수 있나 (C:T-51) ─────────────────────────
 /* 볼 수 있는 것과 고칠 수 있는 것은 다른 물음이다. 사내로 열어 둔 페이지의 상태를 아무나
    바꿀 수 있으면, 그 상태는 더 이상 주인의 기록이 아니다 (PRD 4.1 「누가 고치나」). */
-[$mayChange, $changeCode] = ($hasStatus || $hasVerify || $hasKind || $hasDue)
+[$mayChange, $changeCode] = ($hasStatus || $hasVerify || $hasKind || $hasDue || $hasStart)
     ? CommunityAuthz::decidePageChange($user, $row)
     : [true, CommunityAuthz::CODE_OWNER];
 
@@ -199,7 +209,7 @@ if ($hasResolved) {
     [$mayResolve, $resolveCode] = CommunityAuthz::decidePageManage($user, $row);
     if (!$mayResolve || $resolveCode !== CommunityAuthz::CODE_OWNER) {
         $mayChange = false;
-    } elseif (!$hasStatus && !$hasVerify && !$hasKind && !$hasDue) {
+    } elseif (!$hasStatus && !$hasVerify && !$hasKind && !$hasDue && !$hasStart) {
         $changeCode = $resolveCode;
     }
 }
@@ -223,6 +233,16 @@ if (!$mayChange) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
+/* Q:F-12 W1 — 시작 예정 ≤ 기한(둘 다 있을 때). 바꾸는 쪽(시작 예정 · 기한) 어느 것이든 요청에 있을 때만 본다 — 판정을 지난 뒤라
+   못 고치는 사람은 위에서 403 이다. 글자 비교로 충분하다(둘 다 위에서 `Y-m-d` 로 확인했고, DB 값도 같은 모양). */
+$toStart = $hasStart ? $body['start'] : ($row['start_date'] === null ? null : (string) $row['start_date']);
+$toDue   = $hasDue ? $body['due'] : ($row['due_date'] === null ? null : (string) $row['due_date']);
+if (($hasStart || $hasDue) && $toStart !== null && $toDue !== null && strcmp($toStart, $toDue) > 0) {
+    $db->rollback();
+    Http::json(['error' => '시작 예정일이 기한보다 늦어요', 'reason' => 'start_after_due'], 400);
+    exit;
+}
+
 $toStatus     = $hasStatus ? $wantStatus : $fromStatus;
 $fromResolved = ($row['resolved'] ?? false) === true;
 $toResolved   = $hasResolved ? (bool) $wantResolved : $fromResolved;
@@ -232,7 +252,7 @@ $sqlSet = <<<'SQL'
     UPDATE community.pages
        SET status = :status,
            resolved = CAST(:resolved AS boolean),
-           page_kind = :kind, due_date = CAST(:due AS date),
+           page_kind = :kind, due_date = CAST(:due AS date), start_date = CAST(:start AS date),
            verified_by = CASE WHEN CAST(:vset AS boolean) THEN CAST(:vby AS bigint) ELSE verified_by END,
            verified_at = CASE WHEN CAST(:vset AS boolean) THEN CASE WHEN CAST(:vby AS bigint) IS NULL THEN NULL ELSE now() END ELSE verified_at END,
            verify_expires_at = CASE WHEN CAST(:vset AS boolean) THEN CASE WHEN CAST(:days AS integer) > 0 THEN now() + CAST(:days AS integer) * interval '1 day' ELSE NULL END ELSE verify_expires_at END
@@ -266,6 +286,7 @@ try {
         ':resolved' => $toResolved ? 'true' : 'false',
         ':pid'      => $pageId,
         ':due' => $hasDue ? $body['due'] : $row['due_date'],
+        ':start' => $toStart,
         ':kind' => $hasKind ? $body['kind'] : $row['page_kind'],
         ':vset' => $hasVerify ? 'true' : 'false',
         ':vby' => $hasVerify && $body['verify'] !== null ? $me : null,
@@ -311,6 +332,11 @@ try {
     if ($hasDue && $body['due'] !== $row['due_date']) {
         community_insert_property_event($pageId, 'due', $row['due_date'], $body['due'], $me);
         $auditChange('due', $row['due_date'], $body['due']); $changed[] = 'due';
+    }
+    // Q:F-12 W1 — 시작 예정: 같은 값이면 기록 0, 바뀌면 사건 'start'(값은 날짜 글자) + 감사 한 줄
+    if ($hasStart && $body['start'] !== $row['start_date']) {
+        community_insert_property_event($pageId, 'start', $row['start_date'], $body['start'], $me);
+        $auditChange('start', $row['start_date'], $body['start']); $changed[] = 'start';
     }
     /* Q:F-12 담당 — 같은 사람이면 변경 없음(기록 0). 바뀌었으면 칸 + 지울 수 없는 줄(값은 계정명) + 감사 한 줄. */
     $notifyAssignee = null;

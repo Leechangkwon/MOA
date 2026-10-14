@@ -388,9 +388,8 @@
 }
 /* 빈 페이지 안내 (2026-09-23) — 편집기 아래, 문서가 비었을 때만 */
 .editor-starter { gap: 10px; padding: 16px 20px; box-shadow: none; }
-/* 안내가 보이는 동안(빈 문서)은 편집 칸을 낮춰 안내가 첫 화면에 들어오게 한다. 글을 치면 안내가
-   사라지고 칸은 **아래로** 자란다 — 위의 것은 움직이지 않는다. */
-.panel:has(+ .editor-starter:not([hidden])) > .editor { min-height: 5rem; }
+/* Q:F-12 W1c (DESIGN 2.35 「쓸 때」) — 빈 문서에서 편집 칸을 5rem 으로 낮추던 규칙은 지웠다: 편집 칸은 작업 전체 화면과 같이 언제나 최소 16rem(.editor) ·
+   안내는 그 아래 그대로 */
 .editor-starter__keys {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
@@ -1065,7 +1064,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
    본문 왼쪽 여백 32 이하 + 틈 6 + 오른쪽 16 + 스크롤 막대 18 이하 = 72). 넘치면 후보 목록이 다음 줄로(종류·찾기 칸은 줄지 않는다) ·
    후보 라벨은 한 줄 말줄임. 같은 규칙을 쓰는 글자색·배경·링크 줄과 900px 이하(툴바 아래 갈래 · 라벨 줄바꿈)는 그대로 */
 @media (min-width: 900.02px) {
-  .editor-toolbar > #mention-row { flex-wrap: wrap; max-width: calc(100vw - 100% - var(--sidebar-w) - 72px); }
+  .editor-toolbar > #mention-row { flex-wrap: wrap; }   /* W1c — 도구 줄이 열 폭 전체라 줄은 아래로(작업 칸과 같은 규칙 — app.css) */
   #mention-list .block-pick strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 /* 8-B: app chrome does not belong on a printed document. Dedicated print route is SSR. */
@@ -1076,27 +1075,86 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 /* Keep long unbroken document titles readable on narrow screens. */
 #page-title { overflow-wrap: anywhere; }
 
+/* 종이 모드 — A4 · A3 · Letter 를 **고른** 문서만(용지 고르개 · 사람마다 기억). 기본(속성 없음)은 아래 W1c 한 열 편집 칸 */
 #main:has(#page-editor[data-paper-mode]) { overflow-x: auto; }
-#page-editor { box-sizing: border-box; width: 100%; min-width: 794px; min-height: 1123px; margin-inline: auto; }
+#page-editor { box-sizing: border-box; width: 100%; min-width: 0; }
+#page-editor[data-paper-mode] { margin-inline: auto; }
+#page-editor[data-paper-mode="a4"] { min-width: 794px; min-height: 1123px; }
 #page-editor[data-paper-mode="a3"] { min-width: 1123px; min-height: 1587px; }
 #page-editor[data-paper-mode="letter"] { min-width: 816px; min-height: 1056px; }
-#page-editor[data-paper-mode="wide"] { min-width: 0; min-height: 70vh; }
 /* Keep the selected paper dimensions, but fit its editing surface inside the screen viewport. */
 @media screen {
-  #page-editor { min-width: min(794px, 100%); }
+  #page-editor[data-paper-mode="a4"] { min-width: min(794px, 100%); }
   #page-editor[data-paper-mode="a3"] { min-width: min(1123px, 100%); }
   #page-editor[data-paper-mode="letter"] { min-width: min(816px, 100%); }
-  #page-editor[data-paper-mode="wide"] { min-width: 0; }
 }
 @media(max-width: 600px) {
-  #page-editor, #page-editor[data-paper-mode="a3"], #page-editor[data-paper-mode="letter"] { min-height: 70vh; }
+  #page-editor[data-paper-mode] { min-height: 70vh; }
   .editor-paper-mode { margin-left: auto; }
 }
 
+/* ─── Q:F-12 W1c 글쓰기 한 기준 — 작업 전체 화면 모양 (DESIGN 2.35 · 2.25) ─────────────────────────────
+   한 열: 문서 · 게시판 글(업무 · 카페 · 익명)의 화면 부품을 작업 전체 화면(`#task-full` — 최대 960 · 가운데)과 같은 열에. 길잡이도 같은 열(작업 화면 포함).
+   예외: 데이터베이스(표가 보이는 페이지 — `#db-wrap` 이 열림) · 프로젝트 화면(data-page-kind=project) · 종이 모드를 고른 편집 칸(위 규칙 그대로).
+   셸 도구(.shell-tools) · 대화 상자 · 역할 보기 띠는 열 밖. 새 색값 0 · 인라인 style 0 */
+body[data-page-kind="doc"]:not(:has(#db-wrap:not([hidden]))) .main > :not(dialog):not(.shell-tools):not(.act-banner):not(#page-editor[data-paper-mode]),
+body[data-page-kind="task"] .main > #page-crumb { box-sizing: border-box; width: 100%; max-width: 960px; margin-inline: auto; }
+/* 읽을 때 — 상자 없이 흐른다(테두리 · 바탕 · 그림자 0) · 빈 문서 한 줄(고칠 수 있으면 누르면 편집 — 단추 모양 0, 글자 그대로) */
+.page-doc { min-width: 0; }
+.page-doc__empty { margin: 0; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; text-align: left; }
+button.page-doc__empty { cursor: text; border-radius: var(--r-sm); }
+button.page-doc__empty:hover { color: var(--fg-2); }
+button.page-doc__empty:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+/* 쓸 때 — 본문 머리 줄(`.task-pane__section-head` 그대로 · 오른쪽 「편집 마침」) · 도구 줄 상자는 열 폭 전체 · 편집 칸은 .panel + .editor(최소 16rem) 그대로 */
+.page-body-head { margin: 0; }
+/* 댓글 — 큰 카드 상자 대신 본문과 같은 흐름 */
+.page-comments { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
 /* Stage 11 layouts reuse existing color tokens; responsive wrappers prevent page overflow. */
-.db-calendar { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); gap:var(--space-2,8px); }
-.db-calendar__day { min-width:0; min-height:100px; border:1px solid var(--line); padding:6px; border-radius:var(--radius-sm,6px); }
+/* Q:F-12 W1 (DESIGN 2.34) — 달력은 주 줄(`.cal-week`) 7칸 격자. 날짜 칸은 줄 전체 높이(1~6 줄), 막대는 층 줄(2~5) · 「+N」은 6 줄.
+   막대 위치 · 폭은 클래스(`cal-col-N` 시작 칸 · `cal-span-N` 칸 수 · `cal-lane-N` 층) — 인라인 style 0 · 새 색값 0(1.1 토큰만). */
+.db-calendar { display:grid; gap:4px; }
+.db-calendar__head { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); column-gap:4px; font-size:12px; text-align:center; }
+.cal-week { display:grid; grid-template-columns:repeat(7,minmax(0,1fr)); grid-template-rows:26px repeat(4,22px) 18px; column-gap:4px; row-gap:2px; }
+.db-calendar__day, .cal-blank { grid-row:1 / -1; min-width:0; }
+.db-calendar__day { position:relative; border:1px solid var(--line); border-radius:var(--r-sm); padding:4px 6px; }
+.db-calendar__day h4 { margin:0; font-size:12px; font-weight:500; line-height:18px; }
+.db-calendar__day[aria-current="date"] h4 { color:var(--accent); font-weight:700; }
 .db-calendar__item { display:block; overflow-wrap:anywhere; margin-block:4px; }
+.cal-col-1 { grid-column-start:1; } .cal-col-2 { grid-column-start:2; } .cal-col-3 { grid-column-start:3; } .cal-col-4 { grid-column-start:4; }
+.cal-col-5 { grid-column-start:5; } .cal-col-6 { grid-column-start:6; } .cal-col-7 { grid-column-start:7; }
+.cal-span-1 { grid-column-end:span 1; } .cal-span-2 { grid-column-end:span 2; } .cal-span-3 { grid-column-end:span 3; } .cal-span-4 { grid-column-end:span 4; }
+.cal-span-5 { grid-column-end:span 5; } .cal-span-6 { grid-column-end:span 6; } .cal-span-7 { grid-column-end:span 7; }
+.cal-lane-1 { grid-row:2; } .cal-lane-2 { grid-row:3; } .cal-lane-3 { grid-row:4; } .cal-lane-4 { grid-row:5; }
+.cal-bar { position:relative; z-index:1; display:flex; align-items:center; min-width:0; height:20px; margin:0 3px; padding:0 6px;
+  border:1px solid var(--line); border-radius:4px; background:var(--muted-bg); color:var(--fg); font-size:12px; line-height:18px; text-decoration:none; overflow:hidden; }
+.cal-bar__text { min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.cal-bar--plan { background:var(--accent-soft); border:1px dashed var(--accent); color:var(--fg); }
+.cal-bar--actual { background:var(--accent); border:1px solid var(--accent); color:var(--primary-fg); }
+.cal-bar--late { background:var(--danger-soft); border:1px solid var(--danger); color:var(--fg); }
+.cal-bar.cal-bar--cont { margin-left:0; border-top-left-radius:0; border-bottom-left-radius:0; }
+.cal-bar.cal-bar--more { margin-right:0; border-top-right-radius:0; border-bottom-right-radius:0; }
+.cal-bar.cal-bar--actual:has(+ .cal-bar--late) { margin-right:0; border-top-right-radius:0; border-bottom-right-radius:0; }
+.cal-bar--actual + .cal-bar.cal-bar--late { margin-left:0; border-top-left-radius:0; border-bottom-left-radius:0; }
+.cal-bar:hover { text-decoration:none; border-style:solid; }
+.cal-bar--plan:hover { border-style:dashed; border-color:var(--accent-dark); }
+.cal-bar:focus-visible { outline:3px solid var(--ring-soft); outline-offset:1px; }
+.cal-more { grid-row:6; z-index:1; align-self:center; padding-inline:6px; font-size:11px; line-height:16px; color:var(--muted); }
+/* 기한 깃발(아이콘 12 — 깃대 + 삼각 깃발, 색은 currentColor) · 기한 날 칸 오른쪽 위 */
+.cal-due { position:absolute; top:6px; right:6px; width:12px; height:12px; color:var(--fg-2); }
+.cal-due::before { content:""; position:absolute; left:2px; top:0; width:2px; height:12px; border-radius:1px; background:currentColor; }
+.cal-due::after { content:""; position:absolute; left:4px; top:1px; border-left:7px solid currentColor; border-top:3.5px solid transparent; border-bottom:3.5px solid transparent; }
+/* 범례 — 달력 도구 줄 오른쪽(견본 16×10 + 12px 글자) */
+.cal-legend { display:inline-flex; flex-wrap:wrap; align-items:center; gap:12px; margin-left:auto; font-size:12px; color:var(--muted); }
+.cal-legend__item { display:inline-flex; align-items:center; gap:6px; }
+.cal-legend__swatch { display:inline-block; flex:none; width:16px; height:10px; border-radius:3px; }   /* 칠 · 테두리는 막대 갈래 클래스(--plan · --actual · --late) 그대로 */
+@media (max-width:719.98px) {
+  /* 폰 — 칸이 좁으면 막대 글자 0(색 막대만 · 누르면 같은 동작) */
+  .cal-bar__text { display:none; }
+  .cal-bar { margin:0 1px; padding:0; }
+  .db-calendar__day { padding:3px 4px; }
+  .cal-due { top:4px; right:3px; }
+}
 .db-timeline { display:grid; gap:6px; }
 .db-timeline__graphic,.db-chart { display:block; width:100%; max-height:560px; color:var(--accent); }
 .db-timeline__graphic text { fill:var(--fg); font-size:11px; }
@@ -1109,9 +1167,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 .db-view-config { display:grid; gap:12px; max-height:65vh; overflow:auto; }
 .db-timeline-canvas { max-width:100%; overflow-x:auto; }
 @media(max-width:600px) {
-  .db-calendar { grid-template-columns:1fr; }
-  .db-calendar > span { display:none; }
-  .db-calendar__day { min-height:48px; }
+  /* Q:F-12 W1 — 달 격자는 폰에서도 7칸(막대가 주 줄을 이어 그린다 · DESIGN 2.34 「폰」). 예전 한 줄 목록 갈래는 걷었다 */
   .db-timeline__graphic { width:720px; min-width:720px; }
 }
 

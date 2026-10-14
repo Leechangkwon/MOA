@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=d0ff5dce7bf1';
-import { hydrateDashboard } from './dashboard.js?v=d0ff5dce7bf1';
+import { createTableEditor } from './table-editor.js?v=01ac029100a8';
+import { hydrateDashboard } from './dashboard.js?v=01ac029100a8';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=d0ff5dce7bf1';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=d0ff5dce7bf1';
-import { createMentionInput, mentionTokens } from './mention-input.js?v=d0ff5dce7bf1';
-import { createDatabaseView } from './database.js?v=d0ff5dce7bf1';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=d0ff5dce7bf1';
-import { bindEmbedAdmin } from './embeds.js?v=d0ff5dce7bf1';
-import { bindPopular } from './popular.js?v=d0ff5dce7bf1';
-import { bindPalettes } from './palettes.js?v=d0ff5dce7bf1';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=d0ff5dce7bf1';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=d0ff5dce7bf1';
-import { drawTrust, bindProcedures } from './procedures.js?v=d0ff5dce7bf1';
-import { createPageExport } from './export.js?v=d0ff5dce7bf1';
-import { createDrafts } from './drafts.js?v=d0ff5dce7bf1';
-import { drawPageAi, bindAiCenter } from './ai.js?v=d0ff5dce7bf1';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=d0ff5dce7bf1';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=01ac029100a8';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=01ac029100a8';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=01ac029100a8';
+import { createDatabaseView } from './database.js?v=01ac029100a8';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=01ac029100a8';
+import { bindEmbedAdmin } from './embeds.js?v=01ac029100a8';
+import { bindPopular } from './popular.js?v=01ac029100a8';
+import { bindPalettes } from './palettes.js?v=01ac029100a8';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=01ac029100a8';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=01ac029100a8';
+import { drawTrust, bindProcedures } from './procedures.js?v=01ac029100a8';
+import { createPageExport } from './export.js?v=01ac029100a8';
+import { createDrafts } from './drafts.js?v=01ac029100a8';
+import { drawPageAi, bindAiCenter } from './ai.js?v=01ac029100a8';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=01ac029100a8';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=d0ff5dce7bf1';
-import { createCafe, personInto, isAnon } from './cafe.js?v=d0ff5dce7bf1';
+import { createWork } from './work.js?v=01ac029100a8';
+import { createCafe, personInto, isAnon } from './cafe.js?v=01ac029100a8';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -5555,20 +5555,26 @@ function createToolbar(view, opts) {
   const paperSelect = document.createElement('select');
   paperSelect.className = 'input editor-paper-mode__select';
   paperSelect.setAttribute('aria-label', '편집 용지 크기');
-  for (const [value, label] of [['a4', 'A4'], ['a3', 'A3'], ['letter', 'Letter'], ['wide', '넓게']]) {
+  /* Q:F-12 W1c (DESIGN 2.35) — 기본은 용지 없음(작업 전체 화면과 같은 열 폭 편집 칸). A4 · A3 · Letter 를 고른 사람만 종이 모드(전과 같은 폭).
+     옛 값 'wide'(넓게)와 고른 적 없음(전 기본 'a4' 는 저장되지 않았다)은 기본으로 */
+  for (const [value, label] of [['', '기본'], ['a4', 'A4'], ['a3', 'A3'], ['letter', 'Letter']]) {
     const option = document.createElement('option');
     option.value = value;
     option.textContent = label;
     paperSelect.appendChild(option);
   }
   const savedPaper = (() => {
-    try { return localStorage.getItem('community-editor-paper') || 'a4'; } catch (_) { return 'a4'; }
+    try { return localStorage.getItem('community-editor-paper') || ''; } catch (_) { return ''; }
   })();
-  paperSelect.value = ['a4', 'a3', 'letter', 'wide'].includes(savedPaper) ? savedPaper : 'a4';
+  paperSelect.value = ['a4', 'a3', 'letter'].includes(savedPaper) ? savedPaper : '';
   const editorPanel = opts && opts.paper === false ? null : document.getElementById('page-editor');
-  if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
+  const paintPaper = () => {
+    if (!editorPanel) { return; }
+    if (paperSelect.value === '') { editorPanel.removeAttribute('data-paper-mode'); } else { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
+  };
+  paintPaper();
   paperSelect.addEventListener('change', () => {
-    if (editorPanel) { editorPanel.setAttribute('data-paper-mode', paperSelect.value); }
+    paintPaper();
     try { localStorage.setItem('community-editor-paper', paperSelect.value); } catch (_) {}
   });
   paperLabel.append(paperText, paperSelect);
@@ -5635,6 +5641,7 @@ function initPage() {
   let focusTitleOnce = false;
   const editButton = document.getElementById('page-edit');
   const doneButton = document.getElementById('page-done');
+  const bodyHead = document.getElementById('page-body-head');   // Q:F-12 W1c — 편집 중에만(「편집 마침」이 든 본문 머리 줄)
   const addBlockButton = document.getElementById('page-add-block');
   const deleteButton = document.getElementById('page-delete');
   const saveState = document.getElementById('page-save-state');
@@ -5738,6 +5745,7 @@ function initPage() {
         if (view) { view.destroy(); view = null; }
         const read = document.getElementById('page-doc'); if (read) { clear(read); read.hidden = true; }
         if (editorEl) { clear(editorEl); editorEl.hidden = true; }
+        if (bodyHead) { bodyHead.hidden = true; }
         state.editing = false; state.canEdit = false; serial = savedSerial;
         setText(msg,'이 문서가 휴지통으로 이동했습니다. 결과 창에서 되돌릴 수 있습니다.');
         documentTrashAfterClose = () => window.location.assign(crumbRoot().href || COMMUNITY_BASE + '/workspace');
@@ -5921,7 +5929,32 @@ function initPage() {
       docEl.appendChild(renderDoc(state.doc, readCtx()));
       hydrateDashboard(docEl,state.doc,readCtx(),api);
     }
+    drawEmptyRead();
     armTodos();
+  }
+
+  /* Q:F-12 W1c (DESIGN 2.35 「읽을 때」) — 빈 문서(블록 0 · 빈 문단 하나)는 빈 자리 대신 한 줄. 고칠 수 있으면 누르면 편집 시작(작업 칸 「설명」과 같은 동작 —
+     「편집」 단추와 같은 함수) · 못 고치면 「아직 내용이 없어요」. 판단은 창구가 준 can_edit(+ 쓰기 자격) 그대로 · 데이터베이스 페이지는 전처럼 0 */
+  function drawEmptyRead() {
+    if (state.database) { return; }
+    const blocks = state.doc && Array.isArray(state.doc.blocks) ? state.doc.blocks : [];
+    const node = docEl.firstChild;
+    const blank = blocks.length === 0 || (node && node.textContent.trim() === '' && !node.querySelector('img, table, iframe, hr, a, input, figure, .doc-atom'));
+    if (!blank) { return; }
+    clear(docEl);
+    if (state.canEdit) {
+      const hint = document.createElement('button');
+      hint.type = 'button';
+      hint.className = 'page-doc__empty';
+      hint.textContent = '누르면 내용을 적을 수 있어요';
+      hint.addEventListener('click', () => { startEditing(); });
+      docEl.appendChild(hint);
+    } else {
+      const hint = document.createElement('p');
+      hint.className = 'muted page-doc__empty';
+      hint.textContent = '아직 내용이 없어요';
+      docEl.appendChild(hint);
+    }
   }
 
   /* ── 읽기 화면의 할 일 상자 (2026-09-23 사용자 지적 「편집 끝 상태에서 체크가 안 됨」) ──
@@ -6819,29 +6852,16 @@ function initPage() {
           commentCall(c.hidden ? 'DELETE' : 'POST', '/api/comments/' + c.id + '/hide');
         }));
       }
-      // 카페 C2 (DESIGN 2.29 「신고」) — 댓글 줄 「…」 메뉴(2.15)에 「신고」. 카페 글 · 쓰기 자격 · 내 댓글이 아님 · 보이는 댓글일 때만(표시용 — 창구가 다시 막는다)
-      if (IS_CAFE && meCanWrite && !c.hidden && c.body !== null && !mine(c.author, null)) {
-        const more = document.createElement('details');
-        more.className = 'menu';
-        const sum = document.createElement('summary');
-        sum.className = 'btn btn--icon btn--plain';
-        sum.setAttribute('aria-label', '댓글 더보기');
-        sum.appendChild(document.createTextNode('…'));
-        const list = document.createElement('div');
-        list.className = 'menu__list';
-        const rep = document.createElement('button');
-        rep.type = 'button';
-        rep.className = 'menu__item';
-        rep.setAttribute('aria-haspopup', 'dialog');
-        rep.setAttribute('data-comment-report', c.id);
-        rep.textContent = '신고';
-        rep.addEventListener('click', () => {
-          more.open = false;
+      /* 카페 C2 (DESIGN 2.29 「신고」) — 카페 글 · 쓰기 자격 · 내 댓글이 아님 · 보이는 댓글일 때만(표시용 — 창구가 다시 막는다).
+         Q:F-12 W1d(2026-10-14 사용자 확인 「댓글 신고 기능은 없어 보임」) — 「…」 메뉴 안에 숨기지 않고 「답글」 · 「고치기」와 같은 줄의 글자 단추.
+         숨긴 글(그 글의 머리 「신고」와 같은 조건 — state.board.hidden)의 댓글에도 0 */
+      if (IS_CAFE && meCanWrite && !c.hidden && c.body !== null && !mine(c.author, null) && !(state.board && state.board.hidden === true)) {
+        const rep = commentButton('신고', () => {
           if (cafe) { cafe.openReport({ pageId: pageId, commentId: c.id, onDone: (text) => { setText(commentsMsg, text); if (commentsMsg) { commentsMsg.classList.add('msg--ok'); } } }); }
         });
-        list.appendChild(rep);
-        more.append(sum, list);
-        actions.appendChild(more);
+        rep.setAttribute('aria-haspopup', 'dialog');
+        rep.setAttribute('data-comment-report', c.id);
+        actions.appendChild(rep);
       }
       if (actions.firstChild) { li.appendChild(actions); }
     }
@@ -7910,6 +7930,7 @@ function initPage() {
     if (titleInput) { titleInput.value = titleForInput(state.title); }
     show(editButton, false);
     show(doneButton, true);
+    show(bodyHead, true);   // W1c — 본문 머리 줄 오른쪽 「편집 마침」
     show(addBlockButton, true);
     state.editing = true;
     // UX-2 — 좁은 폭 편집 머리(CSS 가 이 표식으로 큰 제목·경로·이름표를 가리고 「사용 방법」·「이력」을 「더보기」로 옮긴다 — 넓은 폭은 그대로)
@@ -8093,6 +8114,7 @@ function initPage() {
       show(titleField, false);
       show(docEl, true);
       show(doneButton, false);
+      show(bodyHead, false);
       show(addBlockButton, false);
       show(editButton, state.canEdit);
       drawRead();

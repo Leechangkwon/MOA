@@ -474,11 +474,13 @@ with sync_playwright() as p:
                 step("Q:T-12 제목 칸이 곧 제목(24px) " + tag, info["fs"] == "24px", info["fs"])
                 row = pg.evaluate("""() => { const r = s => document.querySelector(s).getBoundingClientRect();
                   const st = document.getElementById('page-state'); const more = r('#page-more > summary'), done = r('#page-done');
+                  const inBodyHead = !!document.querySelector('#page-body-head:not([hidden]) > #page-done:not([hidden])');
                   const sum = r('#page-props-summary');
                   return {state: st && !st.hidden ? Math.round(st.getBoundingClientRect().top + st.getBoundingClientRect().height / 2) : null,
-                          more: Math.round(more.top + more.height / 2), done: Math.round(done.top + done.height / 2), sumh: Math.round(sum.height)}; }""")
-                step("Q:T-12 머리 한 줄 — 상태 배지 · 더보기 · 편집 끝이 같은 줄 " + tag,
-                     row["state"] is not None and abs(row["state"] - row["more"]) <= 8 and abs(row["more"] - row["done"]) <= 2, row)
+                          more: Math.round(more.top + more.height / 2), done: Math.round(done.top + done.height / 2), sumh: Math.round(sum.height), inBodyHead}; }""")
+                # Q:F-12 W1c (DESIGN 2.35) — 「편집 마침」은 머리 동작 줄이 아니라 본문 머리 줄 오른쪽(#page-body-head). 전: 머리 한 줄에 편집 끝
+                step("Q:T-12 머리 한 줄 — 상태 배지 · 더보기 같은 줄 · 「편집 마침」은 본문 머리 줄 " + tag,
+                     row["state"] is not None and abs(row["state"] - row["more"]) <= 8 and row["inBodyHead"], row)
                 step("Q:T-12 속성 요약 한 줄(높이 44 이하) " + tag, row["sumh"] <= 44, row)
                 pg.click("#page-more > summary")
                 pg.wait_for_timeout(250)

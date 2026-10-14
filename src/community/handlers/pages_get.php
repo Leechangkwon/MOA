@@ -278,6 +278,9 @@ if (CommunityAuthz::decideSuggestionDecide($user, $row)[0]) {
     $suggestionInfo['suggestions_open']=(int)$db->run($countSuggestionSql, [':id'=>(int)$row['id']])->fetchColumn();
 }
 
+// Q:F-12 W1 — 날짜 셋(아래 「due」 옆). 목록 창구와 같은 함수 · 읽기 판정을 지난 이 페이지 하나만
+$taskDates = community_task_dates([(string) $row['public_id']])[(string) $row['public_id']]
+    ?? ['start' => null, 'started' => null, 'finished' => null];
 $payload = [
     'page' => [
         'id'          => (string) $row['public_id'],
@@ -356,6 +359,11 @@ $payload = [
     'page_kind' => (string) $row['page_kind'],
     'verify' => community_verify_info($row),
     'due' => $row['due_date'],
+    /* Q:F-12 W1 (결정 WK-29) — 시작 예정 · 실제 시작(처음 「진행 중」으로 바꾼 날) · 끝난 날(지금 끝났으면 마지막 「완료」 날).
+       목록 창구(my-tasks · 행 목록)와 **같은 함수 한 벌**(routes.php community_task_dates) — 위 읽기 판정을 지난 이 페이지 하나만. */
+    'start'    => $taskDates['start'],
+    'started'  => $taskDates['started'],
+    'finished' => $taskDates['finished'],
     'repeat' => community_automation_repeat_info((int)$row['id'],$user),
     'completed_at' => $row['status'] === 'done' ? ($db->run("SELECT at FROM community.page_property_events WHERE page_id=:id AND prop='status' AND to_value='done' ORDER BY id DESC LIMIT 1",
         [':id'=>(int)$row['id']])->fetchColumn() ?: null) : null,

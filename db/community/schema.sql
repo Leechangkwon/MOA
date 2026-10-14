@@ -977,3 +977,27 @@ BEGIN
     END LOOP;
 END
 $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- Q:F-12 W1 작업의 「시작 예정」 (결정 WK-29 · 기획 work-ux-plan.md 19.2 · DESIGN 2.34)
+--   이미 있는 DB 는 db/migrations/2026-10-14_task_start_date.sql 이 **같은 모양**을 만든다(이 절은 그 파일의 1~2 절과 같은 문장).
+--   실제 시작 · 끝난 날은 저장하지 않는다 — 속성 사건 prop 'status' 에서 계산(routes.php community_task_dates).
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE community.pages ADD COLUMN IF NOT EXISTS start_date DATE;
+
+-- 속성 사건 'start' — 누적 CHECK(지금 정의를 읽어 OR 로 잇는다. 이미 있으면 아무것도 하지 않는다)
+DO $$
+DECLARE c record;
+BEGIN
+    FOR c IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+              WHERE conrelid = 'community.page_property_events'::regclass AND contype = 'c'
+                AND pg_get_constraintdef(oid) LIKE '%prop%'
+    LOOP
+        IF position('''start''' in c.definition) = 0 THEN
+            EXECUTE format('ALTER TABLE community.page_property_events DROP CONSTRAINT %I', c.conname);
+            EXECUTE format('ALTER TABLE community.page_property_events ADD CONSTRAINT %I CHECK ((%s) OR prop = ''start'')',
+                c.conname, substring(c.definition from 8 for length(c.definition) - 8));
+        END IF;
+    END LOOP;
+END
+$$;

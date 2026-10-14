@@ -1,6 +1,6 @@
-import { drawCalendar, rangeFor, shifted } from './calendar.js?v=d0ff5dce7bf1';
-import { drawChart } from './charts.js?v=d0ff5dce7bf1';
-import { openViewSettings } from './db-view-config.js?v=d0ff5dce7bf1';
+import { drawCalendar, drawLegend, rangeFor, shifted } from './calendar.js?v=01ac029100a8';
+import { drawChart } from './charts.js?v=01ac029100a8';
+import { openViewSettings } from './db-view-config.js?v=01ac029100a8';
 /*
  * public/assets/community/database.js — 데이터베이스(6-A) 화면: DB 페이지의 **표**와 행 페이지의 **속성 줄**.
  *
@@ -17,7 +17,7 @@ import { openViewSettings } from './db-view-config.js?v=d0ff5dce7bf1';
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=d0ff5dce7bf1';
+import { createRowTemplatePicker } from './templates.js?v=01ac029100a8';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',
@@ -480,7 +480,9 @@ export function createDatabaseView(deps) {
     const q = [];
     if (viewId) { q.push('view=' + encodeURIComponent(viewId)); }
     const selected=savedViews.find(v=>v.id===viewId);
-    if(selected&&['calendar','timeline'].includes(selected.type)){const range=rangeFor(selected,calendarAnchor);q.push('from='+range[0],'to='+range[1]);}
+    if(selected&&['calendar','timeline'].includes(selected.type)){const range=rangeFor(selected,calendarAnchor);
+      // Q:F-12 W1 — 기한 달력은 막대가 달 밖 기한에서 들어온다(시작 예정 · 실제 시작이 이 달) — 앞뒤 45일의 기한까지 받아 이 달 칸만 그린다
+      const wide=selected.type==='calendar'&&selected.date_prop==='due';q.push('from='+(wide?shifted(range[0],-45):range[0]),'to='+(wide?shifted(range[1],45):range[1]));}
     if (filter) { q.push('filter=' + encodeURIComponent(JSON.stringify(filter))); }
     return q;
   }
@@ -541,7 +543,10 @@ export function createDatabaseView(deps) {
       else if(selected.type==='chart'){api('GET','/api/databases/'+db.id+'/chart?view='+selected.id).then(r=>{if(r.status===200)drawChart(content,r.data.chart);else setText(msgEl,errorMessage(r.data));});}
       else {for(const [label,delta] of [['이전',-1],['다음',1]]){const b=document.createElement('button');b.type='button';b.className='btn btn--quiet';b.textContent=label;b.addEventListener('click',()=>{if((selected.mode||selected.scale)==='week'){calendarAnchor=shifted(calendarAnchor,delta*7);}else{const next=new Date(calendarAnchor+'T12:00:00Z');next.setUTCDate(1);next.setUTCMonth(next.getUTCMonth()+delta);calendarAnchor=next.toISOString().slice(0,10);}loadRows();});tools.appendChild(b);}
         const range=rangeFor(selected,calendarAnchor);const caption=document.createElement('span');caption.textContent=range.join(' ~ ');tools.appendChild(caption);
-        drawCalendar(content,selected,rows,range,{base,edit:db.can_edit_values,error:e=>setText(msgEl,e.message),save:async(id,key,value)=>{const r=await api('PATCH','/api/pages/'+id+'/values',{values:{[key]:value}});if(r.status!==200)throw new Error(errorMessage(r.data));await loadRows();}});
+        // Q:F-12 W1 — 기한 달력이면 범례 셋 · 프로젝트 화면이면 막대 누름 = 오른쪽 작업 칸(같은 calendar.js 한 벌)
+        if(selected.type==='calendar'&&selected.date_prop==='due')tools.appendChild(drawLegend());
+        const openTask=isProjectView()&&projectHooks&&typeof projectHooks.openTask==='function'?(id=>projectHooks.openTask(id)):null;
+        drawCalendar(content,selected,rows,range,{base,open:openTask,edit:db.can_edit_values,error:e=>setText(msgEl,e.message),save:async(id,key,value)=>{const r=await api('PATCH','/api/pages/'+id+'/values',{values:{[key]:value}});if(r.status!==200)throw new Error(errorMessage(r.data));await loadRows();}});
       }
     }
     show(tableWrap, viewType === 'table');

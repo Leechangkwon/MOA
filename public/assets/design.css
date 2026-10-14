@@ -263,7 +263,7 @@
 @keyframes q-confirm { from { opacity:.3; transform:translateY(4px); } to { opacity:1; transform:translateY(0); } }
 :root:not([data-design="claude"]) body[data-page="community-page"] #page-title { font-size:clamp(26px,3vw,36px); line-height:1.35; }
 :root:not([data-design="claude"]) body[data-page="community-page"] #page-props { font-size:12px; padding:12px 16px; border:1px solid var(--line); border-radius:var(--r-card); background:var(--surface); }
-:root:not([data-design="claude"]) body[data-page="community-page"] :is(#page-doc,#page-editor) { width:100%; max-width:88ch; margin-inline:auto; padding:32px 40px; }
+/* Q:F-12 W1c (DESIGN 2.35) — 문서 본문 · 편집 칸의 가운데 좁은 상자(88ch) 규칙 셋은 지웠다: 작업 전체 화면과 같은 한 열 · 같은 편집 칸(community.css W1c 절) */
 :root:not([data-design="claude"]) body[data-page="community-page"] .doc { line-height:1.8; gap:10px; }
 :root:not([data-design="claude"]) body[data-page="community-page"] .doc-h1 { margin-top:20px; }
 :root:not([data-design="claude"]) body[data-page="community-page"] .doc-h2 { margin-top:16px; }
@@ -277,14 +277,12 @@
 }
 @media (max-width:959.98px) {
  :root:not([data-design="claude"]) .q-file-name-line { align-items:flex-start; }
- :root:not([data-design="claude"]) body[data-page="community-page"] :is(#page-doc,#page-editor) { padding:24px; }
 }
 @media (max-width:600px) {
  .q-location h2 { font-size:18px; }
  :root:not([data-design="claude"]) .q-file-table td { padding-block:6px; }
  :root:not([data-design="claude"]) .q-file-name-cell { width:100%; }
  :root:not([data-design="claude"]) .q-file-table td.actions { width:100%; }
- :root:not([data-design="claude"]) body[data-page="community-page"] :is(#page-doc,#page-editor) { padding:20px 16px; }
  :root:not([data-design="claude"]) body[data-page="community-page"] .doc { line-height:1.75; }
 }
 :root[data-motion="reduce"] .ok-note { animation:none!important; }
