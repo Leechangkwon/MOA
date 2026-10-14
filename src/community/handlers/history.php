@@ -50,21 +50,22 @@ $sql = <<<'SQL'
            NULL::text                       AS from_value,
            NULL::text                       AS to_value,
            NULL::text                       AS from_display,
-           NULL::text                       AS to_display
+           NULL::text                       AS to_display,
+           v.edited_by                      AS by_id
       FROM community.page_versions v
       JOIN public.users u ON u.id = v.edited_by
      WHERE v.page_id = CAST(:pid AS bigint)
        AND v.edited_at >= coalesce(CAST(:since1 AS timestamptz), '-infinity'::timestamptz)
     UNION ALL
     SELECT 'check', NULL::int, NULL::text, e.at, cu.username, cu.display_name, e.block_id, e.checked, NULL::text, NULL::int,
-           NULL::text, NULL::text, NULL::text, NULL::text, NULL::text
+           NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, e.by_user_id
       FROM community.checklist_events e
       JOIN public.users cu ON cu.id = e.by_user_id
      WHERE e.page_id = CAST(:pid2 AS bigint)
        AND e.at >= coalesce(CAST(:since2 AS timestamptz), '-infinity'::timestamptz)
     UNION ALL
     SELECT 'property', NULL::int, NULL::text, pe.at, pu.username, pu.display_name, NULL::uuid, NULL::boolean, NULL::text, NULL::int,
-           pe.prop, pe.from_value, pe.to_value, NULL::text, NULL::text
+           pe.prop, pe.from_value, pe.to_value, NULL::text, NULL::text, pe.by_user_id
       FROM community.page_property_events pe
       JOIN public.users pu ON pu.id = pe.by_user_id
      WHERE pe.page_id = CAST(:pid3 AS bigint)
@@ -72,7 +73,7 @@ $sql = <<<'SQL'
     UNION ALL
     -- 5-A 인계 — 이 페이지를 뿌리로 넘긴 일. 누가·누구에서 누구에게·몇 쪽·남긴 권한(`summary` 칸).
     SELECT 'handover', NULL::int, NULL::text, h.at, hb.username, hb.display_name, NULL::uuid, NULL::boolean, h.kept_level,
-           h.page_count, NULL::text, hf.username, ht.username, hf.display_name, ht.display_name
+           h.page_count, NULL::text, hf.username, ht.username, hf.display_name, ht.display_name, h.by_user_id
       FROM community.handovers h
       JOIN public.users hb ON hb.id = h.by_user_id
       JOIN public.users hf ON hf.id = h.from_user_id
@@ -182,6 +183,13 @@ foreach ($rows as $r) {
     ];
 }
 
+/* 카페 C1 — 줄마다 사람 번호를 서버 안에서만 붙여 둔다(익명게시판 이름표용 · 응답 전에 뗀다). $events[0] 은 지금 판,
+   $events[i+1] 은 $rows[i] 에서 만든 줄이다(위 반복이 한 줄에 한 사건). */
+$events[0]['_by_id'] = (int) ($row['last_edited_by'] ?? 0);
+foreach ($rows as $i => $r) {
+    $events[$i + 1]['_by_id'] = (int) $r['by_id'];
+}
+
 /* 지금 판 한 줄을 끼워 넣었으므로 시간순을 한 번 더 맞춘다. PHP 8 의 정렬은 **안정**이라
    같은 시각의 줄들은 위 순서(판 → 체크 → 속성)를 그대로 지킨다.
 
@@ -208,7 +216,7 @@ if (count($events) > $limit) {
 }
 
 $suggestionVersions = community_suggestion_versions((int) $row['id'], $gate['since']);
-community_form_json([
+$payload = [
     'suggestions' => array_values($suggestionVersions),
     'page' => [
         'id'          => (string) $row['public_id'],
@@ -218,4 +226,38 @@ community_form_json([
     'events' => $events,
     'total'  => count($events),
     'limit'  => $limit,
-], $user, $row);
+];
+
+/* 사이트 Q:F-12 카페 C1 (ARCH 25.4) — 익명게시판 글이면 `by` 를 이름표로(편집자는 글쓴이뿐 · 숨김 사건은 「관리자」) ·
+   담당 · 인계의 사람 값은 null · `suggestions` → []. 이름표 지도는 질의 하나(위 목록의 사람 번호 전부). 끝에 안전망. */
+if (community_page_is_anon($row)) {
+    $labels = community_anon_label_map((int) $row['id'], (int) $row['author_id'],
+        array_map(static fn (array $ev): int => (int) $ev['_by_id'], $payload['events']));
+    foreach ($payload['events'] as &$ev) {
+        $byId = (int) $ev['_by_id'];
+        $label = ($ev['kind'] === 'property' && ($ev['prop'] ?? '') === 'hide')
+            ? '관리자'
+            : ($labels[$byId] ?? community_anon_label($byId === (int) $row['author_id'], null));
+        $ev['by']              = $label;
+        $ev['by_display_name'] = $label;
+        $ev['by_is_me']        = $label !== '관리자' && $byId === (int) $user['id'];
+        if ($ev['kind'] === 'property' && ($ev['prop'] ?? '') === 'assignee') {
+            $ev['from'] = null;
+            $ev['to']   = null;
+        }
+        if ($ev['kind'] === 'handover') {
+            $ev['from'] = null;
+            $ev['to']   = null;
+            $ev['from_display_name'] = null;
+            $ev['to_display_name']   = null;
+        }
+    }
+    unset($ev);
+    $payload['suggestions'] = [];
+    $payload = community_anon_scrub($payload);
+}
+foreach ($payload['events'] as &$ev) {
+    unset($ev['_by_id']);
+}
+unset($ev);
+community_form_json($payload, $user, $row);

@@ -131,9 +131,13 @@ ORDER BY
                        p.public_id,p.title,p.icon,p.visibility,p.created_at,p.resolved,s.kind AS space_kind,
                        CASE WHEN s.kind='board' THEN au.username ELSE owner.username END AS writer_name,
                        CASE WHEN s.kind='board' THEN au.display_name ELSE owner.display_name END AS writer_display_name,
+                       -- 카페 C1 (ARCH 25.4) — 익명 여부 재료(community_page_is_anon 이 읽는 칸) · 이 줄의 쓴 사람이 나인가(이름표 「(나)」)
+                       s.board_kind AS space_board_kind, p.published_board_id, pb.kind AS pub_kind, pb.board_kind AS pub_board_kind,
+                       (CASE WHEN s.kind='board' THEN p.author_id ELSE s.owner_user_id END) = CAST(:writer_me AS bigint) AS writer_is_me,
                        left(p.plain_text,160) AS excerpt
                   FROM community.pages p
                   JOIN community.spaces s ON s.id=p.space_id
+                  LEFT JOIN community.spaces pb ON pb.id=p.published_board_id
                   LEFT JOIN public.users owner ON owner.id=s.owner_user_id
                   LEFT JOIN public.users au ON au.id=p.author_id
                  WHERE p.id=h.id AND
@@ -145,6 +149,7 @@ ORDER BY
              LIMIT CAST(:limit AS int)
             SQL;
         $bind[':limit'] = $limit + 1;
+        $bind[':writer_me'] = (int) $user['id'];
         return [$sql, $bind];
     }
 }

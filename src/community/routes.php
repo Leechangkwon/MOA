@@ -45,6 +45,7 @@ require_once __DIR__ . '/DocRender.php';
 require_once __DIR__ . '/DocMarkdown.php';
 require_once __DIR__ . '/DocExport.php';
 require_once __DIR__ . '/export_helpers.php';
+require_once __DIR__ . '/anon_helpers.php';   // 사이트 Q:F-12 카페 C1 — 익명게시판 가림(ARCH 25.4 · 25.6). CommunityAuthz 가 community_page_is_anon 을 부른다
 require_once __DIR__ . '/CommunityAuthz.php';
 require_once __DIR__ . '/DbProps.php';
 require_once __DIR__ . '/DbViews.php';
@@ -351,6 +352,18 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/notifications',                     'notifications_list.php', 'community.read'],
     ['POST',   '/api/notifications/read',                'notifications_read.php', 'community.read'],
     ['GET',    '/api/pages/{id}/reads',                  'page_reads.php',         'community.read'],
+    /* ── 사이트 Q:F-12 카페 C1 — 신고 · 신고함 · 처리 · 작성자 확인 · 게시판 요청 · 카페 홈 (커뮤니티 ARCHITECTURE 25.5 · 25.7) ──
+     * 만들기 둘은 `authenticated`(쓰기 자격 — 손님 거부 — 는 핸들러가 `decideReportCreate` · `decideBoardRequest` 로) ·
+     * 신고함 · 처리 · 확인 · 요청 목록 · 결정은 `role:Admin` — `Authz::REAUTH_POLICIES` 에 있어 **15분 재인증이 저절로** 따라붙는다.
+     * 확인(`reveal`)은 핸들러가 `reauth_fresh` 를 한 번 더 본다(`decideAnonReveal`). `{id}` 는 신고 · 요청의 UUID. */
+    ['POST',   '/api/reports',                           'reports_create.php',        'authenticated'],
+    ['GET',    '/api/reports',                           'reports_list.php',          'role:Admin'],
+    ['POST',   '/api/reports/{id}/resolve',              'report_resolve.php',        'role:Admin'],
+    ['POST',   '/api/reports/{id}/reveal',               'report_reveal.php',         'role:Admin'],
+    ['POST',   '/api/board-requests',                    'board_requests_create.php', 'authenticated'],
+    ['GET',    '/api/board-requests',                    'board_requests_list.php',   'role:Admin'],
+    ['POST',   '/api/board-requests/{id}/decide',        'board_request_decide.php',  'role:Admin'],
+    ['GET',    '/api/cafe',                              'cafe_home.php',             'authenticated'],
     /* 개발 대기열 6 · Q:F-3a 라운드 A — 즐겨찾기 · 최근 (지시서 ../../../docs/qf3a-favorites-recent-bulk-directive.md 1.1 · 1.2,
        커뮤니티 ARCH 21.24). 정책은 전부 `community.read` — 로그인한 사람의 **개인 화면 설정**이고(내 줄만 읽고 쓴다),
        페이지를 넣을 수 있는지는 핸들러가 `CommunityAuthz::decidePageRead` 로, 목록은 검색과 같은 조건절
@@ -735,6 +748,8 @@ function community_page_row_sql(bool $withDoc): string
                -- 5-C: 게시판 공간이면 그 게시판의 활성·종류(게시판 글의 판정 재료)
                s.is_active     AS space_is_active,
                s.board_kind    AS space_board_kind,
+               -- 카페 C1 (ARCH 25.2 · 25.4): 게시판 자리(work · cafe) — 신고 판정(카페 글만) · 카페 셸이 읽는다
+               s.area          AS space_area,
                -- 5-C: 쓴 사람(게시판 글의 「쓴 사람」 — 판정은 `author_id`, 이름은 화면용)
                author.username     AS author_name,
                author.display_name AS author_display_name,
@@ -748,6 +763,7 @@ function community_page_row_sql(bool $withDoc): string
                pb.team_id      AS pub_team_id,
                pb.is_active    AS pub_is_active,
                pb.board_kind   AS pub_board_kind,
+               pb.area         AS pub_area,
                -- 6-A: 이 페이지가 **DB 페이지**면 그 DB(dbself_*), **행**이면 속한 DB(p.database_id + 스키마)
                dbself.public_id AS dbself_public_id,
                dbself.schema    AS dbself_schema,
@@ -1538,9 +1554,14 @@ function community_search_sql(array $u, array $terms, string $kind): array
        공간 주인이 아니면 게시 전에 쓴 댓글(과 게시 전 댓글에 단 답글)을 검색에서 뺀다. 목록에서는 보이는
        사람(공유·팀)이 검색에서 덜 보는 것은 있어도, 목록에서 못 보는 댓글이 검색에 나오는 일은 없다. */
     $bind[':sme'] = (int) $u['id'];
+    $bind[':sme2'] = (int) $u['id'];
+    /* 카페 C1 (ARCH 25.4) — 익명게시판 글의 댓글은 이름표로 나간다. 이름표의 재료(글쓴이인가 · 별칭 번호 · 나인가)와 익명 여부의
+       재료(community_page_is_anon 이 읽는 칸)를 **같은 질의**에 싣는다(N+1 0). 이름표 글자는 search.php 가 `community_anon_label` 로 만든다. */
     $sql = <<<SQL
         SELECT v.comment_id, left(v.body, 2000) AS body, v.created_at, v.author_username, v.author_display_name,
-               v.id, v.public_id, v.title, v.icon, v.space_id, v.space_kind, v.space_name
+               v.id, v.public_id, v.title, v.icon, v.space_id, v.space_kind, v.space_name,
+               v.space_board_kind, v.visibility, v.published_board_id, v.pub_kind, v.pub_board_kind,
+               v.author_is_writer, v.author_alias_no, v.author_is_me
           FROM (SELECT c.id, c.created_at
                   FROM community.comments c
                  WHERE c.deleted_at IS NULL
@@ -1551,10 +1572,15 @@ function community_search_sql(array $u, array $terms, string $kind): array
          CROSS JOIN LATERAL (
             SELECT c.public_id AS comment_id, c.body, c.created_at,
                    cu.username AS author_username, cu.display_name AS author_display_name,
-                   p.id, p.public_id, p.title, p.icon, p.space_id, s.kind AS space_kind, s.name AS space_name
+                   p.id, p.public_id, p.title, p.icon, p.space_id, s.kind AS space_kind, s.name AS space_name,
+                   s.board_kind AS space_board_kind, p.visibility, p.published_board_id, pb.kind AS pub_kind, pb.board_kind AS pub_board_kind,
+                   (c.author_id = p.author_id) AS author_is_writer, aa.alias_no AS author_alias_no,
+                   (c.author_id = CAST(:sme2 AS bigint)) AS author_is_me
               FROM community.comments c
               JOIN community.pages p ON p.id = c.page_id
               JOIN community.spaces s ON s.id = p.space_id
+              LEFT JOIN community.spaces pb ON pb.id = p.published_board_id
+              LEFT JOIN community.anon_aliases aa ON aa.page_id = p.id AND aa.user_id = c.author_id
               LEFT JOIN public.users owner ON owner.id = s.owner_user_id
               JOIN public.users cu ON cu.id = c.author_id
               LEFT JOIN community.comments par ON par.id = c.parent_comment_id
@@ -2357,6 +2383,200 @@ function community_board_summary(array $b, array $u): array
         'inactive'     => $writeCode === CommunityAuthz::CODE_BOARD_INACTIVE || $b['is_active'] !== true,
         'can_moderate' => $canModerate,
     ];
+}
+
+/**
+ * 게시판 만들기의 **검사 + 쓰기** 한 벌 (사이트 Q:F-12 카페 C1 · ARCH 25.7 — `boards_create.php` 에서 옮겼다).
+ * `boards_create.php`(관리자 창구) · `board_request_decide.php`(게시판 요청 → 만들기)가 같은 검사(이름 UNIQUE · 종류 · 등급 · 팀 · 자리)로 만든다.
+ * **부르는 쪽의 트랜잭션 안**에서 부른다. 값이 어긋나면 400 · 같은 이름이면 되돌린 뒤 감사 `board.create deny conflict` + 409 로
+ * 끝나고 돌아오지 않는다. 판정(관리자 + 재인증)은 라우트 정책이 끝냈다 — 이 함수에는 역할을 따지는 코드가 없다.
+ *
+ * 받는 값 `$in` — 창구가 허용 키를 이미 걸렀다:
+ *   name(1~50) · description(0~200) · access_level(네 값) · team_id(team 이면 필수 · 아니면 없어야) ·
+ *   board_kind(BOARD_KINDS) · area(work · cafe, 없으면 work). anonymous 는 cafe 에만(아니면 400 — DB CHECK 도 같은 말).
+ *
+ * @param  array<string,mixed> $u
+ * @param  array<string,mixed> $in
+ * @return int 새 게시판 번호
+ */
+function community_board_create(array $u, array $in): int
+{
+    $db = Db::instance();
+    $cleanText = static function ($raw, int $min, int $max): ?string {
+        if (!is_string($raw) || preg_match('//u', $raw) !== 1) {
+            return null;
+        }
+        $t = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', $raw);
+        $n = iconv_strlen($t, 'UTF-8');
+        if ($n === false || $n < $min || $n > $max || preg_match('/\p{C}/u', $t) === 1) {
+            return null;
+        }
+        return $t;
+    };
+
+    $name = $cleanText($in['name'] ?? null, 1, 50);
+    if ($name === null) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $description = '';
+    if (array_key_exists('description', $in) && $in['description'] !== null) {
+        $description = $cleanText($in['description'], 0, 200);
+        if ($description === null) {
+            Http::error(400, Http::MSG_BAD_REQUEST);
+        }
+    }
+    $level = $in['access_level'] ?? null;
+    // G-0 — t-box 의 「개인」 등급은 게시판 등급이 아니다(사람으로 판정하는 등급 — 게시판은 표로 판정한다 · spaces CHECK 도 네 값).
+    if (!is_string($level) || !array_key_exists($level, Authz::LEVEL_RANK) || $level === Authz::LEVEL_PRIVATE) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    $kind = $in['board_kind'] ?? null;
+    if (!is_string($kind) || !in_array($kind, CommunityAuthz::BOARD_KINDS, true)) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+    // 카페 C1 (ARCH 25.2) — 자리. 익명게시판은 카페에만(업무 자리에 익명 글이 생기지 않게).
+    $area = $in['area'] ?? 'work';
+    if (!is_string($area) || !in_array($area, ['work', 'cafe'], true) || ($kind === 'anonymous' && $area !== 'cafe')) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+
+    // 팀 — `team` 등급이면 활성 팀 하나가 필수이고, 다른 등급이면 줄 수 없다(뜻 없는 값이 남지 않게).
+    $teamId  = null;
+    $rawTeam = $in['team_id'] ?? null;
+    if ($level === 'team') {
+        if (!is_int($rawTeam) || $rawTeam < 1) {
+            Http::error(400, Http::MSG_BAD_REQUEST);
+        }
+        $sqlTeam = <<<'SQL'
+            SELECT id FROM public.teams WHERE id = CAST(:tid AS bigint) AND is_active = true
+            SQL;
+        if (!is_array($db->run($sqlTeam, [':tid' => $rawTeam])->fetch())) {
+            Http::error(400, Http::MSG_BAD_REQUEST);
+        }
+        $teamId = $rawTeam;
+    } elseif ($rawTeam !== null) {
+        Http::error(400, Http::MSG_BAD_REQUEST);
+    }
+
+    $sqlInsert = <<<'SQL'
+        INSERT INTO community.spaces (kind, name, description, access_level, team_id, notice, board_kind, area, created_by)
+        VALUES ('board', :name, :description, :level, CAST(:team AS bigint), CAST(:notice AS boolean), :kind, :area,
+                CAST(:by AS bigint))
+        RETURNING id
+        SQL;
+    try {
+        $row = $db->run($sqlInsert, [
+            ':name'        => $name,
+            ':description' => $description,
+            ':level'       => $level,
+            ':team'        => $teamId,
+            // 공지 여부는 종류와 **같은 값**이다(DB CHECK `spaces_board_shape`) — 요청이 따로 정하지 않는다.
+            ':notice'      => $kind === 'notice' ? 'true' : 'false',
+            ':kind'        => $kind,
+            ':area'        => $area,
+            ':by'          => (int) $u['id'],
+        ])->fetch();
+    } catch (PDOException $e) {
+        // 23505 = unique_violation — 같은 이름(대소문자 무시)의 게시판이 이미 있다(`spaces_board_name_uidx`).
+        if ($e->getCode() === '23505') {
+            $db->rollback();
+            Audit::deny('board.create', 'conflict', [
+                'target_type'  => 'space',
+                'target_name'  => $name,
+                'access_level' => $level,
+            ]);
+            Http::error(409, Http::MSG_CONFLICT);
+        }
+        throw $e;
+    }
+    if (!is_array($row)) {
+        throw new RuntimeException('게시판을 만들지 못했습니다');
+    }
+    $boardId = (int) $row['id'];
+    Audit::allow('board.create', [
+        'target_type'  => 'space',
+        'target_id'    => $boardId,
+        'target_name'  => $name,
+        'access_level' => $level,
+        'detail'       => ['granted_by' => CommunityAuthz::CODE_ADMIN_ALL, 'board_kind' => $kind, 'team_id' => $teamId, 'area' => $area],
+    ]);
+    return $boardId;
+}
+
+/**
+ * 글 숨김 · 숨김 풀기의 **쓰기** 한 벌 (사이트 Q:F-12 카페 C1 · ARCH 25.5 — `pages_hide.php` 에서 옮겼다).
+ * `pages_hide.php`(게시판 관리자 단추 — 입력 · 판정 · 응답 그대로) · `report_resolve.php`(신고함 「숨기기」)가 같은 쓰기 ·
+ * 같은 처리 이력(prop `hide`) · 같은 감사(`page.hide` · `page.unhide`)를 남긴다. 판정은 부르는 쪽이 끝냈다(`decideHide` ·
+ * `decideReportManage`) — `$grantedBy` 가 그 허용 코드다. **부르는 쪽의 트랜잭션 안**에서 부른다. 바꿨으면 참(이미 그 상태면 거짓 · 기록 0).
+ *
+ * @param array<string,mixed> $row `community_page_row()` 의 행
+ */
+function community_page_hide_write(array $row, bool $hiding, int $me, string $grantedBy): bool
+{
+    $pageId    = (int) $row['id'];
+    $pageTitle = community_target_title((string) $row['title']);
+    $board     = CommunityAuthz::boardOfRow($row);
+    $boardName = (string) $row['space_kind'] === 'board' ? (string) $row['space_name'] : (string) ($row['pub_name'] ?? '');
+    $sqlSet = $hiding
+        ? <<<'SQL'
+            UPDATE community.pages SET hidden_at = now(), hidden_by = CAST(:me AS bigint)
+             WHERE id = CAST(:pid AS bigint) AND deleted_at IS NULL AND hidden_at IS NULL
+            SQL
+        : <<<'SQL'
+            UPDATE community.pages SET hidden_at = NULL, hidden_by = NULL
+             WHERE id = CAST(:pid AS bigint) AND deleted_at IS NULL AND hidden_at IS NOT NULL
+            SQL;
+    // 서버측 prepare 는 문장에 없는 자리표시자를 받지 않는다 — 문장마다 바인딩을 따로 둔다.
+    $bindSet = $hiding ? [':me' => $me, ':pid' => $pageId] : [':pid' => $pageId];
+    if (Db::instance()->run($sqlSet, $bindSet)->rowCount() < 1) {
+        return false;
+    }
+    community_insert_property_event($pageId, 'hide', $hiding ? null : 'hidden', $hiding ? 'hidden' : null, $me);
+    Audit::allow($hiding ? 'page.hide' : 'page.unhide', [
+        'target_type'  => 'page',
+        'target_id'    => $pageId,
+        'target_name'  => $pageTitle,
+        'access_level' => (string) ($board['access_level'] ?? ''),
+        'detail'       => [
+            'granted_by' => $grantedBy,
+            'page_title' => $pageTitle,
+            'board_id'   => (int) ($board['id'] ?? 0),
+            'board_name' => $boardName,
+        ],
+    ]);
+    return true;
+}
+
+/**
+ * 댓글 숨김 · 숨김 풀기의 **쓰기** 한 벌 (카페 C1 · ARCH 25.5 — `comment_hide.php` 에서 옮겼다). 위 글 숨김과 같은 규칙 —
+ * `comment_hide.php`(입력 · 판정 · 응답 그대로) · `report_resolve.php` 가 같은 쓰기 · 같은 감사(`comment.hide` · `comment.unhide`).
+ *
+ * @param array<string,mixed> $row     댓글이 달린 페이지 행
+ * @param array<string,mixed> $comment `community_comment_row()` 의 행
+ */
+function community_comment_hide_write(array $row, array $comment, bool $on, int $me, string $grantedBy): bool
+{
+    $sql = $on
+        ? <<<'SQL'
+            UPDATE community.comments SET hidden_at = now(), hidden_by = CAST(:me AS bigint)
+             WHERE id = CAST(:cid AS bigint) AND deleted_at IS NULL AND hidden_at IS NULL
+            SQL
+        : <<<'SQL'
+            UPDATE community.comments SET hidden_at = NULL, hidden_by = NULL
+             WHERE id = CAST(:cid AS bigint) AND deleted_at IS NULL AND hidden_at IS NOT NULL
+            SQL;
+    $bind = $on ? [':me' => $me, ':cid' => (int) $comment['id']] : [':cid' => (int) $comment['id']];
+    if (Db::instance()->run($sql, $bind)->rowCount() < 1) {
+        return false;
+    }
+    $pageTitle = community_target_title((string) $row['title']);
+    Audit::allow($on ? 'comment.hide' : 'comment.unhide', [
+        'target_type' => 'page',
+        'target_id'   => (int) $row['id'],
+        'target_name' => $pageTitle,
+        'detail'      => ['granted_by' => $grantedBy, 'page_title' => $pageTitle, 'comment_id' => (int) $comment['id']],
+    ]);
+    return true;
 }
 
 /**

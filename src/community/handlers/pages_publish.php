@@ -85,6 +85,18 @@ $board = community_board_row($boardId);
 if ($board === null) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
+/* 카페 C1 (ARCH 25.3) — 익명게시판에는 개인 페이지를 게시하지 않는다(글쓴이 = 개인 공간 주인이 드러난다). 판정은 같은
+   `decidePublish` 에 게시할 게시판을 넘긴 갈래 한 줄이다(`anon_board`). */
+if (CommunityAuthz::decidePublish($user, $row, $board)[1] === CommunityAuthz::CODE_ANON_BOARD) {
+    Audit::deny('page.publish', CommunityAuthz::CODE_ROLE_NOT_PERMITTED, [
+        'target_type' => 'page',
+        'target_id'   => $pageId,
+        'target_name' => $pageTitle,
+        'detail'      => ['page_title' => $pageTitle, 'board_id' => $boardId, 'cause' => CommunityAuthz::CODE_ANON_BOARD],
+    ]);
+    Http::json(['error' => '익명게시판에는 개인 페이지를 게시할 수 없어요 — 익명게시판에서 새 글을 쓰세요', 'reason' => CommunityAuthz::CODE_ANON_BOARD], 403);
+    exit;
+}
 [$mayWrite, $writeCode] = CommunityAuthz::decideBoardWrite($user, $board);
 if (!$mayWrite) {
     if ($writeCode === CommunityAuthz::CODE_BOARD_INACTIVE) {

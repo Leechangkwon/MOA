@@ -134,10 +134,15 @@ foreach ($crow as $c) {
             'space' => ['kind' => (string) $c['space_kind'], 'name' => (string) $c['space_name']],
         ],
         // 5-A″ — 창구는 이름과 아이디를 **따로** 준다(잇는 일은 화면의 personLabel 한 곳)
-        'author'     => [
-            'username'     => (string) $c['author_username'],
-            'display_name' => $c['author_display_name'] === null ? null : (string) $c['author_display_name'],
-        ],
+        /* 카페 C1 (ARCH 25.4) — 익명게시판 글의 댓글이면 이름표(글쓴이 · 익명N · 익명). 재료는 같은 질의의 칸이다(질의 추가 0). */
+        'author'     => community_page_is_anon($c)
+            ? ['username' => null,
+               'display_name' => community_anon_label($c['author_is_writer'] === true, $c['author_alias_no'] === null ? null : (int) $c['author_alias_no']),
+               'anon' => true, 'is_me' => $c['author_is_me'] === true]
+            : [
+                'username'     => (string) $c['author_username'],
+                'display_name' => $c['author_display_name'] === null ? null : (string) $c['author_display_name'],
+            ],
         'snippet'    => $snippetOf((string) $c['body'], $terms, 30, 80),
         'created_at' => (string) $c['created_at'],
     ];

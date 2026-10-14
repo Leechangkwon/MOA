@@ -101,10 +101,14 @@ foreach ($rows as $r) {
         'icon'       => $r['icon'] === null ? null : (string) $r['icon'],
         // `post` = 게시판에서 바로 쓴 글 · `published` = 개인 페이지를 건 것(원본은 주인 공간에 있다)
         'kind'       => (string) $r['space_kind'] === 'board' ? 'post' : 'published',
-        'writer'     => $r['writer_name'] === null ? null : [
-            'username'     => (string) $r['writer_name'],
-            'display_name' => $r['writer_display_name'] === null ? null : (string) $r['writer_display_name'],
-        ],
+        /* 카페 C1 (ARCH 25.4) — 익명게시판 글이면 「글쓴이」(그 줄의 is_me). 런처 「지금, 우리들의 이야기」(moa.js)도 이 창구다.
+           익명 여부는 `community_page_is_anon` 하나 · 재료는 같은 질의의 칸(질의 추가 0). */
+        'writer'     => community_page_is_anon($r)
+            ? ['username' => null, 'display_name' => community_anon_label(true, 0), 'anon' => true, 'is_me' => $r['writer_is_me'] === true]
+            : ($r['writer_name'] === null ? null : [
+                'username'     => (string) $r['writer_name'],
+                'display_name' => $r['writer_display_name'] === null ? null : (string) $r['writer_display_name'],
+            ]),
         'posted_at'  => (string) $r['posted_at'],
         'updated_at' => (string) $r['updated_at'],
         'tags'       => is_array($tags) ? array_values(array_map('strval', $tags)) : [],

@@ -124,13 +124,19 @@ try {
     foreach ($tags as $t) {
         $db->run($sqlTag, [':pid' => $pageId, ':tag' => $t, ':tag2' => $t, ':by' => $me]);
     }
+    /* 카페 C1 (ARCH 25.4) — 익명게시판 글이면 글쓴이 별칭 0(「글쓴이」). 익명 여부는 `community_page_is_anon` 하나 —
+       새 글의 행은 아직 없으므로 같은 칸(게시판 글 · 게시판 종류)만 든 행으로 묻는다. */
+    $anonRow = ['space_kind' => 'board', 'space_board_kind' => (string) $board['board_kind']];
+    if (community_page_is_anon($anonRow)) {
+        community_anon_assign_alias($pageId, $me, $me);
+    }
 
     Audit::allow('page.create', [
         'target_type'  => 'page',
         'target_id'    => $pageId,
         'target_name'  => community_target_title($title),
         'access_level' => (string) $board['access_level'],
-        'detail'       => [
+        'detail'       => community_anon_audit_detail($anonRow, [
             // 무엇을 근거로 만들었나 — 게시판 등급(`board`). 어느 게시판인지도 함께.
             'granted_by'  => $writeCode,
             'page_title'  => community_target_title($title),
@@ -138,7 +144,7 @@ try {
             'board_name'  => (string) $board['name'],
             'doc_version' => 1,
             'block_count' => count($extract['blocks']),
-        ],
+        ]),
     ]);
     $db->commit();
 } catch (Throwable $e) {

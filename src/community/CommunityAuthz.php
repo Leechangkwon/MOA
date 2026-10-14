@@ -195,7 +195,21 @@ final class CommunityAuthz
      *
      * @var list<string>
      */
-    public const BOARD_KINDS = ['notice', 'discussion', 'qa'];
+    public const BOARD_KINDS = ['notice', 'discussion', 'qa', 'anonymous'];
+
+    /**
+     * 사이트 Q:F-12 카페 C1 (커뮤니티 ARCHITECTURE 25장) — 거부 코드 · 허용 코드.
+     *   `anon_board`    익명게시판에서 끈 기능이다(게시 · 수정 제안 · 검증 · 멘션 · 자료실 파일 — 25.3, 창구가 400/403)
+     *   `not_cafe`      신고 대상이 카페 게시판 글이 아니다(25.5 — 업무 게시판 · 개인 문서는 신고하지 않는다, 400)
+     *   `own_target`    자기 글 · 댓글을 신고했다(400)
+     *   `not_anon_board` 작성자 확인 대상이 익명게시판이 아니다(25.5 — 실명 게시판은 확인할 것이 없다, 400)
+     *   `reauth_required` 작성자 확인 직전 15분 재인증이 없다(라우트 정책이 먼저 막고 판정이 한 번 더 본다, 403)
+     */
+    public const CODE_ANON_BOARD     = 'anon_board';
+    public const CODE_NOT_CAFE       = 'not_cafe';
+    public const CODE_OWN_TARGET     = 'own_target';
+    public const CODE_NOT_ANON_BOARD = 'not_anon_board';
+    public const CODE_REAUTH         = 'reauth_required';
 
     /** 거부 코드 — 새 범위가 **부모보다 넓다** (4-B, 트리 불변 규칙) */
     public const CODE_WIDER_THAN_PARENT = 'wider_than_parent';
@@ -383,6 +397,8 @@ final class CommunityAuthz
         if (($row['space_kind'] ?? '') === 'board' && ($row['space_is_active'] ?? false) !== true) {
             return [false, self::CODE_BOARD_INACTIVE];
         }
+        // 카페 C1 (ARCH 25.3) — 익명게시판 글에는 수정 제안이 없다(결정자 · 제안자 이름이 서로에게 간다).
+        if (\community_page_is_anon($row)) { return [false, self::CODE_ANON_BOARD]; }
         if (self::decidePageChange($u, $row)[0]) { return [false, 'can_edit']; }
         return [true, $code];
     }
@@ -936,14 +952,21 @@ final class CommunityAuthz
      * 여는 일은 5-A 부터 관리다). 팀 공간·게시판 글은 공간이 주인이라 `space_governed`.
      * 게시판 쪽 물음(`decideBoardWrite`)은 창구가 따로 묻는다 — 둘 다 참이어야 게시된다.
      *
+     * 카페 C1 (ARCH 25.3) — 게시할 **게시판**(`$board`, 창구가 고른 대상)이 익명게시판이면 `anon_board`(개인 페이지를 게시하면
+     * 글쓴이 = 개인 공간 주인이 드러난다). 페이지 쪽만 묻는 자리(화면 단추 값)는 `$board` 없이 부른다.
+     *
      * @param  array<string,mixed> $u
      * @param  array<string,mixed> $row
+     * @param  array<string,mixed>|null $board 게시할 게시판(`community_board_row()` 모양)
      * @return array{0:bool,1:string}
      */
-    public static function decidePublish(array $u, array $row): array
+    public static function decidePublish(array $u, array $row, ?array $board = null): array
     {
         if (($row['deleted_at'] ?? null) !== null) {
             return [false, self::CODE_NOT_FOUND];
+        }
+        if ($board !== null && (string) ($board['board_kind'] ?? '') === 'anonymous') {
+            return [false, self::CODE_ANON_BOARD];
         }
         $kind = (string) ($row['space_kind'] ?? '');
         if ($kind === 'team' || $kind === 'board') {
@@ -1428,6 +1451,8 @@ final class CommunityAuthz
                 'team_id'      => $row['space_team_id'] ?? null,
                 'is_active'    => ($row['space_is_active'] ?? false) === true,
                 'board_kind'   => (string) ($row['space_board_kind'] ?? ''),
+                // 카페 C1 (ARCH 25.2) — 자리. 칸이 없으면(모르면) 업무로 본다 — 카페만 여는 판정(신고)이 닫힌다.
+                'area'         => (string) ($row['space_area'] ?? 'work'),
             ];
         }
         if ((string) ($row['visibility'] ?? '') === 'published') {
@@ -1455,6 +1480,7 @@ final class CommunityAuthz
             'team_id'      => $row['pub_team_id'] ?? null,
             'is_active'    => ($row['pub_is_active'] ?? false) === true,
             'board_kind'   => (string) ($row['pub_board_kind'] ?? ''),
+            'area'         => (string) ($row['pub_area'] ?? 'work'),
         ];
     }
 
@@ -1772,6 +1798,110 @@ final class CommunityAuthz
         }
         if (($row['ai_allowed_version'] ?? 0)!==(int)$row['doc_version']) { return [false,'permission_required']; }
         return [true,$reason];
+    }
+
+    /* ══════════════════════════════════════════════════════════════════
+     * 사이트 Q:F-12 카페 C1 — 신고 · 처리 · 작성자 확인 · 게시판 요청 (커뮤니티 ARCHITECTURE 25.1 · 25.5 · 25.7)
+     *
+     * ★ 새 판정은 넷이고 모두 지금 판정(`decidePageRead` · `Authz::canAdmin` · `Authz::canCommunityWrite`)을 부르는 **얇은 갈래**다.
+     *   익명 여부는 `community_page_is_anon()` 하나(가린 행이 아니라 `community_page_row()` 의 원래 행으로 판정한다).
+     * ══════════════════════════════════════════════════════════════════ */
+
+    /**
+     * 이 글(또는 그 댓글)을 **신고할 수 있나** (25.5 `POST /api/reports`).
+     *   [1] 쓰기 자격(손님 제외)                     → 아니면 `role_not_permitted`(403)
+     *   [2] 대상을 볼 수 있다(`decidePageRead`)        → 아니면 `not_found`(404 — 있는지도 알리지 않는다)
+     *       관리자 특권 갈래(`admin_all` · `board_moderator`)로만 보는 글은 「볼 수 있다」가 아니다(검색 · 멘션과 같은 좁은 쪽)
+     *   [3] 숨긴 글 · 지운 · 숨긴 댓글이 아니다          → 아니면 `not_found`(404)
+     *   [4] 카페(`area='cafe'`) 게시판의 글이다          → 아니면 `not_cafe`(400)
+     *   [5] 자기 글 · 자기 댓글이 아니다                → 아니면 `own_target`(400)
+     *
+     * @param  array<string,mixed>      $u
+     * @param  array<string,mixed>      $row     `community_page_row()` 의 행(신고하는 사람 몫)
+     * @param  array<string,mixed>|null $comment 댓글 신고면 그 댓글 행(`author_id` · `deleted_at` · `hidden_at` · `page_id`)
+     * @return array{0:bool,1:string}
+     */
+    public static function decideReportCreate(array $u, array $row, ?array $comment = null): array
+    {
+        if (!Authz::canCommunityWrite($u)) {
+            return [false, self::CODE_ROLE_NOT_PERMITTED];
+        }
+        [$read, $readCode] = self::decidePageRead($u, $row);
+        if (!$read || in_array($readCode, [self::CODE_ADMIN_ALL, self::CODE_BOARD_MODERATOR], true)) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if (($row['hidden_at'] ?? null) !== null) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        if ($comment !== null && ((int) ($comment['page_id'] ?? 0) !== (int) ($row['id'] ?? -1)
+            || ($comment['deleted_at'] ?? null) !== null || ($comment['hidden_at'] ?? null) !== null)) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        /* 게시판 등급으로만 보는 사람에게 게시 전 댓글은 「없다」(댓글 목록의 `since` 자르기와 같은 규칙 — 5-C #9). */
+        if ($comment !== null && $readCode === self::CODE_BOARD && (string) ($row['space_kind'] ?? '') === 'personal'
+            && ($row['published_at'] ?? null) !== null
+            && strtotime((string) $comment['created_at']) < strtotime((string) $row['published_at'])) {
+            return [false, self::CODE_NOT_FOUND];
+        }
+        $board = self::boardOfRow($row);
+        if ($board === null || (string) ($board['area'] ?? 'work') !== 'cafe') {
+            return [false, self::CODE_NOT_CAFE];
+        }
+        $me = (int) ($u['id'] ?? 0);
+        $writer = (string) ($row['space_kind'] ?? '') === 'board'
+            ? (int) ($row['author_id'] ?? 0) : (int) ($row['space_owner_user_id'] ?? 0);
+        if ($comment !== null ? (int) ($comment['author_id'] ?? 0) === $me : $writer === $me) {
+            return [false, self::CODE_OWN_TARGET];
+        }
+        return [true, $readCode];
+    }
+
+    /**
+     * 신고함을 보고 처리할 수 있나 (25.5 — `role:Admin` 정책 + 재인증이 먼저 막고, 판정은 같은 함수로 한 번 더).
+     *
+     * @param  array<string,mixed> $u
+     * @return array{0:bool,1:string}
+     */
+    public static function decideReportManage(array $u): array
+    {
+        return Authz::canAdmin($u) ? [true, self::CODE_ADMIN_ALL] : [false, self::CODE_ROLE_NOT_PERMITTED];
+    }
+
+    /**
+     * 신고된 대상의 **쓴 사람을 확인**할 수 있나 (25.5 `POST /api/reports/{id}/reveal`).
+     *   [1] 신고함을 다룰 수 있다(`decideReportManage`) → 아니면 `role_not_permitted`
+     *   [2] 그 신고의 대상이 익명게시판 글 · 댓글이다     → 아니면 `not_anon_board`(실명 게시판은 확인할 것이 없다)
+     *   [3] 15분 재인증이 신선하다(세션의 `reauth_fresh`) → 아니면 `reauth_required`
+     * 사유(20~500자)는 입력 검사라 창구가 본다. 결과는 저장하지 않는다(응답 하나에만).
+     *
+     * @param  array<string,mixed> $u
+     * @param  array<string,mixed> $targetRow 신고 대상 글의 `community_page_row()` 행(원래 행 — 가린 행이 아니다)
+     * @return array{0:bool,1:string}
+     */
+    public static function decideAnonReveal(array $u, array $targetRow): array
+    {
+        [$ok, $code] = self::decideReportManage($u);
+        if (!$ok) {
+            return [false, $code];
+        }
+        if (!\community_page_is_anon($targetRow)) {
+            return [false, self::CODE_NOT_ANON_BOARD];
+        }
+        if (($u['reauth_fresh'] ?? false) !== true) {
+            return [false, self::CODE_REAUTH];
+        }
+        return [true, self::CODE_ADMIN_ALL];
+    }
+
+    /**
+     * 「게시판 만들어 주세요」를 보낼 수 있나 (25.7) — 쓰기 자격(손님 제외). 처리는 `decideReportManage` 와 같은 관리자.
+     *
+     * @param  array<string,mixed> $u
+     * @return array{0:bool,1:string}
+     */
+    public static function decideBoardRequest(array $u): array
+    {
+        return Authz::canCommunityWrite($u) ? [true, self::CODE_MATRIX] : [false, self::CODE_ROLE_NOT_PERMITTED];
     }
 
 }

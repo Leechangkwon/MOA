@@ -461,7 +461,7 @@ final class Memories
      *   위 해석이 실패한 깨진 파일은 GD 로 **다시 인코딩**해 메타데이터를 남기지 않는다(화질은 조금 달라진다) — 그것도 안 되면 예외(→ 400).
      * 영상(MP4·MOV·WebM)은 이번 범위 밖이다(사용자 데이터 변경 · 따로 묻는다). 이미 저장된 옛 사진은 고치지 않는다(새로 올리는 것만).
      */
-    private static function stripPhotoMetadata(string $path, string $mime): void
+    public static function stripPhotoMetadata(string $path, string $mime): void
     {
         if (!in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
             return;

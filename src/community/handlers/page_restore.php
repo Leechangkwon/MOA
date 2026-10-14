@@ -219,13 +219,14 @@ try {
         'target_type' => 'page',
         'target_id'   => $pageId,
         'target_name' => $pageTitle,
-        'detail'      => [
+        // 카페 C1 (ARCH 25.6) — 익명게시판 글이면 감사 화면이 행위자를 가리는 표식
+        'detail'      => community_anon_audit_detail($row, [
             'granted_by'    => $restoreCode,
             'page_title'    => $pageTitle,
             // 함께 돌아온 하위 수(자기 자신을 뺀 값) — `page.delete` 의 같은 키와 짝이다.
             'cascaded'      => $restored - 1,
             'moved_to_root' => $movedToRoot,
-        ],
+        ]),
     ]);
 
     $db->commit();

@@ -119,6 +119,53 @@ if ($grantRaw !== '' && preg_match($codePattern, $grantRaw) !== 1) {
     $grantRaw = '';
 }
 
+/* ─── 사이트 Q:F-12 카페 C1 (커뮤니티 ARCHITECTURE 25.6) — 익명게시판 행의 가림 ───
+ * 익명게시판 글 · 댓글이 대상인 커뮤니티 감사 행은 `detail.anon_board = true` 를 싣는다(`community_anon_audit_detail`).
+ * 그 행은 행위자 이름 · IP · 로그인 회차 · 브라우저 · 요약의 {actor} 를 「익명(익명게시판)」 · null 로 내보내고,
+ * **누가 · 어디서(IP) 필터를 쓴 질의에서는 빼서** 이름으로 찾아 익명 행을 묶을 수 없게 한다. 저장된 행(DB · 파일 사본)은 그대로다.
+ * 관리자 자신의 행위(`report.*` · `anon.reveal`)는 가리지 않는다. 판정 조각(SQL)과 가림(PHP)은 아래 둘이 전부다 — 화면과 다른
+ * 출구(내보내기)가 생기면 같은 둘을 쓴다. */
+const AUDIT_ANON_MASKED_SQL = "(coalesce(detail->>'anon_board', '') = 'true' AND action NOT LIKE 'report.%' AND action <> 'anon.reveal')";
+const AUDIT_ANON_ACTOR = '익명(익명게시판)';
+
+/**
+ * @param array<string,mixed>      $row    audit_logs 한 줄(원래 값)
+ * @param array<string,mixed>|null $detail 풀어 놓은 detail
+ */
+function audit_anon_masked(array $row, ?array $detail): bool
+{
+    return is_array($detail) && ($detail['anon_board'] ?? false) === true
+        && !str_starts_with((string) $row['action'], 'report.') && (string) $row['action'] !== 'anon.reveal';
+}
+
+/**
+ * 가린 한 줄 — 행위자 · IP · 브라우저 · 로그인 회차 · 요약의 행위자 이름. 대상 · 동작 · 결과 · 시각은 그대로.
+ *
+ * @param array<string,mixed>      $row
+ * @param array<string,mixed>|null $detail
+ * @return array{0:array<string,mixed>,1:array<string,mixed>|null}
+ */
+function audit_anon_mask(array $row, ?array $detail): array
+{
+    $actor = $row['actor_name'] === null ? '' : (string) $row['actor_name'];
+    $summary = (string) $row['summary'];
+    if ($actor !== '') {
+        // 문장 틀은 전부 `{actor} …` 로 시작한다 — 맨 앞의 이름을 바꾸고, 혹시 뒤에 또 나오면 그것도 바꾼다.
+        $summary = str_starts_with($summary, $actor) ? AUDIT_ANON_ACTOR . substr($summary, strlen($actor)) : $summary;
+        $summary = str_replace($actor, AUDIT_ANON_ACTOR, $summary);
+    }
+    $row['actor_name'] = AUDIT_ANON_ACTOR;
+    $row['actor_role'] = null;
+    $row['ip']         = null;
+    $row['user_agent'] = null;
+    $row['summary']    = $summary;
+    if (is_array($detail)) {
+        // Audit::autoDetail 이 붙이는 사람 · 회차 단서(로그인 회차 · 팀 · 토큰 · 역할로 보기)도 뺀다
+        unset($detail['login_ref'], $detail['actor_team'], $detail['token_id'], $detail['grant_id'], $detail['acting_as'], $detail['real_role']);
+    }
+    return [$row, $detail];
+}
+
 // ─── 조건 조립 — SQL 조각은 전부 코드에 적힌 고정 문자열, 값은 :이름 으로만 들어간다 ───
 $where   = '';
 $bind    = [];
@@ -154,6 +201,11 @@ if ($ipRaw !== '') {
     $where .= ' AND ip = CAST(:ip AS inet)';
     $bind[':ip']   = $ipRaw;
     $applied['ip'] = $ipRaw;
+}
+
+// 카페 C1 (ARCH 25.6) — 누가 · 어디서 필터를 쓴 질의에서는 익명게시판 행을 뺀다(고정 조각 — 값 0).
+if ($actorRaw !== '' || $ipRaw !== '') {
+    $where .= ' AND NOT ' . AUDIT_ANON_MASKED_SQL;
 }
 
 // 무엇을 — 대상 이름 부분 일치. ESCAPE 문자는 '#' 이고 값 쪽에서 '#' '%' '_' 를 무력화한다
@@ -260,6 +312,10 @@ foreach ($rows as $row) {
     if (is_string($row['detail']) && $row['detail'] !== '') {
         $decoded = json_decode($row['detail'], true);
         $detail  = is_array($decoded) ? $decoded : null;
+    }
+    // 카페 C1 (ARCH 25.6) — 익명게시판 행이면 행위자 쪽 칸을 가린 한 줄로 바꾼다(아래 origin 판정도 가린 값으로)
+    if (audit_anon_masked($row, $detail)) {
+        [$row, $detail] = audit_anon_mask($row, $detail);
     }
 
     // F-71 ④ — 저장된 칸으로만 판정한다(요청 값이 아니다). 보여 주기 전용. 로그인 성공 행만 대상 계정을 본다(Origin::ofAuditRow).

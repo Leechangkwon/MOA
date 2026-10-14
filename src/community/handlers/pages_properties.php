@@ -204,6 +204,14 @@ if ($hasResolved) {
     }
 }
 
+/* 사이트 Q:F-12 카페 C1 (ARCH 25.3) — 익명게시판 글에는 검증 표시를 달지 않는다(`verify.by` 가 검증한 사람을 드러낸다).
+   고칠 수 있는 사람(글쓴이)이 보내도 서버가 거부한다 — 화면 단추만 숨기지 않는다. */
+if ($hasVerify && $mayChange && community_page_is_anon($row)) {
+    $db->rollback();
+    Http::json(['error' => '익명게시판 글에는 검증 표시를 달 수 없어요', 'reason' => CommunityAuthz::CODE_ANON_BOARD], 400);
+    exit;
+}
+
 if (!$mayChange) {
     $db->rollback();   // 위 담당 거부와 같은 모양 — 되돌린 뒤 감사(RV-A2)
     Audit::deny('page.property', CommunityAuthz::CODE_NOT_OWNER, [
@@ -234,18 +242,19 @@ $sqlSet = <<<'SQL'
 
 /** 감사 한 줄 — 「무엇을 무엇으로」가 문장 뒤의 상세에 남는다 (ARCH 7.5 등록부). */
 $auditChange = static function (string $prop, ?string $from, ?string $to)
-use ($pageId, $pageTitle, $changeCode): void {
+use ($pageId, $pageTitle, $changeCode, $row): void {
     Audit::allow('page.property', [
         'target_type' => 'page',
         'target_id'   => $pageId,
         'target_name' => $pageTitle,
-        'detail'      => [
+        // 카페 C1 (ARCH 25.6) — 익명게시판 글이면 감사 화면이 행위자를 가리는 표식
+        'detail'      => community_anon_audit_detail($row, [
             'granted_by' => $changeCode,
             'page_title' => $pageTitle,
             'prop'       => $prop,
             'from_value' => $from,
             'to_value'   => $to,
-        ],
+        ]),
     ]);
 };
 
@@ -321,12 +330,12 @@ try {
                 'target_type' => 'page',
                 'target_id'   => $pageId,
                 'target_name' => $pageTitle,
-                'detail'      => [
+                'detail'      => community_anon_audit_detail($row, [
                     'granted_by' => $assignCode,
                     'page_title' => $pageTitle,
                     'from'       => $fromAssignee,
                     'to'         => $toAssignee,
-                ],
+                ]),
             ]);
             $changed[] = 'assignee';
             $notifyAssignee = $newAssigneeId;

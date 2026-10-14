@@ -1229,6 +1229,20 @@ final class Audit
          * `page.tags|…` — 태그를 바꾼 일(전·후 태그는 상세 기록).
          * `page.update|deny|not_author`·`page.delete|deny|not_author` — 남이 쓴 **게시판 글**을
          *   고치거나 지우려 한 일(게시판 Manager·Admin 도 내용은 못 고친다 — 숨김만). */
+        /* 사이트 Q:F-12 카페 C1 (커뮤니티 ARCHITECTURE 25.5 · 25.6 · 25.7) — 새 동작 다섯: 신고 · 신고 처리 · 작성자 확인 · 게시판 요청 · 요청 처리.
+         *   `{target}` 은 신고 대상 글의 제목(30자) · 요청한 게시판 이름. 신고 사유 · 처리 메모 · 확인 사유는 상세 기록에만(문장에 넣지 않는다).
+         *   이 다섯 동작의 행은 관리자 · 신고자 자신의 행위라 감사 화면이 가리지 않는다(익명 표식 `anon_board` 와 무관 — 25.6). */
+        'report.create|allow'                   => '{actor} 이(가) 카페 글 「{target}」 을(를) 신고했습니다 (사유 종류·댓글 여부는 상세 기록)',
+        'report.create|deny|rate_limited'       => '{actor} 이(가) 하루 신고 상한을 넘겨 카페 글 「{target}」 을(를) 신고하려 해서 막았습니다',
+        'report.resolve|allow'                  => '{actor} 이(가) 카페 글 「{target}」 에 대한 신고를 처리했습니다 (숨김·반려와 메모는 상세 기록)',
+        'anon.reveal|allow'                     => '{actor} 이(가) 신고된 익명 글 「{target}」 의 쓴 사람을 확인했습니다 (신고 번호·사유는 상세 기록)',
+        'anon.reveal|deny|not_anon_board'       => '{actor} 이(가) 익명게시판이 아닌 글 「{target}」 의 쓴 사람을 확인하려 해서 거부했습니다',
+        'anon.reveal|deny|reauth_required'      => '{actor} 이(가) 비밀번호를 다시 확인하지 않고 익명 글 「{target}」 의 쓴 사람을 확인하려 해서 막았습니다',
+        'anon.reveal|deny|bad_reason'           => '{actor} 이(가) 사유 없이(20자 미만) 익명 글 「{target}」 의 쓴 사람을 확인하려 해서 거부했습니다',
+        'anon.reveal|deny|role_not_permitted'   => '{actor} 이(가) 관리자가 아닌데 익명 글 「{target}」 의 쓴 사람을 확인하려 해서 막았습니다',
+        'board_request.create|allow'            => '{actor} 이(가) 게시판 「{target}」 을(를) 만들어 달라고 요청했습니다',
+        'board_request.create|deny|rate_limited' => '{actor} 이(가) 요청 상한을 넘겨 게시판 「{target}」 을(를) 요청하려 해서 막았습니다',
+        'board_request.decide|allow'            => '{actor} 이(가) 게시판 요청 「{target}」 을(를) 처리했습니다 (만들기·반려와 메모는 상세 기록)',
         'board.create|allow'                    => '{actor} 이(가) 게시판 「{target}」 을(를) {level} 등급으로 만들었습니다 (종류·팀은 상세 기록)',
         'board.create|deny|conflict'            => '{actor} 이(가) 이미 있는 이름 「{target}」 으로 게시판을 만들려 해서 거부했습니다',
         'board.update|allow'                    => '{actor} 이(가) 게시판 「{target}」 의 이름·설명·활성 여부를 바꿨습니다 (이전값→새값은 상세 기록)',

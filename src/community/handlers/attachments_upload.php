@@ -109,6 +109,25 @@ try {
     throw $e;   // 도달하지 않는다
 }
 
+// ─── [3-1] 익명게시판 그림 — 메타데이터(EXIF · GPS · 카메라)를 지운다 (사이트 Q:F-12 카페 C1 · ARCH 25.4) ───
+/* 「추억」 사진과 **같은 함수**(`Memories::stripPhotoMetadata` — 무손실 조각 거르기, 안 되면 다시 인코딩)로 저장 전에 지운다.
+   크기 · 해시는 지운 뒤의 바이트로 다시 잰다(총량 · 감사 · 행이 저장된 파일과 같게). 익명게시판 글이 아니면 전처럼 그대로. */
+if (community_page_is_anon($row) && in_array($checked['mime'], ['image/jpeg', 'image/png', 'image/webp'], true)) {
+    try {
+        Memories::stripPhotoMetadata((string) $uploaded['tmp_name'], $checked['mime']);
+    } catch (RuntimeException $e) {
+        $deny('image_metadata', 400, $original);
+    }
+    clearstatcache(true, (string) $uploaded['tmp_name']);
+    $stripped = filesize((string) $uploaded['tmp_name']);
+    $strippedHash = hash_file('sha256', (string) $uploaded['tmp_name']);
+    if ($stripped === false || $stripped < 1 || $strippedHash === false) {
+        $deny('image_metadata', 400, $original);
+    }
+    $checked['size']   = (int) $stripped;
+    $checked['sha256'] = (string) $strippedHash;
+}
+
 // ─── [4] 일일 총량 — 자료실 + 첨부 합산 ─────────────────────────
 try {
     Upload::checkDailyQuota($me, $checked['size']);
@@ -186,7 +205,8 @@ try {
         'target_type' => 'page_attachment',
         'target_id'   => (int) $ins['id'],
         'target_name' => $original,
-        'detail'      => [
+        // 카페 C1 (ARCH 25.6) — 익명게시판 글이면 감사 화면이 행위자를 가리는 표식
+        'detail'      => community_anon_audit_detail($fresh, [
             'granted_by'  => $stillCode,
             'page_title'  => $pageTitle,
             'page_id'     => $pageId,
@@ -195,7 +215,7 @@ try {
             'size_bytes'  => $checked['size'],
             'sha256'      => $checked['sha256'],
             'scan_status' => $scanStatus,
-        ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive]),
+        ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive])),
     ]);
 
     $db->commit();

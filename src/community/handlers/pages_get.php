@@ -278,7 +278,7 @@ if (CommunityAuthz::decideSuggestionDecide($user, $row)[0]) {
     $suggestionInfo['suggestions_open']=(int)$db->run($countSuggestionSql, [':id'=>(int)$row['id']])->fetchColumn();
 }
 
-community_form_json([
+$payload = [
     'page' => [
         'id'          => (string) $row['public_id'],
         'title'       => (string) $row['title'],
@@ -435,4 +435,15 @@ community_form_json([
     'template_scopes' => $templateScopes,
     // 7-C — 렌더러 두 벌의 임베드 재료: 지금 허용 목록 · 틀을 여는가(코드 상수 — 끄면 모든 임베드가 「허용 대기」)
     'embeds' => community_embed_ctx(),
-], $user, $row);
+];
+
+/* 사이트 Q:F-12 카페 C1 (ARCH 25.4 표 첫 줄) — 익명게시판 글이면 응답에서만 가린다. 판정 · 감사는 위에서 원래 행으로 이미 끝났다.
+   `writer` → 「글쓴이」(본인은 is_me) · `page.owner` · `verify` · `editors` → null/[] · 끝에 안전망(`community_anon_scrub`). */
+if (community_page_is_anon($row)) {
+    $payload['writer']        = community_anon_person((int) $row['id'], (int) $row['author_id'], (int) $row['author_id'], $me);
+    $payload['page']['owner'] = null;
+    $payload['verify']        = null;
+    $payload['editors']       = [];
+    $payload = community_anon_scrub($payload);
+}
+community_form_json($payload, $user, $row);

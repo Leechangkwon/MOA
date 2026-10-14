@@ -48,7 +48,11 @@ CREATE TABLE community.spaces (
     access_level  TEXT        NOT NULL CHECK (access_level IN ('public','internal','team','admin-only')),
     notice        BOOLEAN     NOT NULL DEFAULT false,
     -- 5-C 게시판 종류(notice·discussion·qa). 게시판만 값이 있고 `notice` 와 짝이다.
-    board_kind    TEXT        CHECK (board_kind IS NULL OR board_kind IN ('notice','discussion','qa')),
+    -- 카페 C1(ARCH 25.2) — 'anonymous'(익명게시판) 더함 · 이름은 2026-10-14_community_cafe.sql 과 같은 spaces_board_kind_check.
+    board_kind    TEXT        CONSTRAINT spaces_board_kind_check
+                              CHECK (board_kind IS NULL OR board_kind IN ('notice','discussion','qa','anonymous')),
+    -- 카페 C1(ARCH 25.2) — 게시판 자리: 업무('work') · 카페('cafe'). 게시판만 카페가 될 수 있다.
+    area          TEXT        NOT NULL DEFAULT 'work' CONSTRAINT spaces_area_check CHECK (area IN ('work','cafe')),
     is_active     BOOLEAN     NOT NULL DEFAULT true,
     created_by    BIGINT      REFERENCES public.users(id),
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -58,7 +62,10 @@ CREATE TABLE community.spaces (
     -- 5-C (db/migrations/2026-09-24_community_boards.sql 와 같은 모양)
     CONSTRAINT spaces_board_shape CHECK ((kind =  'board' AND board_kind IS NOT NULL AND notice = (board_kind = 'notice'))
                                       OR (kind <> 'board' AND board_kind IS NULL)),
-    CONSTRAINT spaces_board_team  CHECK (kind <> 'board' OR access_level <> 'team' OR team_id IS NOT NULL)
+    CONSTRAINT spaces_board_team  CHECK (kind <> 'board' OR access_level <> 'team' OR team_id IS NOT NULL),
+    -- 카페 C1(ARCH 25.2 — 2026-10-14_community_cafe.sql 과 같은 이름)
+    CONSTRAINT spaces_area_board      CHECK (kind = 'board' OR area = 'work'),
+    CONSTRAINT spaces_board_anon_cafe CHECK (board_kind IS DISTINCT FROM 'anonymous' OR area = 'cafe')
 );
 
 -- 사람마다 개인 공간은 **하나**다. `GET /api/me/space` 가 없으면 만드는데, 같은 사람이 두 창을
@@ -887,6 +894,84 @@ BEGIN
         IF position('''assigned''' in c.definition) = 0 THEN
             EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I', c.conname);
             EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind = ''assigned'')',
+                c.conname, substring(c.definition from 8 for length(c.definition) - 8));
+        END IF;
+    END LOOP;
+END
+$$;
+
+-- ─────────────────────────────────────────────────────────────
+-- 「우리 공간」 카페 C1 (사이트 Q:F-12 카페 · 커뮤니티 ARCHITECTURE 25장) — 새 설치 모양.
+--   이미 있는 DB 는 db/migrations/2026-10-14_community_cafe.sql 이 **같은 모양**을 만든다(이 절은 그 파일의 4~7 절과 같은 문장).
+--   spaces.area · board_kind 'anonymous' 는 위 CREATE TABLE community.spaces 에 있다. 첫 게시판 행(자유게시판 이동 · 익명게시판)은
+--   다른 첫 게시판과 같이 이주 파일만 만든다(이 파일은 행을 넣지 않는다). 앱 권한은 db/community/grants.sql 끝 절.
+-- ─────────────────────────────────────────────────────────────
+-- ── 4. 별칭 (ARCH 25.4) — 글쓴이 0 · 댓글 쓴 사람마다 다음 번호. 바뀌지 않는다(앱 UPDATE · DELETE 0) ──
+CREATE TABLE IF NOT EXISTS community.anon_aliases (
+    page_id    BIGINT      NOT NULL REFERENCES community.pages(id),
+    user_id    BIGINT      NOT NULL REFERENCES public.users(id),
+    alias_no   INT         NOT NULL CONSTRAINT anon_aliases_no_check CHECK (alias_no >= 0),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (page_id, user_id),
+    CONSTRAINT anon_aliases_page_no_uniq UNIQUE (page_id, alias_no)
+);
+
+-- ── 5. 신고 (ARCH 25.5) ──
+CREATE TABLE IF NOT EXISTS community.reports (
+    id              BIGSERIAL   PRIMARY KEY,
+    public_id       UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    page_id         BIGINT      NOT NULL REFERENCES community.pages(id),
+    comment_id      BIGINT      REFERENCES community.comments(id),
+    reporter_id     BIGINT      NOT NULL REFERENCES public.users(id),
+    reason_kind     TEXT        NOT NULL CONSTRAINT reports_reason_kind_check
+                                CHECK (reason_kind IN ('abuse','defamation','privacy','spam','other')),
+    detail          TEXT        CONSTRAINT reports_detail_check CHECK (char_length(detail) <= 500),
+    status          TEXT        NOT NULL DEFAULT 'open' CONSTRAINT reports_status_check
+                                CHECK (status IN ('open','hidden','rejected')),
+    resolved_by     BIGINT      REFERENCES public.users(id),
+    resolution_note TEXT        CONSTRAINT reports_resolution_note_check CHECK (char_length(resolution_note) <= 500),
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    resolved_at     TIMESTAMPTZ,
+    CONSTRAINT reports_resolved_shape CHECK ((status = 'open') = (resolved_at IS NULL))
+);
+CREATE INDEX IF NOT EXISTS reports_status_created_idx   ON community.reports (status, created_at);
+CREATE INDEX IF NOT EXISTS reports_reporter_created_idx ON community.reports (reporter_id, created_at);
+-- 사람마다 같은 대상(글 · 댓글)에 열린 신고 하나
+CREATE UNIQUE INDEX IF NOT EXISTS reports_open_once_uidx
+    ON community.reports (reporter_id, page_id, coalesce(comment_id, 0)) WHERE status = 'open';
+
+-- ── 6. 게시판 요청 (ARCH 25.7) ──
+CREATE TABLE IF NOT EXISTS community.board_requests (
+    id            BIGSERIAL   PRIMARY KEY,
+    public_id     UUID        NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+    requester_id  BIGINT      NOT NULL REFERENCES public.users(id),
+    name          TEXT        NOT NULL CONSTRAINT board_requests_name_check CHECK (char_length(name) BETWEEN 1 AND 40),
+    purpose       TEXT        NOT NULL CONSTRAINT board_requests_purpose_check CHECK (char_length(purpose) BETWEEN 1 AND 500),
+    anonymous     BOOLEAN     NOT NULL DEFAULT false,
+    status        TEXT        NOT NULL DEFAULT 'open' CONSTRAINT board_requests_status_check
+                              CHECK (status IN ('open','created','rejected')),
+    decided_by    BIGINT      REFERENCES public.users(id),
+    decision_note TEXT        CONSTRAINT board_requests_note_check CHECK (char_length(decision_note) <= 500),
+    board_id      BIGINT      REFERENCES community.spaces(id),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    decided_at    TIMESTAMPTZ,
+    CONSTRAINT board_requests_decided_shape CHECK ((status = 'open') = (decided_at IS NULL)),
+    CONSTRAINT board_requests_board_shape   CHECK ((status = 'created') = (board_id IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS board_requests_status_created_idx    ON community.board_requests (status, created_at);
+CREATE INDEX IF NOT EXISTS board_requests_requester_created_idx ON community.board_requests (requester_id, created_at);
+
+-- ── 7. 알림 종류 셋 (누적 CHECK — 지금 정의를 읽어 OR 로 잇는다. 이미 있으면 아무것도 하지 않는다) ──
+DO $$
+DECLARE c record;
+BEGIN
+    FOR c IN SELECT conname, pg_get_constraintdef(oid) AS definition FROM pg_constraint
+              WHERE conrelid = 'community.notifications'::regclass AND contype = 'c'
+                AND pg_get_constraintdef(oid) LIKE '%kind%'
+    LOOP
+        IF position('''moderated''' in c.definition) = 0 THEN
+            EXECUTE format('ALTER TABLE community.notifications DROP CONSTRAINT %I', c.conname);
+            EXECUTE format('ALTER TABLE community.notifications ADD CONSTRAINT %I CHECK ((%s) OR kind IN (''moderated'',''board_request'',''board_request_done''))',
                 c.conname, substring(c.definition from 8 for length(c.definition) - 8));
         END IF;
     END LOOP;

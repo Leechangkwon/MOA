@@ -28,9 +28,18 @@ $db = Db::instance();
 
 [$readable, $readBind] = community_board_read_sql('b', 1, $user);
 
+/* 카페 C1 (ARCH 25.2) — `?area=work|cafe` 로 자리를 고른다(업무 사이드바는 work · 카페 홈은 cafe). 없거나 모르는 값이면 지금처럼
+   전부(소비자 moa · popular · palettes · 관리 창 그대로). 조건 조각은 고정 문자열이고 값은 바인딩한다. */
+$area = Http::queryChoice('area', ['work', 'cafe'], '');
+$areaWhere = '';
+if ($area !== '') {
+    $areaWhere = ' AND b.area = :area';
+    $readBind[':area'] = $area;
+}
+
 $sql = <<<SQL
     SELECT b.id, b.kind, b.name, b.description, b.access_level, b.team_id, b.notice,
-           b.board_kind, b.is_active, b.created_at, t.name AS team_name,
+           b.board_kind, b.is_active, b.created_at, t.name AS team_name, b.area,
            (SELECT count(*) FROM community.pages p
              WHERE p.deleted_at IS NULL AND p.hidden_at IS NULL
                AND (p.space_id = b.id
@@ -38,7 +47,7 @@ $sql = <<<SQL
       FROM community.spaces b
       LEFT JOIN public.teams t ON t.id = b.team_id
      WHERE b.kind = 'board'
-       AND {$readable}
+       AND {$readable}{$areaWhere}
      ORDER BY (b.board_kind = 'notice') DESC, b.is_active DESC, b.id
      LIMIT 200
     SQL;
@@ -47,6 +56,9 @@ $boards = [];
 foreach ($db->run($sql, $readBind)->fetchAll() as $b) {
     $item               = community_board_summary($b, $user);
     $item['post_count'] = (int) $b['post_count'];
+    // 카페 C1 (ARCH 25.2) — 자리 · 익명 여부(익명은 board_kind 하나에서 읽는다 — 화면이 종류 문자열을 견주지 않게)
+    $item['area']       = (string) $b['area'];
+    $item['anonymous']  = (string) $b['board_kind'] === 'anonymous';
     $boards[]           = $item;
 }
 

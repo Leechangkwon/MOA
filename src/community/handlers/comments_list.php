@@ -48,8 +48,17 @@ $sql = <<<'SQL'
      LIMIT 500
     SQL;
 
+$rows = $db->run($sql, [':me' => $me, ':pid' => (int) $row['id'], ':since' => $gate['since'], ':since2' => $gate['since']])->fetchAll();
+
+/* 사이트 Q:F-12 카페 C1 (ARCH 25.4) — 익명게시판 글이면 쓴 사람을 이름표로(글쓴이 · 익명N). 이름표 지도는 **질의 하나**(N+1 0).
+   판정(고치기 · 해결 · 숨김)은 위아래 그대로 원래 행(`author_id`)으로 한다 — 가린 값으로 판정하지 않는다. */
+$anon     = community_page_is_anon($row);
+$labelMap = $anon
+    ? community_anon_label_map((int) $row['id'], (int) $row['author_id'], array_map(static fn (array $c): int => (int) $c['author_id'], $rows))
+    : [];
+
 $out = [];
-foreach ($db->run($sql, [':me' => $me, ':pid' => (int) $row['id'], ':since' => $gate['since'], ':since2' => $gate['since']])->fetchAll() as $c) {
+foreach ($rows as $c) {
     $deleted  = $c['deleted_at'] !== null;
     $hidden   = $c['hidden_at'] !== null;
     $isAuthor = (int) $c['author_id'] === $me;
@@ -67,10 +76,12 @@ foreach ($db->run($sql, [':me' => $me, ':pid' => (int) $row['id'], ':since' => $
         'body'        => $showBody ? (string) $c['body'] : null,
         'hidden'      => $hidden,
         'deleted'     => $deleted,
-        'author'      => !$showBody ? null : [
-            'username'     => (string) $c['username'],
-            'display_name' => $c['display_name'] === null ? null : (string) $c['display_name'],
-        ],
+        'author'      => !$showBody ? null : ($anon
+            ? community_anon_person((int) $row['id'], (int) $row['author_id'], (int) $c['author_id'], $me, $labelMap)
+            : [
+                'username'     => (string) $c['username'],
+                'display_name' => $c['display_name'] === null ? null : (string) $c['display_name'],
+            ]),
         'created_at'  => (string) $c['created_at'],
         'edited'      => !$deleted && (string) $c['updated_at'] !== (string) $c['created_at'],
         'resolved'    => $showBody && $c['resolved_at'] !== null,

@@ -94,12 +94,13 @@ try {
         'target_type' => 'page',
         'target_id'   => $pageId,
         'target_name' => $pageTitle,
-        'detail'      => [
+        // 카페 C1 (ARCH 25.6) — 익명게시판 글이면 감사 화면이 행위자를 가리는 표식
+        'detail'      => community_anon_audit_detail($row, [
             'granted_by'  => $gate['change_code'],
             'page_title'  => $pageTitle,
             'tags_before' => $before,
             'tags_after'  => $after,
-        ],
+        ]),
     ]);
     $db->commit();
 } catch (Throwable $e) {

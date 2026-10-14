@@ -161,6 +161,9 @@ function community_export_meta(array $row, string $now, ?array $user=null): arra
     $owner = $row['space_owner_name'] ?? $row['author_name'] ?? '';
     $display = $row['space_owner_display_name'] ?? $row['author_display_name'] ?? null;
     if ($user!==null && community_form_identity_hidden($user,$row) && ($row['space_kind'] ?? '')!=='personal') { $owner=''; $display=null; }
+    // 카페 C1 (ARCH 25.4) — 익명게시판 글: 주인 칸은 「익명게시판」 · 검증한 사람 null(아래).
+    $anon = community_page_is_anon($row);
+    if ($anon) { $owner = '익명게시판'; $display = null; }
     $meta = ['title' => (string) $row['title'], 'kind' => $row['page_kind'] ?? 'page',
         'source' => community_export_url(Http::communityUrl('/p/' . $row['public_id'])),
         'exported_at' => $now, 'owner' => tbox_person_label($display, (string) $owner),
@@ -168,7 +171,7 @@ function community_export_meta(array $row, string $now, ?array $user=null): arra
     // Same state calculation as the page UI; never export the verifier's numeric account ID.
     if (function_exists('community_verify_info')) {
         $verify = community_verify_info($row);
-        $meta += ['verify_state' => $verify['state'], 'verified_by' => $verify['by']['name'] ?? null,
+        $meta += ['verify_state' => $verify['state'], 'verified_by' => $anon ? null : ($verify['by']['name'] ?? null),
             'verified_at' => $verify['at'], 'verify_expires' => $verify['expires_at']];
     }
     return $meta;
@@ -205,8 +208,8 @@ function community_export_allow(array $root, string $format, bool $tree, array $
 {
     Audit::allow('page.export', ['target_type' => 'page', 'target_id' => (int) $root['id'],
         'target_name' => community_target_title((string) $root['title']),
-        'detail' => ['format' => $format, 'tree' => $tree, 'pages' => count($ids),
-            'skipped' => $skipped, 'bytes' => $bytes, 'page_ids' => array_values($ids)]]);
+        'detail' => community_anon_audit_detail($root, ['format' => $format, 'tree' => $tree, 'pages' => count($ids),
+            'skipped' => $skipped, 'bytes' => $bytes, 'page_ids' => array_values($ids)])]);
 }
 
 function community_export_too_large(array $root): void

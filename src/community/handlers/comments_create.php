@@ -112,6 +112,8 @@ $sqlInsert = <<<'SQL'
     SQL;
 
 $notified = [];
+// 카페 C1 (ARCH 25.3 · 25.4) — 익명게시판 글: 별칭 번호를 주고(같은 트랜잭션 · 글 행 잠금) · @ 멘션은 해석하지 않는다(글자 그대로 · 알림 0).
+$anon = community_page_is_anon($row);
 $db->begin();
 try {
     $c = $db->run($sqlInsert, [
@@ -128,18 +130,21 @@ try {
         throw new RuntimeException('댓글을 남기지 못했습니다');
     }
     $commentId = (int) $c['id'];
+    if ($anon) {
+        community_anon_assign_alias($pageId, (int) $row['author_id'], $me);
+    }
 
     Audit::allow('comment.create', [
         'target_type' => 'page',
         'target_id'   => $pageId,
         'target_name' => $pageTitle,
-        'detail'      => [
+        'detail'      => community_anon_audit_detail($row, [
             'granted_by'  => $code,
             'page_title'  => $pageTitle,
             'comment_id'  => $commentId,
             'reply'       => $parent !== null,
             'anchored'    => $blockId !== null,
-        ],
+        ]),
     ]);
     $db->commit();
 } catch (Throwable $e) {
@@ -151,7 +156,7 @@ try {
    실패는 서버 로그에만 남는다(알림은 곁가지다). */
 try {
     // 멘션 — 볼 수 있는 활성 사용자(Guest 제외)에게만. 한 사람에게 알림은 한 번(멘션이 답글·내 페이지보다 앞선다).
-    foreach (community_mentions_in($text) as $name) {
+    foreach ($anon ? [] : community_mentions_in($text) as $name) {
         $target = community_user_by_name($name);
         if ($target !== null && !isset($notified[(int) $target['id']])
             && community_notify((int) $target['id'], 'mention', $row, $commentId, $me)) {

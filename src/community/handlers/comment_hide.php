@@ -38,29 +38,12 @@ if (($comment['hidden_at'] !== null) === $on) {
     exit;
 }
 
-$sql = $on
-    ? <<<'SQL'
-        UPDATE community.comments SET hidden_at = now(), hidden_by = CAST(:me AS bigint)
-         WHERE id = CAST(:cid AS bigint) AND deleted_at IS NULL AND hidden_at IS NULL
-        SQL
-    : <<<'SQL'
-        UPDATE community.comments SET hidden_at = NULL, hidden_by = NULL
-         WHERE id = CAST(:cid AS bigint) AND deleted_at IS NULL AND hidden_at IS NOT NULL
-        SQL;
-$bind = $on ? [':me' => (int) $user['id'], ':cid' => (int) $comment['id']] : [':cid' => (int) $comment['id']];
-
+/* 카페 C1 (ARCH 25.5) — 쓰기 · 감사는 공용 함수 한 벌(`community_comment_hide_write`, routes.php). 신고함의 「숨기기」가 같은 함수를 부른다.
+   이 창구의 입력 · 판정 · 응답은 그대로다. */
 $db = Db::instance();
 $db->begin();
 try {
-    $n = $db->run($sql, $bind)->rowCount();
-    if ($n > 0) {
-        Audit::allow($action, [
-            'target_type' => 'page',
-            'target_id'   => (int) $row['id'],
-            'target_name' => $pageTitle,
-            'detail'      => ['granted_by' => $code, 'page_title' => $pageTitle, 'comment_id' => (int) $comment['id']],
-        ]);
-    }
+    $n = community_comment_hide_write($row, $comment, $on, (int) $user['id'], $code) ? 1 : 0;
     $db->commit();
 } catch (Throwable $e) {
     $db->rollback();

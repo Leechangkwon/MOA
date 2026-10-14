@@ -44,6 +44,7 @@ $sql = <<<'SQL'
            v.summary,
            u.username AS edited_by_name,
            u.display_name AS edited_by_display_name,
+           v.edited_by,
            CASE WHEN jsonb_typeof(v.doc -> 'blocks') = 'array'
                 THEN jsonb_array_length(v.doc -> 'blocks') ELSE 0 END AS block_count
       FROM community.page_versions v
@@ -99,7 +100,7 @@ foreach ($versions as &$versionItem) {
 }
 unset($versionItem);
 
-community_form_json([
+$payload = [
     'page' => [
         'id'          => (string) $row['public_id'],
         'title'       => (string) $row['title'],
@@ -112,4 +113,20 @@ community_form_json([
     // 화면의 「되돌리기」 단추를 열지 말지 고르는 값이다 — 판단 근거가 아니다 (DESIGN 원칙 1).
     // 단추를 되살려 창구를 불러도 `version_restore.php` 가 같은 함수로 다시 막는다.
     'can_edit' => $gate['may_change'] && Authz::canCommunityWrite($user),   // S2 — 되돌리기는 쓰기 창구(`community.write`)
-], $user, $row);
+];
+
+/* 사이트 Q:F-12 카페 C1 (ARCH 25.4) — 익명게시판 글이면 `by` 를 이름표로(편집자는 글쓴이뿐 — 질의 하나의 지도) · 판 줄의 제안 → null · 끝에 안전망. */
+if (community_page_is_anon($row)) {
+    $byIds  = array_merge([(int) ($row['last_edited_by'] ?? 0)], array_map(static fn (array $r): int => (int) $r['edited_by'], $rows));
+    $labels = community_anon_label_map((int) $row['id'], (int) $row['author_id'], $byIds);
+    foreach ($payload['versions'] as $i => $v) {
+        $byId = $byIds[$i] ?? 0;
+        $label = $labels[$byId] ?? community_anon_label($byId === (int) $row['author_id'], null);
+        $payload['versions'][$i]['by']              = $label;
+        $payload['versions'][$i]['by_display_name'] = $label;
+        $payload['versions'][$i]['by_is_me']        = $byId === (int) $user['id'];
+        $payload['versions'][$i]['suggestion']      = null;
+    }
+    $payload = community_anon_scrub($payload);
+}
+community_form_json($payload, $user, $row);

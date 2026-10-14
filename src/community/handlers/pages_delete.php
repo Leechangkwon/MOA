@@ -114,7 +114,8 @@ try {
         'target_type' => 'page',
         'target_id'   => $pageId,
         'target_name' => $pageTitle,
-        'detail'      => [
+        // 카페 C1 (ARCH 25.6) — 익명게시판 글이면 감사 화면이 행위자를 가리는 표식
+        'detail'      => community_anon_audit_detail($row, [
             'granted_by'  => $changeCode,
             'page_title'  => $pageTitle,
             'doc_version' => (int) $row['doc_version'],
@@ -122,7 +123,7 @@ try {
                않는다). `cascaded` 는 t-box ARCH 7.5 등록부에 이미 있는 키이고 뜻이 같다
                (「함께 바뀐 항목 수」) — 같은 뜻에 새 이름을 만들지 않는다. */
             'cascaded'    => $removed,
-        ],
+        ]),
     ]);
 
     $db->commit();

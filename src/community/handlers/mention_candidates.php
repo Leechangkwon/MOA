@@ -38,6 +38,13 @@ if (!Authz::canCommunityWrite($user)) {
     Http::error(403, Http::MSG_FORBIDDEN);
 }
 
+/* 사이트 Q:F-12 카페 C1 (ARCH 25.3) — 익명게시판 글에서는 @ 멘션을 끈다: 후보의 「최근 쓴 사람」 순서가 쓴 사람을 드러낸다.
+   화면 단추만이 아니라 창구가 거부한다(comments_create 도 그 글의 @ 를 해석하지 않는다). */
+if (community_page_is_anon($gate['row'])) {
+    error_log('[tbox] request_id=' . TBOX_REQUEST_ID . ' community mention-candidates deny code=' . CommunityAuthz::CODE_ANON_BOARD);
+    Http::error(403, Http::MSG_FORBIDDEN);
+}
+
 $q = (string) preg_replace('/^[\s\p{Z}]+|[\s\p{Z}]+$/u', '', Http::queryText('q', 64));
 if ($q === '') {
     // U4-4 — 열자마자 후보: 최근 이 문서에 쓴 사람 먼저 · 아이디 순 · 판정 50명까지(아래 반복이 한 명씩 판정한다 — 후보 규칙은 SQL 에 없다)

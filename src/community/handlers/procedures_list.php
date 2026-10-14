@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 // C:F-39: ordinary search visibility, including hidden-post exclusions; no administrator bypass.
+// 카페 C1 (ARCH 25.3): 익명게시판 글은 절차 목록에서 뺀다(이 목록이 쓴 사람을 싣는다) — 조각은 community_anon_page_sql(고정 문자열).
 [$visible, $bind] = community_search_pages_where($user);
 $verify = Http::queryText('verify', 20);
 $q = trim(Http::queryText('q', 100));
@@ -20,7 +21,7 @@ $sql = "SELECT p.public_id,p.form_anonymous,p.title,p.icon,p.updated_at,s.kind A
         FROM community.pages p JOIN community.spaces s ON s.id=p.space_id
         LEFT JOIN public.users owner ON owner.id=s.owner_user_id
         LEFT JOIN public.users author ON author.id=p.author_id
-        WHERE p.deleted_at IS NULL AND p.page_kind='procedure' AND
+        WHERE p.deleted_at IS NULL AND p.page_kind='procedure' AND NOT " . community_anon_page_sql() . " AND
         {$visible}
         {$filter}
         AND (CAST(:qoff AS boolean) OR p.title ILIKE :q ESCAPE '#')

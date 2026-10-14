@@ -28,6 +28,25 @@ declare(strict_types=1);
 $gate = community_history_gate($user, (string) $params[0]);
 $row  = $gate['row'];
 
+/**
+ * 사이트 Q:F-12 카페 C1 (ARCH 25.4) — 익명게시판 글이면 판의 `by` 를 이름표로(편집자는 글쓴이뿐) · 끝에 안전망. 아니면 그대로.
+ *
+ * @param array<string,mixed> $payload
+ * @return array<string,mixed>
+ */
+function community_version_anon(array $row, array $user, int $byId, array $payload): array
+{
+    if (!community_page_is_anon($row)) {
+        return $payload;
+    }
+    $label = community_anon_label_map((int) $row['id'], (int) $row['author_id'], [$byId])[$byId]
+        ?? community_anon_label($byId === (int) $row['author_id'], null);
+    $payload['version']['by']              = $label;
+    $payload['version']['by_display_name'] = $label;
+    $payload['version']['by_is_me']        = $byId === (int) $user['id'];
+    return community_anon_scrub($payload);
+}
+
 // 라우터의 `{num}` 이 숫자 9자리까지만 통과시켰다 — 여기 오는 값은 이미 숫자 문자열이다.
 $want = (int) $params[1];
 
@@ -37,7 +56,7 @@ if ($want === (int) $row['doc_version']) {
     if (!is_array($doc)) {
         throw new RuntimeException('저장된 본문을 읽을 수 없습니다');
     }
-    community_form_json([
+    community_form_json(community_version_anon($row, $user, (int) ($row['last_edited_by'] ?? 0), [
         'version' => [
             'version'     => $want,
             'is_current'  => true,
@@ -49,13 +68,13 @@ if ($want === (int) $row['doc_version']) {
             'block_count' => (int) $row['block_count'],
         ],
         'mention_labels' => ($ml = community_mention_labels(Doc::extract($doc)['mentions'], $user)) === [] ? new stdClass() : $ml,
-    ], $user, $row);
+    ]), $user, $row);
     exit;
 }
 
 // ─── 지난 판 ──────────────────────────────────────────────────
 $sql = <<<'SQL'
-    SELECT v.version, v.title, v.doc, v.edited_at, u.username AS edited_by_name,
+    SELECT v.version, v.title, v.doc, v.edited_at, v.edited_by, u.username AS edited_by_name,
            u.display_name AS edited_by_display_name
       FROM community.page_versions v
       JOIN public.users u ON u.id = v.edited_by
@@ -75,7 +94,7 @@ if (!is_array($doc)) {
     throw new RuntimeException('저장된 본문을 읽을 수 없습니다');
 }
 
-community_form_json([
+community_form_json(community_version_anon($row, $user, (int) $found['edited_by'], [
     'version' => [
         'version'     => (int) $found['version'],
         'is_current'  => false,
@@ -87,4 +106,4 @@ community_form_json([
         'block_count' => is_array($doc['blocks'] ?? null) ? count($doc['blocks']) : 0,
     ],
     'mention_labels' => ($ml = community_mention_labels(Doc::extract($doc)['mentions'], $user)) === [] ? new stdClass() : $ml,
-], $user, $row);
+]), $user, $row);

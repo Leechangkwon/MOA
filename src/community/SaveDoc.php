@@ -277,12 +277,13 @@ function community_save_doc(array $user, string $publicId, array $body, array $o
             'target_type' => 'page',
             'target_id'   => $pageId,
             'target_name' => community_target_title($title),
-            'detail'      => array_merge(isset($options['suggestion_id']) ? ['suggestion_id'=>$options['suggestion_id']] : [], [
+            // 카페 C1 (ARCH 25.6) — 익명게시판 글이면 감사 화면이 행위자를 가리는 표식(community_anon_audit_detail)
+            'detail'      => community_anon_audit_detail($row, array_merge(isset($options['suggestion_id']) ? ['suggestion_id'=>$options['suggestion_id']] : [], [
                 'granted_by'  => $changeCode,
                 'page_title'  => community_target_title($title),
                 'doc_version' => $newVersion,
                 'block_count' => count($extract['blocks']),
-            ]),
+            ])),
         ]);
 
         $db->commit();

@@ -31,6 +31,12 @@ if (Http::queryText('unread', 2) === '1') {
 $sql = <<<'SQL'
     SELECT n.id, n.kind, n.created_at, n.read_at, p.public_id AS page_public_id,
            c.public_id AS comment_public_id, a.username AS actor_name, a.display_name AS actor_display_name,
+           -- 카페 C1 (ARCH 25.4 · 25.5) — 익명게시판 이름표의 재료(글 번호 · 쓴 사람 · 알림을 만든 사람) · 관리자 숨김 알림의 메모(신고 행에서)
+           n.page_id, n.actor_id, p.author_id AS page_author_id,
+           CASE WHEN n.kind = 'moderated' THEN (
+               SELECT r.resolution_note FROM community.reports r
+                WHERE r.page_id = n.page_id AND r.comment_id IS NOT DISTINCT FROM n.comment_id AND r.status = 'hidden'
+                ORDER BY r.resolved_at DESC, r.id DESC LIMIT 1) END AS moderation_note,
            -- G-0 (t-box F-73) — 권한 요청 알림 두 종류의 요청 줄(페이지 없이)
            ar.id AS ar_id, ar.status AS ar_status, ar.folder_id AS ar_folder_id, ar.file_id AS ar_file_id,
            arf.public_id AS ar_file_public_id
@@ -80,8 +86,60 @@ $accessOf = static function (array $n, array $user): ?array {
     ];
 };
 
+$fetched = $db->run($sql, [':me' => $me])->fetchAll();
+
+/* 카페 C1 (ARCH 25.4) — 익명게시판 글의 알림이면 actor 를 이름표로(actor_id 기준). 이름표 지도는 목록 전체에 **질의 하나**
+   (글 번호 · 사람 번호 쌍을 한 번에 — N+1 0). 이름표 규칙은 community_anon_label 하나. */
+$aliasPages = [];
+$aliasUsers = [];
+foreach ($fetched as $n) {
+    if ($n['page_id'] !== null && $n['actor_id'] !== null) {
+        $aliasPages[(int) $n['page_id']]  = true;
+        $aliasUsers[(int) $n['actor_id']] = true;
+    }
+}
+$aliasNo = [];
+if ($aliasPages !== []) {
+    $sqlAlias = <<<'SQL'
+        SELECT page_id, user_id, alias_no FROM community.anon_aliases
+         WHERE page_id = ANY (string_to_array(CAST(:pages AS text), ',')::bigint[])
+           AND user_id = ANY (string_to_array(CAST(:users AS text), ',')::bigint[])
+        SQL;
+    $aliasBind = [':pages' => implode(',', array_keys($aliasPages)), ':users' => implode(',', array_keys($aliasUsers))];
+    foreach ($db->run($sqlAlias, $aliasBind)->fetchAll() as $a) {
+        $aliasNo[(int) $a['page_id'] . ':' . (int) $a['user_id']] = (int) $a['alias_no'];
+    }
+}
+
+/** 알림을 만든 사람 — 익명게시판 글이면 이름표(관리자 숨김 알림은 「관리자」) · 설문 익명이면 null · 그 밖은 아이디 · 이름. */
+$actorOf = static function (array $n, ?array $row) use ($user, $me, $aliasNo): ?array {
+    if ($row !== null && community_page_is_anon($row)) {
+        if ((string) $n['kind'] === 'moderated') {
+            return ['username' => null, 'display_name' => '관리자', 'anon' => true, 'is_me' => false];
+        }
+        if ($n['actor_id'] === null) {
+            return null;
+        }
+        $actorId = (int) $n['actor_id'];
+        $key = (int) $n['page_id'] . ':' . $actorId;
+        return ['username' => null,
+                'display_name' => community_anon_label($actorId === (int) $n['page_author_id'], $aliasNo[$key] ?? null),
+                'anon' => true, 'is_me' => $actorId === $me];
+    }
+    if ((string) $n['kind'] === 'moderated') {
+        return ['username' => null, 'display_name' => '관리자', 'anon' => true, 'is_me' => false];
+    }
+    if ($n['actor_name'] === null || ($n['page_public_id'] !== null && ($row === null || community_form_identity_hidden($user, $row)))) {
+        return null;
+    }
+    return [
+        'username'     => (string) $n['actor_name'],
+        'display_name' => $n['actor_display_name'] === null ? null : (string) $n['actor_display_name'],
+    ];
+};
+
 $items = [];
-foreach ($db->run($sql, [':me' => $me])->fetchAll() as $n) {
+foreach ($fetched as $n) {
     $page = null;
     $row = null;
     if ($n['page_public_id'] !== null) {
@@ -109,10 +167,10 @@ foreach ($db->run($sql, [':me' => $me])->fetchAll() as $n) {
         // Rule status is safe without retaining any inaccessible document title.
         'automation_status' => $n['page_public_id'] === null && in_array($n['kind'], ['automation_denied', 'automation_disabled'], true),
         'comment_id' => $page !== null && $n['comment_public_id'] !== null ? (string) $n['comment_public_id'] : null,
-        'actor'      => $n['actor_name'] === null || ($n['page_public_id'] !== null && ($row === null || community_form_identity_hidden($user,$row))) ? null : [
-            'username'     => (string) $n['actor_name'],
-            'display_name' => $n['actor_display_name'] === null ? null : (string) $n['actor_display_name'],
-        ],
-    ];
+        'actor'      => $actorOf($n, $row),
+    ] + ((string) $n['kind'] === 'moderated'
+        // 「관리자가 숨겼어요 — <메모>」 — 메모는 신고 행에서(ARCH 25.5). 그 글을 지금 볼 수 있을 때만.
+        ? ['moderation_note' => $page !== null && $n['moderation_note'] !== null ? (string) $n['moderation_note'] : null]
+        : []);
 }
 Http::json(['notifications' => $items, 'unread' => $unread]);
