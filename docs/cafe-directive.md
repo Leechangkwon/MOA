@@ -64,6 +64,19 @@
 보고 형식   : docs/cafe-report.md C1 절 — 변경 파일 / 감사 표식을 단 핸들러 목록 / 돌린 수락 시험과 결과(결과 폴더) / 못 한 것 / ARCH 25장과 다르게 한 것. 짧게.
 ```
 
+## C1b — 검토 보정 (메인 검토 2026-10-14 · C2 를 시작하기 전에 · 같은 worktree)
+
+C1(`dabdea8`)의 검토 결과 — 설계대로 된 것: 이름표 · 안전망 · 작성자 확인(감사 먼저) · 감사 화면 가림 · 이주(운영 알림 CHECK 는 하나 — 2026-10-19 방식 그대로 성립). 고칠 것 둘:
+
+```
+목표        : 익명게시판 글의 AI 넣기 감사 행에도 익명 표식을 달고, 수락 시험의 이름 단언을 댓글 쓴 사람까지 넓힌다.
+수정 파일   : src/community/ai_helpers.php(`ai.insert` 의 detail 을 community_anon_audit_detail 로 — 한 줄) · tests/community/cafe_c1_http.py · docs/cafe-report.md(C1b 절)
+완료 기준   : ① ai.insert 를 익명게시판 글에 부르면 감사 행 detail.anon_board = true · 감사 목록 `actor=<W>` 필터에 그 행 0
+                 (AI 열쇠 없이 — 합성 ai_log 행(status ok · feature summary · output_text)을 틀에서 넣고 `POST /community/api/pages/{id}/ai-insert` 를 부른다. 이 길이 틀에서 막히면 「미검증」으로 보고)
+              ② ② 의 카나리아 단언에 A · B 의 아이디 · 표시 이름도 더함(E · M 시점 모든 자리 — 본인 시점 제외)
+              ③ cafe_c1_http 한 번 · php -l · security_lint 0
+```
+
 ## C2 — 화면 (C1 검토 통과 뒤 · 같은 worktree)
 
 ```
