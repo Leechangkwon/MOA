@@ -100,3 +100,17 @@ C1(`dabdea8`)의 검토 결과 — 설계대로 된 것: 이름표 · 안전망 
               정적: security_lint 0 · php -l · node --check · asset_version --check · wiki_check · git diff --check
 보고 형식   : docs/cafe-report.md C2 절 — 변경 파일 / 수락 시험과 결과 / 못 한 것 / DESIGN 과 다르게 한 것. 짧게.
 ```
+
+## C3 — 오른쪽 위 「앱」 단추 (사용자 지적 2026-10-14 · C2 뒤 · 같은 worktree)
+
+사용자(스크린샷): 「ㅁ 9개가 각 앱 아이콘보다 작고 시각적으로 못생김 — 좀 더 좋은 아이콘으로, 좀 더 크게, 색상으로 강조해서 클릭해야 하는 것임을 직관적으로 알 수 있게」.
+
+```
+목표        : 오른쪽 위 앱 격자 단추를 2×2 둥근 네모 아이콘 24 · 글자 15/600 · 높이 44 · 파란 강조 바탕으로 바꿔 누르는 단추임이 바로 보이게 한다.
+요구사항    : DESIGN 2.28 「앱 단추」 줄(2026-10-14 고침 — main 의 DESIGN.md 를 읽는다) · 2.16 고대비 · 6장.
+수정 파일   : src/Apps.php(ICON_PATHS 에 'apps' 한 줄 — 채움 path) · src/views/shell_top.php(summary 의 data-icon 과 클래스만) · public/assets/app.css(2.28 값 · 채움 아이콘 규칙) ·
+              app.js 가 아이콘을 그리는 곳이 채움을 지원하지 않으면 그 함수에 채움 갈래 하나 · tests/community/cafe_c2_browser.py(C3 단언 더함) · docs/cafe-report.md(C3 절)
+금지 패턴   : 새 색값 · 인라인 style · 아이콘 두 벌 · 옛 'grid' 를 바꾸기(다른 자리가 씀)
+완료 기준   : 1440 · 1280 · 960 에서 summary 높이 44 · 아이콘 24 · 바탕이 --accent-soft 계산값 · 글자 대비 4.5 이상(밝게 · 어둡게 · 고대비 · 열림 상태 포함) ·
+              타일 아이콘(20)보다 단추 아이콘이 큼 · 412 에서 summary 0(그대로) · 안 읽은 점 자리 그대로 · 넘침 0 · 스크린샷 3장(밝게 · 어둡게 · 열림)
+```
