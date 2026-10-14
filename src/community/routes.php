@@ -364,6 +364,9 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/api/board-requests',                    'board_requests_list.php',   'role:Admin'],
     ['POST',   '/api/board-requests/{id}/decide',        'board_request_decide.php',  'role:Admin'],
     ['GET',    '/api/cafe',                              'cafe_home.php',             'authenticated'],
+    /* 카페 C2 (DESIGN 2.29) — 관리자 화면 둘(신고함 · 게시판 요청). 정책 role:Admin(+ 재인증 — 화면 요청은 /reauth 로 302) · 화면은 뼈대만, 목록 · 처리는 위 창구 */
+    ['GET',    '/reports',                               'reports_page.php',          'role:Admin'],
+    ['GET',    '/board-requests',                        'board_requests_page.php',   'role:Admin'],
     /* 개발 대기열 6 · Q:F-3a 라운드 A — 즐겨찾기 · 최근 (지시서 ../../../docs/qf3a-favorites-recent-bulk-directive.md 1.1 · 1.2,
        커뮤니티 ARCH 21.24). 정책은 전부 `community.read` — 로그인한 사람의 **개인 화면 설정**이고(내 줄만 읽고 쓴다),
        페이지를 넣을 수 있는지는 핸들러가 `CommunityAuthz::decidePageRead` 로, 목록은 검색과 같은 조건절

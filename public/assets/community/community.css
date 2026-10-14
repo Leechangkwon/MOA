@@ -1218,3 +1218,15 @@ body[data-page="community-board"] .table-foot {
   .mention-field > textarea, .mention-field > .mention-backdrop { font-size: 16px; }
   .mention-field > .menu__list .menu__item { min-height: 44px; }
 }
+
+/* 카페 C2 (DESIGN 2.29 「익명 표시」) — 익명 이름표 앞 아바타: 머리글자 대신 사람 아이콘(바탕 --surface-2 · 선 --muted). 새 클래스는 이 하나 · 색값 0.
+   크기는 상세 칸 아바타(.task-avatar 22)와 같다. 「(나)」는 `.muted` 그대로 */
+.anon-avatar { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 22px; height: 22px; margin-right: 6px; border-radius: 50%; background: var(--surface-2); color: var(--muted); vertical-align: middle; }
+.anon-avatar svg { width: 14px; height: 14px; }
+/* 신고함 · 게시판 요청 표(DESIGN 2.4 「새 표를 만들면 그 표의 thead 순서로」) — 대상 · 쓰임처럼 길어질 수 있는 열만 꺾는다 */
+#reports-body td:nth-child(1), #requests-body td:nth-child(1) { min-width: 10rem; overflow-wrap: anywhere; }
+#reports-body td:nth-child(3), #requests-body td:nth-child(3) { min-width: 7rem; overflow-wrap: anywhere; }
+#requests-body td:nth-child(2) { min-width: 12rem; overflow-wrap: anywhere; white-space: pre-wrap; }
+#reports-body td:nth-child(1) > .btn { justify-content: flex-start; height: auto; min-height: 32px; text-align: left; white-space: normal; }
+#reports-body tr.is-selected { background: var(--surface-2); }
+#reports-body tr { cursor: pointer; }

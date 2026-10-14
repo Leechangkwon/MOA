@@ -44,11 +44,16 @@ $pageHelp    = 'community-page';
 $pageCss     = ['community/community.css'];
 $shellModule = 'community';
 $pagePalette = community_palette_version();   // 7-D2 — 셸이 `<link id="palette-css" … ?v=>` 를 그린다(P-6·P-7)
+// 카페 C2 — `$shellArea` 는 아래 판정 뒤에 정해진다(셸을 그리기 전)
 
 // Q:F-12 U4-1 — 첫 화면 종류(머리글 ★ 참고). 판정을 지난 사람에게만 · 값은 고정 글자 셋
 $viewKind = '';
+$viewArea = '';   // 카페 C2 (DESIGN 2.29 「카페 셸」) — 카페 게시판 글(또는 카페 게시판에 게시된 페이지)이면 'cafe' — 같은 판정을 지난 때만
 $viewKindRow = community_page_row_nodoc($viewPageId, (int) $user['id']);
 if ($viewKindRow !== null && CommunityAuthz::decidePageRead($user, $viewKindRow)[0]) {
+    $viewBoard = CommunityAuthz::boardOfRow($viewKindRow);
+    $viewArea = $viewBoard !== null && ($viewBoard['area'] ?? '') === 'cafe' ? 'cafe' : '';
+    unset($viewBoard);
     if (($viewKindRow['dbself_public_id'] ?? null) !== null && ($viewKindRow['dbself_purpose'] ?? null) !== null) {
         $viewKind = 'project';
     } elseif (($viewKindRow['database_id'] ?? null) !== null && ($viewKindRow['db_purpose'] ?? null) !== null) {
@@ -58,6 +63,7 @@ if ($viewKindRow !== null && CommunityAuthz::decidePageRead($user, $viewKindRow)
     }
 }
 unset($viewKindRow);
+$shellArea = $viewArea;   // 카페 C2 — 'cafe' 이면 셸이 「우리 공간」 모드(`<body data-area="cafe">` · 카페 사이드바)
 
 ob_start();
 require __DIR__ . '/../../views/shell_top.php';
@@ -147,6 +153,8 @@ unset($viewShellTop);
             <button id="page-unpublish" class="menu__item" type="button" hidden>게시 해제</button>
             <button id="page-hide" class="menu__item" type="button" hidden>숨기기</button>
             <button id="page-resolve" class="menu__item" type="button" hidden>해결됨으로 표시</button>
+            <!-- 카페 C2 (DESIGN 2.29 「신고」) — 카페 글(셸 `data-area="cafe"`)이고 내 글이 아닐 때만 editor.js 가 연다. 막는 것은 창구 `POST /api/reports`(decideReportCreate) -->
+            <button id="page-report" class="menu__item" type="button" aria-haspopup="dialog" hidden><span class="icon" data-icon="shield"></span>신고</button>
             <!-- Q:F-12 (WK-16 A) — 데이터베이스 페이지를 「프로젝트로 쓰기」(섹션 칸 · 기본 보기 넷 · 색 — 서버 상수) · 프로젝트 화면에서는 「프로젝트로 보기」.
                  보이는 것은 행 목록 창구가 준 쓰임 · 관리 자격(can_manage_schema)대로 work.js 가 연다. 판정은 스키마 창구의 decidePageManage. -->
             <button id="page-use-project" class="menu__item" type="button" hidden><span class="icon" data-icon="work"></span>프로젝트로 쓰기</button>
@@ -280,6 +288,9 @@ unset($viewShellTop);
       </span>
       <span id="page-views" class="muted" hidden></span>
     </div>
+
+    <!-- 카페 C2 (DESIGN 2.29 「익명 표시」) — 익명게시판 글이면 editor.js 가 연다(창구가 준 board.board_kind). 고정 문장 -->
+    <p id="page-anon-note" class="help" hidden>익명게시판 — 다른 사람에게 이름이 보이지 않아요. 신고가 들어오면 관리자가 확인할 수 있어요.</p>
 
     <p id="msg" class="msg" role="alert" aria-live="polite"></p>
 

@@ -1,6 +1,7 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=1623c3625c33';
-import { renderDoc } from './doc-render.js?v=1623c3625c33';
-import { createMentionInput } from './mention-input.js?v=1623c3625c33';
+import { drawCalendar, rangeFor } from './calendar.js?v=93b1d7eae309';
+import { renderDoc } from './doc-render.js?v=93b1d7eae309';
+import { createMentionInput } from './mention-input.js?v=93b1d7eae309';
+import { personText } from './cafe.js?v=93b1d7eae309';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -161,6 +162,8 @@ export function createWork(deps) {
     return a;
   }
   function who(person) {
+    // 카페 C2 (DESIGN 2.29) — 칸이 익명게시판 글을 열면 창구가 사람 객체를 이름표(「글쓴이」 · 「익명N」 · is_me)로 바꿔 준다 — 「(나)」를 붙인다
+    if (person && person.anon === true) { return personText(person, personLabel); }
     return person ? personLabel(person.display_name || null, person.username || '') : '';
   }
   /** 진행률 — DESIGN 2.22 `.progress`(role=progressbar) + 「7/9」. 폭은 CSSOM(`--pct`)로만 */
@@ -1359,7 +1362,10 @@ export function createWork(deps) {
         const send = el('button', 'btn btn--quiet', '보내기');
         send.type = 'submit';
         foot.append(ta, send);
-        const mention = createMentionInput(ta, { pageId: id, api: api, personLabel: personLabel });
+        // 카페 C2 — 칸이 익명게시판 글을 열면 멘션 부품을 끈다(같은 부품의 끄기 옵션 — 창구가 준 board.board_kind)
+        const anonBoard = !!(data.board && data.board.board_kind === 'anonymous');
+        if (anonBoard) { ta.placeholder = '댓글을 적어 주세요 — 다른 사람에게는 「익명N」으로 보여요'; }
+        const mention = createMentionInput(ta, { pageId: id, api: api, personLabel: personLabel, disabled: anonBoard });
         foot.insertBefore(mention.notice, send);
         foot.addEventListener('submit', (e) => {
           e.preventDefault();

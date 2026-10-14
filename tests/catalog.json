@@ -6333,6 +6333,46 @@
       "est_sec": 60,
       "writes_prod": false,
       "notes": "사이트 Q:F-12 카페 C1 「보안 바닥」(docs/cafe-directive.md · 커뮤니티 ARCH 25장) — 빈 합성 DB(tbox_memories_test_*, tbox_testdb 역할로 만들고 지움 · 운영 기록 복사 0) · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 + 시험이 만드는 카나리아 계정 하나(아이디 anoncanary7f3a · 이름 익명카나리아). ① 스키마(첫 게시판 셋을 넣은 뒤 카페 이주 두 번 더 — 제약 · 권한 · 게시판 행 SAME · 자유게시판 area=cafe · 익명게시판 1행 · anonymous+work CHECK 거부 · tbox_app reports DELETE 0 · anon_aliases UPDATE · DELETE 0 · ?area 필터) · ② 카나리아 단언(25.4 표의 모든 자리를 다른 직원 · 관리자 시점으로 — pages_get · 게시판 목록(런처 피드 같은 창구) · comments_list · search · notifications_list · history · versions_list · version_get · export md/html · page_print · cafe · audit_list · reports_list — 카나리아 아이디 · 이름 0 · W/A/B 사용자 id 키 0 · 글쓴이 · 익명1 · 익명2 · 같은 사람 같은 번호 · 본인 is_me) · ③ 끈 기능(게시 403 · 제안 403 · 검증 400/403 · 멘션 후보 403 · @ 알림 0 · 절차 목록 0 · 자료실 참조 400 / 자유게시판 200) · ④ 자유 · 업무 · 개인 응답 그대로 · ⑤ 신고(201 · 409 · 자기 것 400 · 손님 403 · 못 보는 글 404 · 업무 글 400 · 하루 21번째 429 · 신고함 직원 403 · 재인증 없이 403 · 메모 필수 · 숨김 → 같은 대상 열린 신고 모두 hidden · moderated 알림 actor 없음 · 반려 하나만 · 지금 숨김 창구 모양 그대로) · ⑥ 작성자 확인(재인증 + 사유 20자 200 · 19자 400 · 재인증 없음 403 · 자유게시판 대상 400 · 직원 403 · 감사 allow/deny · 알림 0 · 저장 0) · ⑦ 감사 화면 가림 · actor= · ip= 필터에서 익명 행 0 · 관리자 행 그대로 · ⑧ 게시판 요청(3 + 429 · 손님 403 · 관리자 알림 · 만들기 = 공용 함수 · 반려 메모) · ⑨ 카페 홈(다른 팀 게시판 0 · 숨김 · 지운 글 0 · 질의 수 고정 — 리플렉션으로 PDO 문장 수를 센다: 셋 + 권한 표 하나) · ⑩ 익명 글 그림 EXIF · GPS 0 / 자유게시판은 그대로. 결과: cafe-c1-results.json(단언 · 참거짓 · 확정 값) · cafe-c1-schema-shape.txt."
+    },
+    {
+      "id": "community.cafe_c2_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite cafe_c2_browser.py --output /tmp/qaredi-cafe-c2-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/views/space_page.php",
+        "src/views/shell_top.php",
+        "src/community/routes.php",
+        "src/community/handlers/board_view.php",
+        "src/community/handlers/page_view.php",
+        "src/community/handlers/reports_page.php",
+        "src/community/handlers/board_requests_page.php",
+        "public/assets/space-page.js",
+        "public/assets/space-page.css",
+        "public/assets/community/cafe.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/work.js",
+        "public/assets/community/mention-input.js",
+        "public/assets/community/community.css",
+        "public/assets/app.css",
+        "src/Apps.php",
+        "tests/community/cafe_c2_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [],
+      "risks": [
+        "C:R-18"
+      ],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-12 카페 C2 「화면」(docs/cafe-directive.md · DESIGN 2.29 · 커뮤니티 ARCH 25장) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. 「우리 공간」 카페 홈(카드 · 새 글 · 인기 · 빈 상태 · 손님 요청 단추 0 · 내 공간 아래 그대로) · 카페 셸(body[data-area=cafe] — 읽기 판정 통과 때만 · 카페 게시판만 · 업무 트리 0 · 관리 묶음 관리자만) · 업무 사이드바 게시판 = area=work · 익명 표시(글쓴이 · 익명N · (나) · 사람 아이콘 · 안내 한 줄) · @ 목록 0 · 자료실 탭 0 · 신고 모달(라디오 다섯 · 409 · 알림 줄) · 댓글 신고 · 신고함(직원 403 · 탭 · 칸 · 메모 필수 · 숨기기 · 반려) · 작성자 확인(재인증 창 → 사유 20 → 이름 → 닫으면 DOM 0 · 저장소 · 주소 · 콘솔 0) · 게시판 요청 → 관리자 만들기 → 카드 · 반려 · 폭 여섯 × 밝게 · 어둡게 · 고대비 넘침 0 · 누름 자리 44 · 인라인 style 0 · 콘솔 0. 결과: cafe-c2-browser-results.json · cafe-c2-browser-metrics.json · shots/."
     }
   ]
 }

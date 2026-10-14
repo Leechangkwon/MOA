@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=1623c3625c33';
-import { hydrateDashboard } from './dashboard.js?v=1623c3625c33';
+import { createTableEditor } from './table-editor.js?v=93b1d7eae309';
+import { hydrateDashboard } from './dashboard.js?v=93b1d7eae309';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,23 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=1623c3625c33';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=1623c3625c33';
-import { createMentionInput } from './mention-input.js?v=1623c3625c33';
-import { createDatabaseView } from './database.js?v=1623c3625c33';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=1623c3625c33';
-import { bindEmbedAdmin } from './embeds.js?v=1623c3625c33';
-import { bindPopular } from './popular.js?v=1623c3625c33';
-import { bindPalettes } from './palettes.js?v=1623c3625c33';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=1623c3625c33';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=1623c3625c33';
-import { drawTrust, bindProcedures } from './procedures.js?v=1623c3625c33';
-import { createPageExport } from './export.js?v=1623c3625c33';
-import { createDrafts } from './drafts.js?v=1623c3625c33';
-import { drawPageAi, bindAiCenter } from './ai.js?v=1623c3625c33';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=1623c3625c33';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=93b1d7eae309';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=93b1d7eae309';
+import { createMentionInput } from './mention-input.js?v=93b1d7eae309';
+import { createDatabaseView } from './database.js?v=93b1d7eae309';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=93b1d7eae309';
+import { bindEmbedAdmin } from './embeds.js?v=93b1d7eae309';
+import { bindPopular } from './popular.js?v=93b1d7eae309';
+import { bindPalettes } from './palettes.js?v=93b1d7eae309';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=93b1d7eae309';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=93b1d7eae309';
+import { drawTrust, bindProcedures } from './procedures.js?v=93b1d7eae309';
+import { createPageExport } from './export.js?v=93b1d7eae309';
+import { createDrafts } from './drafts.js?v=93b1d7eae309';
+import { drawPageAi, bindAiCenter } from './ai.js?v=93b1d7eae309';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=93b1d7eae309';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=1623c3625c33';
+import { createWork } from './work.js?v=93b1d7eae309';
+import { createCafe, personInto, isAnon } from './cafe.js?v=93b1d7eae309';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -66,6 +67,11 @@ const body = document.body;
 const COMMUNITY_BASE = (body && body.getAttribute('data-community-base')) || '';
 const APP_BASE = (body && body.getAttribute('data-base')) || '';
 const GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시도하세요';
+/** 카페 C2 (DESIGN 2.29 「카페 셸」) — 서버가 읽기 판정을 지난 카페 게시판 · 글 화면에만 `<body data-area="cafe">` 를 단다. 표시용(판정 0) */
+const IS_CAFE = !!(body && body.getAttribute('data-area') === 'cafe');
+/** 카페 C2 — 카페 부품 한 벌(cafe.js) · 지금 페이지가 익명게시판 글인가(창구가 준 `board.board_kind` — 멘션 끔 · 자료실 탭 0) */
+let cafe = null;
+let pageIsAnon = false;
 
 /** 상태 변경 요청에 붙일 CSRF 토큰. t-box 창구 `GET /api/me` 가 준다(같은 세션·같은 토큰). */
 let csrfToken = null;
@@ -2823,7 +2829,8 @@ const BOARD_LEVEL_LABELS = {
 const BOARD_KIND_LABELS = {
   notice: { text: '공지', icon: 'log' },
   discussion: { text: '토론', icon: 'users' },
-  qa: { text: '질문답변', icon: 'help' }
+  qa: { text: '질문답변', icon: 'help' },
+  anonymous: { text: '익명', icon: 'users' }
 };
 /** 게시판 창구가 돌려주는 거부 사유 → 사람 문장. 없으면 서버가 준 문구를 그대로 쓴다. */
 const BOARD_REASONS = {
@@ -2857,10 +2864,19 @@ function currentBoardId() {
  * 돌려주는 값은 창구의 답 전체(게시 창·관리 창이 다시 쓴다). 실패하면 묶음은 숨은 채다.
  */
 let boardsCache = null;
-function loadBoards() {
+/** 카페 C2 — 게시판 **전부**(관리 창 · 게시 창이 쓴다 — 자리를 가리지 않는다). 사이드바는 아래 loadBoards(자리별) */
+function allBoards() {
   return api('GET', '/api/boards').then((result) => {
     if (result.status !== 200 || !Array.isArray(result.data.boards)) { return null; }
     boardsCache = result.data;
+    return result.data;
+  }).catch(() => null);
+}
+/* 카페 C2 (ARCH 25.2 · DESIGN 2.29) — 사이드바 게시판 묶음은 셸의 자리만: 업무 셸 `?area=work`(공지사항 · 질문과 답변) ·
+   「우리 공간」 셸 `?area=cafe`(자유 · 익명 …). 거르는 것은 창구의 SQL WHERE 다. */
+function loadBoards() {
+  return api('GET', '/api/boards?area=' + (IS_CAFE ? 'cafe' : 'work')).then((result) => {
+    if (result.status !== 200 || !Array.isArray(result.data.boards)) { return null; }
     const box = document.getElementById('nav-community-boards');
     const title = document.getElementById('nav-community-board-title');
     if (box) {
@@ -2999,7 +3015,7 @@ function initBoard() {
     tr.appendChild(titleCell);
 
     const who = document.createElement('td');
-    who.textContent = item.writer ? personLabel(item.writer.display_name, item.writer.username) : '—';
+    personInto(who, item.writer, personLabel);   // 카페 C2 — 익명게시판은 「글쓴이」(+ 내 것이면 「(나)」 --muted)
     tr.appendChild(who);
 
     const when = document.createElement('td');
@@ -3183,7 +3199,7 @@ function bindBoardManage(button, onChanged) {
     show(button, !!data && data.can_manage === true);
   }
   if (boardsCache) { showButton(boardsCache); }
-  loadBoards().then(showButton);
+  allBoards().then(showButton);
 
   function drawMode() {
     const isNew = editing === null;
@@ -3298,7 +3314,7 @@ function bindBoardManage(button, onChanged) {
       if (result.status === 200 || result.status === 201) {
         setText(msg, '');
         editing = null;
-        loadBoards().then(() => { drawList(); drawMode(); });
+        allBoards().then(() => { drawList(); drawMode(); });
         if (typeof onChanged === 'function') { onChanged(); }
         return;
       }
@@ -4493,12 +4509,14 @@ function createAtomDialog(getView, hooks) {
       widthSelect.value = dragged !== null ? 'pct' : (cur.width || 'normal');
       // U3 C — 올리기 탭(올릴 수 있는 편집기일 때만 · 첫 탭 · 기본). 자료실 파일(tbox:)을 고치는 중이면 자료실 탭부터
       const canUpload = !!(hooks.upload && hooks.upload());
+      // 카페 C2 (ARCH 25.3 · DESIGN 2.29) — 익명게시판 글에는 자료실 파일을 넣을 수 없다(창구가 400 anon_board) — 「자료실에서 고르기」 탭 0 · 「이 문서에 올리기」만
+      show(tabLib, !pageIsAnon);
       show(tabBar, canUpload);
       setText(upState, '');
       picker.setAttribute('accept', type === 'image' ? UPLOAD_IMAGE_MIMES.join(',') : '');
       if (!picker.getAttribute('accept')) { picker.removeAttribute('accept'); }
       uploadPick.setAttribute('aria-label', type === 'image' ? '이 문서에 그림 올리기' : '이 문서에 파일 올리기');
-      setFileTab(canUpload && !(typeof cur.file_ref === 'string' && cur.file_ref.slice(0, 5) === 'tbox:') ? 'upload' : 'library');
+      setFileTab(pageIsAnon || (canUpload && !(typeof cur.file_ref === 'string' && cur.file_ref.slice(0, 5) === 'tbox:')) ? 'upload' : 'library');
       searchFiles();
     }
     drawChosen();
@@ -6025,8 +6043,11 @@ function initPage() {
       state.canComment = w && result.data.can_comment === true;
       state.canViewReads = result.data.can_view_reads === true;
       drawVisibility();
+      // 카페 C2 — 익명게시판 글인가(창구가 준 종류) · 신고 메뉴 · 안내 한 줄. 이름표를 그리기 전에 정한다
+      pageIsAnon = !!(state.board && state.board.board_kind === 'anonymous');
       drawProps();
       drawBoard();
+      drawCafe();
       drawTags();
       commentsLoaded = loadComments();   // B1-2 — 답글 사본을 되살릴 때 대상 댓글이 그려진 뒤에 찾는다
       loadReads();
@@ -6124,7 +6145,8 @@ function initPage() {
     // 5-C — 게시판 글은 「쓴 사람」이다(공간의 주인이 사람이 아니다).
     setText(document.getElementById('page-owner-label'), state.writer ? '쓴 사람' : '소유자');
     if (ownerNameEl && state.writer) {
-      setText(ownerNameEl, personLabel(state.writer.display_name, state.writer.username));
+      // 카페 C2 — 익명게시판 글은 「글쓴이」(+ 사람 아이콘 · 내 글이면 「(나)」). 실명은 지금 그대로
+      personInto(ownerNameEl, state.writer, personLabel, { avatar: true });
     } else if (ownerNameEl) {
       let text = '—';
       if (state.owner && state.owner.kind === 'personal' && typeof state.owner.username === 'string') {
@@ -6179,6 +6201,30 @@ function initPage() {
     show(viewsEl, !!b);
   }
 
+  /* ── 카페 C2 (DESIGN 2.29 「익명 표시」 · 「신고」) ──
+     안내 한 줄 · 댓글 칸 멘션 끔 · 「신고」(카페 글이고 내 글이 아니고 쓰기 자격일 때 — 표시용이다. 막는 것은 창구 decideReportCreate) */
+  const anonNote = document.getElementById('page-anon-note');
+  const reportItem = document.getElementById('page-report');
+  function mine(person, owner) {
+    if (person && typeof person === 'object') { return isAnon(person) ? person.is_me === true : (meUsername !== null && person.username === meUsername); }
+    return !!owner && meUsername !== null && owner.username === meUsername;
+  }
+  function drawCafe() {
+    show(anonNote, pageIsAnon);
+    if (commentInput) {
+      commentInput.setAttribute('placeholder', pageIsAnon ? '댓글을 적어 주세요 — 다른 사람에게는 「익명N」으로 보여요' : '@아이디 로 사람을 부를 수 있습니다');
+    }
+    if (commentMention) { commentMention.refresh(); }
+    const b = state.board;
+    show(reportItem, IS_CAFE && meCanWrite && !!b && b.hidden !== true && !mine(state.writer, state.owner));
+  }
+  if (reportItem) {
+    reportItem.addEventListener('click', () => {
+      if (!cafe) { return; }
+      cafe.openReport({ pageId: pageId, onDone: (text) => { setText(msg, text); if (msg) { msg.classList.add('msg--ok'); } } });
+    });
+  }
+
   /** 단추 하나 = 창구 한 번. 성공하면 다시 받아 그리고(배지·단추가 바뀌는 것이 곧 알림 — DESIGN 4장),
       실패하면 서버 문구(또는 사유 표)를 `#msg`(오류 줄)에 보인다. */
   function boardAction(button, method, path, payload, okText) {
@@ -6228,8 +6274,9 @@ function initPage() {
       setText(publishMsg, '');
       clear(publishChoices);
       if (publishSave) { publishSave.disabled = true; }
-      loadBoards().then((data) => {
-        const writable = data && Array.isArray(data.boards) ? data.boards.filter((b) => b.can_write === true) : [];
+      allBoards().then((data) => {
+        // 카페 C2 — 익명게시판에는 게시할 수 없다(ARCH 25.3 — 창구 decidePublish 가 403 anon_board). 고를 거리에서 미리 뺀다(편의)
+        const writable = data && Array.isArray(data.boards) ? data.boards.filter((b) => b.can_write === true && b.anonymous !== true) : [];
         for (const b of writable) {
           const label = document.createElement('label');
           label.className = 'field field--full';
@@ -6405,7 +6452,7 @@ function initPage() {
   /* Q:F-12 U4-4(DESIGN 2.27) — `@` 후보 목록 · 확인 색 · 「부를 사람」 줄은 멘션 입력 부품 한 벌(작업 칸 댓글과 같은 함수).
      떠 있는 목록 id 는 옛 칸 안 목록의 id(`comment-mentions`)를 잇는다 · 「찾을 수 없는 사람」 안내는 보내기 줄 앞 */
   const commentMention = commentInput
-    ? createMentionInput(commentInput, { pageId: pageId, api: api, personLabel: personLabel, listId: 'comment-mentions' })
+    ? createMentionInput(commentInput, { pageId: pageId, api: api, personLabel: personLabel, listId: 'comment-mentions', disabled: () => pageIsAnon })
     : null;
   if (commentMention && commentSubmit && commentSubmit.parentNode) { commentSubmit.parentNode.insertBefore(commentMention.notice, commentSubmit.parentNode.firstChild); }
 
@@ -6461,6 +6508,7 @@ function initPage() {
 
   function commentCall(method, path, payload) {
     setText(commentsMsg, '');
+    if (commentsMsg) { commentsMsg.classList.remove('msg--ok'); }
     return api(method, path, payload).then((result) => {
       if (result.status === 401) { toLogin(); return false; }
       if (result.status === 200 || result.status === 201) { loadComments(); return true; }
@@ -6516,7 +6564,7 @@ function initPage() {
     const head = document.createElement('div');
     head.className = 'list__head';
     const who = document.createElement('strong');
-    who.textContent = c.author ? personLabel(c.author.display_name, c.author.username) : '—';
+    personInto(who, c.author, personLabel, { avatar: true });   // 카페 C2 — 익명게시판은 「익명N」 · 「글쓴이」(+ 사람 아이콘 · 「(나)」)
     head.appendChild(who);
     const when = document.createElement('span');
     when.className = 'muted';
@@ -6611,6 +6659,30 @@ function initPage() {
         actions.appendChild(commentButton(c.hidden ? '숨김 풀기' : '숨기기', () => {
           commentCall(c.hidden ? 'DELETE' : 'POST', '/api/comments/' + c.id + '/hide');
         }));
+      }
+      // 카페 C2 (DESIGN 2.29 「신고」) — 댓글 줄 「…」 메뉴(2.15)에 「신고」. 카페 글 · 쓰기 자격 · 내 댓글이 아님 · 보이는 댓글일 때만(표시용 — 창구가 다시 막는다)
+      if (IS_CAFE && meCanWrite && !c.hidden && c.body !== null && !mine(c.author, null)) {
+        const more = document.createElement('details');
+        more.className = 'menu';
+        const sum = document.createElement('summary');
+        sum.className = 'btn btn--icon btn--plain';
+        sum.setAttribute('aria-label', '댓글 더보기');
+        sum.appendChild(document.createTextNode('…'));
+        const list = document.createElement('div');
+        list.className = 'menu__list';
+        const rep = document.createElement('button');
+        rep.type = 'button';
+        rep.className = 'menu__item';
+        rep.setAttribute('aria-haspopup', 'dialog');
+        rep.setAttribute('data-comment-report', c.id);
+        rep.textContent = '신고';
+        rep.addEventListener('click', () => {
+          more.open = false;
+          if (cafe) { cafe.openReport({ pageId: pageId, commentId: c.id, onDone: (text) => { setText(commentsMsg, text); if (commentsMsg) { commentsMsg.classList.add('msg--ok'); } } }); }
+        });
+        list.appendChild(rep);
+        more.append(sum, list);
+        actions.appendChild(more);
       }
       if (actions.firstChild) { li.appendChild(actions); }
     }
@@ -8439,7 +8511,7 @@ function boot() {
   const page = body && body.dataset ? body.dataset.page : '';
   // Q:F-12 D — 업무 홈 · 포트폴리오(`community-overview`) · 내 작업(`community-today`)도 이 한 벌로 시작한다(셸 키는 C 가 정한 그대로)
   if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-ai' && page !== 'community-threads'
-      && page !== 'community-overview' && page !== 'community-today') { return; }
+      && page !== 'community-overview' && page !== 'community-today' && page !== 'community-reports' && page !== 'community-board-requests') { return; }
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
@@ -8466,6 +8538,9 @@ function boot() {
           favorites: { star: navStar, ids: () => favoriteIds, onChange: (fn) => { favoriteListeners.push(fn); } },   // Q:F-12 U2 — 업무함 ★ = 사이드바 즐겨찾기의 같은 함수 · 같은 창구
           makeIcon: makeIcon, canWrite: () => meCanWrite, meName: () => meUsername || '', loadSpaces: loadSpaces, mountEditor: mountPaneEditor
         });
+        // 카페 C2 — 카페 부품(신고 · 이름표 · 관리자 화면 둘) · 「우리 공간」 셸의 관리 묶음(can_admin — 표시용)
+        cafe = createCafe({ api: api, personLabel: personLabel, base: COMMUNITY_BASE });
+        cafe.bindShell(me);
         initDocumentTrash();
         work.bindShell();
         bindNewPage();
@@ -8475,7 +8550,9 @@ function boot() {
         bindFavoritesFold();
         loadFavoritesNav();
         if (page !== 'community-page') { loadRecentNav(); }
-        if (page === 'community-ai' || page === 'community-threads') { loadSpaces(); }
+        if (page === 'community-reports') { cafe.initReports(); }
+        else if (page === 'community-board-requests') { cafe.initBoardRequests(); }
+        else if (page === 'community-ai' || page === 'community-threads') { loadSpaces(); }
         else if (page === 'community-overview') {
           // Q:F-12 D — 업무 홈 · 포트폴리오 화면(같은 셸 키 — 화면은 자기 뼈대의 id 로 고른다)
           loadSpaces();
@@ -8497,8 +8574,8 @@ function boot() {
           loadSpaces();
           initPage();
         }
-        // 5-C — 사이드바 「게시판」 묶음(세 화면 공통). 게시판 화면은 관리 창이 같은 답을 다시 쓴다.
-        if (page !== 'community-board') { loadBoards(); }
+        // 5-C — 사이드바 「게시판」 묶음(모든 화면). 카페 C2 — 자리별(`?area=`) 목록이라 관리 창 · 게시 창의 전체 목록(allBoards)과 따로 받는다
+        loadBoards();
         // 5-D — 사이드바 알림 종(세 화면 공통, 30초 폴링)
         initNotifications();
         return null;

@@ -50,3 +50,33 @@ board_pages_create(page.create) · SaveDoc(page.update — pages_update 의 몸)
 
 ### 못 한 것
 - 없음(AI 넣기 길은 틀에서 막히지 않아 「미검증」 0).
+
+## C2 — 화면 · 2026-10-14 · Opus 구현 에이전트
+
+### 변경 파일
+- 서버 화면: `src/views/space_page.php`(맨 위 `section.cafe-home` 뼈대 · 「내 공간」 h2 · `data-community-base` · `data-cafe-js`) · `src/views/shell_top.php`(받는 변수 `$shellArea` — 허용 값 `'cafe'` 하나 · `<body data-area="cafe">` · 「우리 공간」 모드 사이드바: 브랜드 「우리 공간」(아이콘 spaces · `/tbox/spaces`) · 카페 홈 · 받은 알림 · 검색 · 카페 게시판 · 관리(신고함 · 게시판 요청 — hidden, can_admin 일 때 화면이 연다) — 업무 트리 · 프로젝트 · 포트폴리오 · 팀 · 문서 · 즐겨찾기 · 최근 · 더보기 · 새로 만들기 0 · 셸 키 둘) · `src/community/handlers/board_view.php`(`community_board_row` + `decideBoardRead` 통과 때만 area 를 읽어 `$shellArea`) · `page_view.php`(`decidePageRead` 통과 때만 `boardOfRow` 의 area · 더보기 「신고」 항목 · 익명 안내 한 줄) · 새 `reports_page.php` · `board_requests_page.php`(뼈대만 — 탭 · 2.4 표 · 2.21 칸) · `src/community/routes.php`(라우트 2줄 `/reports` · `/board-requests` — role:Admin)
+- JS: 새 `public/assets/community/cafe.js`(신고 모달 · 게시판 요청 모달 · 작성자 확인 모달 · 신고함 · 게시판 요청 화면 · 익명 이름표 `personInto` · `.anon-avatar` — 2.7 공용 창 한 벌, 닫히면 창째 DOM 에서 지움) · `editor.js`(import · `IS_CAFE` · 사이드바 `loadBoards` = `?area=work|cafe` · 관리 창 · 게시 창은 `allBoards`(전부 — 게시 창은 익명게시판 제외) · 게시판 목록 · 글 머리 · 댓글 이름표 · 안내 한 줄 · 신고(글 더보기 · 댓글 「…」 — 카페 · 쓰기 자격 · 내 것 아님) · 멘션 끔 · 그림/파일 창 자료실 탭 0 · 관리자 화면 둘 시작) · `work.js`(칸 댓글 이름표 「(나)」 · 칸이 익명게시판 글이면 멘션 끔) · `mention-input.js`(끄기 옵션 `disabled` 하나 — 목록 · 확인 색 · 후보 요청 0, 안내 한 줄) · `space-page.js`(카페 홈 — `GET /community/api/cafe` · 요청 모달은 cafe.js 동적 import)
+- CSS: `space-page.css`(`.cafe-home` · `.cafe-boards` · `.cafe-board` · `.cafe-feed`) · `community.css`(`.anon-avatar` · 새 표 둘의 nth-child 폭 규칙) — 새 클래스는 2.29 의 다섯뿐 · 색값 0. `app.css` 는 C2 에서 손대지 않았다.
+- 부품 버전: `php scripts/community_asset_version.php` 로 import 줄(dashboard · database · editor · suggestions · table-editor · templates · work · ../messenger.js)
+- 시험: 새 `tests/community/cafe_c2_browser.py` · `memories_harness.py`(choices) · `tests/catalog.json`(community.cafe_c2_browser)
+- 문서: 새 `wiki/community/guide-cafe.json`(「화면만 익명 — 신고가 들어오면 관리자가 확인할 수 있어요.」 문장 포함) · `wiki/community/index.json`
+- 서버 판정 · 창구 · 보안 핵심 파일 변경 0(C1 창구가 준 값만 그린다 — 모자란 데이터 없음).
+
+### 수락 시험
+- 명령: `python3 tests/community/memories_harness.py --suite cafe_c2_browser.py --output /home/changkwon/qaredi-cafe-results-20261014/c2-run2` → **pass 298 · fail 0**(rc 0) — `c2-run2/cafe-c2-browser-results.json` · `cafe-c2-browser-metrics.json` · `shots/`(23장).
+  묶음: [empty] 카드 · 빈 상태 · 손님 요청 단추 0 · 「내 공간」 아래 그대로 / [home] 새 글 · 인기 · 「글쓴이 (나)」 · 412 한 열 / [shell] data-area · 「우리 공간」 사이드바 · 업무 트리 0 · 관리 묶음 관리자만 · 업무 셸 게시판 = 공지 · 질문(자유 0) · 다른 팀 카페 게시판은 data-area 0 / [anon] 「글쓴이」 · 「익명1 (나)」 · 「익명2」 · 사람 아이콘 · 안내 한 줄 · @ 목록 0(후보 요청 0) · 자료실 탭 0(자유게시판 대조 — 탭 · @ 그대로) · 신고 모달(라디오 다섯 · 미선택 문구 · 201 · 409 「이미 신고한 글이에요」 · Esc 로 창 제거) · 댓글 「…」 신고 · 내 것 0 / [matrix] 360 · 412(터치) · 820 · 1199 · 1280 · 1440 × 밝게 · 어둡게 · 고대비 × 카페 홈 · 익명 글 · 신고함(칸 열림) 넘침 0 · 누름 자리 < 44 0 · 인라인 style 0 · 콘솔 0 / [reports] 직원 403 · 탭 셋 · 2.21 칸(fixed 400~480) · 메모 필수 · 재인증 창 → 사유 19자 막힘 → 20자 이상 200 · 이름은 창 안에만 · 저장소 · 주소 · 콘솔 0 · 닫으면 DOM 0 · 숨기기 → 숨김 탭 · 반려 → 반려 탭 / [request] 모달(40 · 500 · 익명 체크) · 201 · 관리자 반려(메모 필수) · 만들기(등급 기본 사내) → 만듦 탭 · 카페 홈 카드.
+- 첫 실행 `c2-run1` 은 중간에 멈췄다(시험 쪽 둘: 행렬의 관리자 새 세션에 재인증을 달지 않음 · 테마 검정 단추 한계를 따로 세지 않음 — 시험만 고쳐 run2). run1 이 남긴 합성 DB · 임시 폴더 · php 서버는 손으로 지웠다(`dropdb --if-exists tbox_memories_test_8768_2866654` · `/tmp/qaredi-stage13-xb8_girx` 제거 · 포트 8768/8769 비움 확인).
+- 정적: security_lint 0 · php -l 0 · node --check 0 · `community_asset_version.php --check` 0 · wiki_check 0 · git diff --check 0 — `c2-static.txt`.
+- 다른 회귀는 돌리지 않았다. 옛 시험 단언 변경 0(검토: browser_5c 는 stage5c 인스턴스가 카페 이주를 돌리지 않아 자유게시판이 work 그대로 — 영향 없음으로 판단, 미실행).
+
+### 못 한 것 · 한계
+- 테마 design.css 의 검정 단추 「반짝」 `::before`(z-index -1 · inset 0)가 폰 폭의 터치 넓힘 `::before` 를 덮어 **검정 단추는 보이는 36px 그대로**다(예: 지금 있던 글 화면 「댓글 달기」 94×36). 이 조각 밖 파일(design.css)이라 고치지 않고, 시험은 이 한 종류를 `preexisting_black_btn` 으로 따로 센다(metrics). 메인 판단 필요.
+- 접힌 사이드바(☰ 64px) · 960 미만 서랍에서의 「우리 공간」 모드는 넘침만 봤다(접힘 전용 단언 0).
+- 작성자 확인 화면 흐름의 재인증은 합성 관리자 계정에 시험만 아는 비밀번호를 넣고 실제 공용 재인증 창(`/tbox/api/reauth`)을 지났다(fixture 비밀번호가 무작위라).
+
+### DESIGN 과 다르게 한 것
+- 신고 모달 바닥 「취소」 → **「닫기」**(2.7 「창 바닥 단추」 ② — 창 바닥에 「취소」를 쓰지 않는다 · dbg_u2_ui 가 센다). 요청 · 확인 · 결정 모달도 같다.
+- 「신고했어요 — 관리자가 확인해요」 **토스트 부품이 없어** 화면 알림 줄(`#msg` / 댓글 알림 줄)에 성공 모양 `.msg--ok` 로 보인다(새 부품 · 클래스 0).
+- 「우리 공간」 사이드바에 **받은 알림**을 둔다(2.29 목록에는 없음) — 익명 댓글 · 「관리자가 숨겼어요」 알림을 받는 길이고 종 · 창은 업무와 같은 한 벌.
+- 신고함 표의 「대상」 칸은 `.btn--quiet.btn--small` 단추(키보드로 칸을 여는 자리) · 줄 전체 누름도 같은 칸.
+- 「우리 공간」 화면의 머리글 순서: 카페 `h2` → 「내 공간」 `h2` → 지금 공간 이름 `h1`(지금 화면 그대로 두라는 지시라 h1 을 옮기지 않았다).

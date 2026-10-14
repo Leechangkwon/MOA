@@ -18,11 +18,15 @@
  *   · **화면은 판단하지 않는다** — 후보 · 확인은 창구가 준 답뿐(「그 문서를 볼 수 있는 사람」은 서버 `decideMentionTarget`). 화면이 사람을 거르거나 더하지 않는다.
  *   · 요소는 createElement, 글자는 textContent · createTextNode 로만(HTML 문자열 0). 인라인 style 0 — 두 층의 맞춤은 CSS(`.mention-field`)가 한다.
  *   · 토큰 모양은 서버 `community_mentions_in` 과 같다: 앞 글자가 `[a-z0-9_.@-]` 가 아닌 `@` + `[a-z0-9_.-]{3,64}`(끝 마침표는 뗀다).
+ *   · 카페 C2(DESIGN 2.29 「익명 표시」) — 끄기 옵션 하나 `disabled`(참/거짓 또는 그 값을 돌려주는 함수 — 페이지를 받은 뒤 정해지므로 함수로 넘긴다).
+ *     켜져 있으면 그냥 입력 칸이다: 후보 목록 · 확인 색 · 「부를 사람」 줄 · 후보 창구 요청 0, 칸 아래 한 줄 「익명게시판에서는 @ 부르기를 쓸 수 없어요」.
+ *     서버도 익명게시판 글에서는 멘션을 해석하지 않는다(comments_create — 알림 0 · mention_candidates 403) — 화면은 그 사실을 미리 말할 뿐이다.
  */
 
 const TOKEN_RE = /(^|[^a-z0-9_.@-])@([a-z0-9_.-]{1,64})/g;
 const NAME_RE = /^[a-z0-9_.-]{3,64}$/;
 const EMPTY_TEXT = '부를 수 있는 사람이 없어요 — 이 문서를 볼 수 있는 사람만 부를 수 있어요';
+const OFF_TEXT = '익명게시판에서는 @ 부르기를 쓸 수 없어요';
 let seqId = 0;
 
 function el(tag, cls, text) {
@@ -53,7 +57,7 @@ export function mentionTokens(text) {
 
 /**
  * @param {HTMLTextAreaElement} textarea
- * @param {{pageId: string|Function, api: Function, personLabel?: Function, listId?: string}} opts
+ * @param {{pageId: string|Function, api: Function, personLabel?: Function, listId?: string, disabled?: boolean|Function}} opts
  * @return {{notice: HTMLElement, refresh: Function, reset: Function, close: Function, missing: Function}}
  */
 export function createMentionInput(textarea, opts) {
@@ -63,6 +67,8 @@ export function createMentionInput(textarea, opts) {
     ? opts.personLabel
     : (display, username) => (display ? display + '(' + username + ')' : username);
   const uid = 'mention-' + String(++seqId);
+  /** 카페 C2 — 끔(익명게시판). 함수면 부를 때마다 묻는다 */
+  const off = () => (typeof opts.disabled === 'function' ? opts.disabled() === true : opts.disabled === true);
 
   /* 틀 — 입력 칸 자리에 `.mention-field`(그림자 층 · 입력 칸 · 떠 있는 목록)를 세운다. 입력 칸은 그대로 옮긴다(id · 이름표 · 듣는 것 그대로) */
   const field = el('div', 'mention-field');
@@ -108,6 +114,15 @@ export function createMentionInput(textarea, opts) {
   function paint() {
     const text = textarea.value;
     while (backdrop.firstChild) { backdrop.removeChild(backdrop.firstChild); }
+    if (off()) {
+      // 끔 — 확인 색 0 · 안내 한 줄만(색 · 후보 없이 그냥 입력 칸)
+      backdrop.appendChild(document.createTextNode(text + '​'));
+      help.textContent = OFF_TEXT;
+      help.hidden = false;
+      notice.textContent = '';
+      notice.hidden = true;
+      return;
+    }
     let pos = 0;
     const ok = [];
     const miss = [];
@@ -138,6 +153,7 @@ export function createMentionInput(textarea, opts) {
   /** 아직 모르는 아이디를 창구에 묻는다(정확히 같은 아이디가 돌아오면 확인 · 아니면 못 찾음). 300ms 묶음 —
       지금 치고 있는 토큰(캐럿이 그 끝)은 손을 멈춘 뒤(1초)에 묻는다 — 한 글자마다 빨강이 깜빡이지 않게 */
   function runCheck(skipCurrent) {
+    if (off()) { return; }
     const names = [];
     for (const t of mentionTokens(textarea.value)) {
       if (NAME_RE.test(t.name) && !known.has(t.name) && names.indexOf(t.name) === -1) { names.push(t.name); }
@@ -232,6 +248,7 @@ export function createMentionInput(textarea, opts) {
 
   /** 캐럿 자리를 보고 목록을 연다 · 닫는다(입력 · 누르기 · 화살표) */
   function sync(fromInput) {
+    if (off()) { close(); return; }
     const tok = tokenAtCaret();
     if (!tok) { dismissedAt = -1; close(); return; }
     if (fromInput) { dismissedAt = -1; }

@@ -63,6 +63,14 @@ require_once __DIR__ . '/../Design.php';
  *     접힌 사이드바에서 남는 항목의 툴팁 글자는 고정 글자 `data-tip`(동적 값 0).
  *   · 서랍(`#mobile-nav-dialog`)의 「메뉴 / 앱·계정」 전환 단추를 없앴다 — ☰ 는 앱 내비만 연다.
  *   · 세 앱 셸(자료실 · 업무 · 이야기) 모두 같은 마크업 한 벌이다. 역할 비교 0 · 인라인 style·script 0 그대로.
+ *
+ * ★ 카페 C2 (사이트 Q:F-12 카페 · DESIGN 2.29 「카페 셸」 · 커뮤니티 ARCHITECTURE 25장):
+ *   · 받는 변수 `$shellArea`(string) — 허용 목록 한 값 `'cafe'` 만 통과하고 업무 셸(`$shellModule = 'community'`)에서만 뜻이 있다.
+ *     넘기는 쪽은 카페 게시판 화면 · 카페 글 화면(**읽기 판정을 지난 때만** — board_view.php · page_view.php)과 관리자 화면 둘(신고함 ·
+ *     게시판 요청 — 라우트 정책 role:Admin)뿐이다. 이 파일에는 판정이 없다 — 값이 오면 `<body data-area="cafe">` 와 「우리 공간」 모드 사이드바를 그린다.
+ *   · 「우리 공간」 모드: 브랜드 「우리 공간」(아이콘 spaces · 첫 화면 `/tbox/spaces`) · 카페 홈 · 받은 알림 · (공용) 검색 · 카페 게시판 목록
+ *     (editor.js 가 `GET /api/boards?area=cafe` 의 답으로 채운다) · 관리 묶음(신고함 · 게시판 요청 — hidden 으로 나가고 `/api/me` 의 can_admin 이
+ *     참일 때만 화면이 연다. 막는 것은 라우트 정책 role:Admin + 재인증). 업무 트리 · 프로젝트 · 포트폴리오 · 팀 · 문서 · 즐겨찾기 · 최근 · 더보기 · 「＋ 새로 만들기」는 그리지 않는다.
  */
 
 /** 내비·본문 키의 허용 목록. 여기 없는 값은 빈 문자열이 된다. */
@@ -73,6 +81,8 @@ $shellKeys = [
     'community-home', 'community-page', 'community-today', 'community-ai', 'community-threads', 'community-overview',
     // 커뮤니티 5-C — 게시판 화면
     'community-board',
+    // 카페 C2 (DESIGN 2.29) — 관리자 화면 둘(신고함 · 게시판 요청). app.js 는 모르는 키라 셸만 그리고 물러나고 editor.js 가 cafe.js 로 그린다
+    'community-reports', 'community-board-requests',
 ];
 
 /**
@@ -88,6 +98,9 @@ $shellModuleKeys = ['community', 'story'];
 $shellMod = isset($shellModule) && is_string($shellModule) && in_array($shellModule, $shellModuleKeys, true)
     ? $shellModule
     : '';
+
+/** 카페 C2 — 「우리 공간」 모드(업무 셸에서만 · 허용 목록 한 값). 판정은 넘기는 핸들러가 끝냈다 — 이 파일은 고정 글자만 그린다 */
+$shellCafe = $shellMod === 'community' && isset($shellArea) && $shellArea === 'cafe';
 
 /** 그리드 팝업·아이콘 줄에서 `aria-current="page"` 가 붙는 앱의 key (`config/apps.json` 의 key — 모드 이름과 같다) */
 $shellCurrentApp = $shellMod === '' ? 'tbox' : $shellMod;
@@ -119,11 +132,15 @@ foreach ($shellApps as $shellHereRow) {
     }
 }
 $shellBrandName = '모아 ' . $shellHereName;
+if ($shellCafe) {
+    // 카페 C2 (DESIGN 2.29 「앱 이름 자리 「우리 공간」」) — 고정 글자 · 아이콘은 Apps::ICON_PATHS 의 spaces(사람 셋)
+    [$shellBrandName, $shellBrandSub, $shellBrandIcon] = ['우리 공간', '카페 · 회사 · 모임 공간', 'spaces'];
+}
 /** 브랜드 표시의 색 갈래(moa.css 의 `.moa-module-mark--tbox|community` 둘뿐 — 이야기는 옛 커뮤니티 것 그대로) */
 $shellMarkKey = $shellCurrentApp === 'tbox' ? 'tbox' : 'community';
 /** 브랜드를 누르면 가는 그 앱의 첫 화면 — 고정 경로뿐 */
-$shellBrandHref = $shellMod === 'community' ? Http::communityUrl('/')
-    : ($shellMod === 'story' ? Http::communityUrl('/memories') : Http::url('/'));
+$shellBrandHref = $shellCafe ? Http::url('/spaces') : ($shellMod === 'community' ? Http::communityUrl('/')
+    : ($shellMod === 'story' ? Http::communityUrl('/memories') : Http::url('/')));
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
 // 5-A″ — 「이름 (아이디)」, 이름이 없으면 「아이디」(모양은 bootstrap `tbox_person_label` 한 벌).
@@ -361,7 +378,7 @@ if ($shellMod === 'community'): ?>
 <?php endif; ?>
 <?= Design::assets() ?>
 </head>
-<body data-service="<?= $shellMod === 'community' ? 'work' : ($shellMod === 'story' ? 'story' : 'library') ?>" data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?>>
+<body data-service="<?= $shellMod === 'community' ? 'work' : ($shellMod === 'story' ? 'story' : 'library') ?>" data-page="<?= $shellPage ?>" data-base="<?= TBOX_BASE ?>"<?= $shellMod === '' ? '' : ' data-community-base="' . COMMUNITY_BASE . '"' ?><?= $shellCafe ? ' data-area="cafe"' : '' ?>>
 <a class="skip" href="#main">본문으로 건너뛰기</a>
 <div class="app">
   <!-- Q:F-12 U2 (DESIGN 2.18 · WK-23 B) — 왼쪽 앱 아이콘 줄은 없앴다. 앱 바꾸기는 본문 오른쪽 위 ⋮⋮⋮ 격자(아래 앱 격자 줄). -->
@@ -423,7 +440,17 @@ if ($shellMod === 'community'): ?>
       </a>
     </div>
 
-<?php if ($shellMod === 'community'): ?>
+<?php if ($shellCafe): ?>
+    <!-- ─── 「우리 공간」 모드 사이드바 위쪽 (카페 C2 · DESIGN 2.29 「카페 셸」) — 카페 홈 · 받은 알림 → (아래 공용) 검색.
+         「＋ 새로 만들기」 · 홈 · 내 작업은 업무 앱의 것이라 그리지 않는다. 받은 알림은 익명 댓글 · 신고 처리 알림을 받는 길이라 둔다(종 · 창은 업무와 같은 한 벌). -->
+    <nav class="nav" aria-label="우리 공간">
+      <a id="nav-cafe-home" class="nav__item" href="<?= Http::url('/spaces') ?>" data-tip="카페 홈"><span class="icon" data-icon="home"></span><span>카페 홈</span></a>
+      <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog" data-tip="받은 알림">
+        <span class="icon" data-icon="bell"></span><span>받은 알림</span>
+        <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>
+      </button>
+    </nav>
+<?php elseif ($shellMod === 'community'): ?>
     <!-- ─── 업무 앱의 사이드바 위쪽 (Q:F-12 · DESIGN 2.19 ②③ — 시안 v1) ─────────────────────────────
          「＋ 새로 만들기」(셸의 검정 하나 · 쓰기 자격이 없으면 그리지 않는다 — `can_community_write` 와 같은 판정 함수) →
          홈 · 내 작업 · 받은 알림 → (아래 공용) 검색 · 메신저. 「오늘 할 일」은 없어졌다(옛 주소 `/community/today` 는 308 `/community/my-tasks`).
@@ -515,6 +542,21 @@ if ($shellMod === 'community'): ?>
          새 클래스 0: 제목은 `.nav-title`, 줄은 사이드바 트리와 같은 `.nav-tree` 줄(5-A′). 접기·펼치기는 <details> 가 한다
          (여닫는 스크립트 0 · 키보드로도 열린다 — DESIGN 2.14 페이지 트리와 같은 방식). 즐겨찾기 순서는 줄을 끌어 놓거나
          Alt+↑/↓ 로 바꾼다(editor.js — `PATCH /community/api/me/favorites`). -->
+<?php   if ($shellCafe): ?>
+    <!-- 카페 C2 (DESIGN 2.29) — 카페 게시판 목록(editor.js loadBoards 가 `?area=cafe` 의 답 — 볼 수 있는 카페 게시판만) · 관리(신고함 · 게시판 요청).
+         관리 묶음은 hidden 으로 나가고 `/api/me` 의 can_admin(표시용)이 참일 때만 cafe.js 가 연다 — 막는 것은 라우트 정책 role:Admin + 재인증(이 파일에 역할 비교 0). -->
+    <details id="nav-community-boards-group" data-sidebar-group open>
+    <summary id="nav-community-board-title" class="nav-title" hidden>카페 게시판</summary>
+    <nav id="nav-community-boards" class="nav" aria-label="카페 게시판" hidden></nav>
+    </details>
+    <div id="nav-cafe-admin" hidden>
+      <p class="nav-title">관리</p>
+      <nav class="nav" aria-label="카페 관리">
+        <a id="nav-cafe-reports" class="<?= $shellNavClass('community-reports') ?>" href="<?= Http::communityUrl('/reports') ?>" data-tip="신고함"><span class="icon" data-icon="shield"></span><span>신고함</span></a>
+        <a id="nav-cafe-requests" class="<?= $shellNavClass('community-board-requests') ?>" href="<?= Http::communityUrl('/board-requests') ?>" data-tip="게시판 요청"><span class="icon" data-icon="plus"></span><span>게시판 요청</span></a>
+      </nav>
+    </div>
+<?php   else: ?>
     <div class="sidebar-document-tools">
       <button type="button" class="btn btn--small btn--quiet" id="sidebar-document-select" aria-pressed="false">문서 선택</button>
       <div id="sidebar-document-selection" hidden>
@@ -632,6 +674,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
         </a>
       </nav>
     </details>
+<?php   endif; ?>
     <!-- 즐겨찾기 아이콘 둘(빈 별 = 넣기 · 찬 별 = 빼기). DESIGN 2.11 규격(24×24 · stroke 1.8, lucide star) — t-box 파일 화면(home.php)과 같은 글자.
          Q:F-3a 라운드 B — 사이드바 트리 줄의 ☆ · 「내 공간」 선택 막대가 세 화면 모두에서 쓰므로 페이지 화면(page_view.php)에서 여기로 옮겼다
          (같은 id 가 두 번 나오지 않게 한 곳에만). 고정 문자열이고 사용자 입력이 한 글자도 없다 — editor.js 는 cloneNode 로만 붙인다. -->

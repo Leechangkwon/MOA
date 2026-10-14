@@ -26,6 +26,21 @@ declare(strict_types=1);
 
 $viewBoardId = (int) $params[0];
 
+/* 카페 C2 (DESIGN 2.29 「카페 셸」 · ARCH 25.2) — 카페 게시판이면 셸을 「우리 공간」 모드로(`<body data-area="cafe">`).
+   **읽기 판정(`CommunityAuthz::decideBoardRead`)을 지난 때만** 자리를 읽는다 — 못 보는 · 없는 게시판은 지금처럼 업무 셸이고
+   세 경우의 HTML 이 같은 모양이다(존재 · 자리 노출 0). 이름 · 설명은 여전히 HTML 에 싣지 않는다(창구가 준다).
+   값은 고정 글자 'cafe' 하나뿐이고 판정 · 감사의 재료가 아니다(표시). 질의는 번호 하나를 바인딩한 prepared 두 번. */
+$viewArea = '';
+$viewBoardRow = community_board_row($viewBoardId);
+if ($viewBoardRow !== null && CommunityAuthz::decideBoardRead($user, $viewBoardRow)[0]) {
+    $viewAreaRaw = Db::instance()->run(
+        "SELECT area FROM community.spaces WHERE id = CAST(:bid AS bigint) AND kind = 'board'",
+        [':bid' => $viewBoardId]
+    )->fetchColumn();
+    $viewArea = $viewAreaRaw === 'cafe' ? 'cafe' : '';
+}
+unset($viewBoardRow, $viewAreaRaw);
+
 $pageTitle   = '게시판';
 $activeNav   = 'community-board';
 $pageKey     = 'community-board';
@@ -33,6 +48,7 @@ $pageHelp    = 'community-board';
 $pageCss     = ['community/community.css'];
 $shellModule = 'community';
 $pagePalette = community_palette_version();   // 7-D2 — 셸이 `<link id="palette-css" … ?v=>` 를 그린다(P-6·P-7)
+$shellArea   = $viewArea;                     // 카페 C2 — 'cafe' 이면 「우리 공간」 모드 셸
 require __DIR__ . '/../../views/shell_top.php';
 ?>
     <header class="page-head">
