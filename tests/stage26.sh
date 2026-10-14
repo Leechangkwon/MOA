@@ -582,7 +582,7 @@ out = {}
 def ctx(browser, cookies):
     c = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
     c.add_cookies([{"name": k, "value": v, "url": BASE}
-                   for k, v in (p.split("=", 1) for p in cookies.split(";") if "=" in p)])
+                   for k, v in (p.split("=", 1) for p in (cookies + ";qaredi_sidebar=open").split(";") if "=" in p)])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     return c
 
 with sync_playwright() as p:
@@ -748,7 +748,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(executable_path=EXE, args=["--no-sandbox"])
     c = b.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
     c.add_cookies([{"name": k, "value": v, "url": BASE}
-                   for k, v in (q.split("=", 1) for q in CK.split(";") if "=" in q)])
+                   for k, v in (q.split("=", 1) for q in (CK + ";qaredi_sidebar=open").split(";") if "=" in q)])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     pg = c.new_page()
     errs = []
     pg.on("pageerror", lambda e: errs.append(str(e)))
@@ -805,7 +805,7 @@ with sync_playwright() as p:
     b = p.chromium.launch(executable_path=EXE, args=["--no-sandbox"])
     c = b.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
     c.add_cookies([{"name": k, "value": v, "url": BASE}
-                   for k, v in (q.split("=", 1) for q in CK.split(";") if "=" in q)])
+                   for k, v in (q.split("=", 1) for q in (CK + ";qaredi_sidebar=open").split(";") if "=" in q)])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     pg = c.new_page()
     pg.on("dialog", lambda d: d.accept())        # 첫 확인(window.confirm)은 받아 넘긴다
     pg.goto(BASE + "/", wait_until="networkidle")

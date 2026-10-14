@@ -338,6 +338,7 @@ def ctx(br, sess, w, theme, reduced=False):
                        has_touch=touchdev, is_mobile=phone, color_scheme="light", locale="ko-KR",
                        reduced_motion="reduce" if reduced else "no-preference")
     ck = [{"name": "tbox_theme", "value": theme, "domain": HOST, "path": "/"}]
+    ck.append({"name": "qaredi_sidebar", "value": "open", "domain": HOST, "path": "/"})  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     if sess:
         ck.append({"name": "__Host-tbox_session", "value": sess, "domain": HOST, "path": "/", "httpOnly": True, "secure": True})
     c.add_cookies(ck)

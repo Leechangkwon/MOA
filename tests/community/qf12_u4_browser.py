@@ -239,7 +239,7 @@ try:
 
         def context(key, width, height=900, touch=False, extra=None):
             ctx = browser.new_context(viewport={'width': width, 'height': height}, has_touch=touch, is_mobile=touch, user_agent=UA, reduced_motion='reduce')
-            ctx.add_cookies(cookie(new_session(key), dict({'qaredi_motion': 'reduce'}, **(extra or {}))))
+            ctx.add_cookies(cookie(new_session(key), dict({'qaredi_motion': 'reduce', 'qaredi_sidebar': 'open'}, **(extra or {}))))   # 카페 C5 — 펼친 셸(접힘 기본)
             return ctx
 
         # ─── [first] 첫 화면 종류 ──────────────────────────────────────────────────────────

@@ -46,7 +46,8 @@ def host():
 def context(browser, session):
     ctx = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
     ctx.add_cookies([{"name": "__Host-tbox_session", "value": session, "domain": host(), "path": "/",
-                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"},
+                     {"name": "qaredi_sidebar", "value": "open", "domain": host(), "path": "/"}])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     page = ctx.new_page()
     page.on("pageerror", lambda e: pageerrors.append(str(e)))
     # 「Failed to load resource」 는 응답 코드마다 브라우저가 찍는 줄 — HTTP 실패는 아래 http_bad 가 따로 센다(의도한 재인증 403 만 뺀다)

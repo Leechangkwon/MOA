@@ -48,7 +48,7 @@ with sync_playwright() as p:
  def browser_get(path):
   return page.evaluate("async path=>{let r=await fetch(path,{credentials:'same-origin',cache:'no-store'});return {status:r.status,data:await r.json()}}",SITE+path)
  # Workflow deployment verification: real permissions/responses, no business writes.
- context.add_cookies([{'name':'qaredi_design','value':'astra','url':SITE},{'name':'tbox_theme','value':'light','url':SITE}])
+ context.add_cookies([{'name':'qaredi_design','value':'astra','url':SITE},{'name':'tbox_theme','value':'light','url':SITE},{'name':'qaredi_sidebar','value':'open','url':SITE}])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
  page.set_viewport_size({'width':1280,'height':1000});page.goto(SITE+'/tbox/',wait_until='networkidle')
  response=browser_get('/tbox/api/files?folder=0');payload=response['data']
  check('UX real files API',response['status']==200 and isinstance(payload.get('files'),list))

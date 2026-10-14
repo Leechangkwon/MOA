@@ -59,12 +59,11 @@ var GENERIC_ERROR = '요청을 처리할 수 없습니다. 잠시 후 다시 시
 var COMMUNITY_BASE = (document.body && document.body.getAttribute('data-community-base')) || '/community';
 
 /**
- * 사이드바 접기 ⑨ — 첫 그리기 (사이트 Q:F-12 U2 · DESIGN 2.19 ⑨ · WK-19 A).
+ * 사이드바 접기 ⑨ — 첫 그리기 (사이트 Q:F-12 U2 · DESIGN 2.19 ⑨ · 카페 C5 — 사용자 지적 2026-10-14 「페이지에 들어왔을 때 기본은 사이드바가 전부 간소화된 상태」).
  *
- * 접힘은 사용자마다 이 브라우저 localStorage 의 참/거짓 하나(`qaredi-sidebar-collapsed:v1:<아이디>` — 묶음 펼침 기억
- * `qaredi-sidebar-folds:v1:<아이디>` 와 같은 방식 · 서버 0 · 민감 정보 0)다. 아이디는 `/api/me` 뒤에야 알므로, 그 전(이 파일이 평가되는 때 —
- * 셸 끝의 스크립트라 본문은 이미 있다)에는 이 접두의 키 가운데 하나라도 `1` 이면 임시로 `<body data-sidebar="collapsed">` 를 달아 깜빡임을 줄인다.
- * `/api/me` 뒤 initShell 이 그 사람의 키로 바로잡는다. 효과는 CSS 가 ≥960 에서만 낸다(폰 서랍은 그대로). 머리 스크립트 0(CSP).
+ * 접힘은 **서버가 첫 HTML 부터** 그린다(shell_top.php — 쿠키 `qaredi_sidebar` 가 `open` 이 아니면 `<body data-sidebar="collapsed">` · ☰ 의
+ * aria 첫 값). 그래서 이 파일은 첫 그리기에 손대지 않는다(전의 「localStorage 를 읽어 임시 속성을 다는」 즉시 함수는 지웠다 — 깜빡임 0 · 머리 스크립트 0).
+ * 효과는 CSS 가 ≥960 에서만 낸다(폰 서랍은 그대로). 옛 기억 키(`qaredi-sidebar-collapsed:v1:<아이디>`)는 읽지 않고 initSidebarCollapse 가 한 번 지운다.
  */
 var SIDEBAR_COLLAPSE_PREFIX = 'qaredi-sidebar-collapsed:v1:';
 /** 접힘 표시 한 곳 — `<body data-sidebar>` 와 ☰ 의 aria-expanded · aria-label 을 함께(마크업 재생성 0) */
@@ -76,18 +75,6 @@ function paintSidebarCollapse(collapsed) {
     button.setAttribute('aria-label', collapsed ? '메뉴 펼치기' : '메뉴 접기');
   }
 }
-(function () {
-  if (!document.body || !document.getElementById('sidebar-collapse')) { return; }
-  try {
-    for (var i = 0; i < localStorage.length; i++) {
-      var key = localStorage.key(i);
-      if (key && key.indexOf(SIDEBAR_COLLAPSE_PREFIX) === 0 && localStorage.getItem(key) === '1') {
-        paintSidebarCollapse(true);
-        return;
-      }
-    }
-  } catch (e) { /* 저장소가 막힌 브라우저 — 펼친 채 시작 */ }
-})();
 
 /**
  * 로그인 화면의 `?to=` **키 → 갈 곳** 고정 맵 (커뮤니티 ARCHITECTURE.md 21.2).
@@ -12172,23 +12159,30 @@ function initMobileSidebar(sidebar, navToggle, owner) {
 }
 
 /**
- * 사이드바 접기 ⑨ (Q:F-12 U2 · DESIGN 2.19 ⑨) — ☰(`#sidebar-collapse`, ≥960 에서만 보인다)를 누르면 `<body data-sidebar="collapsed">` 를 단다/뗀다.
- * 값은 이 사람의 키(`qaredi-sidebar-collapsed:v1:<아이디>` — 아이디는 `/api/me` 의 username 이고 글자 집합에 `:` 가 없어 접두가 겹치지 않는다)에
- * `1`/`0` 하나로 남긴다. 첫 그리기에서 임시로 단 값(위 즉시 함수)을 이 사람의 값으로 바로잡는다. 서버 0 · 판단 0.
+ * 사이드바 접기 ⑨ (Q:F-12 U2 · DESIGN 2.19 ⑨ · 카페 C5) — ☰(`#sidebar-collapse`, ≥960 에서만 보인다)를 누르면 `<body data-sidebar="collapsed">` 를 단다/뗀다.
+ * 기억은 쿠키 `qaredi_sidebar` 하나(값 `open` 하나만 — 화면 취향이라 비밀 0 · HttpOnly 아님 · Path=/ · SameSite=Lax · https 면 Secure · 1년):
+ * 펼치면 `open` 을 쓰고, 접으면 지운다(없으면 접힘이 기본 — 서버가 첫 HTML 에 그린다). 첫 값은 서버가 그린 속성 그대로 읽는다.
+ * 옛 localStorage 키(`qaredi-sidebar-collapsed:v1:*`)는 읽지 않고 여기서 한 번 지운다. 판단 0.
  */
-function initSidebarCollapse(owner) {
+function initSidebarCollapse() {
   var button = document.getElementById('sidebar-collapse');
   if (!button) { return; }
-  var key = typeof owner === 'string' && owner !== '' && owner.length <= 64 ? SIDEBAR_COLLAPSE_PREFIX + owner : null;
-  var stored = null;
-  try { stored = key ? localStorage.getItem(key) : null; } catch (e) { stored = null; }
-  paintSidebarCollapse(stored === '1');
+  try {
+    for (var i = localStorage.length - 1; i >= 0; i--) {
+      var key = localStorage.key(i);
+      if (key && key.indexOf(SIDEBAR_COLLAPSE_PREFIX) === 0) { localStorage.removeItem(key); }
+    }
+  } catch (e) { /* 저장소가 막힌 브라우저 — 지울 것도 없다 */ }
+  paintSidebarCollapse(document.body.getAttribute('data-sidebar') === 'collapsed');
   button.addEventListener('click', function () {
     var next = document.body.getAttribute('data-sidebar') !== 'collapsed';
     paintSidebarCollapse(next);
     // 펼친 메뉴(「＋ 새로 만들기」)는 접는 순간 닫는다 — 자리가 바뀐다
     document.querySelectorAll('#sidebar details.menu[open]').forEach(function (menu) { menu.open = false; });
-    try { if (key) { localStorage.setItem(key, next ? '1' : '0'); } } catch (e) { /* 기억은 편의 */ }
+    var secure = location.protocol === 'https:' ? '; Secure' : '';
+    document.cookie = next
+      ? 'qaredi_sidebar=; Path=/; Max-Age=0; SameSite=Lax' + secure
+      : 'qaredi_sidebar=open; Path=/; Max-Age=31536000; SameSite=Lax' + secure;
   });
 }
 
@@ -12265,8 +12259,8 @@ function initShell(me, csrfToken) {
 
   // 모바일은 현재 앱 내비와 앱·계정 메뉴 중 하나만 연다.
   initMobileSidebar(sidebar, navToggle, me.username);
-  // Q:F-12 U2 — ≥960 사이드바 접기(☰) · 사용자별 기억
-  initSidebarCollapse(me.username);
+  // Q:F-12 U2 · 카페 C5 — ≥960 사이드바 접기(☰) · 쿠키 기억(첫 값은 서버가 그린 속성)
+  initSidebarCollapse();
 
   /* 사이트 Q:F-12 C-2 (DESIGN 2.19 「이야기」) — 이야기 사이드바의 「＋ 새 이야기」는 스레드 화면이 내놓은 쓰기 창 창구
      (`window.MemoryComposer.open` — memories.js, 화면 안 「지금 어떤 이야기를…」 단추와 같은 함수)를 부른다. 쓸 수 있는지는

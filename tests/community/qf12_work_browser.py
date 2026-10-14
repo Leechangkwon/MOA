@@ -254,9 +254,10 @@ try:
     with sync_playwright() as pw:
         browser = pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'))
 
-        def context(key, width, height=900, touch=False, extra=None):
+        def context(key, width, height=900, touch=False, extra=None, sidebar_open=True):
             ctx = browser.new_context(viewport={'width': width, 'height': height}, has_touch=touch, is_mobile=touch, user_agent=UA, reduced_motion='reduce')
-            ctx.add_cookies(cookie(new_session(key), dict({'qaredi_motion': 'reduce'}, **(extra or {}))))
+            # 카페 C5 — 사이드바 기본이 접힘이 되어(쿠키 qaredi_sidebar 없으면 접힘) 펼친 셸을 재던 시험은 시작 때 펼침 쿠키를 넣는다
+            ctx.add_cookies(cookie(new_session(key), dict({'qaredi_motion': 'reduce'}, **({'qaredi_sidebar': 'open'} if sidebar_open else {}), **(extra or {}))))
             return ctx
 
         # ─── Q:T-41 작업 상세 칸 ─────────────────────────────────────────────────────────────────────────
@@ -1426,7 +1427,7 @@ try:
                         ctx = context('guest', 1440)
                     else:
                         ctx = browser.new_context(viewport={'width': 1440, 'height': 900}, user_agent=UA, reduced_motion='reduce')
-                        ctx.add_cookies(cookie(tok_act, {'qaredi_motion': 'reduce'}))
+                        ctx.add_cookies(cookie(tok_act, {'qaredi_motion': 'reduce', 'qaredi_sidebar': 'open'}))   # 카페 C5 — 펼친 셸
                     t = Tab(ctx)
                     p = t.page
                     for path in ('/community/', '/community/my-tasks'):
@@ -1534,8 +1535,10 @@ try:
                 # 기억 — 새로고침 · 다른 화면
                 t.go('/community/')
                 st = p.evaluate(COLLAPSE_JS)
+                # 카페 C5 — 기억은 쿠키 qaredi_sidebar(펼침 = open · 접으면 지움 · 옛 localStorage 키는 지운다)
                 key = p.evaluate("Object.keys(localStorage).filter(k => k.startsWith('qaredi-sidebar-collapsed:v1:'))")
-                check(st['collapsed'] == 'collapsed' and st['width'] == 64 and key == ['qaredi-sidebar-collapsed:v1:' + users['employee']['username']], 'U2 collapse kept after reload (key %s)' % json.dumps(key))
+                ck = [c['value'] for c in ctx.cookies() if c['name'] == 'qaredi_sidebar']
+                check(st['collapsed'] == 'collapsed' and st['width'] == 64 and key == [] and ck == [], 'U2 collapse kept after reload (cookie removed · old key 0 %s)' % json.dumps(ck))
                 t.go('/community/my-tasks')
                 st = p.evaluate(COLLAPSE_JS)
                 check(st['collapsed'] == 'collapsed' and st['width'] == 64, 'U2 collapse kept on /community/my-tasks')
@@ -1556,8 +1559,7 @@ try:
                 check(t.clean('collapse'), 'U2 collapse console 0')
                 ctx.close()
                 # 959 — ☰ 접기 단추 0 · 서랍 그대로(접힘 값이 남아 있어도)
-                ctx = context('employee', 959)
-                ctx.add_init_script("localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '1')" % users['employee']['username'])
+                ctx = context('employee', 959, sidebar_open=False)   # 카페 C5 — 쿠키 없음(접힘 기본)이어도 서랍 그대로
                 t = Tab(ctx)
                 p = t.page
                 t.go('/community/')
@@ -1569,11 +1571,11 @@ try:
                 check(t.clean('collapse-959'), 'U2 959 console 0')
                 ctx.close()
                 # 첫 그리기 깜빡임 — 화면이 그려지는 프레임마다(rAF · 그리기 직전) 사이드바가 이미 있는데 접힘 표시가 없는 프레임이 있었나 센다
-                ctx = context('employee', 1440)
-                ctx.add_init_script("""localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '1'); window.__u2frames = [];
+                ctx = context('employee', 1440, sidebar_open=False)   # 카페 C5 — 접힘은 서버가 첫 HTML 에 그린다(쿠키 없음)
+                ctx.add_init_script("""window.__u2frames = [];
                     const tick = () => { const s = document.getElementById('sidebar'); window.__u2frames.push(s ? (document.body.getAttribute('data-sidebar') || 'open') : 'no-sidebar');
                       if (document.readyState !== 'complete' && window.__u2frames.length < 400) requestAnimationFrame(tick); };
-                    requestAnimationFrame(tick);""" % users['employee']['username'])
+                    requestAnimationFrame(tick);""")
                 t = Tab(ctx)
                 p = t.page
                 t.go('/community/my-tasks')
@@ -2047,9 +2049,7 @@ try:
             def u2_shots():
                 for theme in ('light', 'dark'):
                     for collapsed in (False, True):
-                        ctx = context('employee', 1440, extra={'tbox_theme': theme})
-                        if collapsed:
-                            ctx.add_init_script("localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '1')" % users['employee']['username'])
+                        ctx = context('employee', 1440, extra={'tbox_theme': theme}, sidebar_open=not collapsed)   # 카페 C5 — 접힘 = 쿠키 없음
                         t = Tab(ctx)
                         p = t.page
                         t.go('/community/')

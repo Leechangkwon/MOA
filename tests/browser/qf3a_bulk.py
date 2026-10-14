@@ -88,7 +88,8 @@ def host():
 
 def set_session(ctx, session):
     ctx.add_cookies([{"name": "__Host-tbox_session", "value": session, "domain": host(), "path": "/",
-                      "httpOnly": True, "secure": True, "sameSite": "Lax"}])
+                      "httpOnly": True, "secure": True, "sameSite": "Lax"},
+                     {"name": "qaredi_sidebar", "value": "open", "domain": host(), "path": "/"}])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
 
 
 def context(browser, session, scheme="light", width=1280, height=900, touch=False):

@@ -41,6 +41,7 @@ def cookies():
         if "=" in pair:
             k, v = pair.split("=", 1)
             out.append({"name": k.strip(), "value": v.strip(), "domain": HOST, "path": "/"})
+    out.append({"name": "qaredi_sidebar", "value": "open", "domain": HOST, "path": "/"})  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     return out
 
 

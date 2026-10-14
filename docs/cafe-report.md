@@ -128,3 +128,32 @@ board_pages_create(page.create) · SaveDoc(page.update — pages_update 의 몸)
 - 못 찾음 글자색: `--danger` 가 밝은 기본 테마에서 `--danger-soft` 위 **4.41:1**(4.5 미달)이라 `color-mix(in srgb, var(--danger) 82%, var(--fg))`(토큰 섞기 · 새 색값 0) — 물결 밑줄은 `--danger` 그대로.
 - 감염 첨부를 「올릴 수 없는 파일이에요」 카드로 그리는 갈래는 공용 렌더러에 두어 읽기 화면에도 같다(전에는 받기 카드 → 403).
 - `mention_status` 의 판정 질의는 「댓글 수와 무관 · 판정 대상 수(상한 20)에 비례」 — 지시서의 「질의 고정」을 댓글 3 · 30 같음으로 확인했다.
+
+## C5 — 접힌 사이드바 「＋」 풍선 · 기본 접힘 · 2026-10-14 · Opus 구현 에이전트 (DESIGN 2.19 ⑨ 「2026-10-14 사용자 지적 보정」 · 지시서 C5)
+
+### 원인 (「＋」 안에 잘린 글자)
+- 접힌 「＋」(`#nav-new-menu > summary.btn` — 검정 단추)에 테마 `design.css` 의 「들림」(`:hover { transform: translateY(-2px) }`) · `overflow:hidden` 이 걸린다. transform 이 생긴 순간 그 단추가 고정 위치(fixed) 조각의 기준 상자가 되어, 화면 기준으로 오른쪽에 띄우던 풍선(`::after` 「새로 만들기」 — 2.8 규칙)이 40px 단추 **안**에 갇혀 잘린 글자(「로 만들」)로 보였다. 다른 줄(홈 · 내 작업 …)은 `.btn` 이 아니라 들림이 없다.
+
+### 변경 파일
+- `src/views/shell_top.php` — `$shellSidebarOpen = $_COOKIE['qaredi_sidebar'] === 'open'`(비교만 · 값 출력 0) → 아니면 `<body … data-sidebar="collapsed">` · ☰ `aria-expanded` / `aria-label` 첫 값(접힘 = false · 「메뉴 펼치기」). 이 셸 한 벌을 업무 · 이야기 · 자료실 · 카페 셸이 모두 쓴다.
+- `public/assets/app.js` — 첫 그리기 즉시 함수(localStorage 를 읽어 임시 속성을 다는 갈래) 지움 · `initSidebarCollapse()` = 옛 키 `qaredi-sidebar-collapsed:v1:*` 한 번 지움(읽지 않음) · 첫 값은 서버가 그린 속성 · ☰ 누름 → 펼치면 `qaredi_sidebar=open; Path=/; Max-Age=31536000; SameSite=Lax`(+ https 면 Secure) · 접으면 같은 이름 `Max-Age=0`(지움).
+- `public/assets/app.css` — 접힌 레일의 글자 단추(「＋」 · 이야기 「＋ 새 이야기」) `:hover { transform: none }` 한 줄(id 선택자라 테마 규칙보다 무겁다) — 들림만 끄고 칠 · 반짝임 그대로.
+- 이 셸 말고 body 를 따로 그리는 화면(grep `<body`): `space_page.php`(「우리 공간」 — 사이드바 없음) · `launcher.php` · `member_top.php` · `login_page.php` · `legal_page.php` · `not_found_page.php` · 공개 글(`pub_view` · `pub_form` · `page_print` · `DocExport`) · `memories_page.php` 의 손님 공개 판(`threads-public`) · routes.php 의 빈 셸 조각 — 모두 접는 사이드바가 없어 바꿀 것 0. `page_view.php` 는 셸이 낸 `<body data-service=` 앞에 속성을 끼우는 방식이라 그대로 맞물린다.
+- 시험: `tests/community/cafe_c4_browser.py` 에 [c5] · `tests/catalog.json`(covers · notes).
+
+### 옛 시험 — 접힘 기본이 깨뜨리는 자리 (돌리지 않음 · 바꾼 것만)
+- 시작 때 펼침 쿠키 `qaredi_sidebar=open` 한 줄(쿠키 만드는 함수 · 목록에): `tests/community/cafe_c2_browser.py`(context) · `qf12_shell_browser.py`(cookie) · `qf12_work_browser.py`(context — `sidebar_open` 인자 · 「역할로 보기」 문맥) · `qf12_u4_browser.py` · `messenger_window_browser.py` · `browser_smoke.py`(두 문맥) · `browser_5c.py` · `browser_7d1.py` · `browser_5a2.py` · `tests/browser/qf3a_favorites.py` · `qf3a_bulk.py` · `qf4_restore_owner.py` · `ux_r1_ui.py` · `dbg_u_ui.py` · `dbg_u2_ui.py` · `dbg_u3_ui.py` · `passkey.py` · `tests/qf13_consent_http.py` · `tests/wiki_books_browser.py` · `tests/design_live_browser.py` · `tests/stage26.sh`(세 자리). 고른 기준: 접힌 레일에서 숨는 사이드바 부품(즐겨찾기 · 최근 · 트리 · 게시판 · 팀 · 휴지통 · 관리 묶음 · 사용자 칩 · 약관 줄 · 브랜드 글자)을 ≥960 에서 읽거나 누르는 시험. `#nav-search` · 받은 알림 · 내 작업 · 「＋」 메뉴 · 폰 서랍만 쓰는 시험(browser_5d · browser_9d · browser_9_automation_ui · qf2_search_modal · perf/qf2_search_perf · design_themes_browser)은 접혀도 보이는 자리라 그대로 뒀다.
+- 단언 자체를 새 규칙으로 바꾼 것: `qf12_shell_browser.py` 「C-2 … sidebar head ☰ #sidebar-collapse」(쿠키 없는 원문 HTML → `aria-expanded="false" aria-label="메뉴 펼치기"`) · `qf12_work_browser.py` [collapse] 「U2 collapse kept after reload」(localStorage 키 → 쿠키 지워짐 · 옛 키 0) · 「U2 959 …」(옛 키를 심던 줄 → 쿠키 없는 문맥) · 「U2 first paint …」(옛 키 → 쿠키 없는 문맥 — 서버가 그려 0프레임) · [shots] 접힌 판(옛 키 → 쿠키 없는 문맥).
+
+### 수락 시험
+- `CAFE_C4_ONLY=c5 python3 tests/community/memories_harness.py --suite cafe_c4_browser.py --output /home/changkwon/qaredi-cafe-results-20261014/c5-run1` → **pass 124 · fail 0**(rc 0 · 이 판 그대로 — 그 뒤 화면 코드 변경 0) — `c5-run1/cafe-c4-browser-results.json` · `cafe-c4-browser-metrics.json` · `shots/c5-plus-hover-1440.png` · `c5-collapsed-1440.png`.
+  - 원문 HTML(requests · 세 셸): 쿠키 없음 → `data-sidebar="collapsed"` · ☰ false/「메뉴 펼치기」 · `open` → 속성 0 · true · 다른 값(`<b>open`) → 접힘 · 값이 HTML 에 나오지 않음.
+  - 업무 · 이야기 · 자료실 × 1440 · 1280 · 960: 첫 프레임부터 collapsed(펼친 프레임 0) · 레일 64 · 보이는 글자 0 · 옛 키(값 0 을 심어 둠)는 펼치지 않고 지워짐 · 넘침 0 / ☰ → 240 · 쿠키 open → 다음 화면 첫 HTML 속성 0 · 다음 화면 · 새로 고침 240 · 다시 ☰ → 쿠키 지움 · 새로 고침 64 · 콘솔 0.
+  - 접힌 「＋」(업무 × 세 폭): 올리기 — 40×40 · 글자 1px 가림 · transform none · 풍선 `::after`(CDP 상자) left 67.5 = 단추 오른쪽 51.5 + 16 = 「홈」 풍선과 같은 간격 · 세로 가운데 · 폭 80 / 키보드 초점 — 같은 풍선 · 글자 0 / 누름 — 메뉴가 오른쪽(left ≥ 64) · 「문서」 / 펼침 240 — 「새로 만들기」 글자 보임.
+  - 412(터치) 쿠키 없음 · open 둘 다: 서랍 폭 > 200 · 「홈」 글자 · ☰(접기) 숨김 · 넘침 0.
+- 정적: security_lint 통과 0건 · php -l 0 · node --check 0 · 바꾼 시험 py_compile · bash -n 0 · asset_version --check 0 · wiki_check 0 · git diff --check 0 — `c5-static.txt`.
+
+### 못 한 것 · 한계 · DESIGN 과 다르게 한 것
+- 쿠키는 브라우저 하나에 하나다(전의 사용자별 localStorage 와 달리 같은 브라우저의 다른 계정도 같은 값) — DESIGN 2.19 ⑨ 의 결정 그대로.
+- 앵커 위치 지정을 모르는 브라우저는 풍선이 옛 absolute 규칙이라 단추의 `overflow:hidden` 에 잘릴 수 있다(2.8 「받아들인 한계」 그대로 — 사내 기본 Chromium 은 해당 없음).
+- 「들림」을 끈 것은 접힌 레일의 글자 단추뿐 — 펼친 240 의 「＋ 새로 만들기」는 테마 모양 그대로.

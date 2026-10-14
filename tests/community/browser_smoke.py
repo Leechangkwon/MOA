@@ -149,7 +149,7 @@ with sync_playwright() as p:
         "httpOnly": True,
         "secure": True,
         "sameSite": "Lax",
-    }])
+    }, {"name": "qaredi_sidebar", "value": "open", "domain": host_of(SITE).split(":")[0], "path": "/"}])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     page = ctx.new_page()
 
     page.on("pageerror", lambda e: pageerrors.append(str(e)))
@@ -1463,7 +1463,8 @@ with sync_playwright() as p:
         print("── 34. 보기 공유자 — 「공유받은 페이지」 묶음 → 열기 → 편집·체크가 안 된다 → 내 공유 빼기")
         ctx2 = browser.new_context(user_agent=UA, viewport={"width": 1440, "height": 900})
         ctx2.add_cookies([{"name": "__Host-tbox_session", "value": SESSION2, "domain": host_of(SITE).split(":")[0],
-                           "path": "/", "httpOnly": True, "secure": True, "sameSite": "Lax"}])
+                           "path": "/", "httpOnly": True, "secure": True, "sameSite": "Lax"},
+                          {"name": "qaredi_sidebar", "value": "open", "domain": host_of(SITE).split(":")[0], "path": "/"}])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
         p2 = ctx2.new_page()
         p2_errors = []
         p2.on("pageerror", lambda e: p2_errors.append(str(e)))

@@ -48,6 +48,7 @@ def new_context(browser, session, theme="light", width=1440, height=900):
     ctx.add_cookies([
         {"name": "__Host-tbox_session", "value": session, "domain": HOST, "path": "/", "httpOnly": True, "secure": True, "sameSite": "Lax"},
         {"name": "tbox_theme", "value": theme, "domain": HOST, "path": "/", "secure": False, "sameSite": "Lax"},
+        {"name": "qaredi_sidebar", "value": "open", "domain": HOST, "path": "/", "secure": False, "sameSite": "Lax"},  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
     ])
     return ctx
 

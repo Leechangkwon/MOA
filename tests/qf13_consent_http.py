@@ -671,6 +671,7 @@ def browser_suite(site, TB, CB, users, sql, make_user, make_session, storage, pr
     host = '127.0.0.1'
     def cookie(sess, extra=()):
         c = [{'name': '__Host-tbox_session', 'value': sess['session'], 'domain': host, 'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}]
+        c.append({'name': 'qaredi_sidebar', 'value': 'open', 'domain': host, 'path': '/', 'secure': False, 'httpOnly': False, 'sameSite': 'Lax'})  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
         for name, value in extra:
             c.append({'name': name, 'value': value, 'domain': host, 'path': '/', 'secure': False, 'httpOnly': False, 'sameSite': 'Lax'})
         return c

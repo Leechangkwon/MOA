@@ -86,7 +86,7 @@ def new_session(key,act_role=None):
  else:
   sql("INSERT INTO sessions(id,user_id,expires_at,ip,user_agent) VALUES('"+session_hash(token)+"',"+str(uid(key))+",clock_timestamp()+interval '8 hours','127.0.0.1','"+UA+"')")
  return token
-def cookie(token):return [{'name':'__Host-tbox_session','value':token,'domain':host,'path':'/','secure':True,'httpOnly':True,'sameSite':'Lax'}]
+def cookie(token):return [{'name':'__Host-tbox_session','value':token,'domain':host,'path':'/','secure':True,'httpOnly':True,'sameSite':'Lax'},{'name':'qaredi_sidebar','value':'open','domain':host,'path':'/'}]  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
 
 CONSOLE_OK={('404','/favicon.ico'),('404','/tbox/assets/moa/lake.jpg'),('404','/tbox/assets/moa/forest.jpg'),('404','/tbox/assets/moa/ocean.jpg')}
 # 브라우저가 스스로 남기는 줄(자원 상태 · 「[DOM] … autocomplete」 같은 Chromium 안내 — 설정 화면의 비밀번호 칸)은 화면 코드의 출력이 아니다

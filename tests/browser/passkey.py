@@ -126,7 +126,8 @@ def calls(page):
 
 def add_session(ctx, token):
     ctx.add_cookies([{"name": "__Host-tbox_session", "value": token, "domain": "localhost", "path": "/",
-                      "secure": True, "httpOnly": True, "sameSite": "Lax"}])
+                      "secure": True, "httpOnly": True, "sameSite": "Lax"},
+                     {"name": "qaredi_sidebar", "value": "open", "domain": "localhost", "path": "/"}])  # 카페 C5 — 펼친 셸을 잰다(쿠키 qaredi_sidebar 없으면 접힘이 기본)
 
 
 def watch(page, tag):

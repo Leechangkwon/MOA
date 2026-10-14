@@ -70,6 +70,7 @@ def new_session(key, act_role=None):
 
 def cookie(token, extra=None):
     jar = [{'name': '__Host-tbox_session', 'value': token, 'domain': host, 'path': '/', 'secure': True, 'httpOnly': True, 'sameSite': 'Lax'}]
+    jar.append({'name': 'qaredi_sidebar', 'value': 'open', 'domain': host, 'path': '/'})   # 카페 C5 — 펼친 셸을 잰다(쿠키 없으면 접힘이 기본)
     for name, value in (extra or {}).items():
         jar.append({'name': name, 'value': value, 'domain': host, 'path': '/'})
     return jar
@@ -290,7 +291,8 @@ try:
             brand = {'tbox': '모아 자료실', 'community': '모아 업무', 'story': '모아 이야기'}[here]
             check(('aria-label="' + brand + ' — 앱 전환"') in r.text, 'C-2 ' + path + ' phone app-name button aria-label 「' + brand + ' — 앱 전환」')
             check('<summary class="btn btn--quiet" aria-label="앱 — 앱 바꾸기와 계정"' in r.text and 'brand__switch' not in r.text, 'C-2 ' + path + ' grid summary = ⋮⋮⋮ + 「앱」 outline button 「앱 — 앱 바꾸기와 계정」 (U5-2 · DESIGN 2.28) · brand is no longer a menu (DESIGN 2.19 ① U2)')
-            check(re.search(r'<button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="메뉴 접기">', r.text) is not None, 'C-2 ' + path + ' sidebar head ☰ #sidebar-collapse')
+            # 카페 C5 — 쿠키 없는 첫 HTML 은 접힘이 기본(☰ aria 첫 값 = 펼치기)
+            check(re.search(r'<button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="메뉴 펼치기">', r.text) is not None, 'C-2 ' + path + ' sidebar head ☰ #sidebar-collapse')
             me = re.search(r'<a class="shell-tools__me" href="([^"]+)" aria-label="([^"]+)">', r.text)
             check(me is not None and me.group(1) == '/tbox/settings' and me.group(2) == '내 계정 — ' + users['employee']['display'], 'Q:T-38 grid row 「내 계정」 avatar → /tbox/settings with display name label')
         # 손님 · 역할로 보기도 같은 목록(앱 안 판정은 앱이 한다)

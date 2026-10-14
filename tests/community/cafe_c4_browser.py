@@ -18,6 +18,10 @@
              다른 사람 화면은 clean 전 상자 · 작업 칸 편집기도 같은 길 · 콘솔 0
   [mention]  C4 남긴 댓글 — 전체 화면 · 작업 칸: 확인됨 파랑(.mention-mark--ok + aria-label 「… 알림이 갔어요」) · 못 찾음 빨강 + 물결 · `@아이디.te` 한 토큰 ·
              대비 ≥ 4.5(밝게 · 어둡게 · 고대비) · 넘침 0
+  [c5]       C5 접힌 사이드바 — 업무 · 이야기 · 자료실 × 1440 · 1280 · 960: 쿠키 없음 → 첫 HTML(서버 응답 원문) data-sidebar="collapsed" · ☰ aria 첫 값 ·
+             첫 프레임부터 접힘 · 레일 64 / ☰ 펼침 → 쿠키 open → 다른 화면 · 새로 고침 펼침(첫 HTML 속성 0) · 다시 접기 → 쿠키 지움 → 접힘 /
+             접힌 「＋」: 올리기 · 초점 때 단추 안 글자 0 · 오른쪽 풍선 「새로 만들기」(「홈」 풍선과 같은 자리 규칙 — CDP 로 ::after 상자) · 누르면 메뉴 /
+             펼침 240 에서 「＋ 새로 만들기」 글자 · 412 서랍 그대로(쿠키 무관) · 옛 localStorage 키 지움 · 넘침 0 · 콘솔 0
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -540,6 +544,165 @@ try:
                 sql('UPDATE users SET high_contrast=false WHERE id=' + str(uid('W')))
                 metrics['mention'] = res
             guard('mention', mention)
+
+        # ─── [c5] 접힌 사이드바 「＋」 풍선 · 기본 접힘 ───────────────────────────────────────
+        if want('c5'):
+            def c5():
+                SHELLS = (('work', '/community/workspace'), ('story', '/community/memories'), ('library', '/tbox/'))
+                session_w = users[KEY['W']]['session']
+
+                def first_html(path, extra_cookie=''):
+                    h = {'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + session_w + extra_cookie}
+                    r = requests.get(site + path, headers=h, timeout=35)
+                    body_tag = re.search(r'<body[^>]*>', r.text)
+                    btn = re.search(r'<button id="sidebar-collapse"[^>]*>', r.text)
+                    return r.status_code, body_tag.group(0) if body_tag else '', btn.group(0) if btn else ''
+
+                for name, path in SHELLS:
+                    st, body_tag, btn = first_html(path)
+                    check(st == 200 and 'data-sidebar="collapsed"' in body_tag and 'aria-expanded="false"' in btn and 'aria-label="메뉴 펼치기"' in btn,
+                          'c5 %s: no cookie → first HTML <body data-sidebar="collapsed"> · ☰ aria-expanded false · 「메뉴 펼치기」' % name)
+                    st, body_tag, btn = first_html(path, '; qaredi_sidebar=open')
+                    check(st == 200 and 'data-sidebar' not in body_tag and 'aria-expanded="true"' in btn and 'aria-label="메뉴 접기"' in btn,
+                          'c5 %s: cookie open → first HTML without data-sidebar · ☰ aria-expanded true' % name)
+                    st, body_tag, _ = first_html(path, '; qaredi_sidebar=%3Cb%3Eopen')
+                    check('data-sidebar="collapsed"' in body_tag and '%3Cb%3E' not in body_tag and '<b>' not in body_tag, 'c5 %s: other cookie value → collapsed · value never echoed' % name)
+
+                FRAMES_JS = """window.__c5frames = []; const tick = () => { const s = document.getElementById('sidebar');
+                    window.__c5frames.push(s ? (document.body.getAttribute('data-sidebar') || 'open') : 'no-sidebar'); if (window.__c5frames.length < 40) requestAnimationFrame(tick); };
+                    requestAnimationFrame(tick);"""
+                RAIL_JS = """() => { const s = document.getElementById('sidebar'); const r = s.getBoundingClientRect();
+                    const vis = (e) => { const q = e.getBoundingClientRect(); const cs = getComputedStyle(e); return q.width > 1 && q.height > 1 && cs.display !== 'none' && cs.visibility !== 'hidden'; };
+                    const texts = [...s.querySelectorAll('.nav__item > span:not(.icon):not(.badge), summary.btn > span:not(.icon), #sidebar > .btn > span:not(.icon), .brand__name')].filter(vis).map(e => e.textContent.trim());
+                    return {attr: document.body.getAttribute('data-sidebar'), w: Math.round(r.width), texts: texts, overflow: document.documentElement.scrollWidth - innerWidth,
+                            exp: document.getElementById('sidebar-collapse').getAttribute('aria-expanded')}; }"""
+
+                def pseudo_after(page, selector):
+                    cdp = page.context.new_cdp_session(page)
+                    try:
+                        doc = cdp.send('DOM.getDocument', {'depth': -1, 'pierce': True})
+                        nid = cdp.send('DOM.querySelector', {'nodeId': doc['root']['nodeId'], 'selector': selector})['nodeId']
+                        node = cdp.send('DOM.describeNode', {'nodeId': nid, 'depth': 1})['node']
+                        pe = [x for x in node.get('pseudoElements', []) if x.get('pseudoType') == 'after']
+                        if not pe:
+                            return None
+                        q = cdp.send('DOM.getBoxModel', {'backendNodeId': pe[0]['backendNodeId']})['model']['border']
+                        return {'left': round(min(q[0::2]), 1), 'right': round(max(q[0::2]), 1), 'top': round(min(q[1::2]), 1), 'bottom': round(max(q[1::2]), 1)}
+                    finally:
+                        cdp.detach()
+
+                BOX_JS = "(sel) => { const r = document.querySelector(sel).getBoundingClientRect(); return {left: r.left, right: r.right, top: r.top, bottom: r.bottom}; }"
+                INSIDE_JS = """() => { const s = document.querySelector('#nav-new-menu > summary'); const lab = [...s.children].find(e => !e.classList.contains('icon'));
+                    const r = s.getBoundingClientRect(); const q = lab.getBoundingClientRect(); const cs = getComputedStyle(s);
+                    return {w: Math.round(r.width), h: Math.round(r.height), labW: q.width, labH: q.height, transform: cs.transform, label: lab.textContent}; }"""
+                res = {}
+                for width in (1440, 1280, 960):
+                    for name, path in SHELLS:
+                        tag = '%s-%d' % (name, width)
+                        ctx = context('W', width, sidebar_open=False)
+                        ctx.add_init_script("localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '0');" % UN['W'] + FRAMES_JS)
+                        t = Tab(ctx)
+                        p = t.page
+
+                        def one():
+                            t.go(path)
+                            p.wait_for_selector('#sidebar-collapse', timeout=10000)
+                            frames = p.evaluate('window.__c5frames')
+                            first = next((f for f in frames if f != 'no-sidebar'), None)
+                            rail = p.evaluate(RAIL_JS)
+                            old_keys = p.evaluate("Object.keys(localStorage).filter(k => k.startsWith('qaredi-sidebar-collapsed:v1:'))")
+                            res[tag] = {'first': first, 'rail': rail}
+                            check(first == 'collapsed' and 'open' not in frames and rail['attr'] == 'collapsed' and rail['w'] == 64 and rail['texts'] == [] and rail['exp'] == 'false',
+                                  'c5 %s: no cookie → collapsed from the first frame · rail 64 · visible label 0 %s' % (tag, json.dumps({'first': first, 'w': rail['w'], 'texts': rail['texts']}, ensure_ascii=False)))
+                            check(old_keys == [], 'c5 %s: old localStorage key removed (not read — a stored 0 did not expand)' % tag)
+                            check(rail['overflow'] <= 0, 'c5 %s: horizontal overflow 0 (collapsed)' % tag)
+                            if name == 'work':
+                                # 접힌 「＋」 — 올리기
+                                p.hover('#nav-new-menu > summary')
+                                p.wait_for_timeout(250)
+                                ins = p.evaluate(INSIDE_JS)
+                                tip = pseudo_after(p, '#nav-new-menu > summary')
+                                sb = p.evaluate(BOX_JS, '#nav-new-menu > summary')
+                                p.hover('#nav-work-home')
+                                p.wait_for_timeout(250)
+                                home_tip = pseudo_after(p, '#nav-work-home')
+                                hb = p.evaluate(BOX_JS, '#nav-work-home')
+                                res[tag + '-plus'] = {'inside': ins, 'tip': tip, 'btn': sb, 'home_tip': home_tip, 'home': hb}
+                                check(ins['w'] == 40 and ins['h'] == 40 and ins['labW'] <= 1 and ins['labH'] <= 1 and ins['transform'] == 'none',
+                                      'c5 %s: hovered 「＋」 stays 40×40 · label text inside 0 (1px clip) · no lift %s' % (tag, json.dumps(ins, ensure_ascii=False)))
+                                gap_plus = tip and round(tip['left'] - sb['right'], 1)
+                                gap_home = home_tip and round(home_tip['left'] - hb['right'], 1)
+                                mid = lambda b: (b['top'] + b['bottom']) / 2
+                                check(tip is not None and home_tip is not None and tip['left'] >= sb['right'] and abs(gap_plus - gap_home) <= 1
+                                      and abs(mid(tip) - mid(sb)) <= 1.5 and abs(mid(home_tip) - mid(hb)) <= 1.5 and (tip['right'] - tip['left']) > 40,
+                                      'c5 %s: 「＋」 hover → bubble on the right outside the button (gap %s = 「홈」 gap %s · centred) %s' % (tag, gap_plus, gap_home, json.dumps(tip)))
+                                if width == 1440:
+                                    p.hover('#nav-new-menu > summary')
+                                    p.wait_for_timeout(250)
+                                    p.screenshot(path=str(shots / 'c5-plus-hover-1440.png'), clip={'x': 0, 'y': 0, 'width': 360, 'height': 360})
+                                # 초점(키보드) — 같은 풍선 · 글자 0
+                                p.mouse.move(width - 5, 880)
+                                p.locator('#sidebar-collapse').focus()
+                                p.keyboard.press('Tab')
+                                p.wait_for_timeout(200)
+                                focused = p.evaluate("document.activeElement === document.querySelector('#nav-new-menu > summary')")
+                                ins2 = p.evaluate(INSIDE_JS)
+                                tip2 = pseudo_after(p, '#nav-new-menu > summary')
+                                check(focused and tip2 is not None and tip2['left'] >= sb['right'] and ins2['labW'] <= 1, 'c5 %s: keyboard focus → same right bubble · label inside 0' % tag)
+                                # 누르면 메뉴
+                                p.locator('#nav-new-menu > summary').click()
+                                p.wait_for_timeout(250)
+                                mn = p.evaluate("() => { const d = document.getElementById('nav-new-menu'); const l = d.querySelector('.menu__list'); const r = l.getBoundingClientRect(); return {open: d.open, left: r.left, w: r.width, items: [...l.querySelectorAll('.menu__item')].filter(i => !i.hidden).map(i => i.textContent.trim())}; }")
+                                check(mn['open'] and mn['left'] >= 64 and mn['w'] > 100 and '문서' in mn['items'], 'c5 %s: click 「＋」 → menu opens to the right %s' % (tag, json.dumps(mn, ensure_ascii=False)))
+                                p.keyboard.press('Escape')
+                            # ☰ 펼침 → 쿠키 open
+                            p.locator('#sidebar-collapse').click()
+                            p.wait_for_timeout(250)
+                            ck = {c['name']: c['value'] for c in ctx.cookies()}
+                            rail = p.evaluate(RAIL_JS)
+                            check(rail['attr'] is None and rail['w'] == 240 and rail['exp'] == 'true' and ck.get('qaredi_sidebar') == 'open',
+                                  'c5 %s: ☰ → expanded 240 · cookie qaredi_sidebar=open' % tag)
+                            if name == 'work':
+                                lab = p.evaluate("() => { const s = document.querySelector('#nav-new-menu > summary'); const l = [...s.children].find(e => !e.classList.contains('icon')); return {w: l.getBoundingClientRect().width, t: l.textContent}; }")
+                                check(lab['w'] > 30 and lab['t'] == '새로 만들기', 'c5 %s: expanded 240 → 「＋ 새로 만들기」 label shown (%.0f)' % (tag, lab['w']))
+                            # 다른 화면 · 새로 고침 — 첫 HTML 에 속성 0
+                            other = '/community/my-tasks' if name == 'work' else ('/community/memories' if name == 'story' else '/tbox/settings')
+                            st_, bt, btn_ = first_html(other, '; qaredi_sidebar=' + ck.get('qaredi_sidebar', ''))
+                            check(st_ == 200 and btn_ != '' and 'data-sidebar' not in bt, 'c5 %s: with the cookie the browser wrote, the next screen\'s first HTML has no data-sidebar' % tag)
+                            t.go(other)
+                            p.wait_for_selector('#sidebar-collapse', timeout=10000)
+                            check(p.evaluate(RAIL_JS)['w'] == 240, 'c5 %s: next screen expanded' % tag)
+                            p.reload(wait_until='networkidle')
+                            check(p.evaluate(RAIL_JS)['w'] == 240, 'c5 %s: reload expanded' % tag)
+                            # 다시 접기 → 쿠키 지움 → 새로 고침 접힘
+                            p.locator('#sidebar-collapse').click()
+                            p.wait_for_timeout(250)
+                            ck = {c['name']: c['value'] for c in ctx.cookies()}
+                            p.reload(wait_until='networkidle')
+                            rail = p.evaluate(RAIL_JS)
+                            check('qaredi_sidebar' not in ck and rail['attr'] == 'collapsed' and rail['w'] == 64, 'c5 %s: ☰ again → cookie removed · reload collapsed' % tag)
+                            check(rail['overflow'] <= 0, 'c5 %s: horizontal overflow 0 (after toggles)' % tag)
+                            if width == 1440 and name == 'work':
+                                p.screenshot(path=str(shots / 'c5-collapsed-1440.png'))
+                        guard('c5 ' + tag, one)
+                        check(t.clean('c5-' + tag), 'c5 %s: console 0' % tag)
+                        ctx.close()
+                # 412 — 서랍 그대로(쿠키 무관)
+                for cookie_open in (False, True):
+                    ctx = context('W', 412, 915, touch=True, sidebar_open=cookie_open)
+                    t = Tab(ctx)
+                    p = t.page
+                    t.go('/community/workspace')
+                    p.locator('#nav-toggle').click()
+                    p.wait_for_selector('#mobile-nav-dialog[open] #sidebar', timeout=5000)
+                    st = p.evaluate("() => { const s = document.getElementById('sidebar'); const h = document.getElementById('nav-work-home'); return {w: Math.round(s.getBoundingClientRect().width), home: h.textContent.trim(), homeW: Math.round(h.getBoundingClientRect().width), collapse: getComputedStyle(document.getElementById('sidebar-collapse')).display, overflow: document.documentElement.scrollWidth - innerWidth}; }")
+                    res['412-' + str(cookie_open)] = st
+                    check(st['w'] > 200 and st['homeW'] > 100 and st['home'] == '홈' and st['collapse'] == 'none' and st['overflow'] <= 0,
+                          'c5 412 (cookie %s): drawer as before — full labels · ☰(collapse) hidden %s' % ('open' if cookie_open else 'none', json.dumps(st, ensure_ascii=False)))
+                    check(t.clean('c5-412'), 'c5 412: console 0')
+                    ctx.close()
+                metrics['c5'] = res
+            guard('c5', c5)
 
         browser.close()
 finally:
