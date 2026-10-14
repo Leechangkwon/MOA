@@ -116,6 +116,10 @@ class Tab:
   return loc
  def open(self):
   p=self.page
+  # R1(2026-10-15) — 카페 C6(DESIGN 2.30 「메신저 단추」) 뒤 여는 단추는 **열고 닫는다**. 같은 탭에서 화면을 옮기면 창이 이어 열리므로(messenger.js ①)
+  #   이미 열려 있으면 누르지 않는다(누르면 닫힘) — 「열린 창」이 이 도우미의 뜻
+  if self.is_open():
+   expect(p.locator('#messenger-window')).to_be_visible();return
   self.reveal('#messenger-open')
   for sel in ('#messenger-open','#appbar-messenger'):
    loc=p.locator(sel)

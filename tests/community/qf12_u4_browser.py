@@ -505,8 +505,12 @@ try:
             api0 = cand_api(pid, '')
             res['open'] = m0['list']
             check([x[0] for x in m0['list']] == api0 and len(api0) >= 1 and m0['list'][0][1] == 'true', '%s: 「@」 → candidate list = server empty-q answer %s' % (tag, json.dumps(api0)))
-            lst = p.evaluate("(s) => { const l = document.querySelector(s).closest('.mention-field').querySelector('.menu__list'); const r = l.getBoundingClientRect(); const t = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.top - t.bottom), Math.round(r.left - t.left), getComputedStyle(l).position, l.getAttribute('role')]; }", ta_sel)
-            check(-2 <= lst[0] <= 12 and abs(lst[1]) <= 2 and lst[3] == 'listbox', '%s: floating list right below the field (gap %d · left %d · %s)' % (tag, lst[0], lst[1], lst[2]))
+            # R1(2026-10-15) — W1(2.34) 「시작 예정」 줄이 더해져 작업 칸의 댓글 칸(바닥 고정)이 창 맨 아래로 내려왔다. 아래 자리가 목록보다 작으면
+            #   앵커 폴백(community.css `position-try-fallbacks: top span-right …`)이 칸 **바로 위**에 편다 — 창 안에 머묾(2.15). 그때만 위를 받는다.
+            lst = p.evaluate("(s) => { const l = document.querySelector(s).closest('.mention-field').querySelector('.menu__list'); const r = l.getBoundingClientRect(); const t = document.querySelector(s).getBoundingClientRect(); return [Math.round(r.top - t.bottom), Math.round(r.left - t.left), getComputedStyle(l).position, l.getAttribute('role'), Math.round(t.top - r.bottom), Math.round(innerHeight - t.bottom - r.height)]; }", ta_sel)
+            below = -2 <= lst[0] <= 12
+            above = -2 <= lst[4] <= 12 and lst[5] < 12   # 아래 자리(창 바닥 - 칸 아래)가 목록 높이 + 여백보다 작을 때만
+            check((below or above) and abs(lst[1]) <= 2 and lst[3] == 'listbox', '%s: floating list right below the field — or right above when the window has no room below (gap %d · above %d · room below - list %d · left %d · %s)' % (tag, lst[0], lst[4], lst[5], lst[1], lst[2]))
             p.keyboard.type('claude_man')
             p.wait_for_timeout(500)
             m1 = p.evaluate(MARK_JS, ta_sel)

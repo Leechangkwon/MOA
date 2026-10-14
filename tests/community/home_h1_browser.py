@@ -541,7 +541,7 @@ require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baselin
                         return x.replace('모아<span>moa</span>'.encode(), '모아 <span>moa.</span>'.encode())
                     nb = h4_back(b)
                     summary['html-' + who] = {'base': len(a), 'new': len(b), 'new_h4_back': len(nb), 'sha_equal': hashlib.sha256(a).hexdigest() == hashlib.sha256(nb).hexdigest()}
-                    check(len(a) > 1000 and a == nb and b.count(b'class="moa-wordmark"') == 2,
+                    check(len(a) > 1000 and a == nb and b.count(b'class="moa-wordmark"') - a.count(b'class="moa-wordmark"') == 2,   # 테마 창의 「모아 글씨 색」 미리보기 넷은 둘 다 같은 부품(design_controls.php)이라 셈에서 뺀다
                           '⑤ %s launcher: server HTML identical to the pre-H1 launcher (34cfd3d) except the H4 wordmark (logo · footer = 2) — %d bytes' % ('signed-out' if who == 'out' else 'consent-needed', len(b)))
                 (root / 'src/views/launcher_h1_baseline.php').unlink()
                 stub.unlink()
