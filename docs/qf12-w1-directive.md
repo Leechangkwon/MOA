@@ -30,3 +30,17 @@
               정적: security_lint 0 · php -l · node --check · asset_version --check · wiki_check · git diff --check
 보고 형식   : docs/qf12-w1-report.md — 변경 파일 / 수락 시험과 결과 / 고친 옛 단언 / 못 한 것 / 기획 · DESIGN 과 다르게 한 것. 짧게.
 ```
+
+## W1b — 작업 칸 「더보기」 메뉴가 창 밖으로 잘림 (사용자 지적 2026-10-14 · W1 뒤 · 같은 worktree · 같은 반영)
+
+사용자(스크린샷 — 작업 칸 오른쪽 위 ≡ 메뉴가 「제목 고치기 · 본문 고치기 · 하위 작업 · 지우기」를 창 오른쪽 밖으로 펼치고 「더보기」 풍선이 겹침): 「우측 상단에 글씨가 짤려서 나가짐」.
+
+```
+목표        : 모든 `.menu`(2.15)가 어디서 열려도 창 안에 다 보이고, 열린 동안 그 단추의 풍선이 뜨지 않게 한다.
+요구사항    : DESIGN 2.15 「창 안에 머묾」 줄(main 의 DESIGN.md — 2026-10-14).
+수정 파일   : public/assets/app.css(.menu__list 자리 — 작업 칸 · 넓게 보기 안에서 앵커 · 고정 위치가 칸에 갇히지 않게(칸의 transform · contain · overflow 확인) · 폴백 · `.menu[open] > summary[data-tip]::after` 0) ·
+              public/assets/community/work.js(칸 머리 메뉴 마크업이 2.15 와 다르면 그 부분만) · 시험 — tests/community/qf12_w1_browser.py 에 W1b 단언 · docs/qf12-w1-report.md(W1b 절)
+금지 패턴   : JS 로 좌표 쓰기 · 인라인 style · 메뉴 부품 두 벌 · git add -A.
+완료 기준   : 1440 · 1280 · 960 · 412 × 칸 · 넓게 보기 · 전체 화면 작업 · 프로젝트 머리 · 화면 머리의 「더보기」를 열었을 때 목록의 getBoundingClientRect 가 창 안(왼 ≥ 8 · 오른 ≤ innerWidth-8 · 아래 ≤ innerHeight-8 또는 위로 펼침) ·
+              항목 글자 잘림 0 · 열린 동안 풍선 보임 0 · Esc · 밖 누름 닫힘 그대로 · 스크린샷(칸 메뉴 1440)
+```
