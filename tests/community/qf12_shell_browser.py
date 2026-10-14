@@ -211,6 +211,7 @@ def grid_html(html):
     return m.group(1) if m else None
 
 
+# R1(2026-10-15) — 카페 C6 뒤 .app-menu 판이 둘(앱 판 #app-grid · 내 계정 판 #account-menu) → 앱 판을 가리킬 때는 '#app-grid .app-menu'(strict 위반 0)
 def grid_tiles(html):
     """앱 격자 타일(HTML 순서) — (이름, href 또는 None, 지금 앱이면 True, id)"""
     out = []
@@ -246,8 +247,9 @@ try:
         apps = json.loads(r.stdout) if r.returncode == 0 else []
         metrics['apps_json'] = apps
         check(r.returncode == 0, 'Q:T-38 Apps::all() — config/apps.json passes Apps::validate (no exception)')
-        check([a[0] for a in apps] == ['tbox', 'community', 'story'], 'Q:T-38 order tbox · community · story ' + json.dumps([a[0] for a in apps]))
-        check([a[1] for a in apps] == ['자료실', '업무', '이야기'], 'Q:T-38 names 자료실 · 업무 · 이야기')
+        # R1(2026-10-15) — 사이트 H3(「우리 공간」 = 카페 · config/apps.json order 4 · /community/cafe)가 넷째 앱을 더했다
+        check([a[0] for a in apps] == ['tbox', 'community', 'story', 'spaces'], 'Q:T-38 order tbox · community · story · spaces ' + json.dumps([a[0] for a in apps]))
+        check([a[1] for a in apps] == ['자료실', '업무', '이야기', '우리 공간'] and apps[3][3] == '/community/cafe', 'Q:T-38 names 자료실 · 업무 · 이야기 · 우리 공간(/community/cafe)')
         check(apps and apps[2][3] == '/community/memories' and apps[1][3] == '/community/' and apps[0][3] == '/tbox/', 'Q:T-38 paths /tbox/ · /community/ · /community/memories')
         check(apps and apps[1][4] == 'work' and apps[2][4] == 'community', 'Q:T-38 icons: 업무 work (new) · 이야기 community')
         # 런처(로그인 뒤 · 전)
@@ -284,7 +286,8 @@ try:
             want_href = {'tbox': '/tbox/', 'community': '/community/', 'story': '/community/memories'}[here]
             check([t_[0] for t_ in tiles] == TILES, 'Q:T-38 app grid ' + path + ' tile order (HTML — 관리자 is hidden until can_admin) ' + json.dumps([t_[0] for t_ in tiles], ensure_ascii=False))
             acct = re.search(r'<details class="shell-account" id="account-menu">(.*?)</details>', r.text, re.S)   # 카페 C6 (DESIGN 2.30) — 내 계정 · 내 활동 · 로그아웃은 내 계정 판에
-            check([t_[1] for t_ in tiles[:4]] == ['/', '/tbox/', '/community/', '/community/memories'] and tiles[4][3] == 'menu-admin'
+            # R1(2026-10-15) — H3 뒤 다섯째 타일이 「우리 공간」(/community/cafe) · 관리자 타일(id menu-admin)은 여섯째
+            check([t_[1] for t_ in tiles[:5]] == ['/', '/tbox/', '/community/', '/community/memories', '/community/cafe'] and len(tiles) > 5 and tiles[5][3] == 'menu-admin'
                   and acct is not None and 'id="menu-settings"' in acct.group(1) and 'id="menu-activity"' in acct.group(1),
                   'Q:T-38 app grid ' + path + ' links (Apps::all() order) · id menu-admin kept · menu-settings · menu-activity in the account panel')
             check([t_[1] for t_ in tiles if t_[2]] == [want_href], 'Q:T-38 app grid ' + path + ' aria-current only on the current app = ' + want_href)
@@ -362,7 +365,7 @@ try:
                         after=p.locator('#main').bounding_box()
                         check(before==after and p.evaluate('scrollY')==before_scroll, 'modal %d %s opening does not move or resize main' % (width,path))
                         check(p.locator('#mobile-nav-dialog').evaluate('(e)=>e.matches(":modal")'), 'modal %d %s native top layer' % (width,path))
-                        check(p.locator(main_link).is_visible() and not p.locator('.app-menu').is_visible(), 'mobile %d %s navigation only' % (width,path))
+                        check(p.locator(main_link).is_visible() and not p.locator('#app-grid .app-menu').is_visible(), 'mobile %d %s navigation only' % (width,path))
                         check(not p.locator('#sidebar .moa-shell-links').is_visible() and not p.locator('#sidebar .moa-brand-home').is_visible(), 'mobile %d %s no duplicate brand links' % (width,path))
                         if path == '/community/workspace':
                             # Lots of synthetic rows reproduce a long sidebar without touching production data.
@@ -393,7 +396,7 @@ try:
                         check(not p.evaluate("document.querySelector('details.appbar__apps').open") and p.locator('#appbar-apps').evaluate('(e)=>document.activeElement===e') and p.locator('#appbar-apps').get_attribute('aria-expanded')=='false',
                               'mobile %d %s Escape closes the grid and restores focus to the app name' % (width,path))
                         p.locator('#appbar-apps').click();p.locator('#nav-toggle').click()
-                        check(p.locator(main_link).is_visible() and not p.locator('.app-menu').is_visible(), 'mobile %d %s grid → ☰ switches directly to navigation (one panel at a time)' % (width,path))
+                        check(p.locator(main_link).is_visible() and not p.locator('#app-grid .app-menu').is_visible(), 'mobile %d %s grid → ☰ switches directly to navigation (one panel at a time)' % (width,path))
                         p.locator('#mobile-nav-close').click();p.locator('#nav-toggle').click()
                         check(p.locator('#sidebar').evaluate('(e)=>e.scrollTop')==0 and p.locator('#sidebar [data-sidebar-group][open]').count()==0, 'mobile %d %s reopen starts compact at top' % (width,path))
                     # Only the drawer scrolls; keyboard focus stays in the modal.
@@ -427,7 +430,7 @@ try:
                     t.go('/community/workspace');p.locator('#appbar-apps').click()
                     p.set_viewport_size({'width':1280,'height':900})
                     expect(p.locator('#nav-community-home')).to_be_visible()
-                    check(not p.locator('.app-menu').is_visible() and p.locator('#nav-community-home').is_visible(), 'mobile %d resize restores desktop navigation and expanded docs' % width)
+                    check(not p.locator('#app-grid .app-menu').is_visible() and p.locator('#nav-community-home').is_visible(), 'mobile %d resize restores desktop navigation and expanded docs' % width)
                     expect(p.locator('#nav-community-fav-box')).not_to_have_attribute('open','')
                     check(p.evaluate("localStorage.getItem('qaredi-nav-fav-open')")=='0', 'mobile %d desktop favorite preference preserved' % width)
                     p.set_viewport_size({'width':width,'height':844})
@@ -501,7 +504,7 @@ try:
                             p.click('#nav-toggle')
                             p.wait_for_timeout(300)
                             st = p.evaluate(GRID_STATE_JS)
-                            check(not st['open'] and not p.locator('.app-menu').is_visible() and not st['overflow'], 'Q:T-40 %d drawer open %s: navigation only (grid closed) · overflow 0' % (width, path))
+                            check(not st['open'] and not p.locator('#app-grid .app-menu').is_visible() and not st['overflow'], 'Q:T-40 %d drawer open %s: navigation only (grid closed) · overflow 0' % (width, path))
                             p.screenshot(path=str(shots / ('drawer-%d%s.png' % (width, path.replace('/', '_')))), full_page=True)
                 guard('Q:T-40 %d' % width, one_width)
                 check(t.clean('t40-%d' % width), 'Q:T-40 %d no page errors / 5xx / script console output' % width)

@@ -156,6 +156,24 @@ if [ "${DBGU_SYNC_TOTP:-0}" = "1" ]; then
   done
 fi
 
+# R1(2026-10-15) — 처리방침 새 판(2026-10-14) 뒤 운영 사본의 검토 계정은 옛 판에만 동의한 상태라 세션 관문(Legal::needsConsent)이
+#   모든 화면 · 창구를 403 consent_required / 동의 화면으로 돌렸다(밤 회귀 뒤 첫 실행 — 손님 시작하기 403 · 화면 시험 83 실패).
+#   이 시험은 화면 모양이 대상이다 — **임시 DB 에서만** 세 계정의 terms · privacy 지금 판 agree 줄을 더한다(관문 자체는 tests/qf13_consent_http.py).
+for who in claude_employee01 claude_admin01 claude_guest01; do
+  wid=$(psqlq "SELECT id FROM users WHERE username = '$who'")
+  case "$wid" in ''|*[!0-9]*) note "$who — 임시 DB 에 없음(동의 줄 건너뜀)"; continue ;; esac
+  for d in terms privacy; do
+    ver=$(php -r 'require $argv[1] . "/src/Legal.php"; echo Legal::current($argv[2]);' "$ROOT" "$d" 2>/dev/null)
+    case "$ver" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "지금 $d 판을 읽지 못했다 — 중단"; exit 4 ;; esac
+    if [ "$(psqlq "SELECT version || '|' || action FROM user_consents WHERE user_id = $wid AND doc = '$d' ORDER BY id DESC LIMIT 1")" != "$ver|agree" ]; then
+      psqlq "INSERT INTO user_consents(user_id, doc, version, action, ip) VALUES ($wid, '$d', '$ver', 'agree', '127.0.0.1')" >/dev/null
+      note "$who $d — 임시 DB 에만 지금 판 $ver agree 한 줄"
+    fi
+    expect "$who $d 마지막 줄 = 지금 판 agree" "$ver|agree" \
+      "$(psqlq "SELECT version || '|' || action FROM user_consents WHERE user_id = $wid AND doc = '$d' ORDER BY id DESC LIMIT 1")"
+  done
+done
+
 INST="$(mktemp -d)"; chmod 700 "$INST"
 mkdir -p "$INST/app" "$INST/storage" "$INST/tmp" "$INST/log"
 chmod 700 "$INST/tmp"

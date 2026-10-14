@@ -532,8 +532,17 @@ require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baselin
                 for who in ('consent',):   # 사이트 H2 — 로그인 전 갈래는 2.32 첫 화면으로 바뀌었다(그 갈래는 invite_request_browser.py [grid] 가 잰다) · 동의 전만 그대로
                     a = subprocess.run(['php', str(stub), 'base', who], cwd=str(root), check=True, capture_output=True).stdout
                     b = subprocess.run(['php', str(stub), 'new', who], cwd=str(root), check=True, capture_output=True).stdout
-                    summary['html-' + who] = {'base': len(a), 'new': len(b), 'sha_equal': hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()}
-                    check(len(a) > 1000 and a == b, '⑤ %s launcher: server HTML identical to the pre-H1 launcher (34cfd3d) — %d bytes' % ('signed-out' if who == 'out' else 'consent-needed', len(b)))
+                    # R1(2026-10-15) — 사이트 H4(DESIGN 2.33)가 머리 로고 · 바닥의 「모아」 글자를 글자 로고 부품(span.moa-wordmark · 「m.」 의 점 span)으로
+                    #   바꿨다(바닥 「moa.」 → 「moa」). 그 세 자리만 H4 전 글자로 되돌린 뒤 글자 그대로 같아야 한다 — 다른 차이는 여전히 실패.
+                    def h4_back(x):
+                        x = re.sub(rb'<span class="moa-wordmark" role="img" aria-label="(\xeb\xaa\xa8\xec\x95\x84)"><span class="moa-wordmark__mo">\xeb\xaa\xa8</span>'
+                                   rb'<span class="moa-wordmark__a">\xec\x95\x84</span><span class="moa-wordmark__dot" aria-hidden="true">\.</span></span>', rb'\1', x)
+                        x = x.replace(b'm<span class="moa-symbol__dot">.</span></span>', b'm.</span>')
+                        return x.replace('모아<span>moa</span>'.encode(), '모아 <span>moa.</span>'.encode())
+                    nb = h4_back(b)
+                    summary['html-' + who] = {'base': len(a), 'new': len(b), 'new_h4_back': len(nb), 'sha_equal': hashlib.sha256(a).hexdigest() == hashlib.sha256(nb).hexdigest()}
+                    check(len(a) > 1000 and a == nb and b.count(b'class="moa-wordmark"') == 2,
+                          '⑤ %s launcher: server HTML identical to the pre-H1 launcher (34cfd3d) except the H4 wordmark (logo · footer = 2) — %d bytes' % ('signed-out' if who == 'out' else 'consent-needed', len(b)))
                 (root / 'src/views/launcher_h1_baseline.php').unlink()
                 stub.unlink()
                 # 실제 서버 — 로그인 전 · 동의 전(관리자 아닌 팀장 계정에 지난 판 동의 줄 하나 — 끝나면 지운다)

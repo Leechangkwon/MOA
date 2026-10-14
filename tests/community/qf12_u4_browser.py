@@ -260,7 +260,10 @@ try:
                         pg.screenshot(path=str(shots / ('first-%s-%d.png' % (label, width))))
                         summary['%s-%d-blocked' % (label, width)] = {'kind': k, 'parts': parts, 'task_full': tf_}
                         if kind == 'doc':
-                            check(k == 'doc' and parts['#page-doc'] and parts['header.page-head:not(#project-head)'], 'first %d doc (control): data-page-kind=doc · document parts shown' % width)
+                            # R1(2026-10-15) — W1c(DESIGN 2.35)가 #page-doc 의 상자(.panel)를 걷어 내용이 오기 전에는 높이 0 이다 → 「보임」 대신
+                            #   「문서 갈래로 그려져 있음(숨김 0 · display none 0)」을 본다. 머리(header.page-head)는 그대로 보여야 한다.
+                            doc_drawn = pg.evaluate("(() => { const d = document.getElementById('page-doc'); return !!d && !d.hidden && getComputedStyle(d).display !== 'none' && !d.closest('[hidden]'); })()")
+                            check(k == 'doc' and doc_drawn and parts['header.page-head:not(#project-head)'], 'first %d doc (control): data-page-kind=doc · document parts shown' % width)
                         else:
                             check(k == kind and not any(parts.values()), 'first %d %s (page API blocked = before any script switch): data-page-kind=%s · document parts 0 %s'
                                   % (width, label, kind, json.dumps([s for s, v in parts.items() if v])))
@@ -302,8 +305,9 @@ try:
                 p.wait_for_timeout(800)
                 fullsig = p.evaluate(SIG_JS, '#task-full')
                 metrics['full_sig'] = {'side': side, 'full': fullsig}
-                check(fullsig['dt'] == ['담당자', '마감', '프로젝트', '상태', '소유자', '볼 수 있는 곳'] and fullsig['note'] == ASSIGN_NOTE,
-                      'full: properties (담당자 · 마감 · 프로젝트 · 상태 · 소유자 · 볼 수 있는 곳) + 맡김 안내 ' + json.dumps(fullsig['dt'], ensure_ascii=False))
+                # R1(2026-10-15) — W1(DESIGN 2.34) 이 「마감」 앞에 「시작 예정」 칸을 더했다
+                check(fullsig['dt'] == ['담당자', '시작 예정', '마감', '프로젝트', '상태', '소유자', '볼 수 있는 곳'] and fullsig['note'] == ASSIGN_NOTE,
+                      'full: properties (담당자 · 시작 예정 · 마감 · 프로젝트 · 상태 · 소유자 · 볼 수 있는 곳) + 맡김 안내 ' + json.dumps(fullsig['dt'], ensure_ascii=False))
                 check(fullsig['heads'][:2] == ['설명', '하위 작업'] and any(h.startswith('파일 첨부') for h in fullsig['heads']) and fullsig['tabs'] == ['댓글', '모든 활동'] and fullsig['foot'] and fullsig['mention'],
                       'full: 설명 · 하위 작업 · 파일 첨부 · 댓글/모든 활동 탭 · 댓글 칸(멘션 부품) ' + json.dumps(fullsig, ensure_ascii=False))
                 check(fullsig == side, 'full == side pane fingerprint (same draw · same parts)')

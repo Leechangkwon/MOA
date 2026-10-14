@@ -393,7 +393,8 @@ try:
    t.go('/tbox/');t.open();t.person('합성 상대 A');p.locator('#message-text').fill('');p.locator('#message-text').type('로그아웃 전 초안')
    p.wait_for_function('k=>localStorage.getItem(k)!==null',arg=A_PREFIX+'message:'+str(pa),timeout=8000)
    check(A_STATE in t.ss(),'Q:T-14 precondition: state and draft present')
-   p.locator('details.appbar__apps > summary').click();p.locator('#logout').click();p.wait_for_url('**/login**',timeout=15000)
+   # R1(2026-10-15) — 카페 C6(DESIGN 2.30) 뒤 로그아웃 줄은 앱 판이 아니라 내 계정 판(details#account-menu)에 있다
+   p.locator('#account-menu > summary').click();p.locator('#logout').click();p.wait_for_url('**/login**',timeout=15000)
    check(not [k for k in t.ls() if k.startswith(A_PREFIX)] and not [k for k in t.ss() if k.startswith('qaredi-messenger:')],'Q:T-14 shell logout: this person draft prefix 0, messenger state 0')
    check(p.locator('#messenger-window').count()==0,'Q:T-14 login screen has no window')
    # Q:T-15 — A 의 초안·상태를 남긴 채(세션 만료 흉내: 쿠키만 바꿈) 같은 탭에서 B 로

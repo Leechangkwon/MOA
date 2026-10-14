@@ -275,9 +275,10 @@ try:
                         summary['long-%d' % width] = {k: st[k] for k in ('me', 'name', 'nameCut', 'nameEllipsis', 'overflow', 'meText')}
                         if width == 1440:
                             t.page.screenshot(path=str(shots / 'shell-long-1440.png'), clip={'x': 1440 - 560, 'y': 0, 'width': 560, 'height': 90})
-                        check(st['name'] == longname and st['nameCut'] and st['nameEllipsis'] == 'ellipsis' and st['meText'].endswith('님') and abs(st['me']['h'] - 40) <= 0.5
-                              and st['me']['r'] <= width and st['overflow'] <= 0 and st['meLabel'] == '내 계정 — ' + longname,
-                              'shell long name %d: name cut with ellipsis · 「님」 kept · chip height 40 · inside the screen · overflow 0 (chip w %.0f)' % (width, st['me']['w']))
+                        # R1(2026-10-15) — 카페 C6(DESIGN 2.30 「줄 순서」 — 메신저 · 앱 · 내 계정 칩 높이 모두 44 · 이름표 「내 계정 메뉴 — 이름」) 뒤 칩 높이 40 → 44 · 이름표
+                        check(st['name'] == longname and st['nameCut'] and st['nameEllipsis'] == 'ellipsis' and st['meText'].endswith('님') and abs(st['me']['h'] - 44) <= 0.5
+                              and st['me']['r'] <= width and st['overflow'] <= 0 and st['meLabel'] == '내 계정 메뉴 — ' + longname,
+                              'shell long name %d: name cut with ellipsis · 「님」 kept · chip height 44 · inside the screen · overflow 0 (chip w %.0f · h %.0f)' % (width, st['me']['w'], st['me']['h']))
                         check(t.clean('shell-long-%d' % width), 'shell long name %d console 0' % width)
                         ctx.close()
                 finally:
@@ -291,12 +292,17 @@ try:
   const all = nav ? [...nav.querySelectorAll('a')] : []; const shown = all.filter(vis);
   const cont = document.getElementById('moa-main'); const cs = getComputedStyle(cont); const cr = cont.getBoundingClientRect();
   const left = cr.left + parseFloat(cs.paddingLeft), right = cr.right - parseFloat(cs.paddingRight);
-  const first = shown.length ? box(shown[0]) : null, last = shown.length ? box(shown[shown.length - 1]) : null;
+  // R1(2026-10-15) — H1(DESIGN 2.31 ③) 뒤 줄 끝에 「＋ 바로가기」(button) 가 있고 줄바꿈한다 → 줄마다 보이는 항목(a · button) 전체로 가운데를 잰다(첫 줄 값을 gapL · gapR 로)
+  const items = nav ? [...nav.querySelectorAll('a, button')].filter(vis).map(box).map((b, i, arr) => b) : [];
+  const tops = nav ? [...nav.querySelectorAll('a, button')].filter(vis).map(el => Math.round(el.getBoundingClientRect().top)) : [];
+  const rows = {}; items.forEach((b, i) => { (rows[tops[i]] = rows[tops[i]] || []).push(b); });
+  const rowGaps = Object.keys(rows).sort((a, b) => a - b).map(t => [Math.min(...rows[t].map(b => b.l)) - left, right - Math.max(...rows[t].map(b => b.r))]);
+  const first = rowGaps.length ? {l: rowGaps[0][0] + left} : null, last = rowGaps.length ? {r: right - rowGaps[0][1]} : null;
   return {ids: shown.map(a => a.dataset.homeShortcut), names: shown.map(a => a.innerText.trim()), all: all.map(a => a.dataset.homeShortcut),
           paths: Object.fromEntries(shown.map(a => [a.dataset.homeShortcut, (a.querySelector('svg path') || {getAttribute: () => null}).getAttribute('d')])),
           hrefs: Object.fromEntries(shown.map(a => [a.dataset.homeShortcut, a.getAttribute('href')])),
           nav: nav ? box(nav) : null, navScroll: nav ? nav.scrollWidth - nav.clientWidth : null, left: left, right: right,
-          gapL: first ? first.l - left : null, gapR: last ? right - last.r : null, overflow: document.documentElement.scrollWidth - window.innerWidth,
+          gapL: first ? first.l - left : null, gapR: last ? right - last.r : null, rowGaps: rowGaps, overflow: document.documentElement.scrollWidth - window.innerWidth,
           menu: [...document.querySelectorAll('.home-services-menu a')].map(a => a.textContent.trim()), inline: [...document.querySelectorAll('#dashboard-services [style]')].length}; }"""
         if want('home'):
             def home():
@@ -318,7 +324,7 @@ try:
                     check(st['names'].count('업무 홈') == 1 and st['paths'].get('work') == icons['work'] and st['hrefs'].get('work') == '/community/',
                           'home %s: one 「업무 홈」 tile with the work icon → /community/' % tag)
                     check('우리 공간' in st['names'] and st['paths'].get('spaces') == icons['spaces'], 'home %s: 「우리 공간」 uses the spaces icon' % tag)
-                    check(st['navScroll'] <= 0 and st['gapL'] is not None and abs(st['gapL'] - st['gapR']) <= 2,
+                    check(st['navScroll'] <= 0 and st['gapL'] is not None and all(abs(g[0] - g[1]) <= 2 for g in st['rowGaps']),
                           'home %s: shortcut row centered — left %.1f · right %.1f (diff ≤ 2) · no inner scroll' % (tag, st['gapL'] or -1, st['gapR'] or -1))
                     check(st['overflow'] <= 0 and st['inline'] == 0, 'home %s: horizontal overflow 0 · inline style 0' % tag)
                     # 사이트 H1 (DESIGN 2.31 「머리」) — 「전체 서비스」 메뉴는 없어졌다(오른쪽 위는 셸과 같은 메신저 · 앱 · 내 계정). 옛 단언 「전체 서비스 메뉴에 업무 홈 한 번 · 내 작업 0」을 바꿈
