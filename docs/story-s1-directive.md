@@ -1,6 +1,7 @@
 # 지시서 S1 — 이야기(스레드) 화면 정리 (2026-10-14)
 
 받은 피드백(스크린샷 — 「나의 스레드」에 빨간 표시 셋): 사이드바 머리 글자 「줄바꿈」(v2.68.0 H5 로 해결됨) · 위 큰 배너 + 프로필 카드 「죽은 공간」 · 오른쪽 카드 「쓰레기 영역」.
+사용자(2026-10-14): 「댓글 달 때, 모달로 열릴 필요도 없어 사용감만 방해할 뿐이야」 → DESIGN 2.36 「댓글 — 창 없이 카드 안에서」(S1b).
 기준 문서(**정답지**): `DESIGN.md` **2.36**(+ 6장) · `/var/www/qaredi/CLAUDE.md` 2 · 3 · 4장(3.1 — 수락 시험만).
 
 | 항목 | 내용 |
@@ -22,4 +23,16 @@
               스크린샷(나의 스레드 1440 밝게 · 어둡게 · 412)
               정적: security_lint 0 · php -l · node --check · asset_version --check · git diff --check
 보고 형식   : docs/story-s1-report.md — 변경 파일 / 수락 시험과 결과 / 고친 옛 단언 / 못 한 것 / DESIGN 과 다르게 한 것. 짧게.
+```
+
+## S1b — 댓글을 창 없이 카드 안에서 (사용자 2026-10-14 · S1 뒤 · 같은 worktree · 같은 반영)
+
+```
+목표        : 이야기 게시글의 댓글을 별도 창(comments-dialog) 대신 그 카드 아래 펼침으로 읽고 쓰게 한다.
+요구사항    : DESIGN 2.36 「댓글 — 창 없이 카드 안에서」 줄(main — 2026-10-14).
+수정 파일   : memories_page.php(comments-dialog 마크업 삭제) · memories.js(openComments · loadComments · renderComments 를 카드 안 펼침으로 — 창구 · 커서 그대로) · memories.css(.post-comments) ·
+              시험 — story_s1_browser.py 에 S1b 단언 · 댓글 창을 열던 옛 단언(memories_runtime_browser 등)은 그 단언만 · docs/story-s1-report.md(S1b 절)
+금지 패턴   : 댓글 창구 · 판정 바꾸기 · innerHTML · 인라인 style · 새 색값 · git add -A.
+완료 기준   : dialog#comments-dialog 0 · 댓글 아이콘 → 그 카드 아래 펼침(다른 카드 그대로) · 다시 → 접힘 · 최근 3 + 「이전 댓글 더 보기」 · 입력 → 「게시」 · Ctrl+Enter → 목록 끝에 붙음 · 댓글 수 갱신 ·
+              빈 입력 게시 0 · 한글 조합 중 Enter 로 보내지 않음 · 읽기 전용 안내 · 공유 스레드 공개 화면 같음 · 1440 · 412 넘침 0 · 콘솔 0
 ```
