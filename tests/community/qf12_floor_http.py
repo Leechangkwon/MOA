@@ -594,6 +594,11 @@ try:
     new_schema = (root / 'db/community/schema.sql').read_text()
     marker = '\n-- ─────────────────────────────────────────────────────────────\n-- Q:F-12 업무 화면'
     old_schema = new_schema[:new_schema.index(marker)]   # = 기준 판(Q:F-12 전)의 schema.sql 글자 그대로 — 이 절은 끝에 덧붙였다
+    # R1(2026-10-15) — Q:F-12 절 뒤에도 절이 붙었다(카페 C1 · W1 시작 예정 — 각 절 머리가 「이미 있는 DB 는 db/migrations/<파일> 이 같은 모양」).
+    #   그래서 「옛 모양 + Q:F-12 이주」만으로는 새 설치와 같을 수 없다 — 표식 뒤 절이 이름 대는 이주 파일을 **나오는 차례대로** 모두(각 두 번) 돌린다.
+    tail_migrations = list(dict.fromkeys(re.findall(r'db/migrations/([0-9A-Za-z_.-]+\.sql)', new_schema[new_schema.index(marker):])))
+    check(tail_migrations[:1] == ['2026-10-19_qf12_work.sql'] and all((root / 'db/migrations' / m).is_file() for m in tail_migrations),
+          'migration: sections after the Q:F-12 marker name existing migration files, Q:F-12 first (' + ' · '.join(tail_migrations) + ')')
     oldp = out / 'qf12-old-community-schema.sql'
     oldp.write_text(old_schema)
     check(not any(w in old_schema for w in ('portfolio', 'my_tasks', 'project_status_updates', "'assigned'")), 'migration: base (pre-Q:F-12) schema has none of the new objects')
@@ -609,9 +614,10 @@ try:
         old_uid = psql_text(mig, "INSERT INTO public.users(username,password_hash,role) VALUES('claude_qf12_legacy','x','Employee') RETURNING id").splitlines()[0]
         old_sp = psql_text(mig, "INSERT INTO community.spaces(kind,owner_user_id,name,access_level) VALUES('personal'," + old_uid + ",'옛 공간','admin-only') RETURNING id").splitlines()[0]
         psql_text(mig, "INSERT INTO community.pages(space_id,title,doc,author_id,last_edited_by,assignee_id) VALUES(" + old_sp + ",'옛 담당','{}'," + old_uid + ',' + old_uid + ',' + old_uid + ')')
-        for _ in range(2):
-            for db in dbs.values():
-                psql_file(db, root / 'db/migrations/2026-10-19_qf12_work.sql')
+        for mfile in tail_migrations:   # 새 설치와 같은 차례(Q:F-12 → 카페 C1 → W1 …) · 각 두 번(멱등)
+            for _ in range(2):
+                for db in dbs.values():
+                    psql_file(db, root / 'db/migrations' / mfile)
         for key, db in dbs.items():
             gpath = out / ('qf12-grants-' + key + '.sql')
             text = (root / 'db/grants.sql').read_text().replace('tbox_re', db)
@@ -645,7 +651,7 @@ try:
         (out / 'qf12-shape-diff.txt').write_text('\n'.join(diff) + '\n')
         codes['shape_lines'] = len(shapes['fresh'].splitlines())
         print('SHAPE ' + ('SAME' if shapes['fresh'] == shapes['mig'] else 'DIFF') + ' lines=' + str(codes['shape_lines']) + ' diff=' + str(len(diff)), flush=True)
-        check(shapes['fresh'] == shapes['mig'], 'migration: fresh install (schema.sql+grants) and pre-Q:F-12 schema + migration×2 (+grants) SAME '
+        check(shapes['fresh'] == shapes['mig'], 'migration: fresh install (schema.sql+grants) and pre-Q:F-12 schema + migrations×2 (+grants) SAME '
               '(columns · constraints · indexes · grants · sequences, ' + str(codes['shape_lines']) + ' lines)')
         check(sum(1 for l in shapes['fresh'].splitlines() if 'portfolio' in l or 'project_status' in l or 'my_tasks' in l or 'purpose' in l) >= 30,
               'migration: compared shape includes the new objects')

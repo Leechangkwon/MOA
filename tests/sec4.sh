@@ -175,6 +175,26 @@ expect "다시 돌려도 오류 없음(IF NOT EXISTS)" "0" \
 # 새 설치 모양(db/schema.sql)과 같은가 — users 표 정의 안에 같은 칸이 한 줄
 expect "db/schema.sql 의 users 에 같은 칸" "1" "$(awk '/^CREATE TABLE users/{f=1} f&&/^\);/{f=0} f' "$ROOT/db/schema.sql" | grep -c '^    temp_password_issued_at TIMESTAMPTZ,')"
 
+sub "①-b 검토 계정 claude_admin01 — 지금 판 약관 동의 · 처리방침 확인(임시 DB 에만 · R1 2026-10-15)"
+# 세션 관문(Legal::needsConsent — Q:F-13)은 terms · privacy 의 마지막 줄이 **지금 판**의 agree 가 아니면 403 consent_required 로 막는다.
+#   처리방침 새 판(2026-10-14)이 나온 뒤 운영 사본의 검토 계정은 옛 판에만 동의한 상태라 POST /api/users 가 403 이 됐다(밤 회귀 2026-10-14).
+#   이 시험이 보는 것은 R-39(임시 비밀번호 72시간)이지 동의 관문이 아니다 — 임시 DB 에서만 지금 판 동의 줄을 더한다(관문 자체는 tests/qf13_consent_http.py).
+ADM_ID=$(psqlq "SELECT id FROM users WHERE username = 'claude_admin01'")
+case "$ADM_ID" in ''|*[!0-9]*) echo "임시 DB 에 claude_admin01 이 없다 — 중단"; exit 4 ;; esac
+for d in terms privacy; do
+  ver=$(php -r 'require $argv[1] . "/src/Legal.php"; echo Legal::current($argv[2]);' "$ROOT" "$d" 2>/dev/null)
+  case "$ver" in [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]) ;; *) echo "지금 $d 판을 읽지 못했다 — 중단"; exit 4 ;; esac
+  last=$(psqlq "SELECT version || '|' || action FROM user_consents WHERE user_id = $ADM_ID AND doc = '$d' ORDER BY id DESC LIMIT 1")
+  if [ "$last" = "$ver|agree" ]; then
+    note "$d 지금 판 $ver — 이미 동의(더하지 않음)"
+  else
+    note "$d 지금 판 $ver — 마지막 줄 ${last:-없음} → 임시 DB 에만 agree 한 줄"
+    psqlq "INSERT INTO user_consents(user_id, doc, version, action, ip) VALUES ($ADM_ID, '$d', '$ver', 'agree', '127.0.0.1')" >/dev/null
+  fi
+  expect "claude_admin01 $d 마지막 줄 = 지금 판 agree" "$ver|agree" \
+    "$(psqlq "SELECT version || '|' || action FROM user_consents WHERE user_id = $ADM_ID AND doc = '$d' ORDER BY id DESC LIMIT 1")"
+done
+
 sub "② 저장소를 임시 폴더로 복사하고 인스턴스를 띄운다(자산도 내준다 — 화면 시험)"
 INST="$(mktemp -d)"
 mkdir -p "$INST/app" "$INST/storage" "$INST/log"

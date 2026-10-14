@@ -54,7 +54,10 @@ try:
           check(tag+' CSP markup',page.locator('[style],script:not([src]),[onclick]').count()==0)
           if screen=='anonymous':
             check(tag+' personal dashboard and private loaders absent',page.locator('#home-widgets,#dashboard-services,script[src*="home-dashboard.js"],script[src*="start.js"],script[src*="product-home.js"]').count()==0)
-            check(tag+' public service descriptions remain',page.locator('.moa-service-card').count()==4)
+            # R1(2026-10-15) — 사이트 H2(DESIGN 2.32 ⑥) 뒤 로그인 전 첫 화면은 「지금 하려는 일에 맞게」 카드 넷 대신 ①~⑤ 절(가입하면 할 수 있는 일 카드 넷 · 시작 · 안전 · 질문)이 서비스를 설명한다
+            check(tag+' public service descriptions remain',page.locator('.moa-service-card').count()==0
+                  and all(page.locator('section.'+c).count()==1 for c in ['landing-hero','landing-features','landing-steps','landing-trust','landing-faq'])
+                  and page.locator('.landing-features__grid > *').count()==4)
           if screen=='launcher' and width==1440 and brightness=='light':
             page.screenshot(path=str(OUT/f'{theme}-launcher.png'),full_page=True)
           if screen=='login' and theme=='nova' and width in [360,1440] and brightness=='light':
@@ -66,8 +69,13 @@ try:
     # Actual control flow: cancel, Escape/focus, save, navigation, shared setting, cookie shape.
     page.set_viewport_size({'width':1440,'height':1000})
     context.clear_cookies()
+    # R1(2026-10-15) — 사이트 H1(DESIGN 2.31 「테마」) 뒤 런처의 테마 입구는 내 계정 판의 「테마」 타일(.app-menu__app — 판은 app.js 가 연다)뿐이다
+    #   (옛 런처 인사 줄의 「화면 꾸미기」 단추는 로그인한 런처에서 빠졌다). 이 시험은 app.js 를 비워 두므로 판을 열 수 없다 —
+    #   런처에는 그 타일과 같은 창이 실렸는지만 보고, 창 흐름(취소 · Esc · 초점 · 저장)은 보이는 입구가 있는 설정 화면에서 돈다.
     page.goto(BASE+'/?screen=launcher')
-    opener=page.locator('[data-design-open]').first
+    check('launcher theme entry = account-menu tile + same dialog',page.locator('.app-menu [data-design-open]').count()==1 and page.locator('[data-design-open]').count()==1 and page.locator('#q-design-dialog').count()==1)
+    page.goto(BASE+'/?screen=settings')
+    opener=page.locator('[data-design-open]:visible').first
     opener.click(); page.locator('[data-design-choice="nova"]').click()
     expect(page.locator('html')).to_have_attribute('data-design','nova')
     page.keyboard.press('Escape')
@@ -76,18 +84,21 @@ try:
     opener.click(); page.locator('[data-design-choice="nova"]').click(); page.locator('#q-motion-reduce').check(); page.locator('#q-design-save').click()
     expect(page.locator('#q-design-status')).to_contain_text('저장했습니다')
     page.locator('[data-design-close]').click()
-    page.goto(BASE+'/?screen=settings')
+    page.goto(BASE+'/?screen=launcher')
     expect(page.locator('html')).to_have_attribute('data-design','nova')
     expect(page.locator('html')).to_have_attribute('data-motion','reduce')
-    check('global theme two settings entry points',page.locator('[data-design-open]').count()==2)
+    page.goto(BASE+'/?screen=settings')
+    expect(page.locator('html')).to_have_attribute('data-design','nova')
+    # 설정 화면의 입구 셋(H1 2.31 — 사이드바 바닥 단추 · 내 계정 판 「테마」 타일 · 설정 화면 「테마 고르기」, 모두 같은 창 q-design-dialog). 옛 기대 2 는 H1 앞
+    check('global theme three settings entry points',page.locator('[data-design-open]').count()==3 and page.locator('.app-menu [data-design-open]').count()==1 and page.locator('[data-design-open][aria-controls="q-design-dialog"]').count()==3)
     check('motion override',page.locator('.q-design-status, .ok-note').first.evaluate('(e)=>getComputedStyle(e).animationName')=='none')   # 사이트 H5 — 셸 머리 글자(.brand__name — 움직이던 것) 0 → 같은 「움직임 줄이기」 규칙(*)이 거는 다른 요소
     check('cookie scope',all(c['path']=='/' and c['sameSite']=='Lax' and c['expires']>time.time()+30000000 for c in context.cookies() if c['name'].startswith('qaredi_')))
     page.goto(BASE+'/?screen=launcher&hc=1')
     check('high contrast keeps original primary',page.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()') in ['#000000','#18181b','#09090b','#ffffff','#fafafa'])
     check('high contrast clears large service decoration',page.locator('.moa-service-card').first.evaluate('(e)=>getComputedStyle(e).backgroundImage')=='none')
     context.clear_cookies(); context.add_cookies([{'name':'qaredi_design','value':'nova','url':BASE}]); page.emulate_media(reduced_motion='reduce',color_scheme='dark')
-    page.goto(BASE+'/?screen=launcher')
-    page.locator('[data-design-open]').first.click()
+    page.goto(BASE+'/?screen=settings')
+    page.locator('[data-design-open]:visible').first.click()
     check('OS motion preference',page.locator('.q-theme-option').first.evaluate('(e)=>getComputedStyle(e).transitionDuration')=='0s')
     page.keyboard.press('Escape')
     check('OS dark color',page.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--surface").trim()')=='#222427')
