@@ -48,6 +48,10 @@ if ($opened === null && !$alreadyIn) {
 }
 
 $sessionReturnRaw = $_GET['to'] ?? null;
+// The assistant may return to the site home after authentication. Only the exact local root is accepted.
+if ($sessionReturnRaw === '/') {
+    Http::redirect('/');
+}
 $sessionReturn    = is_string($sessionReturnRaw) ? Http::returnPath($sessionReturnRaw) : null;
 if ($sessionReturn !== null) {
     Http::redirectReturn($sessionReturn);          // 허용 목록의 정규형만 — 같은 출처 경로
