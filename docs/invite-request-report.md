@@ -99,3 +99,45 @@ HTTP 시험이 잰 것: 요청 201 `{status_path}` · 코드 64 16진 · 표엔 
 - 앱 판 「우리 공간」 타일은 지금까지 없었다(`config/apps.json` 셋) — 완료 기준 「앱 판 … → /community/cafe」 를 위해 앱 목록 원본에 넷째 줄로 더했다(지시서 「Apps.php 또는 앱 목록 원본」 자리).
 - 카페 홈의 「새 글」 · 「인기 글」 머리는 h3 → h2(화면 h1 「우리 공간」 바로 아래라 단계 건너뛰기 0).
 - 셸 키 `community-cafe` 는 업무 셸 사이드바 강조(`is-active`)에도 쓴다.
+
+---
+
+# H4 — 「모아.」 글자 로고(시안 D 기본 · 테마 창에서 A ~ D) · 바닥 붙이기 (2026-10-14)
+
+지시서(main `b66e275` 의 「H4」) · DESIGN 2.33(main — 2026-10-14 · 「셸 브랜드」 줄은 H5 로 「글자를 그리지 않는다」). 문서는 이 worktree 에서 고치지 않았다.
+
+## H4 — 변경 파일
+
+| 갈래 | 파일 |
+|---|---|
+| 부품 | 새 `src/views/moa_wordmark.php`(글자 로고 한 벌 — `span.moa-wordmark` > `__mo` · `__a` · `__dot` · 머리 로고 자리는 「m.」 상징 함께) · 새 `src/views/moa_footer.php`(바닥 한 벌 — 런처 · 가입 · 동의 · 초대 요청 · 확인) |
+| 갈래 · 저장 | `src/Design.php`(`WORDMARKS` 허용 목록 · `wordmark()` · `attrs()` 에 `data-wordmark`) · `src/views/design_controls.php`(테마 창 「모아 글씨 색」 넷 · 미리보기) · `public/assets/design.js`(고르면 즉시 · 「기본으로 저장」 이 쿠키 `qaredi_wordmark` · 닫으면 되돌림 — 테마와 같은 길) |
+| 색 · 모양 | `public/assets/app.css`(2.33 표의 값만 — :root · 다크 둘 · 고대비 셋 블록에 갈래 색 한 줄씩 · 고대비 절 앞에 「고른 갈래 → 쓰는 토큰」 줄 · 로그인 왼쪽 판은 어둡게 값) · `public/assets/moa.css`(부품 · 상징 · 자리별 크기 · 바닥 붙이기 · 테마 창 묶음) |
+| 자리 | `src/views/launcher.php`(머리 로고 둘 · 가운데 「Qaredi」 둘 → 「모아.」 · 바닥) · `src/views/member_top.php`(머리 로고) · `src/handlers/legal_page.php`(머리 · 바닥) · `src/handlers/login_page.php`(머리 글자) · 바닥을 단 화면 넷 `member_join_page.php` · `consent_page.php` · `invite_request_page.php` · `invite_request_status_page.php` |
+| 시험 | 새 `tests/community/home_h4_browser.py` · `memories_harness.py`(choices) · `tests/catalog.json` |
+
+## H4 — 수락 시험과 결과
+
+| 시험 | 결과 | 폴더 |
+|---|---|---|
+| `… --suite home_h4_browser.py --output …/h4-run3` | **252 / 0** | `h4-run3/`(results · metrics · shots/ — 홈 밝게 · 어둡게 · 1920 · 412 · 가입 · 초대 요청) |
+| H2 브라우저 다시(바닥 · 머리가 바뀐 로그인 전 화면) `… --suite invite_request_browser.py --output …/h4-h2browser` | **458 / 0** | `h4-h2browser/` |
+| 정적 | security_lint 0건 · php -l · node --check 통과 · wiki_check 0건 · git diff --check 통과 | — |
+
+잰 것: [places] 홈 · 로그인 전 · 동의 전 런처 · 로그인 · 가입 · 동의 · 초대 요청 · 확인 · 처리방침 × 밝게 · 어둡게(+ 홈 · 로그인 전 · 로그인 · 가입은 A · B · C 까지): 자리(가운데 · 머리 로고 · 바닥 · 로그인 머리) · 글자 「모아.」 800 · 화면 읽기 「모아」(가운데는 aria-hidden — 화면 읽기 h1 이 따로) · 계산된 글자색 = 토큰(`--brand-wordmark-1/-2`) · 점 = `--brand-wordmark-dot` · 점은 D 만 · A · B 는 글자 투명 + 그라데이션 · C 는 두 색 · 테마 여섯을 바꿔도 색 그대로 · 고대비(계정 취향) 밝게 · 어둡게 × D · A · C → `--fg` 단색 · 대비 ≥ 4.5(첫 색 · 로그인 왼쪽 판과 B 밝게는 아래) · 「Qaredi」 글자 0(처리방침 본문의 문서 이름 「모아(Qaredi)」 는 그대로) · 넘침 0 · 콘솔 0 · [pick] 서버 첫 HTML 의 `data-wordmark`(쿠키 a · b · c · d 그대로 · `zz` · `A` · 따옴표 넣은 값 · 없음 → d — 다섯 화면) · 테마 창 넷 · 미리보기(점 D 만 · 그라데이션 A · B) · 「(기본)」 · C 고르면 즉시 · 닫으면 D 로 되돌림 · A 저장 → 쿠키 · 새로 고침 · `/tbox/` · `/community/` · `/tbox/privacy` 첫 HTML a · [foot] 1440×900 · 1920×1080 · 412×900 × 여덟 화면(홈은 어둡게도): 짧은 화면은 바닥 아래 끝 = 창 아래 끝(±1) · 긴 화면은 내용 바로 뒤 · 바닥 폭 ≤ 1200 · 넘침 0 · 콘솔 0 · 홈(대시보드 접힘)은 세 크기 모두 짧은 화면.
+
+## H4 — 고친 옛 단언 (돌리지 않았다)
+
+| 시험 | 고친 내용 |
+|---|---|
+| `tests/community/home_h1_browser.py` ② | 가운데 글자 `'Qaredi'` · 굵기 600 → `'모아.'`(굵기는 부품 800 — H4 시험이 잰다) |
+| `tests/community/invite_request_browser.py` ①(H2) | 가운데 글자 `'Qaredi'` → `'모아.'` · [same] 견주기 전에 머리 로고 · 가운데 글자 · 바닥 세 자리를 양쪽에서 같은 표시로 바꿈(H4 가 일부러 바꾼 곳 — 그 밖은 바이트 비교 그대로) |
+
+## H4 — 못 한 것 · 다르게 한 것
+
+1. **DESIGN 2.33 의 B 밝게 첫 색 `#f97316` 은 흰 · 밝은 바탕 대비 약 2.4**(측정 `h4-run3/home-h4-metrics.json` `b-light-ratio`) — 「대비 4.5 이상(네 갈래 첫 색)」 과 표의 값이 서로 맞지 않는다. 새 색을 만들 수 없어 값 그대로 두고 그 단언만 값 기록으로 돌렸다 — **사용자 판단 필요**(B 밝게 첫 색을 `#c2410c` 같은 진한 주황으로 · 또는 B 를 어둡게 전용으로). C 의 「아」 `#0d9488`(밝게 약 3.7)도 4.5 아래지만 기준이 「첫 색」 이라 단언 밖.
+2. **토큰 이름을 더 썼다**: 2.33 의 다섯(`--brand-wordmark` · `-2` · `-fill` · `-dot` · `-on`)에 「모」 글자색 `-1` · 점 보임 `-dot-show` 를 더하고, 갈래 넷의 원래 색은 `--wm-*` 아홉으로 두었다 — 테마 창의 미리보기가 지금 고른 갈래와 무관하게 자기 색으로 그려지려면(같은 줄을 `[data-wordmark-preview]` 에도 건다) 갈래 색이 따로 있어야 해서다. 색값은 2.33 표의 것뿐이고 app.css 의 :root · 다크 · 고대비 블록 + 갈래 줄에만 있다.
+3. **로그인 화면 왼쪽 판**(사진 위 어두운 칠 — 밝게 · 어둡게와 무관하게 늘 어둡다)은 갈래마다 2.33 의 **어둡게** 값을 쓴다(밝게 보라 `#6d28d9` 가 어두운 사진 위에서 안 보여서). 사진 바탕이라 대비는 기계로 재지 못했다(스크린샷 확인 몫).
+4. **바닥 부품 `src/views/moa_footer.php`(새)** — 가입 · 동의 · 초대 요청 · 확인 화면에는 바닥이 없었다(머리의 법적 문서 링크뿐). 「바닥 아래 끝 = 창 아래 끝」 을 재려면 바닥이 있어야 해서 한 벌로 만들어 런처와 그 넷에 달았다(법적 문서 화면은 자기 바닥 — 주소가 판을 따라가서 — 그대로 두고 글자 로고만 바꿈). 바닥 붙이기는 클래스를 더하지 않고 `body.moa-site:has(> footer.moa-footer)` 한 규칙으로 했다.
+5. **테마 창 묶음 클래스 셋**(`.q-wordmark-picker` · `-option` · `-sample`)과 상징의 점 `.moa-symbol__dot` 을 새로 썼다(2.33 에 이름이 없음). 테마 창 규칙은 design.css 가 아니라 moa.css 에 두었다(허용 목록).
+6. 셸 브랜드 「모아」 칠은 하지 않았다 — H5 · DESIGN 2.33 「셸 브랜드」 줄(main 최신)이 「글자를 그리지 않는다」 로 바뀌었다.

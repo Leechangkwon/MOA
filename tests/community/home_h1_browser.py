@@ -224,8 +224,8 @@ try:
                         check(st['toolsH'] and all(x == 44 for x in st['toolsH']), '① %s: messenger · apps · chip heights 44 %s' % (tag, st['toolsH']))
                         # ② 가운데
                         w = st['word'] or {}
-                        check(w.get('text') == 'Qaredi' and w.get('hidden') == 'true' and w.get('fs') == ('44px' if phone else '64px') and w.get('fw') == '600' and w.get('vis'),
-                              '② %s: wordmark 「Qaredi」 %s 600 · aria-hidden %s' % (tag, '44px' if phone else '64px', json.dumps(w, ensure_ascii=False)))
+                        check(w.get('text') == '모아.' and w.get('hidden') == 'true' and w.get('fs') == ('44px' if phone else '64px') and w.get('vis'),   # 사이트 H4 — 「Qaredi」 → 「모아.」(DESIGN 2.33 · 글자 굵기는 부품 .moa-wordmark 800 — home_h4_browser 가 잰다)
+                              '② %s: wordmark 「모아.」 %s · aria-hidden %s' % (tag, '44px' if phone else '64px', json.dumps(w, ensure_ascii=False)))
                         check(st['h1'] and st['h1']['text'] == '모아 홈' and st['h1']['w'] <= 1 and st['h1']['count'] == 1, '② %s: h1 「모아 홈」 for screen readers only (w %s)' % (tag, st['h1'] and st['h1']['w']))
                         s = st['search'] or {}
                         check(s and abs(s['h'] - 52) <= 0.5 and s['radius'] == '26px' and s['w'] <= 720.5 and abs(s['w'] - min(720, st['wrapW'])) <= 1 and s['icon'] == 20,

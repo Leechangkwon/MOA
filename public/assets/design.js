@@ -8,19 +8,25 @@
   const names = { moa: '모아', claude: 'Claude', astra: 'Astra', aurora: 'Aurora', bloom: 'Bloom', nova: 'Nova' };
   const choices = [...dialog.querySelectorAll('[data-design-choice]')];
   const motion = document.getElementById('q-motion-reduce');
+  // 사이트 H4 (DESIGN 2.33) — 「모아 글씨 색」 넷(허용 목록 · 기본 d). 고르면 <html data-wordmark> 를 바로 바꾸고, 저장은 테마와 같은 쿠키 길
+  const wordmarks = ['d', 'a', 'b', 'c'];
+  const marks = [...dialog.querySelectorAll('input[name="q-wordmark"]')];
   const status = document.getElementById('q-design-status');
   const save = document.getElementById('q-design-save');
   let original = root.dataset.design;
   let originalMotion = root.dataset.motion;
+  let originalMark = wordmarks.includes(root.dataset.wordmark) ? root.dataset.wordmark : 'd';
   let opener = null;
   function sync() {
     choices.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.designChoice === root.dataset.design)));
     document.querySelectorAll('[data-design-name]').forEach(label => { label.textContent = names[root.dataset.design] || 'Astra'; });
     motion.checked = root.dataset.motion === 'reduce';
+    marks.forEach(input => { input.checked = input.value === (root.dataset.wordmark || 'd'); });
   }
   function restore() {
     root.dataset.design = original;
     root.dataset.motion = originalMotion;
+    root.dataset.wordmark = originalMark;
     sync();
   }
   function write(name, value) {
@@ -31,6 +37,7 @@
     if (dialog.open) return;
     original = root.dataset.design;
     originalMotion = root.dataset.motion;
+    originalMark = wordmarks.includes(root.dataset.wordmark) ? root.dataset.wordmark : 'd';
     opener = button;
     status.textContent = '';
     save.disabled = false;
@@ -47,13 +54,20 @@
     sync();
   }));
   motion.addEventListener('change', () => { root.dataset.motion = motion.checked ? 'reduce' : 'auto'; });
+  marks.forEach(input => input.addEventListener('change', () => {
+    if (!input.checked || !wordmarks.includes(input.value)) return;
+    root.dataset.wordmark = input.value;
+    status.textContent = '모아 글씨 색 미리보기 중 · 기본으로 저장하면 적용됩니다.';
+  }));
   save.addEventListener('click', () => {
     const theme = root.dataset.design;
     if (!themes.includes(theme)) return;
     let stored = false;
-    try { stored = write('qaredi_design', theme) && write('qaredi_motion', motion.checked ? 'reduce' : 'auto'); } catch (_) { /* cookie may be disabled */ }
+    const mark = wordmarks.includes(root.dataset.wordmark) ? root.dataset.wordmark : 'd';
+    try { stored = write('qaredi_design', theme) && write('qaredi_motion', motion.checked ? 'reduce' : 'auto') && write('qaredi_wordmark', mark); } catch (_) { /* cookie may be disabled */ }
     original = theme;
     originalMotion = root.dataset.motion;
+    originalMark = mark;
     sync();
     status.textContent = stored ? names[theme] + '를 이 브라우저의 기본 테마로 저장했습니다.' : '현재 화면에 적용했습니다. 쿠키가 차단되어 다음 방문에는 저장되지 않습니다.';
   });

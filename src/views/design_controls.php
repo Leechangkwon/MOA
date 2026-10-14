@@ -17,6 +17,14 @@ require_once __DIR__ . '/../Design.php';
     </button>
 <?php endforeach; ?>
   </div>
+  <?php /* 사이트 H4 (DESIGN 2.33 「고를 수 있게」) — 「모아 글씨 색」 넷. 줄마다 그 갈래로 그린 「모아.」 미리보기(data-wordmark-preview — app.css 의 같은 갈래 줄).
+           고르면 화면 전체가 바로 바뀌고(미리보기) 「기본으로 저장」 이 테마와 같은 길로 쿠키 qaredi_wordmark 를 쓴다(design.js) · 닫으면 저장 전 선택은 되돌린다. */ ?>
+  <fieldset class="q-wordmark-picker">
+    <legend>모아 글씨 색</legend>
+<?php foreach (Design::WORDMARKS as $qWordmarkKey => $qWordmarkLabel): ?>
+    <label class="q-wordmark-option"><input type="radio" name="q-wordmark" value="<?= $qWordmarkKey ?>"<?= Design::wordmark() === $qWordmarkKey ? ' checked' : '' ?>><span class="q-wordmark-sample" data-wordmark-preview="<?= $qWordmarkKey ?>"><?php $moaWordmarkLabel = false; require __DIR__ . '/moa_wordmark.php'; ?></span><span><?= $qWordmarkLabel ?><?= $qWordmarkKey === 'd' ? ' (기본)' : '' ?></span></label>
+<?php endforeach; ?>
+  </fieldset>
   <label class="q-motion-control"><input type="checkbox" id="q-motion-reduce"> 움직임 줄이기<span>기기의 모션 설정도 따릅니다.</span></label>
   <p class="q-design-status" id="q-design-status" role="status" aria-live="polite"></p>
   <div class="q-design-footer"><span>밝은 화면 · 어두운 화면 모두 지원</span><button type="button" class="btn" id="q-design-save">기본으로 저장</button></div>

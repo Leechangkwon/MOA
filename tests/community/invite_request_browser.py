@@ -222,9 +222,16 @@ try:
                     again = fetch()
                     # 뒤 묶음이 일부러 바꾼 로그인 뒤 갈래의 글자(그 묶음의 수락 시험이 잰다) — 견주기 전에 옛 쪽을 같은 글자로 바꾼다
                     LATER = [(b'href="/tbox/spaces"', b'href="/community/cafe"')]   # H3 — 홈 바로가기 「우리 공간」 = 카페
+                    # H4 — 「모아.」 글자 로고 · 바닥(DESIGN 2.33 — home_h4_browser 가 잰다): 그 자리 셋(머리 로고 · 가운데 글자 · 바닥)은 양쪽에서 같은 표시로 바꿔 견준다
+                    SPOTS = [(rb'<a class="moa-logo" href="/">.*?<span class="moa-logo-note">', b'<a class="moa-logo" href="/">[LOGO]<span class="moa-logo-note">'),
+                             (rb'<p class="home-wordmark" aria-hidden="true">.*?</p>', b'[WORDMARK]'), (rb'<footer class="moa-footer">.*?</footer>', b'[FOOTER]')]
                     for k in ('live', 'consent'):
                         for a_, b_ in LATER:
                             old[k] = old[k].replace(a_, b_)
+                        for rx, b_ in SPOTS:
+                            old[k] = re.sub(rx, b_, old[k], flags=re.S)
+                            new[k] = re.sub(rx, b_, new[k], flags=re.S)
+                            again[k] = re.sub(rx, b_, again[k], flags=re.S)
                     for k in ('live', 'consent'):
                         check(len(new[k]) > 3000 and new[k] == old[k] == again[k], '[same] %s launcher: server HTML byte-identical to main launcher.php (%d bytes)' % (k, len(new[k])))
                     check(new['out'] != old['out'] and b'landing-hero' in new['out'] and b'landing-hero' not in old['out'], '[same] signed-out launcher changed (landing) — %d → %d bytes' % (len(old['out']), len(new['out'])))
@@ -256,7 +263,7 @@ try:
                         nl = st['navLinks']
                         check(len(nl) == 1 and nl[0]['t'] == '로그인' and nl[0]['href'] == '/tbox/login' and nl[0]['h'] == 44, '머리 %s: one 「로그인」 (44) %s' % (tag, json.dumps(nl, ensure_ascii=False)))
                         w = st['word'] or {}
-                        check(w.get('t') == 'Qaredi' and w.get('hidden') == 'true' and w.get('fs') == ('44px' if phone else '64px'), '① %s: wordmark 「Qaredi」 %s' % (tag, w.get('fs')))
+                        check(w.get('t') == '모아.' and w.get('hidden') == 'true' and w.get('fs') == ('44px' if phone else '64px'), '① %s: wordmark 「모아.」 %s' % (tag, w.get('fs')))   # H4 — 「Qaredi」 → 「모아.」
                         h1 = st['h1'] or {}
                         check(h1.get('t') == '우리 회사의 일과 자료를 한곳에서' and h1.get('fs') == ('28px' if phone else '40px') and h1.get('fw') == '700' and h1.get('n') == 1,
                               '① %s: h1 「우리 회사의 일과 자료를 한곳에서」 %s 700' % (tag, h1.get('fs')))

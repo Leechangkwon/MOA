@@ -125,7 +125,7 @@ if ($loginReturn !== null) { $loginApp['into'] = '원래 열려던 화면으로'
       <span class="login__mark"><span class="icon" data-icon="<?= $loginApp['icon'] ?>"></span></span>
       <span class="brand__text">
         <span class="login__brand-name"><?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?></span>
-        <span class="login__brand-sub q-wordmark">모아</span>
+        <span class="login__brand-sub"><?php require __DIR__ . '/../views/moa_wordmark.php'; /* H4 (DESIGN 2.33) — 「모아.」 글자 로고 한 벌 */ ?></span>
       </span>
     </div>
     <div>

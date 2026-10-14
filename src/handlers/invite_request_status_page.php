@@ -19,4 +19,4 @@ require __DIR__.'/../views/member_top.php';
 <p class="help"><a href="<?= Http::url('/request-invite') ?>">초대 요청 화면으로</a></p>
 </section>
 <script defer src="<?= Http::url('/assets/invite-request.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/invite-request.js') ?>"></script>
-</main></body></html>
+</main><?php require __DIR__.'/../views/moa_footer.php'; /* H4 — 바닥(DESIGN 2.33 「바닥 붙이기」) */ ?></body></html>

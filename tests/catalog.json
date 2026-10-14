@@ -6562,6 +6562,46 @@
       "est_sec": 300,
       "writes_prod": false,
       "notes": "사이트 H3 「우리 공간」 = 카페(DESIGN 2.29 · 지시서 H3) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [links] 앱 판(/ · /tbox/ · /community/) · 홈 바로가기 · 셸 브랜드 · 카페 사이드바 「카페 홈」 → /community/cafe(aria-current). [cafe] 카페 셸 · h1 「우리 공간」 · 카드 = 사이드바 카페 게시판 · 새 글 · 인기 · 「게시판 만들어 주세요」(손님 0) · 「내 공간」 · 고르개 0. [old] /tbox/spaces 302 · ?space= 공간 화면(카페 0) · 비회원 거부 그대로 · 위젯 「전체 보기」 링크 모양. [grid] 손님 · 직원 · 관리자 × 1440 · 412 × 밝게 · 어둡게 · 고대비 넘침 0 · 콘솔 0."
+    },
+    {
+      "id": "community.home_h4_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite home_h4_browser.py --output /tmp/qaredi-home-h4-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/views/moa_wordmark.php",
+        "src/views/moa_footer.php",
+        "src/Design.php",
+        "src/views/design_controls.php",
+        "public/assets/design.js",
+        "public/assets/app.css",
+        "public/assets/moa.css",
+        "src/views/launcher.php",
+        "src/views/member_top.php",
+        "src/handlers/legal_page.php",
+        "src/handlers/login_page.php",
+        "src/handlers/member_join_page.php",
+        "src/handlers/consent_page.php",
+        "src/handlers/invite_request_page.php",
+        "src/handlers/invite_request_status_page.php",
+        "src/views/shell_top.php",
+        "src/views/shell_tools.php",
+        "public/assets/app.js",
+        "tests/community/home_h4_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "사이트 H4 「모아.」 글자 로고 · 바닥 붙이기(DESIGN 2.33) + H5 사이드바 머리 · 앱 판 검색 타일(2.19 ⑩ · 2.30) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [places] 모아 홈 · 로그인 전 · 동의 전 런처 · 로그인 · 가입 · 동의 · 초대 요청 · 확인 · 처리방침: 「모아.」 계산된 색 = 토큰 · 점 D 만 · A · B 그라데이션 · C 두 색 · 테마 여섯 그대로 · 고대비 --fg · 대비 4.5(B 밝게는 값만 기록) · 「Qaredi」 0. [pick] 첫 HTML data-wordmark(쿠키 a b c d · 엉뚱한 값 · 없음 → d) · 테마 창 넷 · 미리보기 · 즉시 · 닫으면 되돌림 · 저장 쿠키 · 새로 고침 · 다른 화면. [foot] 1440×900 · 1920×1080 · 412×900 짧은 화면 바닥 = 창 아래 끝 · 긴 화면 내용 뒤 · 폭 ≤ 1200 · 넘침 0 · 콘솔 0. [h5] 셸 다섯 사이드바 머리 글자 0 · 아이콘 36 · aria-label · 풍선 · 앱 판 검색 타일 0 · 검색 길 그대로."
     }
   ]
 }

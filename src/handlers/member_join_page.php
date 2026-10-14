@@ -25,4 +25,4 @@ require __DIR__.'/../views/member_top.php';
 <button class="btn moa-primary" type="submit">가입하고 다음으로 <span aria-hidden="true">→</span></button><p id="member-status" role="status" aria-live="polite"></p>
 </form><p class="moa-muted">이미 계정이 있나요? <a href="<?= Http::url('/login?to=community') ?>">로그인</a></p>
 </section></div>
-</main></body></html>
+</main><?php require __DIR__.'/../views/moa_footer.php'; /* H4 — 바닥(DESIGN 2.33 「바닥 붙이기」) */ ?></body></html>

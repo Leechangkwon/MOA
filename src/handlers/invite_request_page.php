@@ -33,4 +33,4 @@ require __DIR__.'/../views/member_top.php';
 </div>
 </section>
 <script defer src="<?= Http::url('/assets/invite-request.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/invite-request.js') ?>"></script>
-</main></body></html>
+</main><?php require __DIR__.'/../views/moa_footer.php'; /* H4 — 바닥(DESIGN 2.33 「바닥 붙이기」) */ ?></body></html>
