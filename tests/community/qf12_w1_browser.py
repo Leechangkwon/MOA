@@ -16,6 +16,10 @@
   [project] 프로젝트 달력(데이터베이스 달력 보기 — 같은 calendar.js): 끝난 작업 실제 막대(첫 doing ~ 끝난 날) · 막대 누름 → 오른쪽 칸 · 끝난 날 줄
   [menu]    W1b(DESIGN 2.15 「창 안에 머묾」) — 1440 · 1280 · 960 · 412 × 작업 칸 · 넓게 보기(1200 이상) · 전체 화면 작업 · 프로젝트 머리 · 화면 머리의 「더보기」:
             열린 목록 상자가 창 안(왼 ≥ 8 · 오른 ≤ 폭-8 · 아래 ≤ 높이-8 또는 위로 펼침) · 항목 글자 잘림 0 · 열린 동안 풍선 0 · Esc · 밖 누름 닫힘 · 스크린샷(칸 메뉴 1440)
+  [doc]     W1c(DESIGN 2.35) — 1440 · 1280 · 960 · 412: 문서 · 업무 게시판 글 · 카페 글 · 익명 글 · 작업 전체 화면이 같은 열(x · 폭 같음 · ≤ 960 · 본문 왼끝 = 제목 왼끝) ·
+            읽기 본문 테두리 · 바탕 · 그림자 0 · 댓글 같은 열 · 상자 0 · 빈 문서 안내 누름 → 편집(도구 줄 상자 · 편집 칸 = 열 폭 · 16rem 이상 · 「편집 마침」 본문 머리 오른쪽 ·
+            제목 줄 「편집」 숨김) → 마침 → 저장 · 읽기 흐름 · 작업 전체 화면 편집 칸과 같은 폭 · 보기만 하는 사람 「아직 내용이 없어요」 · 편집 0 ·
+            종이 모드(A4)를 고른 사람 전과 같은 폭 · 데이터베이스 · 프로젝트 화면 폭 그대로 · 넘침 0 · 콘솔 0 · 스크린샷(카페 글 · 문서 읽기 · 편집 1440)
 """
 from pathlib import Path
 exec(compile(Path(__file__).with_name('memories_http.py').read_text().split('try:\n for u in users:')[0], __file__, 'exec'))
@@ -61,7 +65,8 @@ def new_session(key):
 
 
 def code_console(lines):
-    return [t for t, _ in lines if not t.startswith('Failed to load resource') and not t.startswith('[DOM] ')]
+    # ProseMirror 의 CSS 안내(편집기를 처음 만들 때 한 번 — 옛 판에도 같다 · 이 묶음 밖)는 센다에서 뺀다 — 보고서 「남은 것」
+    return [t for t, _ in lines if not t.startswith('Failed to load resource') and not t.startswith('[DOM] ') and not t.startswith('ProseMirror expects the CSS white-space')]
 
 
 class Tab:
@@ -457,6 +462,155 @@ try:
                     ctx.close()
                 metrics['menu'] = summary
             guard('menu', menu)
+
+        # ─── [doc] W1c — 글쓰기 한 기준: 작업 전체 화면 모양(DESIGN 2.35) ───────────────────────────────
+        COL_JS = r"""(kind) => { const q = s => document.querySelector(s); const R = el => { if (!el) return null; const r = el.getBoundingClientRect(); const c = getComputedStyle(el);
+    return {l: r.left, r: r.right, w: r.width, h: r.height, t: r.top, shown: r.width > 0 && r.height > 0 && c.display !== 'none' && c.visibility !== 'hidden',
+            bt: c.borderTopWidth, bs: c.borderTopStyle, bg: c.backgroundColor, sh: c.boxShadow}; };
+  const main = q('.main'); const ms = getComputedStyle(main); const mr = main.getBoundingClientRect();
+  const out = {mainInner: mr.width - parseFloat(ms.paddingLeft) - parseFloat(ms.paddingRight), overflow: document.documentElement.scrollWidth - innerWidth};
+  if (kind === 'task') { Object.assign(out, {col: R(q('#task-full')), title: R(q('#task-full .task-pane__title')), body: R(q('#task-full .task-pane__doc')),
+      bar: R(q('#task-full .task-pane__doc .editor-toolbar')), editor: R(q('#task-full .task-pane__doc > .panel')), crumb: R(q('#page-crumb'))}); }
+  else { Object.assign(out, {col: R(q('header.page-head')), title: R(q('#page-title')), body: R(q('#page-doc')), bar: R(q('#inline-toolbar')), editor: R(q('#page-editor')),
+      head: R(q('#page-body-head')), done: R(q('#page-done')), edit: R(q('#page-edit')), comments: R(q('#page-comments-wrap')), crumb: R(q('#page-crumb')),
+      empty: (() => { const e = q('#page-doc .page-doc__empty'); return e ? {tag: e.tagName, text: e.textContent.trim()} : null; })(),
+      doneText: q('#page-done') ? q('#page-done').textContent.trim() : null, paper: q('#page-editor') ? q('#page-editor').getAttribute('data-paper-mode') : null,
+      db: R(q('#db-wrap'))}); }
+  return out; }"""
+        if want('doc'):
+            def docs():
+                summary = {}
+                def doc_of(text):
+                    return {'schema': 1, 'blocks': [{'id': str(uuid.uuid4()), 'type': 'paragraph', 'text': [{'t': text, 'm': {}}]}]}
+                def save_doc(pid, text):
+                    v = call('GET', '/api/pages/' + pid)['page']['doc_version']
+                    call('PATCH', '/api/pages/' + pid, {'doc': doc_of(text), 'doc_version': v})
+                metrics['boards'] = sql("SELECT string_agg(id||':'||name||':'||coalesce(area,'')||':'||board_kind||':'||access_level, ' | ') FROM community.spaces WHERE kind='board'")
+                def board_id(where, make):
+                    got_ = sql("SELECT id FROM community.spaces WHERE kind='board' AND is_active AND " + where + " ORDER BY id LIMIT 1")
+                    if not got_:   # 합성 DB 에 그 종류의 게시판이 없으면 같은 모양으로 하나(시드 게시판과 같은 열)
+                        got_ = sql("INSERT INTO community.spaces (kind, name, description, access_level, notice, board_kind, area, created_by) VALUES " + make + " RETURNING id").splitlines()[0]
+                    return int(got_)
+                doc_a = call('POST', '/api/pages', {'title': 'W1c 문서'}, expected=201)['page']['id']
+                save_doc(doc_a, 'W1c 문서 본문 한 줄')
+                posts = {}
+                for key, where, make in (('work', "area='work' AND board_kind IN ('qa','discussion') AND access_level='internal'", "('board','W1c 업무 게시판','합성','internal',false,'discussion','work',NULL)"),
+                                         ('cafe', "area='cafe' AND board_kind='discussion' AND access_level='internal'", "('board','W1c 카페 게시판','합성','internal',false,'discussion','cafe',NULL)"),
+                                         ('anon', "board_kind='anonymous'", "('board','W1c 익명 게시판','합성','internal',false,'anonymous','cafe',NULL)")):
+                    pid = call('POST', '/api/boards/' + str(board_id(where, make)) + '/pages', {'title': 'W1c ' + key + ' 글'}, expected=201)['page']['id']
+                    save_doc(pid, 'W1c ' + key + ' 글 본문')
+                    posts[key] = pid
+                plain_db = call('POST', '/api/pages', {'title': 'W1c 그냥 표', 'database': True}, expected=201)['page']['id']
+                views = [('doc', doc_a), ('work', posts['work']), ('cafe', posts['cafe']), ('anon', posts['anon']), ('task', T4)]
+                for width in (1440, 1280, 960, 412):
+                    ctx = context('employee', width, 'light', width < 800)
+                    t = Tab(ctx)
+                    p = t.page
+                    got = {}
+                    for name, pid in views:
+                        p.goto(site + '/community/p/' + pid, wait_until='networkidle')
+                        p.wait_for_selector('#task-full .task-pane__title' if name == 'task' else '#page-doc > *', timeout=15000)
+                        p.wait_for_timeout(250)
+                        m = p.evaluate(COL_JS, 'task' if name == 'task' else 'doc')
+                        got[name] = m
+                        if width == 1440 and name in ('cafe', 'doc'):
+                            p.screenshot(path=str(shots / ('w1c-%s-read-1440.png' % name)))
+                        check(m['col'] and m['col']['w'] <= 960.5 and abs(m['body']['l'] - m['title']['l']) <= 1,
+                              'W1c %s-%d: column ≤ 960 (%.0f) · body left = title left (%.0f / %.0f)' % (name, width, m['col']['w'], m['body']['l'], m['title']['l']))
+                        if name != 'task':
+                            check(m['body']['bs'] in ('none', 'hidden') or m['body']['bt'] == '0px', 'W1c %s-%d: read body has no border (%s %s)' % (name, width, m['body']['bt'], m['body']['bs']))
+                            check(m['body']['bg'] in ('rgba(0, 0, 0, 0)', 'transparent') and m['body']['sh'] == 'none', 'W1c %s-%d: read body background 0 · shadow 0' % (name, width))
+                            if m['comments'] and m['comments']['shown']:
+                                check(abs(m['comments']['l'] - m['col']['l']) <= 1 and abs(m['comments']['w'] - m['col']['w']) <= 1 and m['comments']['bg'] in ('rgba(0, 0, 0, 0)', 'transparent')
+                                      and m['comments']['bs'] in ('none', 'hidden'), 'W1c %s-%d: comments in the same column · no card box' % (name, width))
+                            check(m['crumb'] is None or not m['crumb']['shown'] or abs(m['crumb']['l'] - m['col']['l']) <= 1, 'W1c %s-%d: crumb in the column' % (name, width))
+                        check(m['overflow'] <= 0, 'W1c %s-%d: horizontal overflow 0' % (name, width))
+                    xs = {k: (round(v['col']['l']), round(v['col']['w'])) for k, v in got.items()}
+                    summary['cols-%d' % width] = xs
+                    check(max(v[0] for v in xs.values()) - min(v[0] for v in xs.values()) <= 1 and max(v[1] for v in xs.values()) - min(v[1] for v in xs.values()) <= 1,
+                          'W1c %d: doc · work post · cafe post · anon post · task full share one column (x, width) %s' % (width, xs))
+                    # 빈 문서 — 고칠 수 있는 사람: 안내 누름 → 편집(도구 줄 상자 + 편집 칸 + 「편집 마침」). 폭마다 새 빈 문서
+                    empty_a = call('POST', '/api/pages', {'title': 'W1c 빈 문서 %d' % width}, expected=201)['page']['id']
+                    p.goto(site + '/community/p/' + empty_a, wait_until='networkidle')
+                    p.wait_for_selector('#page-doc .page-doc__empty', timeout=15000)
+                    m = p.evaluate(COL_JS, 'doc')
+                    check(m['empty'] == {'tag': 'BUTTON', 'text': '누르면 내용을 적을 수 있어요'}, 'W1c empty-%d: editor sees 「누르면 내용을 적을 수 있어요」 (button) %s' % (width, m['empty']))
+                    p.locator('#page-doc .page-doc__empty').click()
+                    p.wait_for_selector('#page-editor .ProseMirror', timeout=15000)
+                    p.wait_for_timeout(300)
+                    m = p.evaluate(COL_JS, 'doc')
+                    summary['edit-%d' % width] = {k: m[k] for k in ('col', 'bar', 'editor', 'head', 'done', 'edit', 'doneText', 'paper')}
+                    if width == 1440:
+                        p.screenshot(path=str(shots / 'w1c-doc-edit-1440.png'))
+                    check(m['bar']['shown'] and abs(m['bar']['l'] - m['col']['l']) <= 1 and abs(m['bar']['w'] - m['col']['w']) <= 1,
+                          'W1c edit-%d: toolbar box spans the column (%.0f/%.0f)' % (width, m['bar']['w'], m['col']['w']))
+                    check(m['editor']['shown'] and abs(m['editor']['l'] - m['col']['l']) <= 1 and abs(m['editor']['w'] - m['col']['w']) <= 1 and m['editor']['h'] >= 256
+                          and m['editor']['bs'] == 'solid' and m['paper'] is None,
+                          'W1c edit-%d: editor box = column width · min height 16rem (h %.0f) · no paper mode by default' % (width, m['editor']['h']))
+                    check(m['head']['shown'] and m['done']['shown'] and m['doneText'] == '편집 마침' and abs(m['done']['r'] - m['col']['r']) <= 1 and not m['edit']['shown'],
+                          'W1c edit-%d: 「편집 마침」 at the right of the body head row · title-row 「편집」 hidden' % width)
+                    p.keyboard.type('W1c 새 본문 %d' % width)
+                    p.wait_for_timeout(300)
+                    p.locator('#page-done').click()
+                    p.wait_for_selector('#page-editor', state='hidden', timeout=15000)
+                    p.wait_for_timeout(500)
+                    m2 = p.evaluate(COL_JS, 'doc')
+                    txt = p.locator('#page-doc').inner_text()
+                    check(('W1c 새 본문 %d' % width) in txt and ('W1c 새 본문 %d' % width) in sql('SELECT plain_text FROM community.pages WHERE id=' + str(pk(empty_a)))
+                          and not m2['head']['shown'] and m2['edit']['shown'], 'W1c edit-%d: 편집 마침 → saved · read flow again · 「편집」 back' % width)
+                    # 작업 전체 화면과 같은 편집 칸
+                    p.goto(site + '/community/p/' + T4, wait_until='networkidle')
+                    p.wait_for_selector('#task-full .task-pane__doc', timeout=15000)
+                    p.locator('#task-full .task-pane__doc').click()
+                    p.wait_for_selector('#task-full .task-pane__doc .ProseMirror', timeout=15000)
+                    p.wait_for_timeout(300)
+                    mt = p.evaluate(COL_JS, 'task')
+                    ed = summary['edit-%d' % width]
+                    check(abs(mt['bar']['w'] - ed['bar']['w']) <= 1 and abs(mt['editor']['w'] - ed['editor']['w']) <= 1 and abs(mt['editor']['l'] - ed['editor']['l']) <= 1,
+                          'W1c edit-%d: doc editor = task full editor (toolbar %.0f/%.0f · editor %.0f/%.0f)' % (width, ed['bar']['w'], mt['bar']['w'], ed['editor']['w'], mt['editor']['w']))
+                    p.get_by_role('button', name='편집 마침').click()
+                    p.wait_for_timeout(400)
+                    # 데이터베이스 · 프로젝트 화면 폭 그대로(열 밖)
+                    for label, pid in (('database', plain_db), ('project', proj['id'])):
+                        p.goto(site + '/community/p/' + pid, wait_until='networkidle')
+                        p.wait_for_selector('#db-wrap:not([hidden])', timeout=15000)
+                        p.wait_for_timeout(300)
+                        md_ = p.evaluate(COL_JS, 'doc')
+                        check(abs(md_['db']['w'] - md_['mainInner']) <= 1, 'W1c %s-%d: width unchanged — #db-wrap = main width (%.0f / %.0f)' % (label, width, md_['db']['w'], md_['mainInner']))
+                    check(t.clean('doc-%d' % width), 'W1c %d console 0 · page errors 0 · 5xx 0' % width)
+                    ctx.close()
+                # 보기만 하는 사람 — 편집 칸 0 · 「아직 내용이 없어요」(새 빈 문서)
+                empty_b = call('POST', '/api/pages', {'title': 'W1c 빈 문서 둘'}, expected=201)['page']['id']
+                call('PUT', '/api/pages/' + empty_b + '/shares/claude_manager01', {'level': 'view'})
+                ctx = context('manager', 1440, 'light')
+                t = Tab(ctx)
+                p = t.page
+                p.goto(site + '/community/p/' + empty_b, wait_until='networkidle')
+                p.wait_for_selector('#page-doc .page-doc__empty', timeout=15000)
+                m = p.evaluate(COL_JS, 'doc')
+                check(m['empty'] == {'tag': 'P', 'text': '아직 내용이 없어요'} and not m['edit']['shown'] and not m['editor']['shown'],
+                      'W1c view-only (view share): 「아직 내용이 없어요」 (text, not a button) · 편집 0 · editor 0')
+                check(t.clean('doc-view'), 'W1c view-only console 0')
+                ctx.close()
+                # 종이 모드를 고른 사람 — 전과 같은 폭(A4 794 이상 · 열 밖)
+                ctx = context('employee', 1440, 'light')
+                ctx.add_init_script("try { localStorage.setItem('community-editor-paper', 'a4'); } catch (e) {}")
+                t = Tab(ctx)
+                p = t.page
+                p.goto(site + '/community/p/' + doc_a, wait_until='networkidle')
+                p.wait_for_selector('#page-edit:not([hidden])', timeout=15000)
+                p.locator('#page-edit').click()
+                p.wait_for_selector('#page-editor .ProseMirror', timeout=15000)
+                p.wait_for_timeout(300)
+                m = p.evaluate(COL_JS, 'doc')
+                check(m['paper'] == 'a4' and m['editor']['w'] >= 794 and abs(m['editor']['w'] - m['mainInner']) <= 1 and m['editor']['h'] >= 1123,
+                      'W1c paper A4 chosen: editor keeps the paper rule (w %.0f = main · h %.0f ≥ 1123)' % (m['editor']['w'], m['editor']['h']))
+                p.locator('#page-done').click()
+                p.wait_for_timeout(400)
+                check(t.clean('doc-paper'), 'W1c paper console 0')
+                ctx.close()
+                metrics['doc'] = summary
+            guard('doc', docs)
 
         browser.close()
 finally:

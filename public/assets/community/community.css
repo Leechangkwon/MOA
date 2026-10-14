@@ -388,9 +388,8 @@
 }
 /* 빈 페이지 안내 (2026-09-23) — 편집기 아래, 문서가 비었을 때만 */
 .editor-starter { gap: 10px; padding: 16px 20px; box-shadow: none; }
-/* 안내가 보이는 동안(빈 문서)은 편집 칸을 낮춰 안내가 첫 화면에 들어오게 한다. 글을 치면 안내가
-   사라지고 칸은 **아래로** 자란다 — 위의 것은 움직이지 않는다. */
-.panel:has(+ .editor-starter:not([hidden])) > .editor { min-height: 5rem; }
+/* Q:F-12 W1c (DESIGN 2.35 「쓸 때」) — 빈 문서에서 편집 칸을 5rem 으로 낮추던 규칙은 지웠다: 편집 칸은 작업 전체 화면과 같이 언제나 최소 16rem(.editor) ·
+   안내는 그 아래 그대로 */
 .editor-starter__keys {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
@@ -1065,7 +1064,7 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
    본문 왼쪽 여백 32 이하 + 틈 6 + 오른쪽 16 + 스크롤 막대 18 이하 = 72). 넘치면 후보 목록이 다음 줄로(종류·찾기 칸은 줄지 않는다) ·
    후보 라벨은 한 줄 말줄임. 같은 규칙을 쓰는 글자색·배경·링크 줄과 900px 이하(툴바 아래 갈래 · 라벨 줄바꿈)는 그대로 */
 @media (min-width: 900.02px) {
-  .editor-toolbar > #mention-row { flex-wrap: wrap; max-width: calc(100vw - 100% - var(--sidebar-w) - 72px); }
+  .editor-toolbar > #mention-row { flex-wrap: wrap; }   /* W1c — 도구 줄이 열 폭 전체라 줄은 아래로(작업 칸과 같은 규칙 — app.css) */
   #mention-list .block-pick strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 /* 8-B: app chrome does not belong on a printed document. Dedicated print route is SSR. */
@@ -1076,22 +1075,40 @@ a.doc-mention { color: var(--accent); text-decoration: none; } a.doc-mention:hov
 /* Keep long unbroken document titles readable on narrow screens. */
 #page-title { overflow-wrap: anywhere; }
 
+/* 종이 모드 — A4 · A3 · Letter 를 **고른** 문서만(용지 고르개 · 사람마다 기억). 기본(속성 없음)은 아래 W1c 한 열 편집 칸 */
 #main:has(#page-editor[data-paper-mode]) { overflow-x: auto; }
-#page-editor { box-sizing: border-box; width: 100%; min-width: 794px; min-height: 1123px; margin-inline: auto; }
+#page-editor { box-sizing: border-box; width: 100%; min-width: 0; }
+#page-editor[data-paper-mode] { margin-inline: auto; }
+#page-editor[data-paper-mode="a4"] { min-width: 794px; min-height: 1123px; }
 #page-editor[data-paper-mode="a3"] { min-width: 1123px; min-height: 1587px; }
 #page-editor[data-paper-mode="letter"] { min-width: 816px; min-height: 1056px; }
-#page-editor[data-paper-mode="wide"] { min-width: 0; min-height: 70vh; }
 /* Keep the selected paper dimensions, but fit its editing surface inside the screen viewport. */
 @media screen {
-  #page-editor { min-width: min(794px, 100%); }
+  #page-editor[data-paper-mode="a4"] { min-width: min(794px, 100%); }
   #page-editor[data-paper-mode="a3"] { min-width: min(1123px, 100%); }
   #page-editor[data-paper-mode="letter"] { min-width: min(816px, 100%); }
-  #page-editor[data-paper-mode="wide"] { min-width: 0; }
 }
 @media(max-width: 600px) {
-  #page-editor, #page-editor[data-paper-mode="a3"], #page-editor[data-paper-mode="letter"] { min-height: 70vh; }
+  #page-editor[data-paper-mode] { min-height: 70vh; }
   .editor-paper-mode { margin-left: auto; }
 }
+
+/* ─── Q:F-12 W1c 글쓰기 한 기준 — 작업 전체 화면 모양 (DESIGN 2.35 · 2.25) ─────────────────────────────
+   한 열: 문서 · 게시판 글(업무 · 카페 · 익명)의 화면 부품을 작업 전체 화면(`#task-full` — 최대 960 · 가운데)과 같은 열에. 길잡이도 같은 열(작업 화면 포함).
+   예외: 데이터베이스(표가 보이는 페이지 — `#db-wrap` 이 열림) · 프로젝트 화면(data-page-kind=project) · 종이 모드를 고른 편집 칸(위 규칙 그대로).
+   셸 도구(.shell-tools) · 대화 상자 · 역할 보기 띠는 열 밖. 새 색값 0 · 인라인 style 0 */
+body[data-page-kind="doc"]:not(:has(#db-wrap:not([hidden]))) .main > :not(dialog):not(.shell-tools):not(.act-banner):not(#page-editor[data-paper-mode]),
+body[data-page-kind="task"] .main > #page-crumb { box-sizing: border-box; width: 100%; max-width: 960px; margin-inline: auto; }
+/* 읽을 때 — 상자 없이 흐른다(테두리 · 바탕 · 그림자 0) · 빈 문서 한 줄(고칠 수 있으면 누르면 편집 — 단추 모양 0, 글자 그대로) */
+.page-doc { min-width: 0; }
+.page-doc__empty { margin: 0; padding: 0; border: 0; background: none; color: var(--muted); font: inherit; font-size: 14px; text-align: left; }
+button.page-doc__empty { cursor: text; border-radius: var(--r-sm); }
+button.page-doc__empty:hover { color: var(--fg-2); }
+button.page-doc__empty:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--ring-soft); }
+/* 쓸 때 — 본문 머리 줄(`.task-pane__section-head` 그대로 · 오른쪽 「편집 마침」) · 도구 줄 상자는 열 폭 전체 · 편집 칸은 .panel + .editor(최소 16rem) 그대로 */
+.page-body-head { margin: 0; }
+/* 댓글 — 큰 카드 상자 대신 본문과 같은 흐름 */
+.page-comments { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 
 /* Stage 11 layouts reuse existing color tokens; responsive wrappers prevent page overflow. */
 /* Q:F-12 W1 (DESIGN 2.34) — 달력은 주 줄(`.cal-week`) 7칸 격자. 날짜 칸은 줄 전체 높이(1~6 줄), 막대는 층 줄(2~5) · 「+N」은 6 줄.

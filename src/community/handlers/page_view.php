@@ -168,9 +168,6 @@ unset($viewShellTop);
         <button id="page-edit" class="btn" type="button" hidden>
           <span class="icon" data-icon="edit"></span>편집
         </button>
-        <button id="page-done" class="btn" type="button" hidden>
-          <span class="icon" data-icon="check"></span>편집 끝
-        </button>
       </div>
     </header>
 
@@ -311,7 +308,15 @@ unset($viewShellTop);
     </section>
 
     <!-- 읽기 모드의 본문이 들어오는 자리 (renderDoc 의 결과) -->
-    <article id="page-doc" class="panel" aria-live="polite"></article>
+    <!-- Q:F-12 W1c (DESIGN 2.35 「읽을 때」) — 본문은 상자 없이 열 안에 흐른다(작업 전체 화면 「설명」과 같은 흐름). 빈 문서 안내는 editor.js 가 -->
+    <article id="page-doc" class="page-doc" aria-live="polite"></article>
+
+    <!-- Q:F-12 W1c (DESIGN 2.35 「쓸 때」) — 편집하는 동안만 보이는 본문 머리 줄(작업 칸 「설명」 머리와 같은 `.task-pane__section-head`) ·
+         오른쪽 「편집 마침」(id 는 그대로 — 제안 중이면 editor.js 가 「제안 보내기」로 바꾼다). 제목 줄의 「편집」은 편집 중 숨는다(두 단추 0) -->
+    <h2 id="page-body-head" class="task-pane__section-head page-body-head" hidden>
+      <span>본문</span>
+      <button id="page-done" class="btn btn--quiet btn--small" type="button" hidden>편집 마침</button>
+    </h2>
 
     <!-- 편집하는 동안 본문 위에 붙어 있는 줄 — 「블록 추가」 + 「색」 「배경」 「링크」 (지시서 1장).
          굵게·기울임·밑줄·취소선·인라인 코드는 만들지 않는다(사용자 결정 2026-09-23).
@@ -436,7 +441,8 @@ unset($viewShellTop);
       <ul id="page-backlinks" class="list" aria-label="이 페이지를 참조한 곳"></ul>
     </section>
 
-    <section id="page-comments-wrap" class="panel" aria-labelledby="page-comments-title" hidden>
+    <!-- Q:F-12 W1c (DESIGN 2.35 「댓글」) — 큰 카드 상자 대신 본문과 같은 흐름 · 같은 열 -->
+    <section id="page-comments-wrap" class="page-comments" aria-labelledby="page-comments-title" hidden>
       <div class="toolbar">
         <p id="page-comments-title" class="nav-title">댓글</p>
         <span id="page-comments-count" class="muted"></span>

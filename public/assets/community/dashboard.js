@@ -1,5 +1,5 @@
-import {drawCalendar,rangeFor} from './calendar.js?v=edbbaf7f039c';
-import {drawChart} from './charts.js?v=edbbaf7f039c';
+import {drawCalendar,rangeFor} from './calendar.js?v=c403de592d18';
+import {drawChart} from './charts.js?v=c403de592d18';
 export function hydrateDashboard(container,doc,context,api) {
   const blocks=[];(function walk(items){for(const b of items||[]){if(b.type==='db_view')blocks.push(b);if(b.children)walk(b.children);}})(doc.blocks);
   if(!blocks.length)return;

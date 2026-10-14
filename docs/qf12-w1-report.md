@@ -75,3 +75,41 @@
 ### 고친 옛 단언 · 못 한 것 · 다르게 한 것
 - 고친 옛 단언 0. 못 한 것 0.
 - 다르게 한 것: 지시서의 「폴백」에 더해 `max-height` + `position-try-order: most-height` 를 공용 `.menu__list`(앵커 갈래)에 넣었다 — 항목이 많은 메뉴는 폰에서 위 · 아래 어느 쪽에도 다 들어가지 않아 그 둘 없이는 창 안을 지킬 수 없었다. 멘션 후보 목록(`.mention-field > .menu__list` — 자기 max-height 20rem)은 그 값이 이긴다.
+
+## W1c — 글쓰기 한 기준: 작업 전체 화면 모양 (DESIGN 2.35)
+
+### 원인
+문서 · 게시판 글의 「가운데 떠 있는 좁은 상자」는 `public/assets/design.css` 의 `body[data-page="community-page"] :is(#page-doc,#page-editor) { max-width:88ch; margin-inline:auto; padding:32px 40px }`
+(+ 960 · 600 미만 두 줄) 과, 편집 칸 기본 용지 A4(`#page-editor` 최소 794 × 1123 · 가운데) 때문이었다. 읽기 본문 · 댓글은 `.panel` 카드였다.
+
+### 변경 파일
+- `src/community/handlers/page_view.php` — `#page-doc` 의 `.panel` → `.page-doc`(상자 0) · 본문 머리 줄 `h2#page-body-head.task-pane__section-head`(편집 중에만 · 「본문」 + 오른쪽 `#page-done` 「편집 마침」 — 제목 줄 동작에서 옮김, id 그대로) · `#page-comments-wrap` 의 `.panel` → `.page-comments`. 판정 0.
+- `public/assets/community/editor.js` — 빈 문서 읽기 줄(`drawEmptyRead` — 고칠 수 있으면 단추 「누르면 내용을 적을 수 있어요」 → `startEditing`(「편집」과 같은 함수) · 못 고치면 「아직 내용이 없어요」 · 데이터베이스 페이지 0) · 편집 시작/마침 때 본문 머리 줄 보이기/숨기기 · 용지 기본 = 없음(「기본」 — 열 폭 편집 칸, A4 · A3 · Letter 를 고른 사람만 종이 모드 · 옛 값 'wide' 는 기본으로).
+- `public/assets/community/community.css` — W1c 절: 한 열(`body[data-page-kind="doc"]` 이고 데이터베이스 표가 열리지 않은 화면의 `.main` 부품 = 최대 960 · 가운데 — 작업 화면 길잡이도 같은 열) · 읽기 흐름 · 빈 문서 줄 · 댓글 흐름 · 종이 모드 규칙은 `[data-paper-mode="a4|a3|letter"]` 에만 · 빈 문서에서 편집 칸을 5rem 으로 낮추던 규칙 삭제(언제나 16rem) · 넓은 화면 멘션 줄 폭 상한 삭제(도구 줄이 열 폭이라 줄은 아래로).
+- `public/assets/app.css` — 작업 칸 도구 줄 규칙(열 폭 · 색 · 배경 · 링크 · 멘션 줄 아래로)을 `#inline-toolbar` 에도(같은 규칙 한 줄).
+- `public/assets/design.css` — 88ch 좁은 상자 규칙 셋 삭제(**목록 밖 파일 — 아래 다르게 한 것 ①**).
+- 커뮤니티 JS import 버전 줄 · `tests/community/qf12_w1_browser.py` `[doc]` · `tests/catalog.json` 설명.
+
+### 수락 시험과 결과
+- `QF12W1_ONLY=doc` → **pass=202 fail=0**: 1440 · 1280 · 960 · 412 × 문서 · 업무 게시판 글 · 카페 글 · 익명 글 · 작업 전체 화면 — 열 x · 폭 다섯이 같음(1440 (272, 960) · 1280 (192, 960) …) · ≤ 960 · 본문 왼끝 = 제목 왼끝 ·
+  읽기 본문 테두리 · 바탕 · 그림자 0 · 댓글 같은 열 · 카드 상자 0 · 길잡이 같은 열 · 빈 문서 안내(단추) 누름 → 편집: 도구 줄 상자 = 열 폭 · 편집 칸 = 열 폭 · 높이 ≥ 16rem · 테두리 · 용지 없음 ·
+  「편집 마침」 본문 머리 줄 오른쪽 끝 · 제목 줄 「편집」 숨김 → 글 치고 마침 → DB 저장 · 읽기 흐름 · 「편집」 돌아옴 · 작업 전체 화면 편집 칸 · 도구 줄과 같은 폭 · 같은 왼끝 ·
+  보기 공유 사람 「아직 내용이 없어요」(글자) · 편집 0 · A4 를 고른 사람 편집 칸 = 전과 같은 폭(메인 폭 · 높이 1123) · 데이터베이스 · 프로젝트 `#db-wrap` = 메인 폭(전과 같음) · 넘침 0 · 콘솔 0.
+  스크린샷 `browser-w1c/shots/w1c-cafe-read-1440.png` · `w1c-doc-read-1440.png` · `w1c-doc-edit-1440.png`.
+- 정적: security_lint 0 · php -l · node --check · asset_version --check rc 0 · wiki_check · git diff --check.
+
+### 고친 옛 단언(돌리지 않음)
+- `tests/browser/ux_r1_ui.py` Q:T-12 「머리 한 줄 — 상태 배지 · 더보기 · 편집 끝이 같은 줄」 → 「상태 배지 · 더보기 같은 줄 · 「편집 마침」은 본문 머리 줄(#page-body-head)」.
+- 살펴보고 그대로 둔 것: `dbg_u_ui.py` H5(「편집 끝」 화면 안 — `#page-done` id 그대로 · 화면 안) · `table_density.py`(용지 a4 · a3 · letter 규칙 그대로, 'wide' 는 이제 규칙 0 = 열 폭) · `editor_toolbar_fit.py`(도구 줄 폭 · 넘침) · `#page-done` 을 누르는 옛 시험 전부(id 그대로).
+
+### 못 한 것 · 남은 것
+- **편집기 마운트는 한 함수로 합치지 않았다** — 문서 화면 편집기(`startEditing`)는 제안 모드 · 임시저장 · 함께 편집 신호 · 충돌 창 · 용지 · 블록 손잡이 · 빈 문서 안내를 들고 있고, 작업 칸 편집기(`mountPaneEditor`)는 그것들이 없다. 합치면 그 기능이 빠지거나 칸 편집기에 들어가야 해 이 묶음 범위를 넘는다. 대신 **같은 부품 · 같은 CSS**: 도구 줄은 원래 한 함수(`createToolbar`) · 편집 칸은 둘 다 `.panel` + `.doc.editor`(16rem) · 도구 줄 규칙 한 줄 · 본문 머리 줄은 같은 `.task-pane__section-head`. 메인 판단을 바란다.
+- 댓글은 같은 열 · 같은 흐름 · 같은 멘션 입력 부품(2.27 — 원래 한 벌)이지만 목록 줄 모양은 문서 화면 것(`.list`) 그대로다 — 작업 칸의 `.task-comment` 줄로 바꾸면 답글 · 인용 · 고치기 · 신고 줄을 다시 짜야 한다.
+- 편집 칸 안 여백은 두 화면 모두 `.panel` 그대로(24) — DESIGN 2.35 의 「24 32」와 다르다(작업 전체 화면을 기준으로 맞췄다).
+- ProseMirror 가 편집기를 만들 때 한 번 내는 콘솔 경고(「CSS white-space … pre-wrap」 — 편집기 루트에 white-space 규칙이 없다)는 옛 판에도 같다. 시험은 그 한 문장만 세지 않는다 — 고치려면 `.editor { white-space: pre-wrap }`(공백 처리 바뀜 — 따로 결정).
+- 데이터베이스 페이지(쓰임 없음)는 서버가 `data-page-kind="doc"` 을 달아, 첫 그림에서 표 칸이 열리기 전 한순간 열 폭이었다가 넓어진다(`:has(#db-wrap:not([hidden]))`).
+
+### 기획 · DESIGN 과 다르게 한 것
+1. `public/assets/design.css`(목록 밖) — 지시서의 「옛 #page-editor 가운데 좁은 규칙 삭제」 대상이 이 파일에 있었다. 그 세 줄만 지웠다(다른 디자인 규칙 0).
+2. 용지 고르개 첫 값 「기본」(값 없음)을 더하고 「넓게」를 뺐다 — 기본이 곧 열 폭 편집 칸이라 「넓게」와 같은 일이다.
+3. 위 「못 한 것」 첫째 · 셋째.
