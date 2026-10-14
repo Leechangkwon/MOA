@@ -935,6 +935,10 @@ def child_umask():
 TIMEOUT_MIN_DEFAULT = 600        # 초 — 한도 = max(이것, est_sec × 배수) · 카탈로그 timeout_sec 가 있으면 그것
 TIMEOUT_FACTOR_DEFAULT = 3.0
 TIMEOUT_TERM_GRACE = 120         # 한도를 넘은 묶음: SIGTERM 뒤 기다리는 초 → 남으면 SIGKILL
+# R1(2026-10-15) — 진행 줄. 밤 회귀(nightly.py)는 run.sh 출력 파일의 「30분 동안 바뀌지 않음」으로 멈춤을 잡는데, 진행 줄을 터미널에만 써서
+#   파일로 받으면 끝 요약 전까지 0 바이트였다 → 시험 하나도 멈추지 않았는데 30분 1초에 끊겼다(2026-10-14 run #22 — 그때 돌던 qf12_server_http 44초째).
+#   stderr 가 터미널이거나 **일반 파일**이면 시험마다 시작 · 끝 줄 + 긴 시험은 HEARTBEAT_SEC 마다 「진행 중」 한 줄(파이프로 받는 쪽 — 자체 시험 — 은 그대로 조용).
+HEARTBEAT_SEC = 300
 LEFTOVER_TERM_GRACE = 10         # 끝난 뒤 남은 프로세스: SIGTERM 뒤 기다리는 초 → 남으면 SIGKILL
 # 세션 밖(시험이 스스로 새 세션으로 띄운 손주)은 표식 + 우리 소유 + 이 이름일 때만 정리한다
 OUTSIDE_KILL_NAMES = ("php", "python3", "chrome", "chromium", "headless_shell")
@@ -1152,8 +1156,48 @@ def cleanup_leftover(sid, token, ports_before):
     return lo
 
 
-def execute(e, root, raw_path, limit=None, env_src=None):
-    """시험 하나를 돌려 원문을 raw_path(0600)에 쓴다.
+def progress_enabled():
+    """진행 줄을 쓸 곳인가 — stderr 가 터미널이거나 일반 파일(밤 회귀의 로그)일 때만. 파이프(자체 시험의 $(…))는 아니다."""
+    import stat as _st
+    try:
+        if sys.stderr.isatty():
+            return True
+        return _st.S_ISREG(os.fstat(sys.stderr.fileno()).st_mode)
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def progress(msg):
+    try:
+        sys.stderr.write(msg + "\n")
+        sys.stderr.flush()
+    except (OSError, ValueError):
+        pass
+
+
+def wait_with_beat(proc, limit, beat=None, every=None):
+    """proc.wait(timeout=limit) 와 같다(한도를 넘으면 TimeoutExpired) — 다만 every 초마다 beat(지난 초) 를 부른다."""
+    every = every or HEARTBEAT_SEC
+    if beat is None:
+        return proc.wait(timeout=limit)
+    t0 = time.time()
+    while True:
+        step = every
+        if limit is not None:
+            left = limit - (time.time() - t0)
+            if left <= 0:
+                raise subprocess.TimeoutExpired(proc.args, limit)
+            step = min(step, left)
+        try:
+            return proc.wait(timeout=step)
+        except subprocess.TimeoutExpired:
+            if limit is not None and time.time() - t0 >= limit:
+                raise
+            beat(time.time() - t0)
+
+
+def execute(e, root, raw_path, limit=None, env_src=None, beat=None):
+    """시험 하나를 돌려 원문을 raw_path(0600)에 쓴다. beat 가 있으면 긴 시험 동안 HEARTBEAT_SEC 마다 beat(지난 초).
 
     → dict(rc, elapsed, interrupted, timed_out, limit, leftover)"""
     argv, env_add = split_cmd(e["cmd"])
@@ -1193,7 +1237,7 @@ def execute(e, root, raw_path, limit=None, env_src=None):
         rc = None
         try:
             try:
-                rc = proc.wait(timeout=limit)
+                rc = wait_with_beat(proc, limit, beat)
             except subprocess.TimeoutExpired:
                 res["timed_out"] = True
                 members = bundle_members(sid, None)          # 한도를 넘은 묶음 = 같은 세션만
@@ -1384,7 +1428,7 @@ def cmd_run(a, root):
     sp = os.path.join(rdir, "summary.json")
     write_private(sp, json.dumps(S, ensure_ascii=False, indent=1))
     stop_reason = None
-    tty = sys.stderr.isatty()
+    tty = progress_enabled()
     for k, e in enumerate(to_run):
         r = base_record(e)
         if stop_reason:
@@ -1405,12 +1449,13 @@ def cmd_run(a, root):
                 S["tests"].append(r)
                 continue
         if tty:
-            sys.stderr.write("… %d/%d %s\n" % (k + 1, len(to_run), e["id"]))
+            progress("… %d/%d %s (시작 %s)" % (k + 1, len(to_run), e["id"], time.strftime("%H:%M:%S")))
         raw_rel = "raw/%s.log" % e["id"]
         limit = time_limit(e, a)
         X = {"rc": 2, "elapsed": 0.0, "interrupted": False, "timed_out": False, "limit": limit, "leftover": None}
+        beat = (lambda sec, _id=e["id"]: progress("  … %s 진행 중 %d초" % (_id, int(sec)))) if tty else None
         try:
-            X = execute(e, root, os.path.join(rdir, raw_rel), limit=limit, env_src=env_src)
+            X = execute(e, root, os.path.join(rdir, raw_rel), limit=limit, env_src=env_src, beat=beat)
         except (UsageError, ValueError) as ex:
             efd = os.open(os.path.join(rdir, raw_rel), os.O_WRONLY | os.O_CREAT | os.O_APPEND | os.O_NOFOLLOW, 0o600)
             with os.fdopen(efd, "a", encoding="utf-8") as fh:
@@ -1428,6 +1473,9 @@ def cmd_run(a, root):
                  passed_at=(time.time() if J["verdict"] == "pass" else None), cached_from=None)
         S["tests"].append(r)
         write_private(sp, json.dumps(S, ensure_ascii=False, indent=1))
+        if tty:
+            c = r.get("counts") or {}
+            progress("  ← %s %s · rc %s · %s/%s · %d초" % (e["id"], r.get("verdict"), rc, c.get("pass"), c.get("fail"), int(el)))
         if intr:
             S["interrupted"] = True
             stop_reason = "중단됨(신호) — 돌리지 않음"
