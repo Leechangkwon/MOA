@@ -41,9 +41,8 @@ with sync_playwright()as pw:
    check('프로젝트'in work.get_attribute('title')and '내 할 일'in work.get_attribute('title'),'one description covers both purposes '+tag)
    check(work.locator('svg path').get_attribute('d')==ICONS['work'],'업무 홈 uses the work icon '+tag)
    check(p.evaluate('document.documentElement.scrollWidth<=innerWidth'),'home no overflow '+tag)
-   p.locator('#home-all-services').click();menu=p.locator('.home-services-menu')
-   check(menu.get_by_role('link',name='업무 홈',exact=True).get_attribute('href')=='/community/'and menu.get_by_role('link',name='내 작업',exact=True).count()==0 and menu.locator('a').count()==7,'all-services seven routes · 업무 홈 once · 내 작업 0 '+tag)
-   p.locator('#home-all-services').click()
+   # 사이트 H1 (DESIGN 2.31 「머리」) — 「전체 서비스」 메뉴는 없어졌다(오른쪽 위 = 셸과 같은 div.shell-tools). 옛 단언 「all-services seven routes」를 바꿈
+   check(p.locator('#home-all-services,.home-services-menu').count()==0 and p.locator('body > header div.shell-tools').count()==1,'H1 all-services menu replaced by the shared top-right tools '+tag)
    if version==3 and width in [390,1280]:p.screenshot(path=str(OUT/f'home-shortcuts-{width}.png'))
    work.click();p.wait_for_url('https://shortcut.example/community/');p.wait_for_selector('#work-home')
    check(p.locator('#work-home').count()==1 and p.locator('#work-my-tasks').count()==0,'actual click loads overall work home '+tag)

@@ -810,7 +810,7 @@ try:
                                 h = ac['head'] or {}
                                 check(h.get('name') == (DN[k] or UN[k]) and h.get('meta') == UN[k] + ' · ' + ROLE[k] and h.get('avatar') == 40 and h.get('nameFont') == ['16px', '600'] and h.get('metaFont') == '13px',
                                       'c6 %s: account head avatar 40 · name 16/600 · 「아이디 · 역할」 13px %s' % (tag, json.dumps(h, ensure_ascii=False)))
-                                check(ac['tiles'] == ['내 계정', '내 활동'] and ac['logout'] == ['로그아웃'] and ac['current'] == [], 'c6 %s: account tiles 내 계정 · 내 활동 + 로그아웃 row %s' % (tag, json.dumps(ac['tiles'], ensure_ascii=False)))
+                                check(ac['tiles'] == ['내 계정', '내 활동', '테마'] and ac['logout'] == ['로그아웃'] and ac['current'] == [], 'c6 %s: account tiles 내 계정 · 내 활동 · 테마(H1 — DESIGN 2.30 고침) + 로그아웃 row %s' % (tag, json.dumps(ac['tiles'], ensure_ascii=False)))
                                 cr += contrast_of(p, '.shell-account .app-menu__head strong, .shell-account .app-menu__head strong + span, .shell-account .app-menu__name, .shell-account .app-menu__logout > span:not(.icon)')
                                 check(min(cr) >= 4.5, 'c6 %s: contrast ≥ 4.5 (messenger · chip · apps button · account panel — min %.2f)' % (tag, min(cr)))
                                 if width == 1440 and k == 'W' and mode in ('light', 'dark'):
@@ -904,7 +904,7 @@ try:
                             p.wait_for_timeout(200)
                             ac = p.evaluate(PANEL_JS, '.shell-account')
                             ex = p.evaluate("document.getElementById('appbar-account').getAttribute('aria-expanded')")
-                            check(ac['open'] and ac['left'] == 0 and ac['w'] == 412 and ac['top'] == 52 and ac['tiles'] == ['내 계정', '내 활동'] and ac['logout'] == ['로그아웃'] and ex == 'true',
+                            check(ac['open'] and ac['left'] == 0 and ac['w'] == 412 and ac['top'] == 52 and ac['tiles'] == ['내 계정', '내 활동', '테마'] and ac['logout'] == ['로그아웃'] and ex == 'true',
                                   'c6 %s: avatar → account panel full width under the top bar %s' % (tag, json.dumps({k_: ac[k_] for k_ in ('left', 'w', 'top')})))
                             cr = contrast_of(p, '.shell-account .app-menu__head strong, .shell-account .app-menu__head strong + span, .shell-account .app-menu__name')
                             p.locator('#appbar-apps').click()

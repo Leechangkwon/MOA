@@ -12337,6 +12337,14 @@ function initShell(me, csrfToken) {
     });
   }
 
+  armLogout(logout, me, msg);
+}
+
+/**
+ * 「로그아웃」(`#logout` — 내 계정 판의 줄, shell_tools.php) — 셸(initShell)과 모아 홈(H1 · DESIGN 2.31 — 셸이 아니지만 같은 오른쪽 위 셋)이
+ * **같은 함수**를 건다. 토큰은 `/api/me` 의 답(csrf_token → shellCsrf)뿐이고, 막는 것은 서버(CSRF · 세션)다.
+ */
+function armLogout(logout, me, msg) {
   if (logout) {
     logout.disabled = false;
     logout.addEventListener('click', function () {
@@ -12712,8 +12720,9 @@ function initMenus() {
       if (tile && box.contains(tile)) {
         box.open = false;
         if (tile.hasAttribute('data-search-tile')) {
+          // 모아 홈(H1 · DESIGN 2.31)에는 사이드바 「검색」이 없다 — 같은 창을 search.js 의 여는 함수로(창 두 벌 0)
           var search = document.getElementById('nav-search');
-          if (search) { search.click(); }
+          if (search) { search.click(); } else if (typeof window.qarediSearchOpen === 'function') { window.qarediSearchOpen(); }
         }
         return;
       }
@@ -12867,6 +12876,25 @@ document.addEventListener('DOMContentLoaded', function () {
    */
   if (typeof page !== 'string' || page === '') {
     if (!document.getElementById('nav-files')) {
+      /* 사이트 H1 (DESIGN 2.31 「머리」) — 로그인한 모아 홈은 셸이 아니지만 오른쪽 위 셋(shell_tools.php)을 셸과 같은 마크업으로 싣는다.
+         판 둘의 열고 닫기는 위 initMenus 가 이미 걸었다. 여기서는 셸과 같은 값으로 「관리자 페이지」 타일(can_admin — 표시용)과
+         「로그아웃」(armLogout — 같은 함수)만 건다. 막는 것은 라우트 정책 · 재인증 관문 · CSRF 다(PRD S-01). 그 밖의 셸 없는 화면은 종전대로 아무것도 하지 않는다. */
+      if (document.querySelector('div.shell-tools #logout')) {
+        fetchMe()
+          .then(function (result) {
+            var me = result.me;
+            if (result.status !== 200 || me === null || typeof me.csrf_token !== 'string') {
+              return null;   // 판은 기본 상태 그대로(관리자 타일 닫힘) — 화면이 권한을 추측하지 않는다
+            }
+            reauthCsrf = me.csrf_token;
+            shellCsrf = me.csrf_token;
+            var admin = document.getElementById('menu-admin');
+            if (admin) { admin.hidden = me.can_admin !== true; }
+            armLogout(document.getElementById('logout'), me, null);
+            return null;
+          })
+          .catch(function () { /* 조용히 둔다 — 셸과 같다 */ });
+      }
       return;   // 셸이 없는 화면 — 종전과 같이 아무것도 하지 않는다
     }
     fetchMe()

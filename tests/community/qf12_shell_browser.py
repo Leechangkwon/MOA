@@ -258,15 +258,19 @@ try:
             hrefs = re.findall(r'<a (?:id="messenger-open" )?href="([^"]+)"', tiles.group(1)) if tiles else []
             metrics['launcher_tiles_' + label] = list(zip(names, hrefs))
             check(r.status_code == 200 and [n.strip() for n in names][:3] == ['자료실', '업무', '이야기'], 'Q:T-38 launcher (' + label + ') tiles start 자료실 · 업무 · 이야기 ' + json.dumps(names, ensure_ascii=False))
-            check('app-rail' not in r.text and 'shell-tools' not in r.text, 'Q:T-38 launcher (' + label + ') has no rail · no shell-tools grid row (DESIGN 2.18 — 런처는 셸이 아니다)')
+            # 사이트 H1 (DESIGN 2.31 「머리」) — 로그인한 모아 홈의 오른쪽 위는 셸과 **같은** div.shell-tools 하나(shell_tools.php). 로그인 전은 그대로 0. 옛 단언 「no shell-tools grid row」를 바꿈
+            check('app-rail' not in r.text and (r.text.count('<div class="shell-tools">') == 1 if token else 'shell-tools' not in r.text),
+                  'Q:T-38 launcher (' + label + ') has no rail · shell-tools ' + ('once (H1 — same as the shell)' if token else '0 (signed out)'))
             if token:
                 check(hrefs[:3] == ['/tbox/', '/community/', '/community/memories'], 'Q:T-38 launcher signed-in tile links ' + json.dumps(hrefs[:3]))
                 # tests/q_launcher.sh(운영) 의 기대값을 이 인스턴스에서 같은 셈으로 — 수만 남긴다(본문 0)
                 metrics['launcher_counts_signed_in'] = {'moa-account': r.text.count('class="moa-account"'), 'href=/tbox/': r.text.count('href="/tbox/"'),
                                                         'href=/community/memories': r.text.count('href="/community/memories"'), 'script_lines': sum(1 for l in r.text.splitlines() if '<script' in l),
                                                         'userchip': r.text.count('userchip'), 'soon': r.text.count('준비 중')}
-                nav = re.search(r'<nav aria-label="주 메뉴">(.*?)</nav>', r.text, re.S).group(1)
-                check('>업무<' in nav and '>이야기<' in nav and '>커뮤니티<' not in nav, 'Q:T-38 launcher header links 업무 · 이야기 (커뮤니티 0)')
+                # 사이트 H1 — 머리의 「주 메뉴」 링크 줄은 셸과 같은 앱 판으로 바뀌었다(옛 단언 「launcher header links 업무 · 이야기」를 앱 판 타일로)
+                nav = re.search(r'<details class="appbar__apps" id="app-grid">(.*?)</details>', r.text, re.S)
+                nav = nav.group(1) if nav else ''
+                check('>업무<' in nav and '>이야기<' in nav and '>커뮤니티<' not in nav, 'Q:T-38 launcher app panel tiles 업무 · 이야기 (커뮤니티 0)')
             else:
                 check(hrefs[:3] == ['/tbox/', '/tbox/login?to=community', '/tbox/login?to=%2Fcommunity%2Fmemories'], 'Q:T-38 launcher signed-out tile links (login first) ' + json.dumps(hrefs[:3]))
                 lr = get('/tbox/login?to=%2Fcommunity%2Fmemories')

@@ -298,6 +298,13 @@
     run();
   }
 
+  /* 사이트 H1 (DESIGN 2.31 ②) — 다른 자리(모아 홈의 큰 검색 칸)가 글자를 주고 **이 창**을 연다: 창 · 결과 세 묶음(페이지 · 댓글 · 파일) · 고르기는 그대로 한 벌.
+     글자는 입력 칸 값으로만 넣는다(칸의 maxlength 100 과 같은 길이로 자른다) — 찾는 것은 open() 의 run() 이 곧바로 한다. */
+  window.qarediSearchOpen = function (text) {
+    if (typeof text === 'string') { input.value = text.slice(0, 100); }
+    open();
+  };
+
   dialog.addEventListener('close', cancelSearch);
   input.addEventListener('input', function () {
     cancelSearch();

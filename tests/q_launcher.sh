@@ -400,7 +400,8 @@ if [ -n "$ADM_CSRF" ]; then
   curl -s -b "$ADM_JAR" -A "$UA" -o "$WORK/root2.html" -D "$WORK/root2.head" "$SITE/"
   expect "로그인 상태 런처 상태" "200" "$(status_of "$WORK/root2.head")"
   # 원래 어긋남(Q:F-12 C 에서 함께 고침) — 모아 런처(2026-10-02)의 사용자 표시는 머리 줄 `a.moa-account`(「이름 님」 · 내 계정)
-  expect "로그인 상태 런처에 사용자 표시 (moa-account 1)" "1" "$(grep -c 'class="moa-account"' "$WORK/root2.html" | tr -d ' ')"
+  # 사이트 H1 (DESIGN 2.31 「머리」) — 로그인한 모아 홈의 사용자 표시는 셸과 같은 오른쪽 위 셋(div.shell-tools · 내 계정 칩). 옛 단언 「moa-account 1」을 바꿈
+  expect "로그인 상태 런처에 사용자 표시 (shell-tools 1 · moa-account 0)" "1 0" "$(grep -c '<div class="shell-tools">' "$WORK/root2.html" | tr -d ' ') $(grep -c 'class="moa-account"' "$WORK/root2.html" | tr -d ' ')"
   expect "로그인 상태 런처에도 userchip 0건" "0" "$(grep -c 'userchip' "$WORK/root2.html" | tr -d ' ')"
   contains "칩에 표시 이름" "claude_admin01" "$(cat "$WORK/root2.html")"
   expect "로그인 상태 런처 테마·내 작업·메신저 창 script 5건(Q:F-11 B — 창 스크립트 셋 +3)" "5" "$(grep -c '<script' "$WORK/root2.html" | tr -d ' ')"

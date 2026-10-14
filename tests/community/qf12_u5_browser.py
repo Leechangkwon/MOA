@@ -321,11 +321,14 @@ try:
                     check(st['navScroll'] <= 0 and st['gapL'] is not None and abs(st['gapL'] - st['gapR']) <= 2,
                           'home %s: shortcut row centered — left %.1f · right %.1f (diff ≤ 2) · no inner scroll' % (tag, st['gapL'] or -1, st['gapR'] or -1))
                     check(st['overflow'] <= 0 and st['inline'] == 0, 'home %s: horizontal overflow 0 · inline style 0' % tag)
-                    check('내 작업' not in st['menu'] and st['menu'].count('업무 홈') == 1, 'home %s: 전체 서비스 menu has 업무 홈 once · 내 작업 0' % tag)
+                    # 사이트 H1 (DESIGN 2.31 「머리」) — 「전체 서비스」 메뉴는 없어졌다(오른쪽 위는 셸과 같은 메신저 · 앱 · 내 계정). 옛 단언 「전체 서비스 메뉴에 업무 홈 한 번 · 내 작업 0」을 바꿈
+                    check(st['menu'] == [] and p.locator('#home-all-services').count() == 0, 'home %s: 전체 서비스 menu gone (H1 — shared top-right tools)' % tag)
                     if width == 1440 and theme == 'light':
                         # 홈 편집 → 상단 바로가기 설정: 열린다(콘솔 0) · 「내 작업」 줄 0 · 「업무 홈」 줄 하나 · 취소(쓰기 0)
                         writes = []
                         p.on('request', lambda r: writes.append(r.method) if r.method not in ('GET', 'HEAD') else None)
+                        p.locator('details.home-dashboard > summary').click()   # 사이트 H1 (DESIGN 2.31) — 대시보드는 기본 접힘: 펼친 뒤 홈 편집
+                        p.wait_for_selector('#home-edit:visible', timeout=10000)
                         p.locator('#home-edit').click()
                         p.wait_for_timeout(300)
                         p.locator('[data-dashboard-settings]').first.click()

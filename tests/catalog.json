@@ -6408,6 +6408,39 @@
       "est_sec": 600,
       "writes_prod": false,
       "notes": "카페 묶음 C4 「편집 중 그림 · 남긴 댓글의 멘션」(docs/cafe-directive.md C4 · DESIGN 2.26 「검사 중 미리보기」 · 2.27 「남긴 댓글의 멘션」 · 커뮤니티 ARCH 24장) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. [http] GET /api/pages/{id}/attachments(주인 · 보기 공유 200 · 지도 한 칸 · 다른 문서 첨부 0 · 다른 팀 · 손님 · 관리자 특권 404 · pending raw/download 423 그대로) · comments_list mention_status(ok+이름 · 없음 · 못 봄 · 특권 · 손님 ok:false 이름 0 · `@아이디.te` 한 토큰 · 손님 시점 {} · 익명게시판 {} · 질의 수 댓글 3 = 30 — 리플렉션으로 PDO 문장 수) · [image] 1440 · 412: 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」(SCAN_ENABLED=1 — 틀 사본 .env) → 즉시 img data: + 「검사 중 · 나만 보여요」 · 손잡이 폭 · clean(DB) → 5초 안에 서버 img · 배지 0 · 폭 그대로 · 저장 · 다시 열기 · 새로 고침 뒤 상자 → 바뀜 · 다른 사람 상자 · 작업 칸 편집기 · 콘솔 0 · [mention] 전체 화면 · 작업 칸: ok 파랑 · miss 빨강 물결 · aria-label · 대비 ≥ 4.5(밝게 · 어둡게 · 고대비) · 넘침 0. · [c5] 카페 C5 접힌 사이드바(DESIGN 2.19 ⑨ 2026-10-14 보정): 업무 · 이야기 · 자료실 × 1440 · 1280 · 960 쿠키 없음 → 첫 HTML data-sidebar=collapsed · ☰ aria 첫 값 · 첫 프레임 접힘 · 레일 64 · 옛 localStorage 키 지움 / ☰ → 쿠키 open → 다음 화면 첫 HTML 속성 0 · 새로 고침 펼침 · 다시 접기 → 쿠키 지움 / 접힌 「＋」 올리기 · 초점 — 단추 안 글자 0 · 들림 0 · 오른쪽 풍선(CDP ::after 상자 — 「홈」과 같은 간격) · 메뉴 / 펼침 240 글자 · 412 서랍 그대로. · [c6] 카페 C6 오른쪽 위 셋(DESIGN 2.30): 1440 · 1280 · 960 × 밝게 · 어둡게 · 고대비 — 순서 메신저 · 앱 · 칩 · 높이 44 · 사이 8 · 메신저 단추 열고 닫기 · Esc 초점 · 안 읽은 수 = 메신저 단추 · 앱 판 = 앱과 도구만 · 관리자 타일 관리자만 · 칩 → 내 계정 판(머리 · 내 계정 · 내 활동 · 로그아웃 · 같은 폭 · 같은 클래스) · 하나만 열림 · 바깥 · Esc · 타일 이동 · aria-current · 로그아웃 / 412 윗줄 메신저 · 아바타 → 판 전체 폭 · 서랍 · 앱 판 · 계정 판 하나만 · 손님 · 직원 · 관리자 · 대비 4.5 · 넘침 0 · 누름 자리 < 44 0(검정 단추 「댓글 달기」 — design.css 반짝 조각 보정 · 넓은 화면은 그대로). 결과: cafe-c4-browser-results.json · cafe-c4-browser-metrics.json · shots/."
+    },
+    {
+      "id": "community.home_h1_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite home_h1_browser.py --output /tmp/qaredi-home-h1-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/views/launcher.php",
+        "src/views/shell_tools.php",
+        "src/views/shell_top.php",
+        "src/views/shell_bottom.php",
+        "src/views/icon_templates.php",
+        "public/assets/home-dashboard.js",
+        "public/assets/search.js",
+        "public/assets/app.js",
+        "public/assets/moa.css",
+        "public/assets/design.js",
+        "public/assets/messenger.js",
+        "tests/community/home_h1_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "사이트 H1 「모아 홈 — 구글 첫 화면 방식」(docs/home-google-directive.md 완료 기준 ①~⑤ · DESIGN 2.31 · 2.30 「테마」 타일) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. [grid] 1440 · 1280 · 960 · 720 · 412 · 360 × 밝게 · 어둡게 · 고대비: 머리 = div.shell-tools 하나(메신저 · 앱 · 칩 · 44) · 「m. 모아」 · 「전체 서비스」 · 「테마」 글자 단추 · 「내 홈」 0 · 「Qaredi」 64(<720 44) · h1 화면 읽기 「모아 홈」 · 검색 칸 52 · 반경 26 · 폭 min(720) · 자동 초점 0 · 원 56 · 아이콘 24 · 이름 13 · 기본 다섯 + 「＋ 바로가기」 · 줄 [6] / <720 [4,2] · 최대 8(824px) · 대시보드 접힘 · 접힌 동안 위젯 창구 0(요청 기록) · 넘침 0 · 누름 자리 < 44 0 · 대비 4.5 · 콘솔 0. [tools] 서버 HTML 의 div.shell-tools 가 / · /tbox/ · /community/ 에서 같음(aria-current 만 다름) · 검색 창 · #messenger-open 하나 · 「모아 홈」 aria-current · 칩 → 내 계정 · 내 활동 · 테마 · 로그아웃 · 하나만 열림 · 「테마」 → 테마 창 · 셸 두 화면에도 「테마」 · 관리자 타일 관리자만 · 412 판 전체 폭 · Esc 초점. [search] `/` 초점 · 칸 안 `/` 는 글자 · Enter → 공통 검색 창 그 글자 · 페이지 · 파일 묶음 · 앱 판 「검색」 타일. [short] 메신저 바로가기 → 메신저 창(주소 그대로) · 「＋ 바로가기」 → 펼침 + 홈 편집 + 상단 바로가기 설정(1440 옆 칸 · 412 창) · 설정 순서 · 여덟 개 한 줄 · 편집 중 접기 막힘 · 취소 쓰기 0. [dash] 펼친 뒤에만 위젯 창구 · 「접기 ▴」 · 홈 편집 · 내용 새로고침 · localStorage qaredi-home-dashboard:v1:<아이디> · 새로 고침 뒤 펼침 기억 · 접고 새로 고침 → 접힘. [before] 로그인 전 · 동의 전 런처 서버 HTML 이 main 의 launcher.php 와 글자 그대로 같음 + 실제 서버 머리 · 소개 화면. [logout] 모아 홈 「로그아웃」 → 로그인 화면. 결과: home-h1-browser-results.json · home-h1-browser-metrics.json · shots/."
     }
   ]
 }
