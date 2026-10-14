@@ -48,3 +48,19 @@
 6. 공간 목록(`/api/product-spaces`)도 위젯 자료로 보고 처음 펼칠 때 부른다(안내 · 위젯 출처에만 쓰임).
 7. 720~959 폭(DESIGN 은 <720 만 정함)에서는 모아 홈 머리 셋을 글자까지 보인다 — 셸의 폰 윗줄이 모아 홈에는 없어서.
 8. 「＋ 바로가기」 접근 이름은 「바로가기 추가」(보이는 글자 「바로가기」 포함).
+
+## H1b — 메인 검토 뒤 보정 둘 · 2026-10-14
+
+### 변경 파일
+- `public/assets/design.js` — 테마 창을 닫을 때 연 단추가 **닫힌 판(details) 안**이면(내 계정 판 「테마」 타일) 그 판을 여는 보이는 단추로 초점을 돌린다: 판의 `summary`(넓은 화면 · 모아 홈) → 없으면 `aria-controls` 가 그 판인 단추(셸 폰 윗줄 `#appbar-account`) → 그 밖은 지금처럼 연 단추. 사이드바 바닥 · 내 계정 화면 · 로그인 화면의 테마 단추는 판 밖이라 그대로.
+- `tests/community/home_h1_browser.py` — 단언 넷: 모아 홈 1440 · 412 와 셸 `/tbox/` · `/community/` 1440 에서 「테마」 타일 → 창 → Esc → `document.activeElement` = `.shell-tools .shell-account > summary`.
+- 옛 대시보드 시험 9개(돌리지 않음 · `py_compile` 만) — 페이지 열기 전 init script 한 줄 `readystatechange`(interactive — defer 스크립트 **전**)에서 `details.home-dashboard` 를 연다(localStorage 를 막는 갈래가 있는 `home_dashboard.py` 에도 그대로 듣는 길): `compact_home_ui.py` · `home_dashboard.py` · `home_dashboard_sync.py`(두 페이지) · `dashboard_inspector_ui.py` · `dashboard_inspector_integration.py` · `dashboard_widgets_ui.py` · `freeform_dashboard_ui.py` · `compact_home_legacy_auth.py` · `neutral_home_entry.py`.
+- `tests/community/briefing_integration.py` 는 **고칠 것 없음** — HTTP 만 보고 `id="home-widgets"` 는 지금도 HTML 에 있다(브라우저 0).
+- 펼쳐도 깨지는 옛 단언(같이 고침 · 돌리지 않음): `compact_home_ui.py` 「first widget within compact target」 · 「high contrast compact position」, `neutral_home_entry.py` 「first default widget near top」(y ≤ 300/340 → 첫 위젯이 펼친 대시보드 summary 아래) · `freeform_dashboard_ui.py` 의 `header a[href="#services"]` 흐름(모아 홈 머리에서 링크가 없어져 `home_dashboard.py` 처럼 시험 HTML 에 고정 링크를 넣음 — 옛 저장 구성의 링크 처리 시험은 그대로).
+
+### 수락 시험과 결과
+- `python3 tests/community/memories_harness.py --suite home_h1_browser.py --output /home/changkwon/qaredi-home-results-20261014/accept-h1b` → **pass 381 · fail 0**(rc 0 · H1 377 + H1b 4). 실행 뒤 8768/8769 리슨 0 · 임시 폴더 0 · 합성 DB 지움.
+- 정적(`static-h1b.txt`): security_lint 0 · node --check 4 · php -l 5 · py_compile 11 · asset_version --check rc 0 · wiki_check 0 · git diff --check 0.
+
+### 남은 것
+- 위 「못 한 것」의 테마 창 초점 · 옛 대시보드 시험 둘은 H1b 로 닫았다. 나머지(dashboard-widgets.css 의 옛 클래스 · 메신저 못 쓰는 사람의 바로가기 · 검색 칸 간격 · `q_launcher.sh` 의 script 줄 수 · `moa-shortcuts` 의 H1 전부터 어긋난 단언)는 그대로.

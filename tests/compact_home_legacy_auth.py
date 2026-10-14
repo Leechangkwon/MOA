@@ -15,7 +15,7 @@ layout=config()
 def check(ok,label):
  assert ok,label;checks.append(label);print('PASS '+label,flush=True)
 with sync_playwright()as pw:
- browser=pw.chromium.launch();page=browser.new_page(viewport={'width':1280,'height':900});errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ browser=pw.chromium.launch();page=browser.new_page(viewport={'width':1280,'height':900});page.add_init_script("document.addEventListener('readystatechange',()=>{const d=document.querySelector('details.home-dashboard');if(document.readyState==='interactive'&&d)d.open=true})");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))  # 사이트 H1b — 모아 홈 대시보드 기본 접힘(DESIGN 2.31): defer 스크립트 전에 details 를 연다
  def route(r):
   global revision,layout
   u=urlsplit(r.request.url);p=u.path;q=parse_qs(u.query);calls.append((r.request.method,p,q))

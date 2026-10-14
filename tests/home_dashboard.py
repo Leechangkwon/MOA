@@ -14,7 +14,7 @@ def html(mode='signed'):
  return markup.replace('</header>','<a href="#services">옛 서비스 소개</a></header>',1)if mode=='signed'else markup
 FILE='11111111-1111-4111-8111-111111111111';PAGE='22222222-2222-4222-8222-222222222222'
 with sync_playwright() as pw:
- browser=pw.chromium.launch();context=browser.new_context();page=context.new_page();calls=[];errors=[]
+ browser=pw.chromium.launch();context=browser.new_context();context.add_init_script("document.addEventListener('readystatechange',()=>{const d=document.querySelector('details.home-dashboard');if(document.readyState==='interactive'&&d)d.open=true})");page=context.new_page();calls=[];errors=[]  # 사이트 H1b — 모아 홈 대시보드 기본 접힘(DESIGN 2.31): defer 스크립트 전에 details 를 연다
  page.on('pageerror',lambda e:errors.append(str(e)))
  def route(r):
   u=urlsplit(r.request.url);calls.append(u.path)

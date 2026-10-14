@@ -21,7 +21,9 @@ with sync_playwright()as pw:
   p=urlsplit(r.request.url).path;m=r.request.method
   if p in ['/','/tbox/spaces']:
    args=['php',str(ROOT/'tests/fixtures/service_home_render.php'),'home','signed']if p=='/'else['php',str(ROOT/'tests/fixtures/space_home_render.php')]
-   r.fulfill(body=subprocess.check_output(args,text=True),content_type='text/html',headers={'Content-Security-Policy':CSP});return
+   body=subprocess.check_output(args,text=True)
+   if p=='/':body=body.replace('</header>','<a href="#services">옛 서비스 소개</a></header>',1)   # 사이트 H1b — 모아 홈 머리에 「#services」 링크가 없어졌다(DESIGN 2.31): 옛 저장 구성의 링크 처리는 home_dashboard.py 처럼 고정 링크로 시험
+   r.fulfill(body=body,content_type='text/html',headers={'Content-Security-Policy':CSP});return
   if p.startswith('/tbox/assets/'):
    f=ROOT/'public/assets'/p.removeprefix('/tbox/assets/');r.fulfill(body=f.read_bytes(),content_type='text/javascript'if f.suffix=='.js'else'text/css');return
   if p=='/tbox/api/me':r.fulfill(json={'member_id':1001,'csrf_token':'synthetic','can_community_write':True});return
@@ -40,7 +42,7 @@ with sync_playwright()as pw:
    s=spaces[1]if OTHER in p else spaces[0];r.fulfill(json={'space':s,**state['space'],'widgets':{i:[{'id':i+'1','title':'실제 계약 합성 '+i,'body':'긴 내용 '*100,'can_edit':s['can_write'],'can_delete':s['can_write'],'revision':1}]for i in ['notice','task','event','file','story']}});return
   r.fulfill(json={'files':[],'pages':[],'boards':[],'items':[],'widgets':{}})
  def new_page(mobile=False):
-  context=browser.new_context(viewport={'width':390 if mobile else 1280,'height':900},has_touch=mobile,is_mobile=mobile);context.route('**/*',route);page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)));return context,page
+  context=browser.new_context(viewport={'width':390 if mobile else 1280,'height':900},has_touch=mobile,is_mobile=mobile);context.route('**/*',route);context.add_init_script("document.addEventListener('readystatechange',()=>{const d=document.querySelector('details.home-dashboard');if(document.readyState==='interactive'&&d)d.open=true})");page=context.new_page();page.on('pageerror',lambda e:errors.append(str(e)));return context,page  # 사이트 H1b — 모아 홈 대시보드 기본 접힘(DESIGN 2.31): defer 스크립트 전에 details 를 연다
  def visit(page,kind):page.goto('https://moa.example/'+('tbox/spaces'if kind=='space'else''),wait_until='networkidle')
  def edit(page,kind):
   if kind=='personal':page.locator('#home-edit').click()

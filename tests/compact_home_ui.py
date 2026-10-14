@@ -15,7 +15,7 @@ layout=config()
 def check(ok,label):
  assert ok,label;checks.append(label);print('PASS '+label,flush=True)
 with sync_playwright()as pw:
- browser=pw.chromium.launch();page=browser.new_page(viewport={'width':1280,'height':900});errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ browser=pw.chromium.launch();page=browser.new_page(viewport={'width':1280,'height':900});page.add_init_script("document.addEventListener('readystatechange',()=>{const d=document.querySelector('details.home-dashboard');if(document.readyState==='interactive'&&d)d.open=true})");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))  # 사이트 H1b — 모아 홈 대시보드 기본 접힘(DESIGN 2.31): defer 스크립트 전에 details 를 연다
  def route(r):
   global revision,layout
   u=urlsplit(r.request.url);p=u.path;q=parse_qs(u.query);calls.append((r.request.method,p,q))
@@ -66,7 +66,7 @@ with sync_playwright()as pw:
     visit(width);page.evaluate('(v)=>{document.documentElement.dataset.design=v[0];document.documentElement.dataset.theme=v[1]}',[design,theme]);page.wait_for_timeout(350)
     check(shortcuts()==default,'default five shortcuts (내 작업 0) '+str(width)+design+theme)
     print('GEOMETRY first_widget_y',width,design,theme,page.locator('.dashboard-card').first.bounding_box()['y'],flush=True)
-    check(page.locator('.dashboard-card').first.bounding_box()['y']<=(300 if width>=1100 else 340),'first widget within compact target '+str(width)+design+theme)
+    check(page.locator('.dashboard-card').first.bounding_box()['y']>page.locator('details.home-dashboard > summary').bounding_box()['y'],'H1b first widget inside the opened dashboard below its summary '+str(width)+design+theme)   # 사이트 H1b — 옛 「first widget within compact target(y ≤ 300/340)」: 위젯은 이제 가운데 묶음 아래 대시보드 안(DESIGN 2.31)
     check(not page.locator('.dashboard-guide').evaluate('(n)=>n.open'),'guide closed '+str(width)+design+theme)
     check(page.locator('#home-edit').count()==1 and page.get_by_role('button',name='홈 구성하기').count()==0,'single home edit entry '+str(width)+design+theme)
     check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'page no horizontal overflow '+str(width)+design+theme)
@@ -74,7 +74,7 @@ with sync_playwright()as pw:
     check(page.locator('#home-all-services,.home-services-menu').count()==0 and page.locator('body > header div.shell-tools').count()==1,'H1 all services menu replaced by the shared top-right tools '+str(width)+design+theme)   # 사이트 H1 (DESIGN 2.31 「머리」) — 옛 「all services seven real routes」
     if design=='aurora'and theme=='dark':page.screenshot(path=str(OUT/('compact-'+str(width)+'.png')))
  for width in [1280,1440,1920,820,390,360]:
-  visit(width);page.evaluate("document.documentElement.dataset.contrast='high'");page.wait_for_timeout(100);check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'high contrast no overflow '+str(width));check(page.locator('.dashboard-card').first.bounding_box()['y']<=(300 if width>=1100 else 340),'high contrast compact position '+str(width));check(page.locator('.shell-tools__name > span').evaluate('(n)=>getComputedStyle(n).textOverflow==="ellipsis"')and page.locator('.shell-tools__me').get_attribute('aria-label').startswith('내 계정 메뉴 — '),'H1 account chip ellipsis and accessible full name '+str(width))   # 사이트 H1 — 옛 a.moa-account 칩은 셸과 같은 내 계정 칩으로
+  visit(width);page.evaluate("document.documentElement.dataset.contrast='high'");page.wait_for_timeout(100);check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'high contrast no overflow '+str(width));check(page.locator('.dashboard-card').first.bounding_box()['y']>page.locator('details.home-dashboard > summary').bounding_box()['y'],'H1b high contrast first widget below the dashboard summary '+str(width));check(page.locator('.shell-tools__name > span').evaluate('(n)=>getComputedStyle(n).textOverflow==="ellipsis"')and page.locator('.shell-tools__me').get_attribute('aria-label').startswith('내 계정 메뉴 — '),'H1 account chip ellipsis and accessible full name '+str(width))   # 사이트 H1 — 옛 a.moa-account 칩은 셸과 같은 내 계정 칩으로
  visit(1440);original=json.dumps(layout,sort_keys=True);page.locator('#home-edit').click();settings();before=len([x for x in calls if x[0]=='PATCH'])
  page.get_by_label('자료실 앞으로',exact=True).click();check(shortcuts()==['spaces','library','work','messages','assistant'],'draft reorder visible immediately')
  page.get_by_label('이야기',exact=True).focus();page.keyboard.press('Space');check(page.get_by_label('이야기',exact=True).evaluate('(n)=>n===document.activeElement'),'checkbox Space retains keyboard focus');check(shortcuts()[-1]=='story','draft optional shortcut added')

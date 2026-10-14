@@ -58,7 +58,14 @@
     status.textContent = stored ? names[theme] + '를 이 브라우저의 기본 테마로 저장했습니다.' : '현재 화면에 적용했습니다. 쿠키가 차단되어 다음 방문에는 저장되지 않습니다.';
   });
   dialog.querySelector('[data-design-close]').addEventListener('click', () => dialog.close());
-  dialog.addEventListener('close', () => { restore(); if (opener && opener.isConnected) opener.focus(); });
+  // 사이트 H1b — 연 단추가 닫힌 판(details — 내 계정 판의 「테마」 타일) 안이면 그 판을 여는 보이는 단추로 돌아간다(summary · 폰 윗줄의 aria-controls 단추)
+  function returnTarget() {
+    const box = opener && opener.closest('details');
+    if (!box || box.open) return opener;
+    const shown = el => el && el.getClientRects().length > 0;
+    return [box.querySelector(':scope > summary'), box.id ? document.querySelector('[aria-controls="' + box.id + '"]') : null].find(shown) || opener;
+  }
+  dialog.addEventListener('close', () => { restore(); const back = returnTarget(); if (back && back.isConnected) back.focus(); });
   dialog.addEventListener('click', event => {
     if (event.target !== dialog) return;
     const box = dialog.getBoundingClientRect();

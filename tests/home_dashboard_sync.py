@@ -10,7 +10,7 @@ def check(value,label):
  global checks
  assert value,label;checks+=1;print('PASS '+label)
 with sync_playwright()as pw:
- browser=pw.chromium.launch();page=browser.new_page();errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ browser=pw.chromium.launch();page=browser.new_page();page.add_init_script("document.addEventListener('readystatechange',()=>{const d=document.querySelector('details.home-dashboard');if(document.readyState==='interactive'&&d)d.open=true})");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))  # 사이트 H1b — 모아 홈 대시보드 기본 접힘(DESIGN 2.31): defer 스크립트 전에 details 를 연다
  def route(r):
   global layout,revision
   p=urlsplit(r.request.url).path;calls.append((r.request.method,p))
@@ -47,7 +47,7 @@ with sync_playwright()as pw:
  page.locator('#home-edit').click();batch();page.get_by_label('위젯 추가',exact=True).select_option('tools');page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  check(page.locator('[data-home-widget=tools]').is_visible(),'account layout save applied')
  check(page.evaluate('localStorage.getItem("moa-home:v1:1001")')is None,'server save does not silently mirror or overwrite browser migration data')
- other=browser.new_page();other.route('**/*',route);other.goto('https://moa.example/',wait_until='networkidle');check(other.locator('[data-home-widget=tools]').is_visible(),'second browser context reads synchronized layout');other.close()
+ other=browser.new_page();other.add_init_script("document.addEventListener('readystatechange',()=>{const d=document.querySelector('details.home-dashboard');if(document.readyState==='interactive'&&d)d.open=true})");other.route('**/*',route);other.goto('https://moa.example/',wait_until='networkidle');check(other.locator('[data-home-widget=tools]').is_visible(),'second browser context reads synchronized layout');other.close()  # 사이트 H1b — 모아 홈 대시보드 기본 접힘(DESIGN 2.31): defer 스크립트 전에 details 를 연다
  page.reload(wait_until='networkidle');check(page.locator('[data-home-widget=tools]').is_visible(),'server layout survives reload')
  fail=True;page.locator('#home-edit').click();page.locator('[data-dashboard-move=tools]').focus();hide_selected();page.get_by_role('button',name='배치 저장·완료',exact=True).click();page.wait_for_timeout(100)
  check(page.locator('.dashboard-editor').is_visible(),'conflicting save retains draft')

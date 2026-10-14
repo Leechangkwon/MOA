@@ -18,7 +18,7 @@ manifest=json.loads(render('manifest'))
 check(manifest['start_url']=='/','actual manifest starts at root home')
 check(manifest['id']=='/community/'and manifest['scope']=='/','existing installed identity and scope retained')
 with sync_playwright()as pw:
- browser=pw.chromium.launch();page=browser.new_page(viewport={'width':390,'height':844});errors=[];page.on('pageerror',lambda e:errors.append(str(e)))
+ browser=pw.chromium.launch();page=browser.new_page(viewport={'width':390,'height':844});page.add_init_script("document.addEventListener('readystatechange',()=>{const d=document.querySelector('details.home-dashboard');if(document.readyState==='interactive'&&d)d.open=true})");errors=[];page.on('pageerror',lambda e:errors.append(str(e)))  # 사이트 H1b — 모아 홈 대시보드 기본 접힘(DESIGN 2.31): defer 스크립트 전에 details 를 연다
  def route(r):
   global session
   u=urlsplit(r.request.url);p=u.path;requests.append((r.request.method,p))
@@ -49,7 +49,7 @@ with sync_playwright()as pw:
    check(not any(p=='/tbox/api/me/home-dashboard'for _,p in requests)if kind!='signed'else any(p=='/tbox/api/me/home-dashboard'for _,p in requests),'private layout request only authenticated consented '+kind+' '+str(width))
    if kind=='signed':
     check(page.locator('.dashboard-card').count()==3,'actual generic default three widgets '+str(width))
-    y=page.locator('.dashboard-card').first.bounding_box()['y'];check(y<=(340 if width<500 else 300),'first default widget near top '+str(width))
+    y=page.locator('.dashboard-card').first.bounding_box()['y'];check(y>page.locator('details.home-dashboard > summary').bounding_box()['y'],'H1b first default widget inside the opened dashboard '+str(width))   # 사이트 H1b — 옛 「near top(y ≤ 300/340)」: 위젯은 가운데 묶음 아래 대시보드 안(DESIGN 2.31)
     check(page.locator('#dashboard-services a').count()==6,'default shortcuts retained '+str(width))
     check(not page.locator('.dashboard-guide').evaluate('(n)=>n.open'),'default guide closed '+str(width))
    else:y=None
