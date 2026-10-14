@@ -446,16 +446,17 @@ if ($shellMod === 'community'): ?>
   </dialog>
 
   <aside id="sidebar" class="sidebar" hidden>
-    <!-- 사이드바 머리 (Q:F-12 U2 · DESIGN 2.19 ① · ⑨) — ☰ 접기 단추 + 브랜드 글자(링크 — 그 앱의 첫 화면)뿐. 앱 바꾸기 · 계정은 본문 오른쪽 위 격자(2.18).
+    <!-- 사이드바 머리 (Q:F-12 U2 · DESIGN 2.19 ① · ⑨ · ⑩ 사이트 H5) — ☰ 접기 단추 + 앱 아이콘(링크 — 그 앱의 첫 화면)뿐. 앱 바꾸기 · 계정은 본문 오른쪽 위 격자(2.18).
          ☰(`#sidebar-collapse`)는 ≥960 에서만 보인다(폰 윗줄 `#nav-toggle` 과는 다른 단추). 누르면 app.js 가 `<body data-sidebar="collapsed">` 를 단다/뗀다 —
          속성 하나 · 마크업 재생성 0. 카페 C5 — 첫 값은 이 파일이 쿠키 `qaredi_sidebar`(open 이면 펼침 · 아니면 접힘이 기본)로 그린다. -->
     <div class="brand moa-brand">
       <button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="<?= $shellSidebarOpen ? 'true' : 'false' ?>" aria-label="<?= $shellSidebarOpen ? '메뉴 접기' : '메뉴 펼치기' ?>">
         <span class="icon" data-icon="menu"></span>
       </button>
-      <a class="moa-brand-home" href="<?= $shellBrandHref ?>" aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
+      <?php /* 사이트 H5 (DESIGN 2.19 ⑩ · 2.33 「셸 브랜드」) — 머리 = ☰ + 앱 아이콘(36 · 그 앱 첫 화면 링크)뿐 · 「모아 자료실」 · 「파일 보관 · 찾기 · 공유」 같은 글자는 그리지 않는다
+               (지금 앱은 본문 제목 · 앱 판 aria-current · 폰 윗줄 앱 이름 ▾ 가 말한다). 이름은 링크 aria-label 「<앱> 첫 화면으로」 · 같은 글자 풍선(2.8 — app.css) */ ?>
+      <a class="moa-brand-home" href="<?= $shellBrandHref ?>" aria-label="<?= htmlspecialchars($shellCafe ? '우리 공간' : $shellHereName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
         <span class="brand__mark moa-module-mark moa-module-mark--<?= $shellMarkKey ?>"><?php $moaIcon=$shellBrandIcon; require __DIR__.'/moa_icon.php'; ?></span>
-        <span class="brand__text"><span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span><span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span></span>
       </a>
     </div>
 

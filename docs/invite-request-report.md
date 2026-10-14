@@ -141,3 +141,45 @@ HTTP 시험이 잰 것: 요청 201 `{status_path}` · 코드 64 16진 · 표엔 
 4. **바닥 부품 `src/views/moa_footer.php`(새)** — 가입 · 동의 · 초대 요청 · 확인 화면에는 바닥이 없었다(머리의 법적 문서 링크뿐). 「바닥 아래 끝 = 창 아래 끝」 을 재려면 바닥이 있어야 해서 한 벌로 만들어 런처와 그 넷에 달았다(법적 문서 화면은 자기 바닥 — 주소가 판을 따라가서 — 그대로 두고 글자 로고만 바꿈). 바닥 붙이기는 클래스를 더하지 않고 `body.moa-site:has(> footer.moa-footer)` 한 규칙으로 했다.
 5. **테마 창 묶음 클래스 셋**(`.q-wordmark-picker` · `-option` · `-sample`)과 상징의 점 `.moa-symbol__dot` 을 새로 썼다(2.33 에 이름이 없음). 테마 창 규칙은 design.css 가 아니라 moa.css 에 두었다(허용 목록).
 6. 셸 브랜드 「모아」 칠은 하지 않았다 — H5 · DESIGN 2.33 「셸 브랜드」 줄(main 최신)이 「글자를 그리지 않는다」 로 바뀌었다.
+
+---
+
+# H5 — 사이드바 머리 글자 없앰 · 앱 판 「검색」 타일 뺌 (2026-10-14)
+
+지시서(main `0a33f08` 의 「H5」) · DESIGN 2.19 ⑩ · 2.30 「앱 판」 · 2.33 「셸 브랜드」(main). 문서는 이 worktree 에서 고치지 않았다.
+
+## H5 — 변경 파일
+
+| 파일 | 내용 |
+|---|---|
+| `src/views/shell_top.php` | 사이드바 머리 = ☰ + 앱 아이콘 링크뿐(`.brand__text` · `.brand__name` · `.brand__sub` 를 그리지 않음) · 링크 `aria-label` 「<앱> 첫 화면으로」(카페는 「우리 공간」) |
+| `src/views/shell_tools.php` | 앱 판 「검색」 타일 줄 삭제(셸 · 런처 · 폰 공용) |
+| `public/assets/app.js` | 앱 판 「검색」 타일 갈래 삭제(사이드바 「검색」 · Ctrl K · 폰 돋보기 · `qarediSearchOpen` 그대로) |
+| `public/assets/app.css` | 머리 줄(높이 56 · 아이콘 36 · 아래 구분 0 — moa.css 의 옛 두 칸 격자를 `#sidebar > .moa-brand` 에서 덮음) · 아이콘 링크 풍선(2.8 툴팁 규칙 묶음에 `#sidebar .moa-brand-home[aria-label]` 를 더함 — 같은 규칙) |
+| `tests/community/home_h4_browser.py` | [h5] 단언 묶음 |
+
+## H5 — 수락 시험과 결과
+
+| 시험 | 결과 | 폴더 |
+|---|---|---|
+| `H4_ONLY=h5 … --suite home_h4_browser.py --output …/h5-run1` | **119 / 0** | `h5-run1/`(shots/ `h5-library-1440.png` · `h5-work-1440.png`) |
+| 최종 판 한 번 — `home_h4_browser.py` 전체(H4 + H5) · `cafe_h3_browser.py` | **366 / 0** · **78 / 0** | `h5-h4-final/` · `h5-h3-final/` |
+| 정적 | security_lint 0건 · php -l · node --check 통과 · wiki_check 0건 · 부품 버전 맞음 · git diff --check 통과 | — |
+
+잰 것: 1440 · 1280 · 960 × 자료실 · 업무 · 이야기 · 카페 · 관리(관리자 · 재인증) 사이드바 펼침: 머리에 보이는 글자 0 · 글자 요소 0 · ☰ 보임 · 아이콘 36×36 · 줄 높이 52~60 · 링크 = 그 앱 첫 화면(관리 화면은 자료실 `/tbox/`) · aria-label 「… 첫 화면으로」 · 올리면 풍선(같은 글자) · 앱 판 검색 타일 0 · 사이드바 「검색」 · Ctrl K 가 검색 창 · 넘침 0 · 콘솔 0 · 접힌 레일(기본) 그대로(☰ · 폭 64 · 아이콘 링크 숨김) · 412 윗줄 앱 이름 ▾ 그대로(「모아 자료실」 · 「모아 업무」 · 「모아 이야기」 · 「우리 공간」) · 폰 앱 판 검색 타일 0 · 돋보기가 검색 창 · 모아 홈(1440 · 412) 앱 판 타일에 「검색」 0 · 홈 검색 칸 Enter 가 검색 창.
+
+## H5 — 고친 옛 단언 (돌리지 않았다)
+
+| 시험 | 고친 내용 |
+|---|---|
+| `tests/community/qf12_shell_browser.py` | 앱 판 타일 목록 셋에서 「검색」 뺌 · 「search tile present」 → 검색 타일 0 · 「search tile opens the same search dialog」 → 타일 0 + 사이드바 「검색」 이 창을 엶 |
+| `tests/community/home_h1_browser.py` | [tools] `'검색' in tiles` → `not in` · [search] 「app panel 「검색」 tile opens the same dialog」 → 타일 0 |
+| `tests/community/cafe_c4_browser.py` | c6 타일 기대 목록 끝의 `['검색']` 뺌 |
+| `tests/community/cafe_c2_browser.py` | [shell] 브랜드 `.brand__name` 「우리 공간」 → 아이콘 링크 aria-label 「우리 공간 첫 화면으로」 |
+| `tests/design_live_browser.py` | `.brand__name` 「모아 업무」 → 아이콘 링크 aria-label 「업무 첫 화면으로」 |
+| `tests/design_themes_browser.py` | 「motion override」 를 재던 `.brand__name`(움직이던 유일한 셸 글자)이 없어져 `.q-design-status, .ok-note` 로 옮김 — **이 단언은 이제 거의 늘 참**(그 요소에는 움직임이 없을 수 있다). 움직임 끄기는 같은 `:root[data-motion="reduce"] *` 규칙이 그대로 막는다 |
+
+## H5 — 다르게 한 것
+
+- 관리 화면(`/tbox/admin`)의 머리 아이콘은 자료실 셸 것이라 「자료실 첫 화면으로」 → `/tbox/`(관리 화면은 자료실 셸 안).
+- 셸 이름 변수(`$shellBrandName` — 폰 윗줄 앱 이름 ▾ · `<title>`)는 그대로 둔다.

@@ -293,6 +293,103 @@ try:
                 metrics['foot'] = summary
             guard('foot', foot)
 
+        # ── [h5] 사이트 H5 — 사이드바 머리 글자 0 · 앱 판 검색 타일 0 (DESIGN 2.19 ⑩ · 2.30) ─────────────────
+        HEAD_JS = r"""() => { const b = document.querySelector('#sidebar > .brand'); if (!b) return null; const vis = e => e.getClientRects().length > 0 && getComputedStyle(e).display !== 'none' && getComputedStyle(e).visibility !== 'hidden';
+          const link = b.querySelector('.moa-brand-home'); const mark = link ? link.querySelector('.brand__mark') : null; const r = b.getBoundingClientRect(); const mr = mark ? mark.getBoundingClientRect() : null;
+          const texts = [...b.querySelectorAll('*')].filter(e => vis(e) && [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim() !== '')).map(e => e.textContent.trim());
+          return {texts, names: b.querySelectorAll('.brand__name, .brand__sub, .brand__text').length, href: link && link.getAttribute('href'), label: link && link.getAttribute('aria-label'),
+                  linkVisible: !!link && vis(link), mark: mr ? [Math.round(mr.width), Math.round(mr.height)] : null, h: Math.round(r.height), menu: vis(document.getElementById('sidebar-collapse')),
+                  rail: Math.round(document.getElementById('sidebar').getBoundingClientRect().width), collapsed: document.body.getAttribute('data-sidebar'),
+                  tile: document.querySelectorAll('[data-search-tile]').length, overflow: document.documentElement.scrollWidth - innerWidth}; }"""
+        if want('h5'):
+            def h5():
+                summary = {}
+                SHELLS = [('library', 'employee', '/tbox/', '/tbox/', '자료실'), ('work', 'employee', '/community/', '/community/', '업무'),
+                          ('story', 'employee', '/community/memories', '/community/memories', '이야기'), ('cafe', 'employee', '/community/cafe', '/community/cafe', '우리 공간'),
+                          ('admin', 'admin', '/tbox/admin', '/tbox/', '자료실')]
+                for width in (1440, 1280, 960):
+                    for name, who, path, home, app in SHELLS:
+                        tag = '%s-%d' % (name, width)
+                        ctx = context(who, width, reauth=(who == 'admin'))
+                        ctx.add_cookies([{'name': 'qaredi_sidebar', 'value': 'open', 'domain': host, 'path': '/'}])
+                        t = Tab(ctx)
+                        p = t.page
+                        p.goto(site + path, wait_until='networkidle')
+                        p.wait_for_timeout(250)
+                        st = p.evaluate(HEAD_JS)
+                        summary[tag] = st
+                        check(st and st['texts'] == [] and st['names'] == 0 and st['menu'] and st['linkVisible'] and st['mark'] == [36, 36] and 52 <= st['h'] <= 60,
+                              '[h5] %s: sidebar head = ☰ + app icon 36 · visible text 0 · row %s %s' % (tag, st and st['h'], json.dumps(st and st['texts'], ensure_ascii=False)))
+                        check(st and st['href'] == home and st['label'] == app + ' 첫 화면으로', '[h5] %s: icon link → %s · aria-label 「%s 첫 화면으로」 (%s)' % (tag, home, app, st and st['label']))
+                        p.hover('#sidebar .moa-brand-home')
+                        p.wait_for_timeout(120)
+                        tip = p.evaluate("(() => { const s = getComputedStyle(document.querySelector('#sidebar .moa-brand-home'), '::after'); return {c: s.content, d: s.display}; })()")
+                        check(tip['d'] == 'block' and tip['c'].strip('"') == app + ' 첫 화면으로', '[h5] %s: hover → tooltip 「%s 첫 화면으로」' % (tag, app))
+                        check(st and st['tile'] == 0 and st['overflow'] <= 0, '[h5] %s: app panel search tile 0 · overflow 0' % tag)
+                        if width == 1440 and name in ('library', 'work'):
+                            p.screenshot(path=str(shots / ('h5-%s-1440.png' % name)))
+                        # 검색 길 — 사이드바 「검색」 · Ctrl K
+                        p.locator('#nav-search').click()
+                        p.wait_for_selector('#search-dialog[open]', timeout=5000)
+                        p.keyboard.press('Escape')
+                        p.wait_for_timeout(150)
+                        p.keyboard.press('Control+k')
+                        p.wait_for_timeout(250)
+                        ok_k = p.evaluate("document.getElementById('search-dialog').open")
+                        p.keyboard.press('Escape')
+                        check(ok_k, '[h5] %s: sidebar 「검색」 and Ctrl K open the search dialog' % tag)
+                        check(t.clean('h5-' + tag), '[h5] %s: console 0' % tag)
+                        ctx.close()
+                # 접힌 레일(쿠키 없음 — 기본 접힘) 그대로
+                for name, who, path, home, app in SHELLS[:2]:
+                    ctx = context(who, 1440)
+                    t = Tab(ctx)
+                    p = t.page
+                    p.goto(site + path, wait_until='networkidle')
+                    st = p.evaluate(HEAD_JS)
+                    check(st['collapsed'] == 'collapsed' and st['rail'] == 64 and st['menu'] and not st['linkVisible'] and st['texts'] == [], '[h5] %s collapsed rail unchanged (☰ only · width 64)' % name)
+                    ctx.close()
+                # 폰 — 윗줄 앱 이름 ▾ · 돋보기 · 앱 판 검색 타일 0
+                for name, who, path, home, app in SHELLS[:4]:
+                    ctx = context(who, 412, 900)
+                    t = Tab(ctx)
+                    p = t.page
+                    p.goto(site + path, wait_until='networkidle')
+                    p.wait_for_timeout(200)
+                    bar = p.evaluate("(() => { const b = document.getElementById('appbar-apps'); return b ? {t: b.textContent.trim(), v: b.getClientRects().length > 0} : null; })()")
+                    want_bar = '우리 공간' if name == 'cafe' else '모아 ' + app
+                    check(bar and bar['v'] and bar['t'] == want_bar, '[h5] 412 %s: top bar app name ▾ 「%s」 unchanged' % (name, want_bar))
+                    p.locator('#appbar-apps').click()
+                    p.wait_for_timeout(150)
+                    check(p.evaluate("document.querySelectorAll('[data-search-tile]').length") == 0, '[h5] 412 %s: app panel search tile 0' % name)
+                    p.keyboard.press('Escape')
+                    p.locator('#appbar-search').click()
+                    p.wait_for_selector('#search-dialog[open]', timeout=5000)
+                    check(True, '[h5] 412 %s: magnifier opens the search dialog' % name)
+                    p.keyboard.press('Escape')
+                    check(t.clean('h5-412-' + name), '[h5] 412 %s: console 0' % name)
+                    ctx.close()
+                # 런처(모아 홈) — 앱 판 검색 타일 0 · 홈 검색 칸 그대로
+                for width in (1440, 412):
+                    ctx = context('employee', width, 900)
+                    t = Tab(ctx)
+                    p = t.page
+                    p.goto(site + '/', wait_until='networkidle')
+                    p.locator('.shell-tools > .appbar__apps > summary').click()
+                    p.wait_for_timeout(150)
+                    tiles = p.evaluate("[...document.querySelectorAll('.shell-tools .appbar__apps .app-menu__name')].map(e => e.textContent)")
+                    check('검색' not in tiles and p.evaluate("document.querySelectorAll('[data-search-tile]').length") == 0, '[h5] home %d: app panel tiles without 「검색」 %s' % (width, json.dumps(tiles, ensure_ascii=False)))
+                    p.keyboard.press('Escape')
+                    p.fill('#home-search-input', 'H5')
+                    p.keyboard.press('Enter')
+                    p.wait_for_selector('#search-dialog[open]', timeout=5000)
+                    check(True, '[h5] home %d: home search box Enter opens the search dialog' % width)
+                    p.keyboard.press('Escape')
+                    check(t.clean('h5-home-%d' % width), '[h5] home %d: console 0' % width)
+                    ctx.close()
+                metrics['h5'] = summary
+            guard('h5', h5)
+
         browser.close()
 finally:
     (out / 'home-h4-metrics.json').write_text(json.dumps(metrics, ensure_ascii=False, indent=1))

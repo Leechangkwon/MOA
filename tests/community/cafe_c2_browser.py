@@ -297,12 +297,13 @@ try:
                     p = t.page
                     t.go(path)
                     until(p, "() => !document.getElementById('nav-community-boards').hidden", 10000)
-                    st = p.evaluate("""(parts) => ({area: document.body.getAttribute('data-area'), brand: document.querySelector('.brand__name').textContent,
+                    st = p.evaluate("""(parts) => ({area: document.body.getAttribute('data-area'), brand: (document.querySelector('#sidebar .moa-brand-home') || {getAttribute: () => null}).getAttribute('aria-label'),
                         home: !!document.getElementById('nav-cafe-home'), boards: [...document.querySelectorAll('#nav-community-boards a')].map(a => a.textContent.trim()),
                         work: parts.filter(s => document.querySelector(s)), admin: !document.getElementById('nav-cafe-admin').hidden,
                         adminLinks: [...document.querySelectorAll('#nav-cafe-admin a')].map(a => a.getAttribute('href'))})""", WORK_PARTS)
                     metrics['shell_' + label] = st
-                    check(st['area'] == 'cafe' and st['brand'] == '우리 공간' and st['home'], 'shell %s (%s): body[data-area=cafe] · brand 「우리 공간」 · 카페 홈' % (label, who))
+                    check(st['area'] == 'cafe' and st['brand'] == '우리 공간 첫 화면으로' and st['home'],   # 사이트 H5 — 머리 글자 0 · 이름은 링크 aria-label
+                           'shell %s (%s): body[data-area=cafe] · brand 「우리 공간」 · 카페 홈' % (label, who))
                     check(set(st['boards']) >= {'자유게시판', '익명게시판'} and '질문과 답변' not in st['boards'] and '공지사항' not in st['boards'],
                           'shell %s: sidebar boards = cafe boards only %s' % (label, json.dumps(st['boards'], ensure_ascii=False)))
                     check(st['work'] == [], 'shell %s: work tree · projects · teams · new menu · documents 0 %s' % (label, json.dumps(st['work'])))

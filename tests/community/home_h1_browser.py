@@ -287,7 +287,7 @@ try:
                     ac = p.evaluate(PANEL_JS, '.shell-tools .shell-account')
                     ap_open = p.evaluate("document.querySelector('.shell-tools .appbar__apps').open")
                     summary['%d' % width] = {'apps': ap, 'account': ac}
-                    check(ap['current'] == ['모아 홈'] and ap['tiles'][:4] == ['모아 홈', '자료실', '업무', '이야기'] and '검색' in ap['tiles'] and '관리자 페이지' not in ap['tiles'],
+                    check(ap['current'] == ['모아 홈'] and ap['tiles'][:4] == ['모아 홈', '자료실', '업무', '이야기'] and '검색' not in ap['tiles'] and '관리자 페이지' not in ap['tiles'],
                           '① %d: app panel 「모아 홈」 aria-current · apps and tools · admin tile hidden for an employee %s' % (width, json.dumps(ap['tiles'], ensure_ascii=False)))
                     check(ac['open'] and not ap_open and ac['tiles'] == ['내 계정', '내 활동', '테마'] and ac['logout'] == ['로그아웃'] and ac['current'] == [],
                           '① %d: chip → account panel 내 계정 · 내 활동 · 테마 + 로그아웃 · app panel closed (one at a time) %s' % (width, json.dumps(ac['tiles'], ensure_ascii=False)))
@@ -379,12 +379,8 @@ try:
                     p.keyboard.press('Escape')
                     p.wait_for_timeout(150)
                     check(not p.evaluate("document.getElementById('search-dialog').open"), 'search %d: Esc closes the dialog' % width)
-                    # 앱 판 「검색」 타일도 같은 창
-                    p.locator('.shell-tools > .appbar__apps > summary').click()
-                    p.locator('.shell-tools [data-search-tile]').click()
-                    p.wait_for_selector('#search-dialog[open]', timeout=5000)
-                    check(True, 'search %d: app panel 「검색」 tile opens the same dialog on the home' % width)
-                    p.keyboard.press('Escape')
+                    # 사이트 H5 — 앱 판 「검색」 타일은 없다(DESIGN 2.30 · 옛 「app panel 「검색」 tile opens the same dialog」)
+                    check(p.locator('.shell-tools [data-search-tile]').count() == 0, 'H5 search %d: app panel 「검색」 tile 0 on the home' % width)
                     check(t.clean('search-%d' % width), 'search %d console 0' % width)
                     ctx.close()
                 metrics['search'] = summary

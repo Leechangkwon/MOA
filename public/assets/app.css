@@ -202,6 +202,11 @@ button.appbar__brand .icon { display: inline-flex; color: var(--muted); }
   color: var(--primary-fg);
 }
 .brand__text { display: flex; flex-direction: column; min-width: 0; }
+/* 사이트 H5 (DESIGN 2.19 ⑩) — 셸 사이드바 머리 = ☰ + 앱 아이콘 36(그 앱 첫 화면 링크)뿐 · 줄 높이 56 · 아래 구분 0. 글자(.brand__name · .brand__sub)는 셸이 그리지 않는다
+   (로그인 화면의 .brand__text 는 다른 자리 — 그대로). moa.css 의 옛 두 칸 격자(.moa-brand)를 이 자리에서만 덮는다 */
+#sidebar > .moa-brand { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 4px; border-bottom: 0; }
+#sidebar > .moa-brand .moa-brand-home { flex: none; padding: 0; }
+#sidebar > .moa-brand .brand__mark { width: 36px; height: 36px; }
 .brand__name { font-size: 14px; font-weight: 600; line-height: 1.3; }
 .brand__sub { font-size: 12px; color: var(--muted); line-height: 1.3; }
 
@@ -564,10 +569,12 @@ table.files tbody tr:hover .btn--icon[aria-label="지우기"] { color: var(--dan
 /* 아이콘 단추 툴팁 — app.js 가 모든 아이콘 단추에 넣는 aria-label 을 그대로 글자로 보인다.
    브라우저 기본 title 툴팁은 1초 뒤에야 뜨고 눈에 잘 안 띄어, 올리는 즉시 단추 아래에 보여 준다.
    문자열은 attr() 로만 읽으므로 HTML 변환도, 인라인 style 도 없다 (CSP). */
-.btn--icon[aria-label] { position: relative; }
+.btn--icon[aria-label],
+#sidebar .moa-brand-home[aria-label] { position: relative; }   /* 사이트 H5 — 사이드바 머리 아이콘 링크도 같은 풍선(2.8) */
 /* Q:F-12 U2 (DESIGN 2.19 ⑨) — 접힌 사이드바의 아이콘 항목도 **같은 규칙**의 툴팁을 쓴다(글자는 고정 글자 `data-tip` — shell_top.php).
    보이는 때(≥960 · 접힘)와 자리(오른쪽)만 아래 「사이드바 접기」 블록이 정한다 — 새 툴팁 규칙 0 */
 .btn--icon[aria-label]::after,
+#sidebar .moa-brand-home[aria-label]::after,
 body[data-sidebar="collapsed"] #sidebar [data-tip]::after {
   content: attr(aria-label);
   position: absolute;
@@ -588,18 +595,21 @@ body[data-sidebar="collapsed"] #sidebar [data-tip]::after {
      그래서 display 로 켠다·끈다 (2026-09-21) */
   display: none;
 }
-.btn--icon[aria-label]:focus-visible::after { display: block; }
+.btn--icon[aria-label]:focus-visible::after,
+#sidebar .moa-brand-home[aria-label]:focus-visible::after { display: block; }
 /* 올려서 보는 툴팁은 **마우스 같은 정밀한 포인터**가 주 입력인 기기에서만 (디버깅 묶음 U L4 · 2026-09-26).
    터치 화면은 누른 뒤에도 :hover 가 그 단추에 남아, 「zip 으로 받기」를 누른 뒤 툴팁이 막대 아래 안내 문장을 가렸다(운영 폰 스크린샷).
    터치에서는 이름이 aria-label(화면 읽기)로 남고, 키보드 초점(:focus-visible)의 툴팁은 그대로다. */
 @media (hover: hover) and (pointer: fine) {
-  .btn--icon[aria-label]:hover::after { display: block; }
+  .btn--icon[aria-label]:hover::after,
+  #sidebar .moa-brand-home[aria-label]:hover::after { display: block; }
 }
 /* 독립 검토 L-3 — 폴드처럼 **hover 를 알리는 터치 기기**(삼성 인터넷은 S펜 때문에 hover: hover · 주 포인터 fine 으로 알린다)도
    누른 뒤 :hover 가 남는다. 트리 「하위 추가」 규칙(community.css)과 같이 `any-pointer: coarse` 도 보고 올려서 보는 툴팁을 끈다.
    키보드 초점 툴팁은 그대로(:focus-visible 은 빼지 않는다). 한계: 터치 화면이 달린 노트북은 마우스로 올려도 툴팁이 안 뜬다(이름은 aria-label). */
 @media (hover: none), (any-pointer: coarse) {
-  .btn--icon[aria-label]:hover:not(:focus-visible)::after { display: none; }
+  .btn--icon[aria-label]:hover:not(:focus-visible)::after,
+  #sidebar .moa-brand-home[aria-label]:hover:not(:focus-visible)::after { display: none; }
 }
 /* 표 마지막 열의 단추는 툴팁이 오른쪽으로 새지 않게 오른끝을 맞춘다 */
 td.actions .btn--icon:last-child::after,
@@ -615,8 +625,10 @@ td.actions .btn--icon:last-child::after,
    모르는 브라우저는 위 규칙 그대로다. 스크립트·인라인 style 0 (CSP). */
 @supports (anchor-name: --tip) and (anchor-scope: --tip) {
   .btn--icon[aria-label],
+  #sidebar .moa-brand-home[aria-label],
   body[data-sidebar="collapsed"] #sidebar [data-tip] { anchor-name: --tip; anchor-scope: --tip; }
   .btn--icon[aria-label]::after,
+  #sidebar .moa-brand-home[aria-label]::after,
   body[data-sidebar="collapsed"] #sidebar [data-tip]::after,
   td.actions .btn--icon:last-child::after,
   .modal__head .btn--icon::after {
