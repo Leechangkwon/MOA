@@ -110,7 +110,7 @@ final class Fetch
         $ip = self::publicIpOf($host);
         $ch = curl_init($image
             ? 'https://generativelanguage.googleapis.com/v1beta/interactions'
-            : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent');
+            : 'https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent');
         if ($ch === false) throw new FetchDenied('fetch_failed');
         $response = '';
         $maxResponse = $image ? 12582912 : 524288;

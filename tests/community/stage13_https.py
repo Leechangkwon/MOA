@@ -40,7 +40,7 @@ def inside(work):
             except (BrokenPipeError,ConnectionResetError,ssl.SSLError):pass
         def do_GET(self):
             captured.append({'method':'GET','path':self.path,'key_present':bool(self.headers.get('x-goog-api-key'))})
-            self.respond(200,{'name':'models/gemini-3.5-flash'})
+            self.respond(200,{'name':'models/gemini-3.6-flash'})
         def do_POST(self):
             body=json.loads(self.rfile.read(int(self.headers.get('Content-Length','0'))))
             assert self.headers.get('x-goog-api-key')=='A'*39
@@ -63,7 +63,15 @@ def inside(work):
     untrusted=subprocess.run(['php',str(work/'untrusted.php')],capture_output=True)
     assert len(captured)==before,'untrusted certificate must fail before HTTP'
     server.shutdown();stop.set()
-    assert all(item['path'].startswith('/v1beta/models/') for item in captured)
+    generate_path='/v1beta/models/gemini-3.6-flash:generateContent'
+    assert [(item['method'],item['path']) for item in captured[:4]]==[
+        ('GET','/v1beta/models/gemini-3.6-flash'),
+        ('POST',generate_path),
+        ('POST','/v1beta/models/gemini-embedding-2:embedContent'),
+        ('POST',generate_path),
+    ],'exact health, generate, embed and transcribe model URLs'
+    assert all(item['method']=='POST' and item['path']==generate_path for item in captured[4:]),'all generation calls use Gemini 3.6 Flash'
+    assert all('candidateCount' not in item['body']['generationConfig'] for item in captured if item['method']=='POST' and item['path']==generate_path),'Gemini 3 generation requests omit candidateCount'
     assert not any(item['path']=='/should-not-follow' for item in captured)
     assert captured and all(item['key_present'] for item in captured)
     (work/'received.json').write_text(json.dumps(captured,ensure_ascii=False,indent=2))

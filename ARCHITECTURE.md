@@ -3211,7 +3211,7 @@ member_messages는 sender_id·recipient_id·body·sent_at·read_at만 보관한�
 
 ## 모아 메신저 AI (2026-10-02)
 
-`MemberAi` → `Fetch::geminiGenerate` → 고정 `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent`. API키는 `x-goog-api-key` 헤더에만 전달. DNS의 모든 주소를 공용IP로 확인하고 실제IP고정, TLS검증, 프록시/리다이렉트금지. 5초연결/55초전체, 요청180KB/응답512KiB. curl은 Fetch.php에만있다.
+`MemberAi` → `Fetch::geminiGenerate` → 고정 `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent`. API키는 `x-goog-api-key` 헤더에만 전달. DNS의 모든 주소를 공용IP로 확인하고 실제IP고정, TLS검증, 프록시/리다이렉트금지. 5초연결/55초전체, 요청180KB/응답512KiB. curl은 Fetch.php에만있다.
 
 키는 `dirname(Storage::baseDir())/private-messenger-ai/gemini.key`에만 저장(운영 `/var/lib/tbox-v2/private-messenger-ai/gemini.key`). 디렉터리0700/파일0600, 임시파일+rename으로 교체. 웹루트와 업로드트리 밖, DB/로그/응답에 원문없음. 서버파일 백업이 필요하며 DB복원만 하면 관리자 화면에서 키를 다시 등록해야 한다.
 

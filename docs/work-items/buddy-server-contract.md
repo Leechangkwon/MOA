@@ -17,7 +17,7 @@
 
 - 주소: 사이트의 `/tbox/api/assistant/chat`. HTTPS, 같은 origin만 허용하고 redirect를 따라 토큰을 보내지 않는다.
 - 인증: `X-API-Token: <개인 assistant.run 토큰>` 단독. 파일용 토큰·공용 토큰·브라우저 쿠키 불가. GPT 페어링 코드와 다른 자격이다.
-- `GET` (query 없음): `{provider:"gemini",model:"gemini-3.5-flash",user_id:int,ready:bool,consent_required:bool,consent_url:"/tbox/consent",remaining:int,user_daily:int,max_text_chars:4000}`. ready는 설정·키·동의 상태이며 쿼터/동시 제한은 POST에서 최종 판단한다.
+- `GET` (query 없음): `{provider:"gemini",model:"gemini-3.6-flash",user_id:int,ready:bool,consent_required:bool,consent_url:"/tbox/consent",remaining:int,user_daily:int,max_text_chars:4000}`. ready는 설정·키·동의 상태이며 쿼터/동시 제한은 POST에서 최종 판단한다.
 - `POST`, JSON 정확히 세 키: `{"request_id":"소문자 UUIDv4","text":"질문 1~4000자","thread_id":null}`. 다음 질문만 응답의 정수 thread_id를 넣는다. 새 대화·사용자/서버 변경은 null. GPT 대화 기록을 넘기지 않는다. 전체 본문 16384바이트 이내.
 - HTTP200 `{provider,model,user_id,turn:{id,thread_id,request_id,prompt,answer,state,created_at,finished_at,error,error_code}}`. state는 `complete|failed|pending`. 공급자 실패도 저장된 turn이므로 HTTP200/failed일 수 있다. pending은 HTTP202. answer는 문자열/null. error/error_code는 실패 때만 문자열, 그 외 null.
 - `GET ?request_id=<같은 UUIDv4>`: 본인 요청 결과만 위와 같은 응답. 없으면404. 전송 타임아웃에는 새 UUID로 자동 재전송하지 말고 이 조회로 복구한다. pending은 간격을 두어 조회한다. 서버 공급자 대기는 최대55초, PC 읽기 제한은75초 이상 권장. 120초 넘은 pending은 failed/interrupted로 표시한다.

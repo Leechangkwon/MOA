@@ -15,7 +15,7 @@ final class MemberAiDenied extends RuntimeException
 /** Private AI threads. A provider credential is shared; a user's conversation never is. */
 final class MemberAi
 {
-    public const MODEL = 'gemini-3.5-flash';
+    public const MODEL = 'gemini-3.6-flash';
     public const MESSAGES = [
         'unavailable' => 'AI 연결을 준비 중입니다. 관리자가 Gemini 키를 등록하고 사용을 켜면 대화할 수 있어요.',
         'key_invalid' => 'Gemini 인증을 확인할 수 없습니다. 관리자에게 API 키와 프로젝트 권한 확인을 요청해 주세요.',
@@ -24,7 +24,7 @@ final class MemberAi
         'provider_limit' => 'Google 프로젝트의 사용 한도에 도달했습니다. 잠시 뒤 다시 시도해 주세요.',
         'provider_unavailable' => 'Gemini가 응답하지 않았습니다. 잠시 뒤 다시 시도해 주세요.',
         'provider_request' => 'Gemini가 요청을 받지 못했습니다. 관리자에게 AI 연결 설정 확인을 요청해 주세요.',
-        'model_unavailable' => '이 Google 프로젝트에서 Gemini 3.5 Flash를 사용할 수 없습니다. 관리자에게 확인을 요청해 주세요.',
+        'model_unavailable' => '이 Google 프로젝트에서 Gemini 3.6 Flash를 사용할 수 없습니다. 관리자에게 확인을 요청해 주세요.',
         'blocked' => '이 요청에 대한 답변을 만들지 못했어요. 내용을 바꾸어 질문해 주세요.',
         'interrupted' => '응답을 끝까지 받지 못했습니다. 다시 보내면 새 요청으로 처리됩니다.',
         'user_limit' => '오늘의 AI 사용 횟수를 모두 사용했어요. 내일 다시 이용해 주세요.',

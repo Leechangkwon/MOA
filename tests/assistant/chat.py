@@ -39,7 +39,7 @@ try:
     call(status=403,headers={'X-API-Token':u['employee']['read']['token']})
     call(status=401,token=False,headers={'Cookie':'__Host-tbox_session='+u['employee']['session']})
     call(status=403,user='guest')
-    p=call();check(p['provider']=='gemini' and p['model']=='gemini-3.5-flash' and not p['ready'],'disabled status truthful')
+    p=call();check(p['provider']=='gemini' and p['model']=='gemini-3.6-flash' and not p['ready'],'disabled status truthful')
     call('POST',body(),status=503)
     fix('enable');p=call();check(p['ready'] and p['user_id']==u['employee']['id'],'status bound to own identity')
     call(query='?thread=1',status=400);call(query='?request_id[]=bad',status=400)

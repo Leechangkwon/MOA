@@ -1197,3 +1197,8 @@ v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`. 최종 독립 검토 manifes
 업무92표의 모든 기존 행·page_views 전행·원본959파일·기존 owner/ACL 보존. pages.view_count만 기존행 해시에서 제외하고 전체 실제집계 불일치0을 별도 확인. 동적16표는 행수만 별도 기록하며 기존행 불변으로 과장하지 않는다. 증거 `/home/changkwon/qaredi-scale-results-20261012/deploy-b/`의 apply.log·applied.json·https-results.json·preservation-verified.json, review-b/final-review.txt·final manifest.
 
 보안① 기존 권한 조건절과 게시판 gate 유지, 최종 후보/도구 독립 검토·음성5종/동등성·운영 원본 보존 증거. ② 조회수 색인의 HOT 손실과 쓰기 비용, 읽는 동안 수정/조회에 따른 순서 변동은 남는다. ③ 실물 휴대폰/Safari/스크린리더·큰 게시 갈래 혼합 분포·장기 동시부하·운영 다음/이전 왕복 미검증. ④ B 기록/push 뒤 C 구현과 합성 전수 대조를 진행하며 별도 세션의 독립 검토 통과를 사용자가 알리기 전에는 C를 배포하지 않는다. SR5/SR12와 원래 purge_trash의 모호한 page_id는 후속으로만 남긴다.
+
+
+## 2026-10-14 Gemini 3.6 Flash 직접 호출 — 보안 검토
+
+실제 사용 중인 MemberAi/Fetch와 문서 Ai의 고정 모델을3.6으로 전환. 키·동의·한도·사용자/스레드 판정·SSRF/TLS 방어는 기존 계약 유지. 이미지/임베딩/DB/키/패키지 변경0. 원본 Ai TLS10/0, PHP3파일·security lint·자산/위키0, PC11/0, ERP2계약3/0. 실제3.6 단문·대화·요약 완료, 전사55초 timeout 미검증. assistant 전체 integration376/0 후 chat완료 단언 실패는 독립 chat38/0과 구분; 원인 조사 결과는 작업 인계에 기록. 회귀: 기존 밤 대기열에 해당 AI 창구 목록 추가. 상세 `docs/work-items/gemini-36-flash.md`.

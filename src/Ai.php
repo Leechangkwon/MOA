@@ -12,7 +12,7 @@ final class AiUnavailable extends RuntimeException
 
 final class Ai
 {
-    public const MODEL = 'gemini-3.5-flash';
+    public const MODEL = 'gemini-3.6-flash';
     public const EMBED_MODEL = 'gemini-embedding-2';
     public const MAX_TEXT = 20000;
     public const MAX_AUDIO = 10485760;
@@ -100,10 +100,10 @@ final class Ai
     private static function request(string $operation, ?array $body, ?callable $beforeSend = null): array
     {
         $paths = [
-            'health'=>'/v1beta/models/gemini-3.5-flash',
+            'health'=>'/v1beta/models/' . self::MODEL,
             'embed'=>'/v1beta/models/gemini-embedding-2:embedContent',
-            'generate'=>'/v1beta/models/gemini-3.5-flash:generateContent',
-            'transcribe'=>'/v1beta/models/gemini-3.5-flash:generateContent',
+            'generate'=>'/v1beta/models/' . self::MODEL . ':generateContent',
+            'transcribe'=>'/v1beta/models/' . self::MODEL . ':generateContent',
         ];
         if (!isset($paths[$operation])) { throw new InvalidArgumentException('알 수 없는 AI 요청입니다'); }
         $key = self::token(); $ip = self::check(); $lock = null; $curl = null;
@@ -204,7 +204,7 @@ final class Ai
         return [
             'systemInstruction'=>['parts'=>[['text'=>self::INSTRUCTIONS[$instruction]]]],
             'contents'=>[['role'=>'user','parts'=>$parts]],
-            'generationConfig'=>['maxOutputTokens'=>4096,'candidateCount'=>1,'thinkingConfig'=>['thinkingLevel'=>'minimal']],
+            'generationConfig'=>['maxOutputTokens'=>4096,'thinkingConfig'=>['thinkingLevel'=>'minimal']],
         ];
     }
 

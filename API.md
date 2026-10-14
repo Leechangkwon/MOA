@@ -1315,7 +1315,7 @@ POST /tbox/api/admin/deletion-requests/<자기 요청> {"confirm":true} → 400 
 
 - `GET /api/messages/ai`: 로그인한 구성원의 AI 대화 기록. `thread` 생략=최근 대화, `0`=새 대화 화면, 양수=본인 대화. `before`는 이전 turn id. 최근 30개 질문/답변, `has_more`; 본인 대화 선택 목록 최근100개. 다른 사용자 id를 받지 않는다.
 - `POST /api/messages/ai`: `{text, thread_id, request_id}`. thread_id는 신규일 때null, request_id는 브라우저가 생성한UUIDv4. 세션·CSRF·구성원 권한 필수. 요청UUID는 사용자별 고유하므로 재전송은 기존 turn을 반환한다. 완료/실패200, 처리중202; 실제 상태는 `turn.state`. 사용 한도429, 본인 외 대화404.
-- `GET/POST /api/member-ai-settings`: `user.manage`+재인증. POST `{api_key, enabled, user_daily, site_daily}`; 빈키는기존유지. 키원문조회없음, configured만반환. 모델고정`gemini-3.5-flash`.
+- `GET/POST /api/member-ai-settings`: `user.manage`+재인증. POST `{api_key, enabled, user_daily, site_daily}`; 빈키는기존유지. 키원문조회없음, configured만반환. 모델고정`gemini-3.6-flash`.
 - X-API-Token/tbox-buddy 토큰으로 이 API를 호출할 수 없다. 이번 범위는 웹 메신저의 AI 대화다.
 
 ### 모아 메시지 AI 도구 (2026-10-02)
