@@ -45,7 +45,7 @@ with sync_playwright()as pw:
    session=kind;requests.clear();page.goto('https://entry.example/',wait_until='networkidle')
    check(page.evaluate('document.documentElement.scrollWidth<=innerWidth'),'entry no page overflow '+kind+' '+str(width))
    check(page.locator('#home-edit').count()==(1 if kind=='signed'else 0),'dashboard entry gated by live session '+kind+' '+str(width))
-   check(page.locator('.moa-service-hero').count()==(0 if kind=='signed'else 1),'intro shown only without live session '+kind+' '+str(width))
+   check(page.locator('.moa-service-hero').count()==(1 if kind=='consent'else 0) and page.locator('.landing-hero').count()==(1 if kind=='anon'else 0),'intro shown only without live session '+kind+' '+str(width))   # 사이트 H2 — 로그인 전은 새 첫 화면 .landing-hero(DESIGN 2.32) · 동의 전은 옛 소개 그대로
    check(not any(p=='/tbox/api/me/home-dashboard'for _,p in requests)if kind!='signed'else any(p=='/tbox/api/me/home-dashboard'for _,p in requests),'private layout request only authenticated consented '+kind+' '+str(width))
    if kind=='signed':
     check(page.locator('.dashboard-card').count()==3,'actual generic default three widgets '+str(width))
@@ -53,7 +53,7 @@ with sync_playwright()as pw:
     check(page.locator('#dashboard-services a').count()==6,'default shortcuts retained '+str(width))
     check(not page.locator('.dashboard-guide').evaluate('(n)=>n.open'),'default guide closed '+str(width))
    else:y=None
-   observations.append({'width':width,'session':kind,'first_widget_y':y,'hero_top':page.locator('.moa-service-hero').bounding_box()['y']if kind!='signed'else None,'body_class':page.locator('body').get_attribute('class')})
+   observations.append({'width':width,'session':kind,'first_widget_y':y,'hero_top':page.locator('.moa-service-hero' if kind=='consent' else '.landing-hero').bounding_box()['y']if kind!='signed'else None,'body_class':page.locator('body').get_attribute('class')})
    for design in ['aurora','bloom']:
     for theme in ['light','dark']:
      page.evaluate('(v)=>{document.documentElement.dataset.design=v[0];document.documentElement.dataset.theme=v[1]}',[design,theme]);page.wait_for_timeout(300)
@@ -77,10 +77,10 @@ with sync_playwright()as pw:
  page.locator('#home-open-dashboard').click();page.wait_for_url('https://entry.example/tbox/consent')
  check(urlsplit(page.url).path=='/tbox/consent','actual consent CTA enters existing gate')
  session='anon';page.goto('https://entry.example/',wait_until='networkidle')
- check(page.locator('#home-open-dashboard').get_attribute('href')=='/tbox/login?to=home','anonymous primary CTA explicitly requests personal home')
- check('로그인하면 내 위젯과 바로가기가 열려요.'in page.locator('.moa-service-hero').inner_text(),'anonymous CTA explains dashboard after login')
- check(page.locator('.moa-nav a[href="#services"]').count()==1,'public service navigation remains available')
- page.locator('#home-open-dashboard').click();page.wait_for_url('https://entry.example/tbox/login?to=home')
+ check(page.locator('.landing-hero .landing-hero__actions a').first.get_attribute('href')=='/tbox/login','H2 anonymous primary CTA 「로그인」 (DESIGN 2.32 ①)')   # 사이트 H2 — 옛 「내 대시보드 열기」(/tbox/login?to=home) · 「#services」 머리 링크는 2.32 로 빠졌다
+ check(page.locator('.landing-hero a[href="/tbox/request-invite"]').count()==1,'H2 anonymous 「초대 요청하기」 CTA')
+ check(page.locator('.moa-nav a[href="#services"]').count()==0 and page.locator('.landing-features').count()==1,'H2 public 「가입하면 할 수 있는 일」 section replaces the 「서비스」 header link')
+ page.goto('https://entry.example/tbox/login?to=home',wait_until='networkidle')
  check(page.evaluate('loginDestination()')=='/','actual anonymous CTA login destination is root')
  session='anon';page.set_viewport_size({'width':390,'height':844});page.goto('https://entry.example/tbox/login',wait_until='networkidle')
  check(page.evaluate('loginDestination()')=='/','mobile default login destination root')

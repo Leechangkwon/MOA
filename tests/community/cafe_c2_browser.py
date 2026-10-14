@@ -200,11 +200,11 @@ try:
                 ctx = context('W', 1440)
                 t = Tab(ctx)
                 p = t.page
-                t.go('/tbox/spaces')
+                t.go('/community/cafe')   # 사이트 H3 — 카페 홈은 /community/cafe(DESIGN 2.29 「「우리 공간」 = 카페」)
                 cafe_home(p)
                 st = p.evaluate("""() => {
                   const cards = [...document.querySelectorAll('#cafe-boards .cafe-board')];
-                  const order = ['cafe-home', 'space-mine-title', 'space-picker'].map(id => document.getElementById(id));
+                  const order = ['cafe-home', 'space-mine-title', 'space-picker'].map(id => document.getElementById(id));   // H3 — 「내 공간」 · 공간 고르개는 이 화면에 없다
                   const pos = (a, b) => !!a && !!b && !!(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
                   return {names: cards.map(c => c.querySelector('.card__title').textContent), anon: cards.filter(c => c.querySelector('.badge') && c.querySelector('.badge').textContent === '익명').map(c => c.querySelector('.card__title').textContent),
                           heights: cards.map(c => Math.round(c.getBoundingClientRect().height)), tags: cards.map(c => c.tagName + '.' + c.className),
@@ -213,8 +213,8 @@ try:
                           meta: cards.length ? cards[0].querySelector('.card__meta').textContent : null,
                           recentEmpty: !document.getElementById('cafe-recent-empty').hidden && document.getElementById('cafe-recent-empty').textContent,
                           popularEmpty: !document.getElementById('cafe-popular-empty').hidden, rows: document.querySelectorAll('#cafe-feed li').length,
-                          request: !document.getElementById('cafe-request').hidden, head: document.querySelector('#cafe-home h2').textContent,
-                          mine: document.getElementById('space-mine-title').textContent, order: pos(order[0], order[1]) && pos(order[1], order[2]),
+                          request: !document.getElementById('cafe-request').hidden, head: document.querySelector('#cafe-home h1').textContent,
+                          mine: order[1] ? order[1].textContent : null, order: !!order[0] && !order[1] && !order[2],
                           picker: !!document.getElementById('space-picker'), cols: getComputedStyle(document.getElementById('cafe-feed')).gridTemplateColumns.split(' ').length}; }""")
                 metrics['empty'] = st
                 check(set(st['names']) == {'자유게시판', '익명게시판'} and st['anon'] == ['익명게시판'], 'empty: cafe cards = 자유게시판 · 익명게시판(「익명」 badge) · work boards 0 ' + json.dumps(st['names'], ensure_ascii=False))
@@ -222,15 +222,15 @@ try:
                       'empty: cards are 2.3 a.card.card--link · same height · name 16/600 · desc one line ellipsis ' + json.dumps(st['heights']))
                 check(st['meta'] is not None and '글 0' in st['meta'] and '오늘 새 글 0' in st['meta'], 'empty: card meta 「글 0 · 오늘 새 글 0」 ' + str(st['meta']))
                 check(st['recentEmpty'] == '아직 글이 없어요 — 첫 글을 써 보세요' and st['popularEmpty'] and st['rows'] == 0, 'empty: 새 글 · 인기 글 empty help line')
-                check(st['request'] and st['head'] == '카페', 'empty: head 「카페」 + 「게시판 만들어 주세요」 for employee')
-                check(st['mine'] == '내 공간' and st['order'] and st['picker'], 'empty: 「내 공간」 below the cafe home · space picker kept')
+                check(st['request'] and st['head'] == '우리 공간', 'empty: head 「우리 공간」 + 「게시판 만들어 주세요」 for employee')   # H3 — 머리 h1 「우리 공간」(옛 h2 「카페」)
+                check(st['mine'] is None and st['order'] and not st['picker'], 'H3 empty: 「내 공간」 · space picker 0 on the cafe home')   # 옛 「「내 공간」 below the cafe home · space picker kept」
                 check(st['cols'] == 2, 'empty: 1440 feed two columns')
                 p.screenshot(path=str(shots / 'home-empty-1440.png'), full_page=True)
                 check(t.clean('empty'), 'empty: console 0 · page errors 0 · 5xx 0')
                 ctx.close()
                 ctx = context('G', 1440)
                 t = Tab(ctx)
-                t.go('/tbox/spaces')
+                t.go('/community/cafe')   # 사이트 H3 — 카페 홈은 /community/cafe(DESIGN 2.29 「「우리 공간」 = 카페」)
                 cafe_home(t.page)
                 check(t.page.evaluate("document.getElementById('cafe-request').hidden") is True, 'empty: guest — 「게시판 만들어 주세요」 0 (can_request_board false)')
                 ctx.close()
@@ -257,7 +257,7 @@ try:
                     ctx = context(who, 1440)
                     t = Tab(ctx)
                     p = t.page
-                    t.go('/tbox/spaces')
+                    t.go('/community/cafe')   # 사이트 H3 — 카페 홈은 /community/cafe(DESIGN 2.29 「「우리 공간」 = 카페」)
                     cafe_home(p)
                     rows = p.evaluate("""() => [...document.querySelectorAll('#cafe-recent li a')].map(a => ({spans: [...a.children].map(s => s.textContent), h: Math.round(a.getBoundingClientRect().height),
                         href: a.getAttribute('href'), badge: a.children[0].className}))""")
@@ -278,7 +278,7 @@ try:
                     ctx.close()
                 ctx = context('W', 412, 915, touch=True)
                 t = Tab(ctx)
-                t.go('/tbox/spaces')
+                t.go('/community/cafe')   # 사이트 H3 — 카페 홈은 /community/cafe(DESIGN 2.29 「「우리 공간」 = 카페」)
                 cafe_home(t.page)
                 check(t.page.evaluate("getComputedStyle(document.getElementById('cafe-feed')).gridTemplateColumns.split(' ').length") == 1, 'home 412: feed one column')
                 t.page.screenshot(path=str(shots / 'home-412.png'), full_page=True)
@@ -297,12 +297,13 @@ try:
                     p = t.page
                     t.go(path)
                     until(p, "() => !document.getElementById('nav-community-boards').hidden", 10000)
-                    st = p.evaluate("""(parts) => ({area: document.body.getAttribute('data-area'), brand: document.querySelector('.brand__name').textContent,
+                    st = p.evaluate("""(parts) => ({area: document.body.getAttribute('data-area'), brand: (document.querySelector('#sidebar .moa-brand-home') || {getAttribute: () => null}).getAttribute('aria-label'),
                         home: !!document.getElementById('nav-cafe-home'), boards: [...document.querySelectorAll('#nav-community-boards a')].map(a => a.textContent.trim()),
                         work: parts.filter(s => document.querySelector(s)), admin: !document.getElementById('nav-cafe-admin').hidden,
                         adminLinks: [...document.querySelectorAll('#nav-cafe-admin a')].map(a => a.getAttribute('href'))})""", WORK_PARTS)
                     metrics['shell_' + label] = st
-                    check(st['area'] == 'cafe' and st['brand'] == '우리 공간' and st['home'], 'shell %s (%s): body[data-area=cafe] · brand 「우리 공간」 · 카페 홈' % (label, who))
+                    check(st['area'] == 'cafe' and st['brand'] == '우리 공간 첫 화면으로' and st['home'],   # 사이트 H5 — 머리 글자 0 · 이름은 링크 aria-label
+                           'shell %s (%s): body[data-area=cafe] · brand 「우리 공간」 · 카페 홈' % (label, who))
                     check(set(st['boards']) >= {'자유게시판', '익명게시판'} and '질문과 답변' not in st['boards'] and '공지사항' not in st['boards'],
                           'shell %s: sidebar boards = cafe boards only %s' % (label, json.dumps(st['boards'], ensure_ascii=False)))
                     check(st['work'] == [], 'shell %s: work tree · projects · teams · new menu · documents 0 %s' % (label, json.dumps(st['work'])))
@@ -488,7 +489,8 @@ try:
                     sql('UPDATE users SET high_contrast=' + ('true' if mode == 'hc' else 'false') + ' WHERE id IN (' + str(uid('A')) + ',' + str(uid('M')) + ')')
                     for width, touch in widths:
                         tag = '%d%s-%s' % (width, 't' if touch else '', mode)
-                        for who, path, scope, label in (('A', '/tbox/spaces', '#cafe-home', 'home'), ('A', '/community/p/' + P2, '.main', 'post'), ('M', '/community/reports', '.main', 'reports')):
+                        for who, path, scope, label in (('A', '/community/cafe', '#cafe-home', 'home'),   # H3 — 카페 홈 자리
+                                                             ('A', '/community/p/' + P2, '.main', 'post'), ('M', '/community/reports', '.main', 'reports')):
                             ctx = context(who, width, 900 if width > 800 else 915, touch=touch, extra={'tbox_theme': 'dark' if mode == 'dark' else 'light'})
                             if who == 'M':
                                 reauth_admin()   # 새 세션 — 관리자 화면은 15분 재인증 창 안에서
@@ -627,7 +629,7 @@ try:
                 ctx = context('W', 1440)
                 t = Tab(ctx)
                 p = t.page
-                t.go('/tbox/spaces')
+                t.go('/community/cafe')   # 사이트 H3 — 카페 홈은 /community/cafe(DESIGN 2.29 「「우리 공간」 = 카페」)
                 cafe_home(p)
 
                 def ask(name, purpose, anon=False):
@@ -700,7 +702,7 @@ try:
                 ctx.close()
                 ctx = context('W', 1440)
                 t = Tab(ctx)
-                t.go('/tbox/spaces')
+                t.go('/community/cafe')   # 사이트 H3 — 카페 홈은 /community/cafe(DESIGN 2.29 「「우리 공간」 = 카페」)
                 cafe_home(t.page)
                 names = t.page.evaluate("[...document.querySelectorAll('#cafe-boards .card__title')].map(e => e.textContent)")
                 check('독서 모임 C2' in names, 'request: created board card appears on the cafe home ' + json.dumps(names, ensure_ascii=False))

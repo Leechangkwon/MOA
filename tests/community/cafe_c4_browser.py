@@ -794,7 +794,7 @@ try:
                                 p.locator('.shell-tools .appbar__apps > summary').click()
                                 p.wait_for_timeout(150)
                                 ap = p.evaluate(PANEL_JS, '.shell-tools .appbar__apps')
-                                want_tiles = ['모아 홈', '자료실', '업무', '이야기'] + (['관리자 페이지'] if k == 'M' else []) + ['검색']
+                                want_tiles = ['모아 홈', '자료실', '업무', '이야기'] + (['관리자 페이지'] if k == 'M' else [])   # 사이트 H5 — 「검색」 타일 0
                                 check([x for x in ap['tiles'] if x != '우리 공간'] == want_tiles and ap['logout'] == [] and ap['head'] is None,
                                       'c6 %s: app panel = apps and tools only (messenger · 내 계정 · 내 활동 · 로그아웃 0 · admin tile only for admin) %s' % (tag, json.dumps(ap['tiles'], ensure_ascii=False)))
                                 # 칩 → 내 계정 판 · 두 판 동시 0

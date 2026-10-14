@@ -8,6 +8,7 @@ declare(strict_types=1);
  *   실행 파일이 든 압축본 AL-21 (PRD F-65 ⑤ · 7.11, ARCH 5.29 · 11.4 — `file.upload_exec allow` 1건이라도 즉시)
  *   개인 프로그램 토큰 AL-20 (PRD F-59 ⑦, ARCH 4.6 · 11.4 — `api_token.issue allow` 1건이라도 즉시)
  *   지문·얼굴 로그인 AL-23 (T:F-72, ARCH 11.4 — `auth.passkey_register allow` 1건 · `auth.login deny passkey_counter` 1건이라도 즉시)
+ *   초대 요청 공개 폼 AL-25 (사이트 H2 · 기획 ../docs/invite-request-plan.md 3장 — 1시간 `invite_request.create allow` 20건 · `deny honeypot` 10건)
  *   이 PC 로그인 전용 토큰 AL-24 (Q:F-9 · t-box F-75, ARCH 4.9 · 11.4 — 같은 토큰의 `session.link`·`auth.token`(Q:F-10) `deny ip_mismatch` 10분 안 3회)
  *   악성코드 AL-19 (PRD F-54 ④, ARCH 5.28 · 11.4 — `file.scan deny infected` 1건이라도 즉시)
  *   ARCHITECTURE 11.1 (5분마다 cron) · 11.4 (경보 구성) · 7.4 `alert.raised|allow` · 7.5 `rule`·`evidence`
@@ -975,6 +976,47 @@ if ($want('AL-24')) {
            (string) $r['token_id']);
     }
     cli_say(sprintf('AL-24 대상 %d건', count($rows)));
+}
+
+// ─────────────────────────────────────────────────────────────
+// AL-25 — 초대 요청 공개 폼 남용 (사이트 H2 · 기획 ../docs/invite-request-plan.md 3장 「경보」 · SECURITY R-122)
+//   최근 1시간 `invite_request.create allow` 가 **20건 이상**(전체 — 사람 손으로 심사할 양을 넘는 몰림) ·
+//   `invite_request.create deny honeypot`(사람에게 보이지 않는 칸이 찬 요청)이 **10건 이상** → 경보. 대상(subject) 둘: requests · honeypot.
+//   판정은 감사 행만 본다(요청 표의 이름 · 소속 · 이유는 읽지 않는다 — 근거에는 건수 · 서로 다른 IP 수 · 마지막 시각만).
+//   행위자는 늘 로그인 전이라 계정이 없다 — origin 은 묶음 판정(Origin::ofGroup([], 모든 행 표식)) 그대로. 중복 억제는 $raise.
+// ─────────────────────────────────────────────────────────────
+if ($want('AL-25')) {
+    $al25 = $db->run(
+        "SELECT count(*) FILTER (WHERE result = 'allow') AS created,
+                count(*) FILTER (WHERE result = 'deny' AND reason = 'honeypot') AS trapped,
+                count(DISTINCT host(ip)) FILTER (WHERE result = 'allow') AS created_ips,
+                count(DISTINCT host(ip)) FILTER (WHERE result = 'deny' AND reason = 'honeypot') AS trapped_ips,
+                max(happened_at) AS last_at,
+                bool_and(COALESCE(user_agent, '') LIKE :review_ua) AS all_marked
+           FROM audit_logs
+          WHERE action = 'invite_request.create' AND happened_at > now() - interval '1 hour'",
+        $reviewUa
+    )->fetch();
+    $al25Origin = Origin::ofGroup([], al_bool($al25['all_marked'] ?? null));
+    if ((int) $al25['created'] >= 20) {
+        $raise('AL-25', 'requests', [
+            'rule_text' => '초대 요청이 1시간에 20건 이상 들어왔다(공개 폼 남용 의심)',
+            'count'     => (int) $al25['created'],
+            'ips'       => (int) $al25['created_ips'],
+            'window'    => '1 hour',
+            'last_at'   => (string) $al25['last_at'],
+        ], $al25Origin);
+    }
+    if ((int) $al25['trapped'] >= 10) {
+        $raise('AL-25', 'honeypot', [
+            'rule_text' => '초대 요청의 미끼 칸이 1시간에 10번 이상 채워졌다(자동 입력 의심)',
+            'count'     => (int) $al25['trapped'],
+            'ips'       => (int) $al25['trapped_ips'],
+            'window'    => '1 hour',
+            'last_at'   => (string) $al25['last_at'],
+        ], $al25Origin);
+    }
+    cli_say(sprintf('AL-25 초대 요청 1시간 %d건 · 미끼 %d건', (int) $al25['created'], (int) $al25['trapped']));
 }
 
 // ─────────────────────────────────────────────────────────────

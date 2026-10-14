@@ -2590,6 +2590,14 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `board_request.create|allow` | `{actor} 이(가) 게시판 「{target}」 을(를) 만들어 달라고 요청했습니다` | 카페 C1 `POST /community/api/board-requests` |
 | `board_request.create|deny|rate_limited` | `{actor} 이(가) 요청 상한을 넘겨 게시판 「{target}」 을(를) 요청하려 해서 막았습니다` | 카페 C1 |
 | `board_request.decide|allow` | `{actor} 이(가) 게시판 요청 「{target}」 을(를) 처리했습니다 (만들기·반려와 메모는 상세 기록)` | 카페 C1 `POST …/board-requests/{id}/decide` |
+| `invite_request.create|allow` | `{actor} 이(가) 「{target}」 을(를) 남겼습니다 (이름 · 소속 · 이유는 요청 표에만 — 30일 뒤 삭제)` | H2 `POST /api/invite-requests` (public · 대상 「초대 요청 #번호」) |
+| `invite_request.create|deny|rate_limited` | `{actor} 이(가) 같은 IP 에서 초대 요청을 너무 자주 보내 막았습니다 (1시간 3건 · 24시간 5건)` | H2 429 |
+| `invite_request.create|deny|too_many_open` | `{actor} 의 초대 요청을 열린 요청이 200건에 이르러 받지 않았습니다 (잠시 뒤에)` | H2 503 |
+| `invite_request.create|deny|honeypot` | `{actor} 의 초대 요청에 사람에게 보이지 않는 칸이 채워져 있어 저장하지 않았습니다 (자동 입력 의심)` | H2 미끼 칸 — 응답은 201 같은 모양 · AL-25 |
+| `invite_request.decide|allow|approve` | `{actor} 이(가) 「{target}」 을(를) 승인했습니다 (고른 팀은 상세 기록 · 초대 링크는 요청한 사람이 확인 주소를 열 때 만든다)` | H2 `POST /api/invite-requests/{num}/decide` (user.manage) |
+| `invite_request.decide|allow|reject` | `{actor} 이(가) 「{target}」 을(를) 반려했습니다 (메모는 요청 표에만)` | H2 같은 창구 |
+| `invite_request.issue|allow` | `「{target}」 의 확인 주소에서 1회용 초대 링크(7일)를 만들었습니다 (앞 링크는 거둠 · 몇 번째인지는 상세 기록)` | H2 `POST /api/invite-requests/status` (public · detail invite_id · issued_count · revoked_previous · target_team) |
+| `invite_request.issue|deny|issue_limit` | `「{target}」 의 확인 주소가 초대 링크를 세 번 받은 뒤 다시 요청해 거부했습니다` | H2 409 |
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
@@ -3208,6 +3216,8 @@ member_invites에는 256비트 코드의 SHA-256만 저장한다. 원문은 관�
 member_messages는 sender_id·recipient_id·body·sent_at·read_at만 보관한다. 조회·읽음 처리는 언제나 현재 세션 사용자가 당사자인 행으로 제한한다. 구성원 조회와 메시지는 community 쓰기 가능 사용자에게만 허용하며 역할로 보기에서는 닫힌다. 메시지 4,000자·발신자당 분당 30회, 최근 60개·이전 대화 커서, 8초 폴링(숨긴 탭 중지, X-Qaredi-Background)이다. 메시지는 textContent로 표시하며 감사에 본문을 남기지 않는다. 삭제·첨부·단체방·푸시·tbox-buddy 내부 메신저는 이번 웹 메신저 범위에 없다.
 
 **문자 메시지 멱등 `request_id` (사이트 Q:F-11 지시서 A-4, 2026-10-06 · SECURITY R-118)** — `POST /api/messages/{num}` 의 본문 키는 `{request_id, text}` 또는 `{attachment_id, request_id, text}` 뿐이고 `request_id` 는 UUIDv4 필수다(없거나 모양이 틀리면 400 — 옛 화면의 요청을 조용히 통과시키지 않는다). 처리는 한 트랜잭션: 보낸 사람 `users` 행을 `FOR NO KEY UPDATE` 로 잠그고(같은 사람의 전송을 한 줄로 세운다 — `FOR UPDATE` 가 아닌 것은 INSERT 의 외래 키 확인이 받는 사람 행에 `FOR KEY SHARE` 를 걸어 서로에게 동시에 보내는 두 사람이 교착에 빠지지 않게) → `member_messages(sender_id, request_id)` 를 찾아 있으면 받는 사람·본문·첨부가 같을 때 기존 행 `{ok,id}` **200**, 다르면 **409** 「전송 내용을 확인하고 새로 보내 주세요.」 → 없으면 이미지 첨부 확인(기존 첨부 중복 방지 그대로) → `Member::rate`(1분 30건 — **새 행을 만들 때만** 센다) → INSERT(`request_id` 포함) → 커밋 → 감사 `member.message.send`(새 행에만). 열은 `db/migrations/2026-10-06_member_messages_request_id.sql`(추가 전용, `UNIQUE(sender_id, request_id) WHERE request_id IS NOT NULL`, 옛 행은 NULL — 멱등 없음). `GET` 응답에는 `request_id` 를 내지 않는다. 화면(`public/assets/messenger.js`)은 상대별 쓰던 글에 UUID 를 붙여 두고(글·첨부가 바뀌면 새 UUID) 결과가 불확실한 실패(5xx·네트워크) 뒤 같은 글은 같은 UUID 로 다시 보낸다. 쓰던 글은 커뮤니티 임시저장과 같은 열쇠·암호화로 이 브라우저에만 남는다(`qaredi-draft:v1:<아이디>:message:<상대 번호>` · `…:ai:<스레드 번호>` — 커뮤니티 ARCHITECTURE 「임시저장」 절, R-116).
+
+**초대 요청 (사이트 H2 · 2026-10-14 · 결정 IR-1 ~ IR-4)** — 초대 없는 사람이 로그인 전 화면 `/tbox/request-invite`(public)에서 이름 · 소속 · 쓰려는 이유를 남기면(가입과 같은 `__Host-moa_join` CSRF · 미끼 칸 · IP 마다 1시간 3건 · 24시간 5건 · 열린 요청 200 상한) 표 `invite_requests` 에 행이 생기고 응답은 확인 주소 `/tbox/request-invite/status#code=<32바이트>` 한 번뿐이다(표에는 sha256 만). 관리자(`user.manage` · 재인증)가 「사용자 관리」의 「초대 요청」 표에서 승인(팀 선택) · 반려(메모)한다. 승인된 요청의 확인 주소가 열리면(코드는 POST 본문 · IP 마다 1분 20회) 그때 `Member::issueInvite`(관리자 직접 발급과 **같은 함수**)로 1회용 · 7일 · 고른 팀 · 이름표 「초대 요청 #번호」 초대를 만들고 앞 초대는 거둔다(요청 하나에 세 번까지). 앱 계정은 그 표에 DELETE 가 없고 보관 기한(결정 30일 · 결정 없으면 접수 30일) 삭제는 `scripts/privacy_purge.php` 가 표 소유자로 한다. 감사 `invite_request.create|decide|issue`(대상 「초대 요청 #번호」 — 이름 · 소속 · 이유 · 코드 0) · 경보 AL-25 · 위험 SECURITY R-122. 보안 바닥 원문은 `../docs/invite-request-plan.md` 3장 · 화면은 DESIGN 2.32.
 
 ## 모아 메신저 AI (2026-10-02)
 

@@ -4,28 +4,3 @@
 /* Space actions sit behind two stable entries; records keep the first visual priority. */
 .space-breadcrumb a{min-height:44px;display:inline-flex;align-items:center;color:var(--muted);text-decoration:none}.space-breadcrumb a:hover{text-decoration:underline}.space-layout>header h1{overflow-wrap:anywhere;margin-block:12px 20px}.space-primary-tools{gap:12px;align-items:flex-end}.space-primary-tools>.field{flex:1 1 220px;max-width:420px}.space-card-head{display:flex;align-items:center;justify-content:space-between;gap:12px}.space-card-head h2{margin:0;overflow-wrap:anywhere}.space-card-head .btn{flex-shrink:0}.space-action-list{display:grid;gap:4px}.space-action-list+.space-action-list{border-top:1px solid var(--line);padding-top:12px}.space-action-list h3{font-size:14px;color:var(--muted);margin:4px 0}.space-menu-item{width:100%;min-height:44px;justify-content:flex-start;text-align:left;white-space:normal}.space-dialog .q-start-head{align-items:flex-start}.space-dialog .q-start-head h2{overflow-wrap:anywhere;min-width:0}.space-dialog .q-start-head button{flex-shrink:0}.space-dialog .btn{min-height:44px}:root[data-design="moa"]:not([data-contrast="high"]) .space-card-head h2{color:var(--moa-work)}@media(max-width:640px){.space-primary-tools>.field{max-width:none;flex-basis:100%}.space-primary-tools>#space-controls{width:100%;justify-content:flex-end}.space-card-head h2{font-size:20px}}
 .space-layout .btn--plain,.space-dialog .btn--plain{color:var(--fg);background:transparent;border-color:transparent;box-shadow:none;min-height:44px}.space-layout .btn--plain:hover,.space-dialog .btn--plain:hover{background:var(--surface-2)}
-
-/* 카페 C2 (DESIGN 2.29 「「우리 공간」 화면」) — 맨 위 카페 홈. 새 클래스는 2.29 의 넷(.cafe-home · .cafe-boards · .cafe-board · .cafe-feed) · 색값 0(토큰만).
-   카드는 2.3 `.card.card--link` 그대로(같은 높이 · 이름 16/600 · 설명 한 줄 말줄임) · 새 글 · 인기 글은 두 열(960 미만 한 열) · 한 줄 높이 44 */
-.cafe-home{display:grid;gap:16px;margin-bottom:32px;min-width:0}
-.cafe-home>header{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px}
-.cafe-home>header h2{margin:0;font-size:20px;font-weight:600}
-.cafe-home>header .btn{min-height:44px}
-.cafe-boards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(240px,100%),1fr));gap:12px;align-items:stretch}
-.cafe-board{height:100%;box-sizing:border-box;min-width:0}
-.cafe-board .card__title{font-size:16px;font-weight:600}
-.cafe-board .card__desc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;overflow-wrap:normal}
-.cafe-feed{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;min-width:0}
-.cafe-feed[hidden]{display:none}
-.cafe-feed h3{margin:0 0 4px;font-size:14px;font-weight:600;color:var(--muted)}
-.cafe-feed ul{margin:0;padding:0;list-style:none;border-top:1px solid var(--line)}
-.cafe-feed li a{display:flex;align-items:center;gap:8px;min-height:44px;min-width:0;padding:0 4px;border-bottom:1px solid var(--line);color:var(--fg);text-decoration:none}
-.cafe-feed li a:hover{background:var(--surface-2)}
-.cafe-feed li a:focus-visible{outline:none;box-shadow:0 0 0 3px var(--ring-soft)}
-.cafe-feed li a>span:nth-child(1){flex:none;max-width:7rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cafe-feed li a>span:nth-child(2){flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.cafe-feed li a>span:nth-child(3){flex:none;max-width:8rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
-.cafe-feed li a>span:nth-child(4){flex:none;font-size:12px;font-variant-numeric:tabular-nums}
-.space-layout>#space-mine-title{margin:0 0 4px;font-size:20px;font-weight:600}
-@media(max-width:959.98px){.cafe-feed{grid-template-columns:minmax(0,1fr)}}
-@media(max-width:640px){.cafe-feed li a>span:nth-child(4){display:none}}

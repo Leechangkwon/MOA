@@ -80,7 +80,7 @@ try:
     expect(page.locator('html')).to_have_attribute('data-design','nova')
     expect(page.locator('html')).to_have_attribute('data-motion','reduce')
     check('global theme two settings entry points',page.locator('[data-design-open]').count()==2)
-    check('motion override',page.locator('.brand__name').evaluate('(e)=>getComputedStyle(e).animationName')=='none')
+    check('motion override',page.locator('.q-design-status, .ok-note').first.evaluate('(e)=>getComputedStyle(e).animationName')=='none')   # 사이트 H5 — 셸 머리 글자(.brand__name — 움직이던 것) 0 → 같은 「움직임 줄이기」 규칙(*)이 거는 다른 요소
     check('cookie scope',all(c['path']=='/' and c['sameSite']=='Lax' and c['expires']>time.time()+30000000 for c in context.cookies() if c['name'].startswith('qaredi_')))
     page.goto(BASE+'/?screen=launcher&hc=1')
     check('high contrast keeps original primary',page.evaluate('getComputedStyle(document.documentElement).getPropertyValue("--primary").trim()') in ['#000000','#18181b','#09090b','#ffffff','#fafafa'])

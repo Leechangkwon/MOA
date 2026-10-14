@@ -68,7 +68,7 @@ require_once __DIR__ . '/../Design.php';
  *   · 받는 변수 `$shellArea`(string) — 허용 목록 한 값 `'cafe'` 만 통과하고 업무 셸(`$shellModule = 'community'`)에서만 뜻이 있다.
  *     넘기는 쪽은 카페 게시판 화면 · 카페 글 화면(**읽기 판정을 지난 때만** — board_view.php · page_view.php)과 관리자 화면 둘(신고함 ·
  *     게시판 요청 — 라우트 정책 role:Admin)뿐이다. 이 파일에는 판정이 없다 — 값이 오면 `<body data-area="cafe">` 와 「우리 공간」 모드 사이드바를 그린다.
- *   · 「우리 공간」 모드: 브랜드 「우리 공간」(아이콘 spaces · 첫 화면 `/tbox/spaces`) · 카페 홈 · 받은 알림 · (공용) 검색 · 카페 게시판 목록
+ *   · 「우리 공간」 모드: 브랜드 「우리 공간」(아이콘 spaces · 첫 화면 `/community/cafe` — 사이트 H3) · 카페 홈 · 받은 알림 · (공용) 검색 · 카페 게시판 목록
  *     (editor.js 가 `GET /api/boards?area=cafe` 의 답으로 채운다) · 관리 묶음(신고함 · 게시판 요청 — hidden 으로 나가고 `/api/me` 의 can_admin 이
  *     참일 때만 화면이 연다. 막는 것은 라우트 정책 role:Admin + 재인증). 업무 트리 · 프로젝트 · 포트폴리오 · 팀 · 문서 · 즐겨찾기 · 최근 · 더보기 · 「＋ 새로 만들기」는 그리지 않는다.
  */
@@ -83,6 +83,8 @@ $shellKeys = [
     'community-board',
     // 카페 C2 (DESIGN 2.29) — 관리자 화면 둘(신고함 · 게시판 요청). app.js 는 모르는 키라 셸만 그리고 물러나고 editor.js 가 cafe.js 로 그린다
     'community-reports', 'community-board-requests',
+    // 사이트 H3 (DESIGN 2.29 「「우리 공간」 = 카페」) — 카페 홈 화면(/community/cafe). editor.js 가 cafe.js initHome 으로 그린다
+    'community-cafe',
 ];
 
 /**
@@ -138,8 +140,12 @@ if ($shellCafe) {
 }
 /** 브랜드 표시의 색 갈래(moa.css 의 `.moa-module-mark--tbox|community` 둘뿐 — 이야기는 옛 커뮤니티 것 그대로) */
 $shellMarkKey = $shellCurrentApp === 'tbox' ? 'tbox' : 'community';
+// 사이트 H3 — 「우리 공간」 모드면 앱 판의 「우리 공간」 타일(config/apps.json 의 spaces — /community/cafe)에 aria-current
+if ($shellCafe) {
+    $shellCurrentApp = 'spaces';
+}
 /** 브랜드를 누르면 가는 그 앱의 첫 화면 — 고정 경로뿐 */
-$shellBrandHref = $shellCafe ? Http::url('/spaces') : ($shellMod === 'community' ? Http::communityUrl('/')
+$shellBrandHref = $shellCafe ? Http::communityUrl('/cafe') : ($shellMod === 'community' ? Http::communityUrl('/')
     : ($shellMod === 'story' ? Http::communityUrl('/memories') : Http::url('/')));
 
 $shellUser   = isset($user) && is_array($user) ? $user : [];
@@ -440,16 +446,17 @@ if ($shellMod === 'community'): ?>
   </dialog>
 
   <aside id="sidebar" class="sidebar" hidden>
-    <!-- 사이드바 머리 (Q:F-12 U2 · DESIGN 2.19 ① · ⑨) — ☰ 접기 단추 + 브랜드 글자(링크 — 그 앱의 첫 화면)뿐. 앱 바꾸기 · 계정은 본문 오른쪽 위 격자(2.18).
+    <!-- 사이드바 머리 (Q:F-12 U2 · DESIGN 2.19 ① · ⑨ · ⑩ 사이트 H5) — ☰ 접기 단추 + 앱 아이콘(링크 — 그 앱의 첫 화면)뿐. 앱 바꾸기 · 계정은 본문 오른쪽 위 격자(2.18).
          ☰(`#sidebar-collapse`)는 ≥960 에서만 보인다(폰 윗줄 `#nav-toggle` 과는 다른 단추). 누르면 app.js 가 `<body data-sidebar="collapsed">` 를 단다/뗀다 —
          속성 하나 · 마크업 재생성 0. 카페 C5 — 첫 값은 이 파일이 쿠키 `qaredi_sidebar`(open 이면 펼침 · 아니면 접힘이 기본)로 그린다. -->
     <div class="brand moa-brand">
       <button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="<?= $shellSidebarOpen ? 'true' : 'false' ?>" aria-label="<?= $shellSidebarOpen ? '메뉴 접기' : '메뉴 펼치기' ?>">
         <span class="icon" data-icon="menu"></span>
       </button>
-      <a class="moa-brand-home" href="<?= $shellBrandHref ?>" aria-label="<?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
+      <?php /* 사이트 H5 (DESIGN 2.19 ⑩ · 2.33 「셸 브랜드」) — 머리 = ☰ + 앱 아이콘(36 · 그 앱 첫 화면 링크)뿐 · 「모아 자료실」 · 「파일 보관 · 찾기 · 공유」 같은 글자는 그리지 않는다
+               (지금 앱은 본문 제목 · 앱 판 aria-current · 폰 윗줄 앱 이름 ▾ 가 말한다). 이름은 링크 aria-label 「<앱> 첫 화면으로」 · 같은 글자 풍선(2.8 — app.css) */ ?>
+      <a class="moa-brand-home" href="<?= $shellBrandHref ?>" aria-label="<?= htmlspecialchars($shellCafe ? '우리 공간' : $shellHereName, ENT_QUOTES, 'UTF-8') ?> 첫 화면으로">
         <span class="brand__mark moa-module-mark moa-module-mark--<?= $shellMarkKey ?>"><?php $moaIcon=$shellBrandIcon; require __DIR__.'/moa_icon.php'; ?></span>
-        <span class="brand__text"><span class="brand__name"><?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></span><span class="brand__sub"><?= htmlspecialchars($shellBrandSub, ENT_QUOTES, 'UTF-8') ?></span></span>
       </a>
     </div>
 
@@ -457,7 +464,7 @@ if ($shellMod === 'community'): ?>
     <!-- ─── 「우리 공간」 모드 사이드바 위쪽 (카페 C2 · DESIGN 2.29 「카페 셸」) — 카페 홈 · 받은 알림 → (아래 공용) 검색.
          「＋ 새로 만들기」 · 홈 · 내 작업은 업무 앱의 것이라 그리지 않는다. 받은 알림은 익명 댓글 · 신고 처리 알림을 받는 길이라 둔다(종 · 창은 업무와 같은 한 벌). -->
     <nav class="nav" aria-label="우리 공간">
-      <a id="nav-cafe-home" class="nav__item" href="<?= Http::url('/spaces') ?>" data-tip="카페 홈"><span class="icon" data-icon="home"></span><span>카페 홈</span></a>
+      <a id="nav-cafe-home" class="<?= $shellNavClass('community-cafe') ?>" href="<?= Http::communityUrl('/cafe') ?>"<?= $shellActive === 'community-cafe' ? ' aria-current="page"' : '' ?> data-tip="카페 홈"><span class="icon" data-icon="home"></span><span>카페 홈</span></a>
       <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog" data-tip="받은 알림">
         <span class="icon" data-icon="bell"></span><span>받은 알림</span>
         <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>

@@ -14,7 +14,7 @@ declare(strict_types=1);
 <template id="tpl-icon-shield"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg></template>
 <template id="tpl-icon-files"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></template>
 <?php /* Q:F-12 (DESIGN 2.18) — 앱 아이콘 `work`(업무 · 체크 네모)를 더했다. path 는 Apps::ICON_PATHS 한 벌(moa_icon.php) */ ?>
-<?php foreach (['library','community','work','messages','assistant'] as $moaIcon): ?>
+<?php foreach (['library','community','work','messages','assistant','spaces'] as $moaIcon): /* 사이트 H3 — spaces(앱 판 「우리 공간」 타일) */ ?>
 <template id="tpl-icon-<?= $moaIcon ?>"><?php require __DIR__.'/moa_icon.php'; ?></template>
 <?php endforeach; ?>
 <template id="tpl-icon-trash"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12M9 7V4h6v3"/></svg></template>

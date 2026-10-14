@@ -369,6 +369,8 @@ const COMMUNITY_ROUTES = [
     /* 카페 C2 (DESIGN 2.29) — 관리자 화면 둘(신고함 · 게시판 요청). 정책 role:Admin(+ 재인증 — 화면 요청은 /reauth 로 302) · 화면은 뼈대만, 목록 · 처리는 위 창구 */
     ['GET',    '/reports',                               'reports_page.php',          'role:Admin'],
     ['GET',    '/board-requests',                        'board_requests_page.php',   'role:Admin'],
+    /* 사이트 H3 (DESIGN 2.29 「「우리 공간」 = 카페」) — 카페 홈 화면(카페 셸 · 뼈대만 — 자료는 위 `GET /api/cafe` · 판정 0) */
+    ['GET',    '/cafe',                                  'cafe_page.php',             'community.read'],
     /* 개발 대기열 6 · Q:F-3a 라운드 A — 즐겨찾기 · 최근 (지시서 ../../../docs/qf3a-favorites-recent-bulk-directive.md 1.1 · 1.2,
        커뮤니티 ARCH 21.24). 정책은 전부 `community.read` — 로그인한 사람의 **개인 화면 설정**이고(내 줄만 읽고 쓴다),
        페이지를 넣을 수 있는지는 핸들러가 `CommunityAuthz::decidePageRead` 로, 목록은 검색과 같은 조건절

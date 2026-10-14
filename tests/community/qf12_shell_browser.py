@@ -276,7 +276,7 @@ try:
                 lr = get('/tbox/login?to=%2Fcommunity%2Fmemories')
                 check(lr.status_code == 200 and 'data-to="/community/memories"' in lr.text, 'Q:T-38 signed-out 이야기 tile → login page keeps the return address /community/memories (returnPath allow-list as before)')
         # 셸의 앱 격자(HTML) — 세 앱 (U2 · DESIGN 2.18 — 옛 아이콘 줄 · 사이드바 앱 메뉴 단언을 격자 단언으로 바꿈)
-        TILES = ['모아 홈', '자료실', '업무', '이야기', '관리자 페이지', '검색']   # 카페 C6 (DESIGN 2.30) — 앱 판 = 앱과 도구만(메신저 · 내 계정 · 내 활동은 밖으로)
+        TILES = ['모아 홈', '자료실', '업무', '이야기', '우리 공간', '관리자 페이지']   # 사이트 H5 — 「검색」 타일 0(DESIGN 2.30)   # 사이트 H3 — 「우리 공간」 타일   # 카페 C6 (DESIGN 2.30) — 앱 판 = 앱과 도구만(메신저 · 내 계정 · 내 활동은 밖으로)
         for path, here in (('/tbox/', 'tbox'), ('/community/', 'community'), ('/community/memories', 'story')):
             r = get(path, users['employee']['session'])
             tiles = grid_tiles(r.text)
@@ -288,8 +288,8 @@ try:
                   and acct is not None and 'id="menu-settings"' in acct.group(1) and 'id="menu-activity"' in acct.group(1),
                   'Q:T-38 app grid ' + path + ' links (Apps::all() order) · id menu-admin kept · menu-settings · menu-activity in the account panel')
             check([t_[1] for t_ in tiles if t_[2]] == [want_href], 'Q:T-38 app grid ' + path + ' aria-current only on the current app = ' + want_href)
-            check(re.search(r'<li><span class="app-menu__app[^"]*"[^>]*>|data-search-tile', r.text) is not None and re.search(r'<button id="messenger-open" class="btn btn--quiet shell-tools__messenger"', r.text) is not None,
-                  'Q:T-38 ' + path + ' messenger = own button in the tool row (C6) · search tile present')
+            check('data-search-tile' not in r.text and re.search(r'<button id="messenger-open" class="btn btn--quiet shell-tools__messenger"', r.text) is not None,   # 사이트 H5 — 옛 「search tile present」
+                  'Q:T-38 ' + path + ' messenger = own button in the tool row (C6) · H5 search tile 0')
             check(r.text.count('<details class="appbar__apps"') == 1 and 'app-rail' not in r.text and r.text.count('class="moa-space-nav"') == 0 and 'moa-shell-links' not in r.text,
                   'Q:T-38 ' + path + ' one app menu (moved, not copied) · rail 0 · nav.moa-space-nav 0 · .moa-shell-links 0')
             check(re.search(r'<main id="main" class="main">\s*(?:<!--.*?-->\s*)?<div class="shell-tools">', r.text, re.S) is not None, 'Q:T-38 ' + path + ' div.shell-tools is the first child of <main>')
@@ -443,7 +443,7 @@ try:
             tok = new_session('employee')
             tok_admin = new_session('admin')
             screens = (('/tbox/', '/tbox/', '자료실'), ('/community/', '/community/', '업무'), ('/community/memories', '/community/memories', '이야기'))
-            TILES_EMP = ['모아 홈', '자료실', '업무', '이야기', '검색']   # 카페 C6 (DESIGN 2.30)
+            TILES_EMP = ['모아 홈', '자료실', '업무', '이야기', '우리 공간']   # 사이트 H5 — 「검색」 타일 0   # 사이트 H3   # 카페 C6 (DESIGN 2.30)
             for width in (1440, 1280, 960, 959, 820, 412, 360):
                 ctx = browser.new_context(viewport={'width': width, 'height': 900}, locale='ko-KR', user_agent=UA, has_touch=width <= 412, is_mobile=width <= 412)
                 ctx.add_cookies(cookie(tok, {'qaredi_motion': 'reduce'}))
@@ -519,13 +519,15 @@ try:
                     p.wait_for_timeout(150)
                     st = p.evaluate(GRID_STATE_JS)
                     names = [x['name'] for x in st['tiles']]
-                    check(names == ['모아 홈', '자료실', '업무', '이야기', '관리자 페이지', '검색'], 'Q:T-40 admin %s tiles include 관리자 페이지 (can_admin) %s' % (path, json.dumps(names, ensure_ascii=False)))
+                    check(names == ['모아 홈', '자료실', '업무', '이야기', '우리 공간', '관리자 페이지'],   # 사이트 H5 — 「검색」 타일 0
+                            # 사이트 H3
+                          'Q:T-40 admin %s tiles include 관리자 페이지 (can_admin) %s' % (path, json.dumps(names, ensure_ascii=False)))
                     p.keyboard.press('Escape')
-                # 검색 타일 → 사이드바 「검색」과 같은 창 · 메신저 타일 → 떠 있는 창
-                p.locator('details.appbar__apps > summary').click()
-                p.locator('details.appbar__apps [data-search-tile]').click()
+                # 사이트 H5 — 앱 판 「검색」 타일은 없다(DESIGN 2.30) · 사이드바 「검색」이 같은 창을 연다 · 메신저 타일 → 떠 있는 창
+                check(p.locator('details.appbar__apps [data-search-tile]').count() == 0, 'H5 app panel search tile 0')
+                p.locator('#nav-search').click()
                 p.wait_for_timeout(300)
-                check(p.evaluate("document.getElementById('search-dialog').open") and not p.evaluate("document.querySelector('details.appbar__apps').open"), 'Q:T-40 search tile opens the same search dialog (grid closes)')
+                check(p.evaluate("document.getElementById('search-dialog').open"), 'H5 sidebar 「검색」 opens the search dialog (old: search tile)')
                 p.keyboard.press('Escape')
                 p.locator('.shell-tools #messenger-open').click()   # 카페 C6 (DESIGN 2.30) — 메신저는 앱 판 밖의 단추
                 p.wait_for_timeout(600)

@@ -50,8 +50,7 @@ with sync_playwright()as pw:
    p.goto('https://shortcut.example/',wait_until='networkidle')
    check(json.dumps(layout,sort_keys=True)==original and not any(m not in ['GET','HEAD']for m,_ in calls),'preferences/geometry/lock/source unchanged and no writes '+tag)
  mode='anon';p.goto('https://shortcut.example/',wait_until='networkidle')
- check(p.locator('.moa-home-route a[data-service=work]').get_attribute('href')=='/community/my-tasks'and '내 작업'in p.locator('.moa-home-route a[data-service=work]').inner_text(),'public quick-start personal-task label remains accurate')
- check(p.locator('.moa-service-card[data-service=work]').get_attribute('href')=='/tbox/login?to=community'and '업무 홈'in p.locator('.moa-service-card[data-service=work]').inner_text(),'public overall-work card retains login destination and clarified name')
+ check(p.locator('.moa-home-route, .moa-service-card').count()==0 and '업무' in p.locator('.landing-features').inner_text(),'H2 public quick-start · service cards replaced by 「가입하면 할 수 있는 일」 (DESIGN 2.32 ② — links 0 before login)')   # 사이트 H2 — 옛 두 단언(.moa-home-route 「내 작업」 · .moa-service-card 「업무 홈」)은 로그인 전 갈래에서 빠졌다
  check(p.locator('#home-edit,[data-home-shortcut]').count()==0,'anonymous private dashboard remains absent')
  mode='consent';p.goto('https://shortcut.example/',wait_until='networkidle');check(p.locator('#home-open-dashboard').get_attribute('href')=='/tbox/consent','mandatory consent gate retained')
  check(not errors,'production browser JS no errors '+str(errors));b.close()

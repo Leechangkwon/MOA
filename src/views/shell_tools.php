@@ -61,7 +61,8 @@ declare(strict_types=1);
 <?php   endif; ?>
 <?php endforeach; ?>
             <li><a id="menu-admin" class="app-menu__app" href="<?= Http::url('/admin') ?>" hidden><span class="app-menu__icon icon" data-icon="lock"></span><span class="app-menu__text"><span class="app-menu__name">관리자 페이지</span><span class="app-menu__desc">계정 · 조직 · 감사</span></span></a></li>
-            <li><button class="app-menu__app" type="button" data-search-tile aria-haspopup="dialog" aria-controls="search-dialog"><span class="app-menu__icon icon" data-icon="search"></span><span class="app-menu__text"><span class="app-menu__name">검색</span><span class="app-menu__desc">Ctrl K — 페이지 · 댓글 · 파일</span></span></button></li>
+<?php /* 사이트 H5 (DESIGN 2.30 「앱 판」 · 사용자 2026-10-14 「단축키로도 모든 페이지에서 열리는데 앱에 굳이 검색을 넣을 필요가 없음」) — 「검색」 타일은 뺐다.
+         검색은 사이드바 「검색」 · Ctrl K · 폰 돋보기 · 모아 홈 검색 칸(같은 창 search.js)으로 연다. */ ?>
           </ul>
         </div>
       </details>

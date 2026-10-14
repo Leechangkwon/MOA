@@ -14,6 +14,7 @@ declare(strict_types=1);
  *                                              지운 사진 기록 · 여행 계획 30일(사진 파일까지) · 감사 기록 3년
  *   ② public.privacy_purge_accounts(dry, max)  탈퇴 처리 30일 뒤 — 아이디 deleted-<번호> · 표시 이름 「탈퇴한 사용자 #<번호>」 ·
  *                                              개인 공간 문서 · 사진 기록(파일까지) · 여행 계획 삭제 · 로그인 수단의 남은 행 삭제
+ *   ①-2 초대 요청(사이트 H2)                    결정 30일 뒤 · 결정 없으면 접수 30일 뒤 행 삭제(표 소유자의 DELETE — 앱 계정은 DELETE 0)
  *   두 함수는 **표 소유자(tbox_owner)만** 부를 수 있으므로 여기서만 소유자 계정으로 붙는다(`/etc/tbox-v2/owner.pgpass`, root 0600 —
  *   libpq 가 PGPASSFILE 로 읽는다. 비밀번호를 코드·인자에 두지 않는다 — community_purge.php 와 같은 방식). 앱 계정 권한은 넓히지 않는다.
  *
@@ -142,6 +143,20 @@ try {
         $owner->commit();
     } else {
         $owner->rollBack();
+    }
+
+    // ①-2 초대 요청 (사이트 H2 · 기획 ../docs/invite-request-plan.md 3장 「보관」 · 처리방침 2026-10-14 판 제3조) —
+    //   결정한 요청은 결정 30일 뒤 · 결정하지 않은 요청은 접수 30일 뒤 행을 지운다. 앱 계정에는 DELETE 가 없다 — 표 소유자로 여기서만.
+    //   이름 · 소속 · 이유는 출력 · 감사에 싣지 않는다(건수만). 표가 없으면(마이그레이션 전) 건너뛴다. 초대 링크 행(member_invites)은 이름 없이 남는다.
+    $st = $owner->prepare("SELECT CASE WHEN to_regclass('public.invite_requests') IS NULL THEN 0 ELSE 1 END");
+    $st->execute();
+    if ((int) $st->fetchColumn() === 1) {
+        $due = "(decided_at IS NOT NULL AND decided_at < now() - interval '30 days') OR (decided_at IS NULL AND created_at < now() - interval '30 days')";
+        $owner->beginTransaction();
+        $st = $owner->prepare($run ? 'DELETE FROM public.invite_requests WHERE ' . $due : 'SELECT count(*) FROM public.invite_requests WHERE ' . $due);
+        $st->execute();
+        $expiredCounts['invite_requests'] = $run ? $st->rowCount() : (int) $st->fetchColumn();
+        $owner->commit();
     }
 
     // ② 탈퇴 처리 30일이 지난 계정

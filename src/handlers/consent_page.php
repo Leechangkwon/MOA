@@ -70,6 +70,7 @@ $consentWhen = static function (?array $row): string {
 <div class="moa-setup-actions"><button id="consent-ai-agree" class="btn" type="button"<?= $consentAi ? ' hidden' : '' ?>>국외 전송에 동의하기</button><button id="consent-ai-withdraw" class="btn btn--danger" type="button"<?= $consentAi ? '' : ' hidden' ?>>동의 철회하기</button><a href="/">모아 둘러보기 →</a></div>
 </section>
 </main>
+<?php require __DIR__.'/../views/moa_footer.php'; /* H4 — 바닥(DESIGN 2.33 「바닥 붙이기」) */ ?>
 <?php if ($consentNeeded): /* Q:F-13 P2-R1(RV-P2-1) — 「탈퇴 요청」 은 지금 확인 창·재인증 창(app.js 의 qarediOpenConfirm · qarediHandleReauth)을 그대로 쓴다.
    이 화면은 셸이 아니라 app.js 의 화면 분기는 아무것도 하지 않는다(data-page 없음 · #nav-files 없음). 창 머리 ✕ 그림은 셸 바닥과 같은 틀. */ ?>
 <template id="tpl-icon-x"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></template>

@@ -18,6 +18,9 @@
      중립 회색은 zinc, 기본 단추는 거의 검정, 테두리는 얇고 그림자는 낮다.
      외부 CSS·폰트는 여전히 하나도 안 불러온다 (CSP). */
   --bg: #ffffff;              /* background */
+  /* 사이트 H4 (DESIGN 2.33 「갈래별 값」) — 「모아.」 글자 로고 네 갈래의 색(테마와 무관 · 값은 2.33 표뿐 — 밝게 · 어둡게 · 고대비 블록이 바꾼다).
+     지금 고른 갈래는 아래 고대비 절 앞 `[data-wordmark]` 줄이 --brand-wordmark* 로 옮긴다(테마 창의 미리보기도 같은 줄) */
+  --wm-d: #6d28d9; --wm-d-dot: #f59e0b; --wm-a: #7c3aed; --wm-a-fill: linear-gradient(100deg, #7c3aed, #4f46e5, #2563eb); --wm-b: #c2410c; --wm-b-fill: linear-gradient(100deg, #c2410c, #b91c1c, #be185d); --wm-c-mo: #7c3aed; --wm-c-a: #0f766e; --wm-on: #ffffff;
   --surface: #ffffff;         /* card · popover */
   --surface-2: #fafafa;       /* zinc-50 — 사이드바 · 모달 본문 */
   --muted-bg: #f4f4f5;        /* zinc-100 — muted · secondary · accent */
@@ -199,6 +202,11 @@ button.appbar__brand .icon { display: inline-flex; color: var(--muted); }
   color: var(--primary-fg);
 }
 .brand__text { display: flex; flex-direction: column; min-width: 0; }
+/* 사이트 H5 (DESIGN 2.19 ⑩) — 셸 사이드바 머리 = ☰ + 앱 아이콘 36(그 앱 첫 화면 링크)뿐 · 줄 높이 56 · 아래 구분 0. 글자(.brand__name · .brand__sub)는 셸이 그리지 않는다
+   (로그인 화면의 .brand__text 는 다른 자리 — 그대로). moa.css 의 옛 두 칸 격자(.moa-brand)를 이 자리에서만 덮는다 */
+#sidebar > .moa-brand { display: flex; align-items: center; gap: 8px; min-height: 56px; padding: 0 4px; border-bottom: 0; }
+#sidebar > .moa-brand .moa-brand-home { flex: none; padding: 0; }
+#sidebar > .moa-brand .brand__mark { width: 36px; height: 36px; }
 .brand__name { font-size: 14px; font-weight: 600; line-height: 1.3; }
 .brand__sub { font-size: 12px; color: var(--muted); line-height: 1.3; }
 
@@ -561,10 +569,12 @@ table.files tbody tr:hover .btn--icon[aria-label="지우기"] { color: var(--dan
 /* 아이콘 단추 툴팁 — app.js 가 모든 아이콘 단추에 넣는 aria-label 을 그대로 글자로 보인다.
    브라우저 기본 title 툴팁은 1초 뒤에야 뜨고 눈에 잘 안 띄어, 올리는 즉시 단추 아래에 보여 준다.
    문자열은 attr() 로만 읽으므로 HTML 변환도, 인라인 style 도 없다 (CSP). */
-.btn--icon[aria-label] { position: relative; }
+.btn--icon[aria-label],
+#sidebar .moa-brand-home[aria-label] { position: relative; }   /* 사이트 H5 — 사이드바 머리 아이콘 링크도 같은 풍선(2.8) */
 /* Q:F-12 U2 (DESIGN 2.19 ⑨) — 접힌 사이드바의 아이콘 항목도 **같은 규칙**의 툴팁을 쓴다(글자는 고정 글자 `data-tip` — shell_top.php).
    보이는 때(≥960 · 접힘)와 자리(오른쪽)만 아래 「사이드바 접기」 블록이 정한다 — 새 툴팁 규칙 0 */
 .btn--icon[aria-label]::after,
+#sidebar .moa-brand-home[aria-label]::after,
 body[data-sidebar="collapsed"] #sidebar [data-tip]::after {
   content: attr(aria-label);
   position: absolute;
@@ -585,18 +595,21 @@ body[data-sidebar="collapsed"] #sidebar [data-tip]::after {
      그래서 display 로 켠다·끈다 (2026-09-21) */
   display: none;
 }
-.btn--icon[aria-label]:focus-visible::after { display: block; }
+.btn--icon[aria-label]:focus-visible::after,
+#sidebar .moa-brand-home[aria-label]:focus-visible::after { display: block; }
 /* 올려서 보는 툴팁은 **마우스 같은 정밀한 포인터**가 주 입력인 기기에서만 (디버깅 묶음 U L4 · 2026-09-26).
    터치 화면은 누른 뒤에도 :hover 가 그 단추에 남아, 「zip 으로 받기」를 누른 뒤 툴팁이 막대 아래 안내 문장을 가렸다(운영 폰 스크린샷).
    터치에서는 이름이 aria-label(화면 읽기)로 남고, 키보드 초점(:focus-visible)의 툴팁은 그대로다. */
 @media (hover: hover) and (pointer: fine) {
-  .btn--icon[aria-label]:hover::after { display: block; }
+  .btn--icon[aria-label]:hover::after,
+  #sidebar .moa-brand-home[aria-label]:hover::after { display: block; }
 }
 /* 독립 검토 L-3 — 폴드처럼 **hover 를 알리는 터치 기기**(삼성 인터넷은 S펜 때문에 hover: hover · 주 포인터 fine 으로 알린다)도
    누른 뒤 :hover 가 남는다. 트리 「하위 추가」 규칙(community.css)과 같이 `any-pointer: coarse` 도 보고 올려서 보는 툴팁을 끈다.
    키보드 초점 툴팁은 그대로(:focus-visible 은 빼지 않는다). 한계: 터치 화면이 달린 노트북은 마우스로 올려도 툴팁이 안 뜬다(이름은 aria-label). */
 @media (hover: none), (any-pointer: coarse) {
-  .btn--icon[aria-label]:hover:not(:focus-visible)::after { display: none; }
+  .btn--icon[aria-label]:hover:not(:focus-visible)::after,
+  #sidebar .moa-brand-home[aria-label]:hover:not(:focus-visible)::after { display: none; }
 }
 /* 표 마지막 열의 단추는 툴팁이 오른쪽으로 새지 않게 오른끝을 맞춘다 */
 td.actions .btn--icon:last-child::after,
@@ -612,8 +625,10 @@ td.actions .btn--icon:last-child::after,
    모르는 브라우저는 위 규칙 그대로다. 스크립트·인라인 style 0 (CSP). */
 @supports (anchor-name: --tip) and (anchor-scope: --tip) {
   .btn--icon[aria-label],
+  #sidebar .moa-brand-home[aria-label],
   body[data-sidebar="collapsed"] #sidebar [data-tip] { anchor-name: --tip; anchor-scope: --tip; }
   .btn--icon[aria-label]::after,
+  #sidebar .moa-brand-home[aria-label]::after,
   body[data-sidebar="collapsed"] #sidebar [data-tip]::after,
   td.actions .btn--icon:last-child::after,
   .modal__head .btn--icon::after {
@@ -2087,6 +2102,7 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
   :root:not([data-theme="light"]) {
     color-scheme: dark;
     --bg: #09090b;
+    --wm-d: #a78bfa; --wm-d-dot: #fbbf24; --wm-a: #a78bfa; --wm-a-fill: linear-gradient(100deg, #a78bfa, #818cf8, #60a5fa); --wm-b: #fb923c; --wm-b-fill: linear-gradient(100deg, #fb923c, #f87171, #f472b6); --wm-c-mo: #a78bfa; --wm-c-a: #2dd4bf; --wm-on: #18181b;   /* H4 — 어둡게 */
     --surface: #18181b;
     --surface-2: #1f1f23;
     --muted-bg: #27272a;
@@ -2125,6 +2141,7 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 :root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #09090b;
+  --wm-d: #a78bfa; --wm-d-dot: #fbbf24; --wm-a: #a78bfa; --wm-a-fill: linear-gradient(100deg, #a78bfa, #818cf8, #60a5fa); --wm-b: #fb923c; --wm-b-fill: linear-gradient(100deg, #fb923c, #f87171, #f472b6); --wm-c-mo: #a78bfa; --wm-c-a: #2dd4bf; --wm-on: #18181b;   /* H4 — 어둡게 */
   --surface: #18181b;
   --surface-2: #1f1f23;
   --muted-bg: #27272a;
@@ -2159,6 +2176,21 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / .5), 0 1px 2px -1px rgb(0 0 0 / .5);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / .6), 0 4px 6px -4px rgb(0 0 0 / .6);
 }
+/* ─── 사이트 H4 (DESIGN 2.33) — 「모아.」 글자 로고: 고른 갈래(<html data-wordmark> · 쿠키 qaredi_wordmark) → 쓰는 토큰.
+ *   --brand-wordmark 첫 색(상징 바탕 · 단색 대체) · -1 「모」 · -2 「아」(A · B 는 투명 — 글자 전체 그라데이션 -fill 이 칠한다) · -fill · -dot · -dot-show(D 만 점) · -on(상징 글자).
+ *   같은 줄이 테마 창의 미리보기(`[data-wordmark-preview]`)에도 걸린다. 고대비는 위 --wm-* 가 --fg 라 저절로 단색이고, 아래 고대비 줄이 글자색을 되돌린다(그라데이션 0). */
+:root, [data-wordmark-preview="d"] { --brand-wordmark: var(--wm-d); --brand-wordmark-1: var(--wm-d); --brand-wordmark-2: var(--wm-d); --brand-wordmark-fill: none; --brand-wordmark-dot: var(--wm-d-dot); --brand-wordmark-dot-show: inline; --brand-wordmark-on: var(--wm-on); }
+:root[data-wordmark="a"], [data-wordmark-preview="a"] { --brand-wordmark: var(--wm-a); --brand-wordmark-1: transparent; --brand-wordmark-2: transparent; --brand-wordmark-fill: var(--wm-a-fill); --brand-wordmark-dot-show: none; }
+:root[data-wordmark="b"], [data-wordmark-preview="b"] { --brand-wordmark: var(--wm-b); --brand-wordmark-1: transparent; --brand-wordmark-2: transparent; --brand-wordmark-fill: var(--wm-b-fill); --brand-wordmark-dot-show: none; }
+:root[data-wordmark="c"], [data-wordmark-preview="c"] { --brand-wordmark: var(--wm-c-mo); --brand-wordmark-1: var(--wm-c-mo); --brand-wordmark-2: var(--wm-c-a); --brand-wordmark-fill: none; --brand-wordmark-dot-show: none; }
+:root[data-contrast="high"][data-wordmark], :root[data-contrast="high"] [data-wordmark-preview] { --brand-wordmark-1: var(--fg); --brand-wordmark-2: var(--fg); --brand-wordmark-fill: none; }
+/* 로그인 화면의 왼쪽 판(사진 위 어두운 칠 — 밝게 · 어둡게와 무관하게 늘 어둡다)은 갈래마다 **어둡게** 값(2.33 표 그대로 · 새 색 0) */
+body[data-page="login"] .login__brand { --wm-d: #a78bfa; --wm-d-dot: #fbbf24; --wm-a: #a78bfa; --wm-a-fill: linear-gradient(100deg, #a78bfa, #818cf8, #60a5fa); --wm-b: #fb923c; --wm-b-fill: linear-gradient(100deg, #fb923c, #f87171, #f472b6); --wm-c-mo: #a78bfa; --wm-c-a: #2dd4bf; --wm-on: #18181b; }
+body[data-page="login"] .login__brand .moa-wordmark { --brand-wordmark: var(--wm-d); }
+:root[data-wordmark="a"] body[data-page="login"] .login__brand .moa-wordmark { --brand-wordmark: var(--wm-a); --brand-wordmark-fill: var(--wm-a-fill); }
+:root[data-wordmark="b"] body[data-page="login"] .login__brand .moa-wordmark { --brand-wordmark: var(--wm-b); --brand-wordmark-fill: var(--wm-b-fill); }
+:root[data-wordmark="c"] body[data-page="login"] .login__brand .moa-wordmark { --brand-wordmark: var(--wm-c-mo); --brand-wordmark-1: var(--wm-c-mo); --brand-wordmark-2: var(--wm-c-a); }
+:root:is(:not([data-wordmark]), [data-wordmark="d"]) body[data-page="login"] .login__brand .moa-wordmark { --brand-wordmark-1: var(--wm-d); --brand-wordmark-2: var(--wm-d); --brand-wordmark-dot: var(--wm-d-dot); }
 /* ─── 고대비 화면 (DESIGN.md 2.16 · 커뮤니티 7-D3 — 결정 J-5 · L-3) ─────────────────────────────
  * 「내 계정」 → 「화면」 → 「고대비 화면」을 켠 사람에게만 서버(셸·런처)가 <html data-contrast="high"> 를 그린다.
  * **토큰 값만 바꾼다** — 새 토큰 이름 0 · 화면 CSS 에 [data-contrast] 갈래 0(이 세 블록뿐) · 다크(2.12)와 같은 모양, 어두운 두 곳 같은 값.
@@ -2166,6 +2198,7 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
  * 뒤에 있는 쪽이 이긴다 — 그래서 어두운 고대비 블록(무게 하나 더)은 밝은 고대비 블록이 바꾼 이름을 **빠짐없이** 다시 적는다.
  * 대비는 시험이 계산한다(tests/lib/contrast.py — 글자 ≥ 4.5 · 선·고리 ≥ 3, 밝게·어둡게 각각). 연한 바탕(-soft·-bg·-line)은 그대로 둔다. */
 :root[data-contrast="high"] {
+  --wm-d: var(--fg); --wm-d-dot: var(--fg); --wm-a: var(--fg); --wm-a-fill: none; --wm-b: var(--fg); --wm-b-fill: none; --wm-c-mo: var(--fg); --wm-c-a: var(--fg); --wm-on: var(--bg);   /* H4 (DESIGN 2.33) — 고대비 = --fg 단색 · 그라데이션 0 */
   --fg: #000000;
   --fg-2: #18181b;
   --muted: #3f3f46;
@@ -2183,6 +2216,7 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
 }
 @media (prefers-color-scheme: dark) {
   :root[data-contrast="high"]:not([data-theme="light"]) {
+    --wm-d: var(--fg); --wm-d-dot: var(--fg); --wm-a: var(--fg); --wm-a-fill: none; --wm-b: var(--fg); --wm-b-fill: none; --wm-c-mo: var(--fg); --wm-c-a: var(--fg); --wm-on: var(--bg);   /* H4 */
     --bg: #000000;
     --surface: #000000;
     --surface-2: #0a0a0a;
@@ -2205,6 +2239,7 @@ dialog.search-dialog { width: min(640px, calc(100vw - 32px)); margin-top: 12vh; 
   }
 }
 :root[data-contrast="high"][data-theme="dark"] {
+  --wm-d: var(--fg); --wm-d-dot: var(--fg); --wm-a: var(--fg); --wm-a-fill: none; --wm-b: var(--fg); --wm-b-fill: none; --wm-c-mo: var(--fg); --wm-c-a: var(--fg); --wm-on: var(--bg);   /* H4 — 고대비는 갈래와 무관하게 --fg 단색 */
   --bg: #000000;
   --surface: #000000;
   --surface-2: #0a0a0a;

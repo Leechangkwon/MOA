@@ -1,6 +1,7 @@
 {
   "privacy": [
-    {"version": "2026-10-08", "file": "privacy-2026-10-08.html"}
+    {"version": "2026-10-08", "file": "privacy-2026-10-08.html"},
+    {"version": "2026-10-14", "file": "privacy-2026-10-14.html"}
   ],
   "terms": [
     {"version": "2026-10-08", "file": "terms-2026-10-08.html"}

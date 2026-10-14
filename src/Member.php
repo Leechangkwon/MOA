@@ -34,6 +34,25 @@ final class Member
             Http::error(403, '가입 화면을 새로 열고 다시 시도해 주세요.');
         }
     }
+    /** 초대에 붙일 팀이 있고 쓸 수 있나 — 팀 없음(null)은 참. 초대를 만드는 두 길(관리자 직접 · 초대 요청 승인)이 같은 판정을 쓴다 */
+    public static function activeTeam(?int $team): bool
+    {
+        return $team === null || Db::instance()->run('SELECT id FROM teams WHERE id=:id AND is_active',
+            [':id'=>$team])->fetch() !== false;
+    }
+    /**
+     * 가입 초대 한 벌 (사이트 H2 — member_invites.php 의 발급을 꺼낸 것 · 초대 요청 승인 뒤 확인 주소도 이것을 부른다).
+     * 32바이트 난수 코드 → member_invites 에는 sha256 만. 원문 코드는 돌려주는 `path`(`/tbox/join#invite=…` — 주소 `#` 뒤)에만 있고
+     * 저장 · 로그 · 감사에 싣지 않는다. 형식 검사 · 팀 판정(activeTeam) · 속도 제한 · 감사는 부르는 쪽이 한다(두 길의 감사가 다르다).
+     * @return array{id:int,path:string,expires_at:string}
+     */
+    public static function issueInvite(int $createdBy, string $label, ?int $team, int $uses, int $days): array
+    {
+        $code = bin2hex(random_bytes(32));
+        $row = Db::instance()->run("INSERT INTO member_invites(code_hash,label,team_id,created_by,expires_at,max_uses) VALUES(:hash,:label,:team,:by,now()+make_interval(days=>:days),:uses) RETURNING id,expires_at",
+            [':hash'=>hash('sha256',$code),':label'=>$label,':team'=>$team,':by'=>$createdBy,':days'=>$days,':uses'=>$uses])->fetch();
+        return ['id'=>(int)$row['id'],'path'=>Http::url('/join').'#invite='.$code,'expires_at'=>(string)$row['expires_at']];
+    }
     public static function installer(): ?string
     {
         $row = Db::instance()->run("SELECT value FROM member_settings WHERE key='buddy_download_url'")->fetch();

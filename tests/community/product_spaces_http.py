@@ -18,8 +18,10 @@ def v2(settings,personal=False):
 def dashboards():
  return (sql('SELECT row_to_json(d)::text FROM product_space_dashboards d ORDER BY space_id'),sql('SELECT row_to_json(d)::text FROM product_personal_dashboards d ORDER BY user_id'),sql("SELECT count(*) FROM audit_logs WHERE action='product.dashboard.save' AND result='allow'"))
 try:
- page=raw('GET','/spaces')
+ page=raw('GET','/spaces?space=00000000-0000-4000-8000-000000000000')   # 사이트 H3 — 쿼리 없는 /spaces 는 302 /community/cafe(DESIGN 2.29) · ?space= 면 공간 화면
  check(page.status_code==200 and 'id="space-app"' in page.text and 'space-page.js' in page.text,'authenticated real space page renders application')
+ cafe=requests.get(base+'/spaces',headers={'User-Agent':'tbox-review/'+time.strftime('%Y-%m-%d'),'Cookie':'__Host-tbox_session='+users['employee']['session']},allow_redirects=False,timeout=35)
+ check(cafe.status_code==302 and cafe.headers.get('Location')=='/community/cafe','H3 /tbox/spaces without a query → 302 /community/cafe')
  anonymous=requests.get(base+'/spaces',headers={'User-Agent':'tbox-review/'+time.strftime('%Y-%m-%d')},allow_redirects=False,timeout=35)
  check(anonymous.status_code==302 and anonymous.headers.get('Location','').startswith('/tbox/login'),'anonymous space page redirects to login')
  call('GET','/api/product-spaces',user=None,expected=401)

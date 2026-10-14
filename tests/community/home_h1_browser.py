@@ -224,8 +224,8 @@ try:
                         check(st['toolsH'] and all(x == 44 for x in st['toolsH']), '① %s: messenger · apps · chip heights 44 %s' % (tag, st['toolsH']))
                         # ② 가운데
                         w = st['word'] or {}
-                        check(w.get('text') == 'Qaredi' and w.get('hidden') == 'true' and w.get('fs') == ('44px' if phone else '64px') and w.get('fw') == '600' and w.get('vis'),
-                              '② %s: wordmark 「Qaredi」 %s 600 · aria-hidden %s' % (tag, '44px' if phone else '64px', json.dumps(w, ensure_ascii=False)))
+                        check(w.get('text') == '모아.' and w.get('hidden') == 'true' and w.get('fs') == ('44px' if phone else '64px') and w.get('vis'),   # 사이트 H4 — 「Qaredi」 → 「모아.」(DESIGN 2.33 · 글자 굵기는 부품 .moa-wordmark 800 — home_h4_browser 가 잰다)
+                              '② %s: wordmark 「모아.」 %s · aria-hidden %s' % (tag, '44px' if phone else '64px', json.dumps(w, ensure_ascii=False)))
                         check(st['h1'] and st['h1']['text'] == '모아 홈' and st['h1']['w'] <= 1 and st['h1']['count'] == 1, '② %s: h1 「모아 홈」 for screen readers only (w %s)' % (tag, st['h1'] and st['h1']['w']))
                         s = st['search'] or {}
                         check(s and abs(s['h'] - 52) <= 0.5 and s['radius'] == '26px' and s['w'] <= 720.5 and abs(s['w'] - min(720, st['wrapW'])) <= 1 and s['icon'] == 20,
@@ -287,7 +287,7 @@ try:
                     ac = p.evaluate(PANEL_JS, '.shell-tools .shell-account')
                     ap_open = p.evaluate("document.querySelector('.shell-tools .appbar__apps').open")
                     summary['%d' % width] = {'apps': ap, 'account': ac}
-                    check(ap['current'] == ['모아 홈'] and ap['tiles'][:4] == ['모아 홈', '자료실', '업무', '이야기'] and '검색' in ap['tiles'] and '관리자 페이지' not in ap['tiles'],
+                    check(ap['current'] == ['모아 홈'] and ap['tiles'][:4] == ['모아 홈', '자료실', '업무', '이야기'] and '검색' not in ap['tiles'] and '관리자 페이지' not in ap['tiles'],
                           '① %d: app panel 「모아 홈」 aria-current · apps and tools · admin tile hidden for an employee %s' % (width, json.dumps(ap['tiles'], ensure_ascii=False)))
                     check(ac['open'] and not ap_open and ac['tiles'] == ['내 계정', '내 활동', '테마'] and ac['logout'] == ['로그아웃'] and ac['current'] == [],
                           '① %d: chip → account panel 내 계정 · 내 활동 · 테마 + 로그아웃 · app panel closed (one at a time) %s' % (width, json.dumps(ac['tiles'], ensure_ascii=False)))
@@ -379,12 +379,8 @@ try:
                     p.keyboard.press('Escape')
                     p.wait_for_timeout(150)
                     check(not p.evaluate("document.getElementById('search-dialog').open"), 'search %d: Esc closes the dialog' % width)
-                    # 앱 판 「검색」 타일도 같은 창
-                    p.locator('.shell-tools > .appbar__apps > summary').click()
-                    p.locator('.shell-tools [data-search-tile]').click()
-                    p.wait_for_selector('#search-dialog[open]', timeout=5000)
-                    check(True, 'search %d: app panel 「검색」 tile opens the same dialog on the home' % width)
-                    p.keyboard.press('Escape')
+                    # 사이트 H5 — 앱 판 「검색」 타일은 없다(DESIGN 2.30 · 옛 「app panel 「검색」 tile opens the same dialog」)
+                    check(p.locator('.shell-tools [data-search-tile]').count() == 0, 'H5 search %d: app panel 「검색」 tile 0 on the home' % width)
                     check(t.clean('search-%d' % width), 'search %d console 0' % width)
                     ctx.close()
                 metrics['search'] = summary
@@ -533,7 +529,7 @@ $launcherUser=($argv[2]??'')==='consent'?['id'=>1001,'username'=>'claude_manager
 $launcherApps=[];
 require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baseline.php':'launcher.php');
 """)
-                for who in ('out', 'consent'):
+                for who in ('consent',):   # 사이트 H2 — 로그인 전 갈래는 2.32 첫 화면으로 바뀌었다(그 갈래는 invite_request_browser.py [grid] 가 잰다) · 동의 전만 그대로
                     a = subprocess.run(['php', str(stub), 'base', who], cwd=str(root), check=True, capture_output=True).stdout
                     b = subprocess.run(['php', str(stub), 'new', who], cwd=str(root), check=True, capture_output=True).stdout
                     summary['html-' + who] = {'base': len(a), 'new': len(b), 'sha_equal': hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()}
@@ -553,10 +549,10 @@ require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baselin
                             p.goto(site + '/', wait_until='networkidle')
                             p.wait_for_timeout(300)
                             st = p.evaluate("""() => ({tools: document.querySelectorAll('.shell-tools').length, hero: !!document.querySelector('.home-hero, .home-dashboard, .home-search'),
-                                logo: !!document.querySelector('body > header .moa-logo'), intro: !!document.querySelector('.moa-service-hero'), cta: (document.getElementById('home-open-dashboard') || {}).textContent,
+                                logo: !!document.querySelector('body > header .moa-logo'), intro: !!document.querySelector('.moa-service-hero'), landing: !!document.querySelector('.landing-hero'), cta: (document.getElementById('home-open-dashboard') || {}).textContent,
                                 overflow: document.documentElement.scrollWidth - innerWidth, signed: document.body.dataset.signed})""")
                             summary[tag] = st
-                            check(st['tools'] == 0 and not st['hero'] and st['logo'] and st['intro'] and st['signed'] == 'no' and st['overflow'] <= 0,
+                            check(st['tools'] == 0 and not st['hero'] and st['logo'] and (st['intro'] if who == 'consent' else st['landing']) and st['signed'] == 'no' and st['overflow'] <= 0,   # H2 — 로그인 전은 .landing-hero
                                   '⑤ %s: header (logo) · intro screen as before · shell-tools 0 · H1 parts 0 · overflow 0 (%s)' % (tag, (st['cta'] or '').strip()))
                             if who == 'consent':
                                 check((st['cta'] or '').startswith('동의하고 내 홈 열기'), '⑤ %s: consent CTA unchanged' % tag)

@@ -12718,12 +12718,7 @@ function initMenus() {
       if (!box.open) { return; }
       var tile = target.closest('.app-menu__app, .app-menu__logout');
       if (tile && box.contains(tile)) {
-        box.open = false;
-        if (tile.hasAttribute('data-search-tile')) {
-          // 모아 홈(H1 · DESIGN 2.31)에는 사이드바 「검색」이 없다 — 같은 창을 search.js 의 여는 함수로(창 두 벌 0)
-          var search = document.getElementById('nav-search');
-          if (search) { search.click(); } else if (typeof window.qarediSearchOpen === 'function') { window.qarediSearchOpen(); }
-        }
+        box.open = false;   // 사이트 H5 — 앱 판의 「검색」 타일 갈래는 타일과 함께 뺐다(DESIGN 2.30 · 검색 길은 사이드바 · Ctrl K · 폰 돋보기 · 홈 검색 칸)
         return;
       }
       if (box.contains(target) || isOpener(target)) { return; }
