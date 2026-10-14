@@ -104,6 +104,12 @@ COMMON_JS = r"""(scope) => {
   return {overflow: document.documentElement.scrollWidth - innerWidth, small: hits, inline: root.querySelectorAll('[style]').length};
 }"""
 
+UI_JS = r"""() => { const v = id => { const e = document.getElementById(id); return !!e && !e.hidden && e.getClientRects().length > 0; };
+  return {text: document.getElementById('invite-status-text').textContent, issue: v('invite-status-issue'), issueText: document.getElementById('invite-status-issue').textContent,
+          help: v('invite-status-issue-help'), join: v('invite-status-join'), href: document.getElementById('invite-status-join').getAttribute('href'),
+          link: v('invite-status-link-field'), linkValue: document.getElementById('invite-status-link').value}; }"""
+
+
 LANDING_JS = r"""() => {
   const q = s => document.querySelector(s), qa = s => [...document.querySelectorAll(s)];
   const vis = el => { if (!el || !el.isConnected) return false; if (el.checkVisibility && !el.checkVisibility()) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
@@ -388,28 +394,66 @@ try:
                     check(cm['overflow'] <= 0 and cm['small'] == [], 'flow %d done: overflow 0 · targets < 44 none %s' % (width, cm['small']))
                     # 확인 화면 — 대기 · 반려 · 초대됨 · 세 번 · 틀림
                     states = [(url.split('#')[1], '검토 중이에요'), ('code=' + C_REJ, '이번에는 초대해 드리기 어려워요'), ('code=' + C_APP, '초대됐어요'),
-                              ('code=' + C_MAX, '초대 링크를 이미 세 번 받았어요'), ('code=' + secrets.token_hex(32), '요청 확인 주소가 올바르지 않아요'), ('', '요청 확인 주소가 올바르지 않아요')]
-                    for frag, text in states:
+                              ('code=' + C_MAX, '초대됐어요'), ('code=' + secrets.token_hex(32), '요청 확인 주소가 올바르지 않아요'), ('', '요청 확인 주소가 올바르지 않아요')]
+                    APP_COUNT = 'SELECT issued_count FROM invite_requests WHERE id=' + str(R_APP)
+
+                    def open_status(frag):
                         p.goto('about:blank')
                         p.goto(TB + '/request-invite/status' + ('#' + frag if frag else ''), wait_until='networkidle')
                         p.wait_for_function("!document.getElementById('invite-status-text').textContent.startsWith('확인하고')", timeout=10000)
-                        got = p.locator('#invite-status-text').inner_text()
-                        join = p.locator('#invite-status-join')
-                        ok = got.startswith(text)
-                        if text == '초대됐어요':
-                            href = join.get_attribute('href') or ''
-                            ok = ok and join.is_visible() and re.fullmatch(r'/tbox/join#invite=[0-9a-f]{64}', href) is not None
-                            p.screenshot(path=str(shots / ('status-approved-%d.png' % width)), full_page=True)
-                            join.click()
-                            p.wait_for_url(re.compile(r'.*/tbox/join.*'), timeout=10000)
+
+                    def ui():
+                        return p.evaluate(UI_JS)
+                    for frag, text in states:
+                        open_status(frag)
+                        u = ui()
+                        ok = u['text'].startswith(text)
+                        if frag == 'code=' + C_APP:
+                            # H2b — 보기(여는 것 · 새로 고침)는 발급 0 · 「초대 링크 받기」를 눌러야 초대가 생긴다
+                            before = int(sql(APP_COUNT))
+                            again = before > 0   # 412 차례는 1440 차례가 이미 받은 뒤
+                            ok = ok and u['issue'] and not u['join'] and not u['link'] and u['issueText'] == ('초대 링크 다시 받기' if again else '초대 링크 받기') and u['help'] == again
+                            check(ok, 'H2b flow %d status: approved → 「초대됐어요」 + 「%s」 · help %s · no link before pressing' % (width, u['issueText'], again))
+                            p.reload(wait_until='networkidle')
                             p.wait_for_timeout(300)
-                            ok = ok and len(p.input_value('#join-invite')) == 64
-                        elif text == '검토 중이에요':
+                            check(int(sql(APP_COUNT)) == before, 'H2b flow %d: reload of the approved status issues nothing (issued_count %d)' % (width, before))
+                            p.locator('#invite-status-issue').click()
+                            p.wait_for_selector('#invite-status-join:not([hidden])', timeout=10000)
+                            u = ui()
+                            ok2 = (u['join'] and re.fullmatch(r'/tbox/join#invite=[0-9a-f]{64}', u['href'] or '') is not None and u['link'] and u['linkValue'] == site + u['href']
+                                   and not u['issue'] and int(sql(APP_COUNT)) == before + 1)
+                            check(ok2, 'H2b flow %d: press → invite link shown + 「가입하기」 · issued_count %d → %d' % (width, before, before + 1))
+                            p.screenshot(path=str(shots / ('status-approved-%d.png' % width)), full_page=True)
+                            open_status(frag)
+                            u = ui()
+                            check(u['issueText'] == '초대 링크 다시 받기' and u['help'] and not u['join'] and int(sql(APP_COUNT)) == before + 1,
+                                  'H2b flow %d: refresh after receiving → 「초대 링크 다시 받기」 + 「다시 받으면 앞의 링크는 쓸 수 없어요 (최대 3번)」 · no new invite' % width)
+                            p.screenshot(path=str(shots / ('status-again-%d.png' % width)), full_page=True)
+                            continue
+                        if frag == 'code=' + C_MAX:
+                            # 세 번 받은 요청 — 보기는 「초대됐어요」 + 단추 · 누르면 409 문장
+                            check(ok and u['issue'] and not u['join'], 'H2b flow %d status: approved (issued 3) → 「초대됐어요」 + button' % width)
+                            p.locator('#invite-status-issue').click()
+                            for _ in range(100):   # CSP(unsafe-eval 0) — wait_for_function 대신 evaluate 되풀이
+                                if p.evaluate("() => document.getElementById('invite-status-text').textContent.startsWith('초대 링크를 이미 세 번')"):
+                                    break
+                                p.wait_for_timeout(100)
+                            u = ui()
+                            check(not u['issue'] and not u['join'], 'H2b flow %d: 4th issue → 「초대 링크를 이미 세 번 받았어요」 · button hidden' % width)
+                            continue
+                        if text == '검토 중이에요':
                             p.screenshot(path=str(shots / ('status-open-%d.png' % width)), full_page=True)
-                            ok = ok and join.is_hidden()
-                        else:
-                            ok = ok and join.is_hidden()
+                        ok = ok and not u['join'] and not u['issue']
                         check(ok, 'flow %d status: %s → 「%s」' % (width, frag[:9] or '(no code)', text))
+                    if width == 412:
+                        # 받은 링크의 「가입하기」 → 가입 화면 초대 칸
+                        open_status('code=' + C_APP)
+                        p.locator('#invite-status-issue').click()
+                        p.wait_for_selector('#invite-status-join:not([hidden])', timeout=10000)
+                        p.locator('#invite-status-join').click()
+                        p.wait_for_url(re.compile(r'.*/tbox/join.*'), timeout=10000)
+                        p.wait_for_timeout(300)
+                        check(len(p.input_value('#join-invite')) == 64, 'H2b flow 412: 「가입하기」 → join page with the invite code filled')
                     check(t.clean('flow-%d' % width), 'flow %d: console 0 · 5xx 0' % width)
                     ctx.close()
                     sql('DELETE FROM member_rate_limits')

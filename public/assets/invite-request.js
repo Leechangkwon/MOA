@@ -78,10 +78,39 @@
     const join = $('invite-status-join');
     const login = $('invite-status-login');
     const say = (text) => { statusText.textContent = text; };
+    const issueBtn = $('invite-status-issue');
+    const issueHelp = $('invite-status-issue-help');
+    const linkField = $('invite-status-link-field');
+    const linkInput = $('invite-status-link');
+    let currentCode = '';
+    // 사이트 H2b — 보기(`{code}`)는 초대를 만들지 않는다. 「초대 링크 받기」를 누를 때만 `{code, issue:true}` 로 만든다(앞 링크는 서버가 거둠 · 세 번까지)
+    const showInvite = (path) => {
+      say('초대 링크를 받았어요 — 아래 「가입하기」로 계정을 만들어 주세요. 이 링크는 7일 동안 한 번 쓸 수 있어요.');
+      linkInput.value = location.origin + path;
+      linkField.hidden = false;
+      join.href = path;
+      join.hidden = false;
+      issueBtn.hidden = true;
+      issueHelp.hidden = true;
+    };
+    issueBtn.addEventListener('click', () => {
+      if (!/^[a-f0-9]{64}$/.test(currentCode)) return;
+      issueBtn.disabled = true;
+      post('/api/invite-requests/status', { code: currentCode, issue: true }).then((res) => {
+        if (res.ok && res.data.status === 'approved' && typeof res.data.invite_path === 'string' && /^\/tbox\/join#invite=[a-f0-9]{64}$/.test(res.data.invite_path)) { showInvite(res.data.invite_path); return; }
+        if (res.ok && res.data.status === 'joined') { say('가입을 마쳤어요 — 로그인해서 시작해 주세요.'); issueBtn.hidden = true; issueHelp.hidden = true; login.hidden = false; return; }
+        say(typeof res.data.error === 'string' ? res.data.error : '초대 링크를 받지 못했어요. 잠시 뒤 다시 시도해 주세요.');
+        if (res.status === 409) { issueBtn.hidden = true; issueHelp.hidden = true; }
+      }).catch(() => say('초대 링크를 받지 못했어요. 연결을 확인하고 다시 시도해 주세요.')).finally(() => { issueBtn.disabled = false; });
+    });
     const lookup = () => {
       join.hidden = true;
       login.hidden = true;
+      issueBtn.hidden = true;
+      issueHelp.hidden = true;
+      linkField.hidden = true;
       const code = new URLSearchParams(location.hash.slice(1)).get('code') || '';
+      currentCode = code;
       if (!/^[a-f0-9]{64}$/.test(code)) { say('요청 확인 주소가 올바르지 않아요.'); return; }
       say('확인하고 있어요…');
       post('/api/invite-requests/status', { code }).then((res) => {
@@ -89,10 +118,12 @@
         if (res.ok && st === 'open') { say('검토 중이에요 — 관리자가 확인하면 여기서 바로 볼 수 있어요.'); return; }
         if (res.ok && st === 'rejected') { say('이번에는 초대해 드리기 어려워요.'); return; }
         if (res.ok && st === 'joined') { say('가입을 마쳤어요 — 로그인해서 시작해 주세요.'); login.hidden = false; return; }
-        if (res.ok && st === 'approved' && typeof res.data.invite_path === 'string' && /^\/tbox\/join#invite=[a-f0-9]{64}$/.test(res.data.invite_path)) {
-          say('초대됐어요 — 아래 「가입하기」로 계정을 만들어 주세요. 초대 링크는 7일 동안 한 번 쓸 수 있어요.');
-          join.href = res.data.invite_path;
-          join.hidden = false;
+        if (res.ok && st === 'approved') {
+          const again = res.data.issued === true;
+          say(again ? '초대됐어요 — 이미 받은 초대 링크가 있어요. 그 링크를 잃어버렸다면 다시 받을 수 있어요.' : '초대됐어요 — 아래 단추로 초대 링크를 받아 가입해 주세요.');
+          issueBtn.textContent = again ? '초대 링크 다시 받기' : '초대 링크 받기';
+          issueBtn.hidden = false;
+          issueHelp.hidden = !again;
           return;
         }
         if (res.status === 404) { say('요청 확인 주소가 올바르지 않아요.'); return; }

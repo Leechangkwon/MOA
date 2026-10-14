@@ -107,8 +107,13 @@ def new_request(tag, expect=201):
     return r, d, code
 
 
-def status(code):
-    return req('POST', '/api/invite-requests/status', {'code': code})
+def status(code, issue=False):
+    # 사이트 H2b — 보기는 {code} · 발급은 {code, issue: true} 일 때만
+    return req('POST', '/api/invite-requests/status', {'code': code, 'issue': True} if issue else {'code': code})
+
+
+def issued_count(rid):
+    return int(sql('SELECT issued_count FROM invite_requests WHERE id=' + str(rid)))
 
 
 def row_of(code):
@@ -296,17 +301,30 @@ try:
         check(r.status_code == 400, 'status: extra key → 400')
         r = req('POST', '/api/invite-requests/status', {'code': state['E']}, join=False)
         check(r.status_code == 403, 'status: no join CSRF → 403')
+        for label, body in (('issue false', {'code': state['E'], 'issue': False}), ('issue "true"', {'code': state['E'], 'issue': 'true'}), ('issue 1', {'code': state['E'], 'issue': 1})):
+            r = req('POST', '/api/invite-requests/status', body)
+            check(r.status_code == 400, 'H2b status: %s → 400 (keys code + optional issue:true only)' % label)
         r = status(state['E'])
         check(r.status_code == 200 and js(r) == {'status': 'open'}, 'status: open → {status: open}')
+        r = status(state['E'], issue=True)
+        check(r.status_code == 200 and js(r) == {'status': 'open'}, 'H2b status: issue on an open request → {status: open} (nothing issued)')
         r = status(state['B'])
         check(r.status_code == 200 and js(r) == {'status': 'rejected'} and 'H2합성메모' not in r.text, 'status: rejected → {status: rejected} · note 0')
         inv0 = count('SELECT count(*) FROM member_invites')
         iss0 = count("SELECT count(*) FROM audit_logs WHERE action='invite_request.issue' AND result='allow'")
-        r = status(state['A'])
+        ids = state['ids']
+        # H2b — 승인된 요청을 보기만(여는 것 · 새로 고침) 세 번 → 발급 0 · issued_count 그대로 · 감사 0
+        looks = [status(state['A']) for _ in range(3)]
+        check(all(x.status_code == 200 and js(x) == {'status': 'approved', 'issued': False} for x in looks), 'H2b status: approved lookup ×3 → {status: approved, issued: false} · no invite_path')
+        check(count('SELECT count(*) FROM member_invites') == inv0 and issued_count(ids['A']) == 0
+              and count("SELECT count(*) FROM audit_logs WHERE action='invite_request.issue'") == iss0, 'H2b status: repeated lookups issue nothing (invites · issued_count 0 · audit unchanged)')
+        r = status(state['A'], issue=True)
         d = js(r)
         m = re.fullmatch(r'/tbox/join#invite=([0-9a-f]{64})', str(d.get('invite_path', '')))
-        check(r.status_code == 200 and d.get('status') == 'approved' and m is not None, 'status: approved → invite_path /tbox/join#invite=<64 hex>')
-        ids = state['ids']
+        check(r.status_code == 200 and d.get('status') == 'approved' and m is not None, 'H2b issue: {code, issue:true} → invite_path /tbox/join#invite=<64 hex>')
+        r2 = status(state['A'])
+        check(r2.status_code == 200 and js(r2) == {'status': 'approved', 'issued': True} and count('SELECT count(*) FROM member_invites') == inv0 + 1 and issued_count(ids['A']) == 1,
+              'H2b status: refresh after issuing → {approved, issued: true} · no new invite · issued_count 1')
         inv = sql("SELECT i.id || '|' || i.max_uses || '|' || i.used_count || '|' || coalesce(i.team_id::text,'-') || '|' || i.label || '|' || i.created_by || '|' "
                   "|| (i.expires_at BETWEEN now() + interval '7 days' - interval '2 minutes' AND now() + interval '7 days' + interval '1 minute')::text "
                   "FROM member_invites i JOIN invite_requests r ON r.invite_id = i.id WHERE r.id=" + str(ids['A']))
@@ -326,24 +344,31 @@ try:
             check(sql("SELECT coalesce(team_id::text,'-') || '|' || role FROM users WHERE username='h2_joined01'") == '%d|Employee' % team_a, 'join: new account in team A · Employee')
             r = status(state['A'])
             check(r.status_code == 200 and js(r) == {'status': 'joined'}, 'status: after joining → {status: joined} (no new invite)')
+            r = status(state['A'], issue=True)
+            check(r.status_code == 200 and js(r) == {'status': 'joined'}, 'H2b issue after joining → {status: joined}')
             check(count('SELECT count(*) FROM member_invites') == inv0 + 1, 'status: joined does not issue another invite')
-        # C: 다시 열면 앞 초대 거둠 + 새 발급 · 세 번 · 넷째 409
+        # C: 「초대 링크 (다시) 받기」 — 앞 초대 거둠 + 새 발급 · 세 번 · 넷째 409 (사이에 보기는 발급 0)
+        sql('DELETE FROM member_rate_limits')   # 확인 창구 1분 20회 — 위 단언들이 같은 분 안에 이미 썼다(속도 단언은 아래에서 따로)
         paths = []
         for i in range(3):
-            r = status(state['C'])
+            r = status(state['C'], issue=True)
             d = js(r)
             paths.append(d.get('invite_path'))
-            check(r.status_code == 200 and d.get('status') == 'approved' and isinstance(d.get('invite_path'), str), 'reissue: open #%d → new invite' % (i + 1))
+            check(r.status_code == 200 and d.get('status') == 'approved' and isinstance(d.get('invite_path'), str), 'reissue: issue #%d → new invite' % (i + 1))
+            look = status(state['C'])
+            check(js(look) == {'status': 'approved', 'issued': True} and issued_count(ids['C']) == i + 1, 'H2b reissue: lookup after issue #%d → issued true · issued_count %d unchanged' % (i + 1, i + 1))
         codes_seen.extend([p.split('=')[-1] for p in paths if isinstance(p, str)])
         rows = sql("SELECT string_agg((revoked_at IS NOT NULL)::text, ',' ORDER BY id) FROM member_invites WHERE label=" + lit('초대 요청 #%d' % ids['C']))
         check(rows == 'true,true,false' and len(set(paths)) == 3, 'reissue: earlier two invites revoked · latest open (%s)' % rows)
         check(sql('SELECT issued_count FROM invite_requests WHERE id=' + str(ids['C'])) == '3', 'reissue: issued_count 3')
         lim0 = count("SELECT count(*) FROM audit_logs WHERE action='invite_request.issue' AND reason='issue_limit'")
-        r = status(state['C'])
-        check(r.status_code == 409 and '세 번' in js(r).get('error', ''), 'reissue: 4th open → 409 「세 번」')
+        r = status(state['C'], issue=True)
+        check(r.status_code == 409 and '세 번' in js(r).get('error', ''), 'reissue: 4th issue → 409 「세 번」')
         check(count("SELECT count(*) FROM audit_logs WHERE action='invite_request.issue' AND reason='issue_limit'") == lim0 + 1, 'reissue: 409 → deny issue_limit audit')
         check(sql("SELECT string_agg((revoked_at IS NOT NULL)::text, ',' ORDER BY id) FROM member_invites WHERE label=" + lit('초대 요청 #%d' % ids['C'])) == 'true,true,false',
               'reissue: 409 keeps the third invite usable')
+        r = status(state['C'])
+        check(js(r) == {'status': 'approved', 'issued': True} and issued_count(ids['C']) == 3, 'H2b: lookup after the 409 → approved · issued true (third invite live)')
         if isinstance(paths[0], str):
             r = req('POST', '/api/register', {'invite': paths[0].split('=')[-1], 'username': 'h2_revoked01', 'display_name': 'H2', 'password': 'H2-invite-synthetic-only-2026!',
                                               'agree_terms': True, 'age14': True})

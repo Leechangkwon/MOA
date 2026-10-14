@@ -183,3 +183,30 @@ HTTP 시험이 잰 것: 요청 201 `{status_path}` · 코드 64 16진 · 표엔 
 
 - 관리 화면(`/tbox/admin`)의 머리 아이콘은 자료실 셸 것이라 「자료실 첫 화면으로」 → `/tbox/`(관리 화면은 자료실 셸 안).
 - 셸 이름 변수(`$shellBrandName` — 폰 윗줄 앱 이름 ▾ · `<title>`)는 그대로 둔다.
+
+---
+
+# H2b — 확인 주소를 열 때마다 초대가 새로 나가던 것 고침 (메인 검토 2026-10-14)
+
+문제: `invite_requests_status.php` 가 승인된 요청의 확인 주소를 **열기만 해도**(새로 고침 포함) 앞 초대를 거두고 새 초대를 만들어(issued_count+1) 세 번 새로 고치면 409 가 됐다.
+
+## H2b — 변경 파일
+
+| 파일 | 내용 |
+|---|---|
+| `src/handlers/invite_requests_status.php` | 키 = `code` + (선택) `issue: true` 만(그 밖 · `issue` 의 다른 값 400). **보기 `{code}` 는 발급 0** — 승인된 요청은 `{status:'approved', issued:<지금 쓸 수 있는 초대가 있나 — 거두지 않음 · 쓰지 않음 · 기한 안>}`(invite_path 0 · 행 바뀜 0 · 감사 0). 발급은 `{code, issue:true}` 일 때만 — 트랜잭션 · 행 잠금 · 앞 초대 거둠 · 세 번까지(넷째 409) · 감사는 그대로. 열린 · 반려 · 가입 마친 요청에 `issue:true` 는 그 상태를 그대로 답한다(발급 0) |
+| `src/handlers/invite_request_status_page.php` | 단추 `#invite-status-issue` 「초대 링크 받기」 · 도움말 `#invite-status-issue-help` · 받은 링크 칸(읽기 전용) |
+| `public/assets/invite-request.js` | 승인 → 「초대됐어요 — 아래 단추로 초대 링크를 받아 가입해 주세요.」 + 「초대 링크 받기」 / 이미 받았으면 「초대 링크 다시 받기」 + 「다시 받으면 앞의 링크는 쓸 수 없어요 (최대 3번)」 → 누르면 `{code, issue:true}` → 받은 링크 + 「가입하기」 · 409 는 서버 문장(「초대 링크를 이미 세 번 받았어요 — …」) · 단추 숨김 |
+| `tests/community/invite_request_http.py` · `tests/community/invite_request_browser.py` | 아래 단언 |
+
+## H2b — 수락 시험과 결과
+
+| 시험 | 결과 | 폴더 |
+|---|---|---|
+| `… --suite invite_request_http.py --output …/h2b-http` | **132 / 0** | `h2b-http/` |
+| `… --suite invite_request_browser.py --output …/h2b-browser` | **467 / 0** | `h2b-browser/`(shots/ `status-approved-*` · `status-again-*`) |
+| 정적 — security_lint · php -l · node --check · wiki_check · git diff --check | 0건 · 통과 · 통과 · 0건 · 통과 | — |
+
+더한 단언: `issue` false · 글자 "true" · 1 → 400 · 열린 요청에 issue → `{open}`(발급 0) · 승인 요청 보기 ×3 → `{approved, issued:false}` · 초대 · issued_count · 감사 그대로 · issue → invite_path · 새로 고침(보기) → `{approved, issued:true}` · 새 초대 0 · 가입 뒤 issue → `{joined}` · 다시 받기 세 번(사이 보기는 issued_count 그대로) · 넷째 issue 409 + deny · 409 뒤 보기 → issued true(셋째 초대 살아 있음). 브라우저: 승인 화면 「초대 링크 받기」(받기 전 링크 0) · 새로 고침 발급 0 · 누르면 링크 + 「가입하기」 · 다시 열면 「초대 링크 다시 받기」 + 도움말 · 세 번 받은 요청은 누르면 409 문장 · 412 에서 「가입하기」 → 가입 화면 초대 칸 64자.
+
+시험 쪽 고침 둘: 확인 창구 1분 20회 셈이 늘어난 보기 단언에 닿아 「다시 받기」 앞에서 셈을 비움 · 브라우저의 409 기다림을 CSP 아래에서 `evaluate` 되풀이로.

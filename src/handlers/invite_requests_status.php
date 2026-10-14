@@ -8,7 +8,9 @@ declare(strict_types=1);
  *   가입과 같은 CSRF · IP 마다 1분 20회(Member::rate) · 키는 `code` 하나 · 64자리 16진이 아니거나 없는 코드는 같은 404 ·
  *   찾기는 sha256 으로만(원문 저장 0).
  * 답 `{status}`: open(검토 중) · rejected(메모는 주지 않는다) · joined(이 요청의 초대로 가입을 마침) ·
- *   approved + invite_path — **이때** 초대를 만든다(Member::issueInvite — 1회용 · 7일 · 승인 때 고른 팀 · 이름표 「초대 요청 #번호」 ·
+ *   approved + `issued`(지금 쓸 수 있는 초대 — 거두지 않았고 · 쓰지 않았고 · 기한 안 — 가 이미 있나). **보기(`{code}`)는 초대를 만들지 않는다**
+ *   (사이트 H2b — 확인 주소를 열거나 새로 고칠 때마다 발급되던 것을 고침).
+ * 발급은 `{code, issue: true}` 일 때만 — approved + invite_path. Member::issueInvite(1회용 · 7일 · 승인 때 고른 팀 · 이름표 「초대 요청 #번호」 ·
  *   만든 사람 = 승인한 관리자). 한 트랜잭션 · 요청 행 잠금 · 앞 초대는 revoked_at · 요청 하나에 세 번까지(넷째는 409).
  * 감사: invite_request.issue(대상 「초대 요청 #번호」 · 초대 번호 · 몇 번째). 초대 코드는 응답의 invite_path(`#` 뒤)에만.
  */
@@ -16,7 +18,11 @@ require_once __DIR__.'/../Member.php';
 Member::requireJoinCsrf();
 Member::rate('invite-request-status', Http::clientIp() ?? 'unknown', 20);
 $body = Http::jsonBody(1024);
-if (array_keys($body) !== ['code']) Http::error(400, Http::MSG_BAD_REQUEST);
+// 키는 code 하나 + (발급할 때만) issue: true — 그 밖의 키 · issue 의 다른 값은 400
+$keys = array_keys($body);
+sort($keys);
+if (($keys !== ['code'] && $keys !== ['code', 'issue']) || (array_key_exists('issue', $body) && $body['issue'] !== true)) Http::error(400, Http::MSG_BAD_REQUEST);
+$issue = ($body['issue'] ?? false) === true;
 $code = $body['code'];
 unset($body);
 $notFound = '요청 확인 주소가 올바르지 않아요.';
@@ -29,7 +35,8 @@ $db->begin();
 try {
     $req = $db->run(<<<'SQL'
         SELECT r.id, r.status, r.team_id, r.decided_by, r.invite_id, r.issued_count,
-               i.used_count AS invite_used, i.max_uses AS invite_max
+               i.used_count AS invite_used, i.max_uses AS invite_max,
+               (i.id IS NOT NULL AND i.revoked_at IS NULL AND i.expires_at > now() AND i.used_count < i.max_uses) AS invite_live
           FROM invite_requests r
           LEFT JOIN member_invites i ON i.id = r.invite_id
          WHERE r.status_hash = :hash
@@ -49,6 +56,12 @@ try {
     if ($req['invite_id'] !== null && $req['invite_used'] !== null && (int) $req['invite_used'] >= (int) $req['invite_max']) {
         $db->commit();
         Http::json(['status' => 'joined']);
+        return;
+    }
+    if (!$issue) {
+        // 보기만 — 발급 0 · 행 바뀜 0 · 감사 0
+        $db->commit();
+        Http::json(['status' => 'approved', 'issued' => $req['invite_live'] === true]);
         return;
     }
     if ((int) $req['issued_count'] >= 3) {
