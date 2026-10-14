@@ -43,3 +43,22 @@
               정적: security_lint 0 · php -l · node --check · wiki_check · git diff --check · 마이그레이션 두 번(틀)
 보고 형식   : docs/invite-request-report.md — 변경 파일 / 수락 시험과 결과 / 고친 옛 단언 / 못 한 것 / 기획 · DESIGN 과 다르게 한 것. 짧게.
 ```
+
+## H3 — 「우리 공간」 = 카페 (사용자 지적 2026-10-14 · H2 뒤 · 같은 worktree · 같은 반영)
+
+사용자(스크린샷 — 「우리 공간」 화면): 「여기 내 공간은 비활성화하고, 바로 카페로 넘어가지게 하자」.
+
+```
+목표        : 「우리 공간」을 누르면 카페 셸 안의 카페 홈(`/community/cafe`)이 바로 열리고, 「내 공간」(회사 · 모임 공간) 묶음은 화면에서 빠지되 옛 공간 링크는 살아 있게 한다.
+요구사항    : DESIGN 2.29 「「우리 공간」 = 카페」 줄(2026-10-14) · 2.29 카페 홈 ①② · 카페 셸.
+수정 파일   : src/community/routes.php(`GET /cafe` 화면 한 줄 · community.read) · src/community/handlers/cafe_page.php(새 — 카페 셸 · 카페 홈 뼈대 · 판정 0 — 자료는 지금 /api/cafe) ·
+              src/handlers/product_spaces_page.php(쿼리 없으면 302 /community/cafe · `?space=` 면 지금 화면) · src/views/space_page.php(카페 묶음 · 「내 공간」 머리 빼고 공간 화면만) ·
+              public/assets/space-page.js(cafeHome 부분을 카페 화면 JS 로 옮김 — 두 벌 0) · public/assets/community/cafe.js(카페 홈 그리기 — 옮겨 온 것) ·
+              src/Apps.php 또는 앱 목록 원본(우리 공간 주소) · src/views/launcher.php(바로가기 `spaces` 주소 한 줄) · src/views/shell_top.php · shell_tools.php(카페 사이드바 「카페 홈」 · 셸 브랜드 주소) ·
+              public/assets/space-page.css · community.css(옮긴 클래스) · 위키에서 /tbox/spaces 를 가리키는 카페 안내 글의 링크 ·
+              시험 — tests/community/cafe_h3_browser.py(새 수락) · memories_harness.py(choices) · tests/catalog.json · 카페 홈 자리를 /tbox/spaces 로 재던 옛 단언(cafe_c2_browser 등)은 그 단언만 · docs/invite-request-report.md(H3 절)
+금지 패턴   : 공간 창구 · 판정 · 자료 바꾸기 · 카페 홈 그리기 두 벌 · innerHTML · 인라인 style · 새 색값 · git add -A.
+완료 기준   : 앱 판 · 홈 바로가기 · 카페 사이드바 · 셸 브랜드의 「우리 공간」 → /community/cafe(카페 셸 · 사이드바 카페 모드 · 카페 홈 카드 · 새 글 · 인기 · 「게시판 만들어 주세요」) · 「내 공간」 0 ·
+              /tbox/spaces → 302 /community/cafe · /tbox/spaces?space=<읽을 수 있는 공간> → 그 공간 화면(카페 묶음 0) · 못 보는 공간은 지금과 같은 거부 ·
+              홈 대시보드 공간 위젯 「전체 보기」 링크가 그 공간을 엶 · 손님 · 직원 · 관리자 · 1440 · 412 × 밝게 · 어둡게 · 고대비 넘침 0 · 콘솔 0
+```
