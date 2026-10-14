@@ -65,17 +65,19 @@
 
 ## H4 — 「모아.」 글자 로고(시안 D) · 바닥 붙이기 (사용자 지적 · 결정 2026-10-14 · H3 뒤 · 같은 worktree · 같은 반영)
 
-사용자(스크린샷 — 새 모아 홈): 「최하단에 밑에 깔려 있어야 할 글이 붕 떠 있는 느낌 · Qaredi 도 그냥 모아로 바꾸고 · 모아 글씨를 조금 비비드하게 꾸며 봐 — 그 비비드한 색상이 맘에 들면 전역에 모아 글씨를 개선하자」 → 시안 「D(진한 보라 단색 + 노란 점)가 좋아 보인다」.
+사용자(스크린샷 — 새 모아 홈): 「최하단에 밑에 깔려 있어야 할 글이 붕 떠 있는 느낌 · Qaredi 도 그냥 모아로 바꾸고 · 모아 글씨를 조금 비비드하게 꾸며 봐 — 그 비비드한 색상이 맘에 들면 전역에 모아 글씨를 개선하자」 → 시안 「D(진한 보라 단색 + 노란 점)가 좋아 보인다」 · 「저런 형태로 해서, 테마 설정하면 색상 맘에 드는 걸로 선택해 가면서 변경 가능하도록 하자」(시안 A ~ D 를 테마 창에서 고름 · 기본 D).
 
 ```
-목표        : 사이트의 「모아」 글자를 한 부품(보라 + 노란 점)으로 바꾸고, 「Qaredi」 글자를 「모아.」로, 짧은 화면의 바닥 글을 화면 맨 아래로 붙인다.
+목표        : 사이트의 「모아」 글자를 한 부품(기본 D 보라 + 노란 점 · 테마 창에서 A ~ D 고르기)으로 바꾸고, 「Qaredi」 글자를 「모아.」로, 짧은 화면의 바닥 글을 화면 맨 아래로 붙인다.
 요구사항    : DESIGN 2.33 전부(main 의 DESIGN.md — 2026-10-14) · 2.31 · 2.32 의 「Qaredi」 자리 · 2.16 고대비.
-수정 파일   : public/assets/app.css(새 토큰 2.33 의 값만 — :root · 다크 · 고대비 블록) · public/assets/moa.css(.moa-wordmark · __dot · 상징 · 바닥 붙이기) ·
+수정 파일   : public/assets/app.css(새 토큰 2.33 의 값만 — :root · 다크 · 고대비 블록 · `[data-wordmark=a|b|c]` 갈래) · src/Design.php(쿠키 `qaredi_wordmark` 허용 목록 · attrs 에 data-wordmark) ·
+              public/assets/design.js(테마 창에 「모아 글씨 색」 라디오 넷 · 미리보기 · 쿠키 쓰기 — 지금 테마와 같은 길) · 테마 창 마크업(`design_controls.php` 등 — 그 창이 있는 곳) · public/assets/moa.css(.moa-wordmark · __dot · 상징 · 바닥 붙이기) ·
               src/views/moa_wordmark.php(새) · src/views/launcher.php · src/views/member_top.php · src/handlers/legal_page.php · 로그인 화면 뷰 · src/views/shell_top.php(셸 브랜드 「모아」 칠 — 마크업 한 span) ·
               바닥 붙이기에 필요한 그 화면들의 body · main 클래스 · 시험 — tests/community/home_h4_browser.py(새 수락) · memories_harness.py(choices) · tests/catalog.json ·
               「Qaredi」 글자 · 바닥 위치를 재던 옛 단언(home_h1_browser · H2 시험 등)은 그 단언만 · docs/invite-request-report.md(H4 절)
 금지 패턴   : 2.33 에 없는 새 색값 · 인라인 style · 글자 로고 마크업 두 벌(전부 moa_wordmark.php) · 테마(Astra 등) 토큰을 바꾸기 · git add -A.
 완료 기준   : 모아 홈 · 로그인 전 첫 화면 · 머리 로고 · 바닥 · 로그인 · 가입 · 동의 · 초대 요청 · 법적 문서: 「모아.」 글자(계산된 색 = --brand-wordmark · 점 = --brand-wordmark-dot) · 「Qaredi」 글자 0 ·
-              셸 브랜드 앞 「모아」 보라 · 점 0 · 테마 다섯을 바꿔도 글자 로고 색 그대로 · 고대비에서 --fg · 대비 4.5 이상(밝게 · 어둡게) ·
+              셸 브랜드 앞 「모아」 보라 · 점 0 · 테마 다섯을 바꿔도 글자 로고 색 그대로 · 고대비에서 --fg · 대비 4.5 이상(밝게 · 어둡게 · 네 갈래 첫 색) ·
+              테마 창 「모아 글씨 색」 넷 · 고르면 즉시 바뀜 · 새로 고침 · 다른 화면에서 첫 HTML 의 data-wordmark 가 고른 값 · 엉뚱한 쿠키 값 → d · 쿠키 없음 → d · C 에서 「모」 「아」 두 색 · A · B 그라데이션 · 점은 D 만 ·
               바닥: 1440×900 · 1920×1080 · 412×900 에서 내용이 짧은 화면(모아 홈 대시보드 접힘 · 가입 · 초대 요청) 바닥 아래 끝 = 창 아래 끝(±1) · 내용이 긴 화면은 내용 뒤 · 넘침 0 · 콘솔 0 · 스크린샷(홈 밝게 · 어둡게 · 1920 · 412)
 ```
