@@ -241,6 +241,8 @@ const COMMUNITY_ROUTES = [
      * 첨부 행은 `page_id = 주소 문서 AND public_id = 주소 첨부` 로만 읽는다(`community_attachment_row`). `{gid}` 는 UUID 자리표시자를 다시 쓴다.
      * 프로그램 토큰 창구(COMMUNITY_API_TOKEN_ROUTES)에는 넣지 않는다(24.3). */
     ['POST',   '/api/pages/{id}/attachments',                'attachments_upload.php',   'community.write'],
+    // 카페 C4 (DESIGN 2.26 「검사 중 미리보기」) — 검사 상태 다시 묻기(지도 `attachment_titles` 한 칸 · 판정 decideAttachmentRead · 감사 0)
+    ['GET',    '/api/pages/{id}/attachments',                'attachments_list.php',     'community.read'],
     ['GET',    '/api/pages/{id}/attachments/{gid}/raw',      'attachments_raw.php',      'community.read'],
     ['GET',    '/api/pages/{id}/attachments/{gid}/download', 'attachments_download.php', 'community.read'],
 

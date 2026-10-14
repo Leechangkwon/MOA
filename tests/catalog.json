@@ -6373,6 +6373,35 @@
       "est_sec": 600,
       "writes_prod": false,
       "notes": "사이트 Q:F-12 카페 C2 「화면」(docs/cafe-directive.md · DESIGN 2.29 · 커뮤니티 ARCH 25장) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. 「우리 공간」 카페 홈(카드 · 새 글 · 인기 · 빈 상태 · 손님 요청 단추 0 · 내 공간 아래 그대로) · 카페 셸(body[data-area=cafe] — 읽기 판정 통과 때만 · 카페 게시판만 · 업무 트리 0 · 관리 묶음 관리자만) · 업무 사이드바 게시판 = area=work · 익명 표시(글쓴이 · 익명N · (나) · 사람 아이콘 · 안내 한 줄) · @ 목록 0 · 자료실 탭 0 · 신고 모달(라디오 다섯 · 409 · 알림 줄) · 댓글 신고 · 신고함(직원 403 · 탭 · 칸 · 메모 필수 · 숨기기 · 반려) · 작성자 확인(재인증 창 → 사유 20 → 이름 → 닫으면 DOM 0 · 저장소 · 주소 · 콘솔 0) · 게시판 요청 → 관리자 만들기 → 카드 · 반려 · 폭 여섯 × 밝게 · 어둡게 · 고대비 넘침 0 · 누름 자리 44 · 인라인 style 0 · 콘솔 0. 결과: cafe-c2-browser-results.json · cafe-c2-browser-metrics.json · shots/."
+    },
+    {
+      "id": "community.cafe_c4_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite cafe_c4_browser.py --output /tmp/qaredi-cafe-c4-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/attachments_list.php",
+        "src/community/handlers/comments_list.php",
+        "src/community/routes.php",
+        "public/assets/community/editor.js",
+        "public/assets/community/work.js",
+        "public/assets/community/doc-render.js",
+        "public/assets/community/community.css",
+        "tests/community/cafe_c4_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 600,
+      "writes_prod": false,
+      "notes": "카페 묶음 C4 「편집 중 그림 · 남긴 댓글의 멘션」(docs/cafe-directive.md C4 · DESIGN 2.26 「검사 중 미리보기」 · 2.27 「남긴 댓글의 멘션」 · 커뮤니티 ARCH 24장) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. [http] GET /api/pages/{id}/attachments(주인 · 보기 공유 200 · 지도 한 칸 · 다른 문서 첨부 0 · 다른 팀 · 손님 · 관리자 특권 404 · pending raw/download 423 그대로) · comments_list mention_status(ok+이름 · 없음 · 못 봄 · 특권 · 손님 ok:false 이름 0 · `@아이디.te` 한 토큰 · 손님 시점 {} · 익명게시판 {} · 질의 수 댓글 3 = 30 — 리플렉션으로 PDO 문장 수) · [image] 1440 · 412: 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」(SCAN_ENABLED=1 — 틀 사본 .env) → 즉시 img data: + 「검사 중 · 나만 보여요」 · 손잡이 폭 · clean(DB) → 5초 안에 서버 img · 배지 0 · 폭 그대로 · 저장 · 다시 열기 · 새로 고침 뒤 상자 → 바뀜 · 다른 사람 상자 · 작업 칸 편집기 · 콘솔 0 · [mention] 전체 화면 · 작업 칸: ok 파랑 · miss 빨강 물결 · aria-label · 대비 ≥ 4.5(밝게 · 어둡게 · 고대비) · 넘침 0. 결과: cafe-c4-browser-results.json · cafe-c4-browser-metrics.json · shots/."
     }
   ]
 }

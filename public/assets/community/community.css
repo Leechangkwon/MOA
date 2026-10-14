@@ -918,6 +918,8 @@ th.doc-table__cell { font-weight: 600; }
 .ProseMirror-selectednode.doc-atom[data-atom="image"] { outline: none; }
 .ProseMirror-selectednode.doc-atom[data-atom="image"] :is(.doc-image, .doc-file) { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: var(--r-ctl); }
 .doc-atom[data-atom="image"] .doc-image { position: relative; }
+/* 카페 C4 (DESIGN 2.26 「검사 중 미리보기」) — 올린 사람의 편집기에서 검사 중 그림(브라우저 안 사본)은 그림 자체 + 왼쪽 위 작은 배지 「검사 중 · 나만 보여요」 */
+.doc-image[data-preview] > .badge { position: absolute; top: 8px; left: 8px; z-index: 1; pointer-events: none; }
 .doc-atom[data-atom="image"] .doc-image__caption.muted { color: var(--muted); }
 .doc-image__resize { display: none; position: absolute; top: 50%; right: 0; width: 8px; height: 32px; margin-top: -16px; border-radius: 4px; background: var(--primary); cursor: ew-resize; touch-action: none; }
 .doc-image__resize::before { content: ""; position: absolute; top: -6px; bottom: -6px; left: -36px; right: 0; }
@@ -1204,6 +1206,14 @@ body[data-page="community-board"] .table-foot {
 /* 바탕(옅은 색)만으로는 밝은 테마에서 잘 안 보여 같은 층에 2px 밑줄(같은 뜻의 진한 색)을 더한다 — box-shadow 라 글자 자리 · 줄 높이는 그대로 */
 .mention-mark--ok { background: var(--accent-soft); box-shadow: inset 0 -2px 0 var(--accent); }
 .mention-mark--miss { background: var(--danger-soft); box-shadow: inset 0 -2px 0 var(--danger); }
+/* 카페 C4 (DESIGN 2.27 「남긴 댓글의 멘션」) — 남긴 댓글(전체 화면 `.list__body` · 작업 칸 `.task-comment`)의 `@아이디` 는 입력 칸과 같은 바탕에 **글자가 보인다**:
+   확인됨 = 글자 --accent-dark · 500(밑줄 2px 그대로) · 못 찾음 = 글자 --danger 를 --fg 쪽으로 18% 당긴 값(토큰 섞기 — 밝은 테마에서 --danger 가 --danger-soft 위
+   4.41:1 이라 4.5 를 넘기려고 · 새 색값 0) + 물결 밑줄(색만으로 가르지 않는다 — title · aria-label 이 글자로도 말한다). 그림자 층 안 표시(글자 투명)는 위 그대로 */
+:is(.list__body, .task-comment) > .mention-mark--ok { color: var(--accent-dark); font-weight: 500; }
+:is(.list__body, .task-comment) > .mention-mark--miss {
+  color: color-mix(in srgb, var(--danger) 82%, var(--fg)); box-shadow: none;
+  text-decoration: underline wavy var(--danger); text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-skip-ink: none;
+}
 .mention-field > .menu__list { position: absolute; top: calc(100% + 4px); left: 0; right: auto; width: min(22rem, 100%); max-height: 20rem; overflow-y: auto; }
 .mention-field > .menu__list > .help { padding: 6px 10px; white-space: normal; }
 .mention-field > .menu__list .menu__item { height: auto; min-height: 32px; white-space: normal; }

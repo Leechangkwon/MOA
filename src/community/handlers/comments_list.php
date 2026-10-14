@@ -93,8 +93,66 @@ foreach ($rows as $c) {
     ];
 }
 
+/* 카페 C4 (DESIGN 2.27 「남긴 댓글의 멘션」 · 사용자 지적 2026-10-14) — 남긴 댓글의 `@아이디` 가 알림 규칙으로 닿는 사람인가.
+   `mention_status: {아이디: {ok:true, display_name} | {ok:false}}` — **이 목록에 보이는 본문에 나온 아이디만**(토큰 규칙 = 알림과 같은
+   `community_mentions_in`). 판정은 댓글을 만들 때의 알림과 같은 줄기: 계정 한 줄 → `decideMentionTarget`(그 사람 몫으로 다시 읽은 문서 행 —
+   활성 · 쓰기 자격 · 그 문서 읽기 · 특권 갈래 제외). 없는 아이디와 그 문서를 못 보는 사람은 **같은 답**(ok:false · 이름 0 — 존재를 드러내지 않는다).
+   · 질의: 계정은 이름 목록으로 **한 번**(ANY) · 판정에 쓰는 문서 행은 활성 · 쓰기 자격 후보마다 한 번 — 판정 상한 `$mentionStatusMax`(20) 명
+     (멘션 후보 창구 D-7 의 「앞에서부터 20명까지 · 한 명씩 판정」과 같은 방식 — 판정 규칙을 SQL 로 한 벌 더 적지 않는다). 댓글 수와 무관하다
+     (댓글 3 · 30 같은 수 — 시험이 잰다). 상한 밖 아이디는 지도에 없다(화면은 그 토큰을 평문으로 둔다).
+   · 쓸 수 없는 사람(손님)에게는 빈 지도 — 멘션 후보 창구(mention_candidates.php M-1)와 같은 이유(「그 문서를 볼 수 있는 사람」을 뽑아 보는 길 0).
+   · 익명게시판 글은 빈 지도 — 멘션이 꺼져 있다(comments_create 가 해석하지 않는다 · ARCH 25.3). */
+$mentionStatusMax = 20;
+$mentionStatus = [];
+if (!$anon && Authz::canCommunityWrite($user)) {
+    $names = [];
+    foreach ($out as $c) {
+        if (!is_string($c['body'])) {
+            continue;
+        }
+        foreach (community_mentions_in($c['body']) as $name) {
+            if (!in_array($name, $names, true)) {
+                $names[] = $name;
+            }
+        }
+        if (count($names) >= $mentionStatusMax) {
+            break;
+        }
+    }
+    $names = array_slice($names, 0, $mentionStatusMax);
+    if ($names !== []) {
+        // 아이디 글자는 `[a-z0-9_.-]` 뿐이라(community_mentions_in) 쉼표로 이은 값 하나를 바인딩으로 넘긴다 — SQL 글자에 섞이는 값 0
+        $peopleSql = <<<'SQL'
+            SELECT u.id, u.username, u.display_name, u.role, u.team_id, u.is_active
+              FROM public.users u
+             WHERE u.username = ANY(string_to_array(CAST(:names AS text), ','))
+            SQL;
+        $people = [];
+        foreach ($db->run($peopleSql, [':names' => implode(',', $names)])->fetchAll() as $p) {
+            $people[(string) $p['username']] = $p;
+        }
+        foreach ($names as $name) {
+            $target = $people[$name] ?? null;
+            $ok     = false;
+            // 활성 · 쓰기 자격이 아니면 문서 행을 읽지 않는다(판정 함수 decideMentionTarget 의 앞 두 거부와 같은 값 — 질의 0)
+            if ($target !== null && $target['is_active'] === true && Authz::canCommunityWrite([
+                'id'      => (int) $target['id'],
+                'role'    => (string) $target['role'],
+                'team_id' => $target['team_id'] === null ? null : (int) $target['team_id'],
+            ])) {
+                $rowFor = community_page_row_nodoc((string) $row['public_id'], (int) $target['id']);
+                $ok     = $rowFor !== null && CommunityAuthz::decideMentionTarget($target, $rowFor)[0];
+            }
+            $mentionStatus[$name] = $ok
+                ? ['ok' => true, 'display_name' => $target['display_name'] === null ? null : (string) $target['display_name']]
+                : ['ok' => false];
+        }
+    }
+}
+
 Http::json([
-    'comments'    => $out,
-    'count'       => count(array_filter($out, static fn (array $c): bool => !$c['deleted'])),
-    'can_comment' => $canComment,
+    'comments'       => $out,
+    'count'          => count(array_filter($out, static fn (array $c): bool => !$c['deleted'])),
+    'can_comment'    => $canComment,
+    'mention_status' => $mentionStatus === [] ? new stdClass() : $mentionStatus,
 ]);

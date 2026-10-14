@@ -1,7 +1,7 @@
-import { drawCalendar, rangeFor } from './calendar.js?v=93b1d7eae309';
-import { renderDoc } from './doc-render.js?v=93b1d7eae309';
-import { createMentionInput } from './mention-input.js?v=93b1d7eae309';
-import { personText } from './cafe.js?v=93b1d7eae309';
+import { drawCalendar, rangeFor } from './calendar.js?v=d0ff5dce7bf1';
+import { renderDoc } from './doc-render.js?v=d0ff5dce7bf1';
+import { createMentionInput } from './mention-input.js?v=d0ff5dce7bf1';
+import { personText } from './cafe.js?v=d0ff5dce7bf1';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -685,6 +685,7 @@ export function createWork(deps) {
     let currentId = null;
     let loadSeq = 0;
     let editor = null;
+    let attWatch = null;   // 카페 C4 — 칸에 그린 문서의 검사 중 첨부 다시 묻기(editor.js watchAttachments 한 벌)
     const full = ctx.mode === 'full';
     const sizer = full ? null : paneSizer(paneEl);
     let projectHref = base + '/';
@@ -708,6 +709,7 @@ export function createWork(deps) {
     }
     /** 칸을 걷는다(편집 중이면 저장을 마치고 걷는다) — 닫을 때 */
     function release() {
+      if (attWatch) { attWatch.stop(); attWatch = null; }
       if (editor) { editor.flush().catch(() => {}); editor.destroy(); editor = null; }
       if (paneEl) { show(paneEl, false); clear(paneEl); }
       if (!full) { body.removeAttribute('data-task-open'); }
@@ -1058,6 +1060,24 @@ export function createWork(deps) {
       drawDoc();
       setDocEditable(docEditable);
       docSec.appendChild(docBox);
+      /* 카페 C4 (DESIGN 2.26 「검사 중 미리보기」 ②③) — 이 문서의 검사 중 첨부를 다시 묻는다(전체 화면과 같은 함수). 끝나면 편집 중이면 그 그림 부품만,
+         읽기면 설명을 다시 그리고 「파일 첨부」 줄의 배지도 고친다. 칸을 다시 그리거나 닫으면 멈춘다 */
+      if (attWatch) { attWatch.stop(); attWatch = null; }
+      const attRows = new Map();
+      if (typeof deps.watchAttachments === 'function') {
+        const mine = deps.watchAttachments({
+          pageId: () => id,
+          titles: () => readCtx.attachment_titles,
+          onChange: (ids) => {
+            if (!docBox.isConnected) { mine.stop(); return; }
+            if (typeof deps.redrawAttachments === 'function') { deps.redrawAttachments(ids); }
+            if (!editor) { drawDoc(); }
+            for (const f of ids) { const li = attRows.get(f); if (li) { drawAttRow(li, f); } }
+          }
+        });
+        attWatch = mine;
+        mine.kick();
+      }
       const editState = el('span', 'badge');
       editState.hidden = true;
       docSec.firstChild.appendChild(editState);
@@ -1075,7 +1095,8 @@ export function createWork(deps) {
         editor = deps.mountEditor(mount, {
           pageId: id, doc: page.doc, version: page.doc_version, titles: readCtx,
           onState: (t) => { setText(editState, t); show(editState, t !== ''); },
-          onSaved: (doc, version) => { page.doc = doc; page.doc_version = version; },
+          onSaved: (doc, version) => { page.doc = doc; page.doc_version = version; if (attWatch) { attWatch.kick(true); } },
+          onUploaded: () => { if (attWatch) { attWatch.kick(); } },
           onError: (t) => say(msg, t)
         });
         if (!editor) { drawDoc(); endBtn.remove(); setDocEditable(true); return; }
@@ -1233,6 +1254,20 @@ export function createWork(deps) {
       subItem.addEventListener('click', addSub);
       paneEl.appendChild(subSec);
 
+      /** 「파일 첨부」 한 줄(문서 전용 첨부) — 검사가 끝난 것은 받기 링크, 아니면 이름 + 배지. 검사가 끝나면(C4 다시 묻기) 같은 함수로 다시 그린다 */
+      function drawAttRow(li, f) {
+        clear(li);
+        const ent = readCtx.attachment_titles[f] || {};
+        if (ent.scan_status === 'clean') {
+          const a = el('a', null, ent.name || '파일');
+          a.href = base + '/api/pages/' + id + '/attachments/' + f + '/download';
+          li.appendChild(a);
+        } else {
+          li.appendChild(el('span', null, ent.name || '파일'));
+          li.appendChild(el('span', 'badge', ent.scan_status === 'pending' ? '검사 중' : '받을 수 없음'));
+        }
+      }
+
       /* 파일 첨부 — 본문에 붙인 자료실 파일(보는 사람이 자료실에서 볼 수 있는 것만 창구가 준다) + 이 문서 전용 첨부
          (U3 C — `attachment_titles`: 창구가 이 문서의 첨부를 받을 수 있는 사람에게만 준 것). 검사가 끝나지 않은 첨부는 이름 + 배지(받기 0) */
       const files = data.file_titles && typeof data.file_titles === 'object' ? Object.keys(data.file_titles).filter((k) => UUID_RE.test(k)) : [];
@@ -1249,17 +1284,10 @@ export function createWork(deps) {
           ul.appendChild(li);
         }
         for (const f of atts) {
-          const ent = readCtx.attachment_titles[f] || {};
           const li = el('li', 'task-event');
           li.setAttribute('data-attachment', f);
-          if (ent.scan_status === 'clean') {
-            const a = el('a', null, ent.name || '파일');
-            a.href = base + '/api/pages/' + id + '/attachments/' + f + '/download';
-            li.appendChild(a);
-          } else {
-            li.appendChild(el('span', null, ent.name || '파일'));
-            li.appendChild(el('span', 'badge', ent.scan_status === 'pending' ? '검사 중' : '받을 수 없음'));
-          }
+          drawAttRow(li, f);
+          attRows.set(f, li);
           ul.appendChild(li);
         }
         fileSec.appendChild(ul);
@@ -1287,6 +1315,7 @@ export function createWork(deps) {
       let oldestFirst = true;
       let events = [];
       let comments = [];
+      let mentionStatus = {};
       function eventText(e) {
         const by = personLabel(e.by_display_name || null, e.by || '');
         if (e.kind === 'property') {
@@ -1316,7 +1345,8 @@ export function createWork(deps) {
           if (it.comment) {
             const li = el('li', 'task-comment');
             li.appendChild(el('span', 'task-comment__who', who(it.comment.author) + ' · ' + shortWhen(it.comment.created_at)));
-            li.appendChild(document.createTextNode(it.comment.body));
+            if (typeof deps.mentionInto === 'function') { deps.mentionInto(li, it.comment.body, mentionStatus); }
+            else { li.appendChild(document.createTextNode(it.comment.body)); }
             actList.appendChild(li);
           } else {
             actList.appendChild(el('li', 'task-event', it.text + ' · ' + shortWhen(it.at)));
@@ -1329,6 +1359,8 @@ export function createWork(deps) {
         return api('GET', '/api/pages/' + id + '/comments').then((r) => {
           if (r.status !== 200 || id !== currentId) { return; }
           comments = Array.isArray(r.data.comments) ? r.data.comments : [];
+          // 카페 C4 — 남긴 댓글의 `@아이디` 확인 지도(서버 판정 — 전체 화면 댓글과 같은 창구 · 같은 표시 함수)
+          mentionStatus = r.data.mention_status && typeof r.data.mention_status === 'object' && !Array.isArray(r.data.mention_status) ? r.data.mention_status : {};
           drawActivityList();
         }).catch(() => {});
       }

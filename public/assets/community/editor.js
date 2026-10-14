@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=93b1d7eae309';
-import { hydrateDashboard } from './dashboard.js?v=93b1d7eae309';
+import { createTableEditor } from './table-editor.js?v=d0ff5dce7bf1';
+import { hydrateDashboard } from './dashboard.js?v=d0ff5dce7bf1';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=93b1d7eae309';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=93b1d7eae309';
-import { createMentionInput } from './mention-input.js?v=93b1d7eae309';
-import { createDatabaseView } from './database.js?v=93b1d7eae309';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=93b1d7eae309';
-import { bindEmbedAdmin } from './embeds.js?v=93b1d7eae309';
-import { bindPopular } from './popular.js?v=93b1d7eae309';
-import { bindPalettes } from './palettes.js?v=93b1d7eae309';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=93b1d7eae309';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=93b1d7eae309';
-import { drawTrust, bindProcedures } from './procedures.js?v=93b1d7eae309';
-import { createPageExport } from './export.js?v=93b1d7eae309';
-import { createDrafts } from './drafts.js?v=93b1d7eae309';
-import { drawPageAi, bindAiCenter } from './ai.js?v=93b1d7eae309';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=93b1d7eae309';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=d0ff5dce7bf1';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=d0ff5dce7bf1';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=d0ff5dce7bf1';
+import { createDatabaseView } from './database.js?v=d0ff5dce7bf1';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=d0ff5dce7bf1';
+import { bindEmbedAdmin } from './embeds.js?v=d0ff5dce7bf1';
+import { bindPopular } from './popular.js?v=d0ff5dce7bf1';
+import { bindPalettes } from './palettes.js?v=d0ff5dce7bf1';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=d0ff5dce7bf1';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=d0ff5dce7bf1';
+import { drawTrust, bindProcedures } from './procedures.js?v=d0ff5dce7bf1';
+import { createPageExport } from './export.js?v=d0ff5dce7bf1';
+import { createDrafts } from './drafts.js?v=d0ff5dce7bf1';
+import { drawPageAi, bindAiCenter } from './ai.js?v=d0ff5dce7bf1';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=d0ff5dce7bf1';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=93b1d7eae309';
-import { createCafe, personInto, isAnon } from './cafe.js?v=93b1d7eae309';
+import { createWork } from './work.js?v=d0ff5dce7bf1';
+import { createCafe, personInto, isAnon } from './cafe.js?v=d0ff5dce7bf1';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -3855,7 +3855,9 @@ function imageViews(cfg) {
             const block = { type: 'image', file_ref: node.attrs.file_ref, caption: cap === '' ? [] : [{ t: cap, m: {} }], width: node.attrs.width };
             if (imageWidthPct(node.attrs.width_pct) !== null) { block.width_pct = node.attrs.width_pct; }
             let shown;
-            try { shown = renderFileBlock(block, null, cfg.ctx() || {}); } catch (err) { shown = document.createElement('div'); shown.className = 'doc-file'; }
+            // 카페 C4 — 편집기에서만 올린 사람의 브라우저 안 사본(검사 중 그림)을 렌더러에 넘긴다(읽기 화면 · 다른 사람에게는 없다)
+            const ctx = Object.assign({}, cfg.ctx() || {}, { attachment_previews: attachmentPreviews });
+            try { shown = renderFileBlock(block, null, ctx); } catch (err) { shown = document.createElement('div'); shown.className = 'doc-file'; }
             dom.appendChild(shown);
             fig = shown.matches('figure.doc-image') ? shown : null;
             for (const img of shown.querySelectorAll('img')) { img.draggable = false; }
@@ -3884,6 +3886,9 @@ function imageViews(cfg) {
             }
           }
           draw();
+          // 카페 C4 — 검사가 끝나면(watchAttachments) 이 부품만 다시 그린다 · 부품이 걷히면 빠진다
+          const live = { ref: () => node.attrs.file_ref, draw: () => { draw(); if (dom.classList.contains('ProseMirror-selectednode') && handle) { paintSize(pctNow()); } } };
+          liveImageViews.add(live);
           return {
             dom: dom,
             update(next) {
@@ -3893,6 +3898,7 @@ function imageViews(cfg) {
               if (!same) { draw(); }
               return true;
             },
+            destroy() { liveImageViews.delete(live); },
             selectNode() { dom.classList.add('ProseMirror-selectednode'); if (handle) { paintSize(pctNow()); } },
             deselectNode() { dom.classList.remove('ProseMirror-selectednode'); },
             stopEvent(e) { return !!(handle && e.target instanceof Node && handle.contains(e.target)); },
@@ -4812,6 +4818,148 @@ const uploadKey = new PluginKey('qaredi-doc-upload');
 const UPLOAD_IMAGE_MIMES = ['image/png', 'image/jpeg', 'image/gif'];
 const UPLOAD_TOO_LARGE = '파일이 100MB 를 넘습니다';
 
+/* ── 검사 중 미리보기 · 다시 묻기 (카페 C4 · DESIGN 2.26 「검사 중 미리보기」 · 사용자 지적 2026-10-14 「편집 중에는 이미지를 보며 배치하고 쓰고, 검증은 편집 완료 때」) ──
+ * ① 올린 사람의 편집기 — 올린 그 파일의 **브라우저 안 사본**(FileReader → `data:` — CSP `img-src 'self' data:` 그대로 · blob: 0)을 첨부 id 로 이 탭
+ *    메모리(`attachmentPreviews` — 저장소 · 주소 · 서버 0)에만 두고, 편집기 그림 부품(`imageViews`)만 렌더러에 `attachment_previews` 로 넘긴다 →
+ *    검사 중에도 그림 자체 · 크기 손잡이 · 왼쪽 위 배지 「검사 중 · 나만 보여요」. 읽기 화면 · 다른 사람은 지금처럼 「검사 중이에요」 상자.
+ *    서버 사본은 검사 전에 받지 않는다(raw · download 의 423 그대로). 사본은 그림 셋(png · jpeg · gif) · 20MB 까지(넘으면 상자 그대로).
+ * ② `watchAttachments` — 지도에 pending 이 있으면 5초마다(최대 3분 · 창이 숨으면 멈추고 다시 보이면 이어서) `GET /api/pages/{id}/attachments`
+ *    (지도 한 칸 · 판정 decideAttachmentRead)를 묻고, 저장이 끝날 때도 한 번. 상태가 바뀐 첨부가 있으면 지도를 고쳐 쓰고 onChange(바뀐 id 들) →
+ *    편집 중이면 그 그림 부품만 다시 그리고(`redrawAttachmentViews` — 폭 · 설명은 노드 값 그대로), 읽기 화면이면 다시 그린다.
+ *    clean → 서버 그림(배지 0) · infected → 「올릴 수 없는 파일이에요」 카드(렌더러). 사본은 pending 이 끝나면 버린다. */
+const ATT_POLL_MS = 5000;
+const ATT_POLL_LIMIT_MS = 180000;
+const ATT_PREVIEW_MAX_BYTES = 20 * 1024 * 1024;
+const ATT_PREVIEW_RE = /^data:image\/(png|jpeg|gif);base64,[A-Za-z0-9+/=]+$/;
+const attachmentPreviews = Object.create(null);
+/** 지금 그려진 편집기 그림 부품들 — { ref() → file_ref, draw() } (페이지 · 칸 편집기 공용 · 부품이 걷히면 빠진다) */
+const liveImageViews = new Set();
+
+/** 올린 그림 파일 → 브라우저 안 사본(`data:image/…`) 또는 null(그림 셋이 아니거나 너무 크거나 읽지 못함) */
+function readPreview(file) {
+  return new Promise((resolve) => {
+    if (!file || UPLOAD_IMAGE_MIMES.indexOf(file.type) === -1 || !(file.size > 0) || file.size > ATT_PREVIEW_MAX_BYTES || typeof FileReader !== 'function') {
+      resolve(null);
+      return;
+    }
+    const reader = new FileReader();
+    reader.addEventListener('load', () => {
+      const url = typeof reader.result === 'string' ? reader.result : '';
+      resolve(ATT_PREVIEW_RE.test(url) ? url : null);
+    });
+    reader.addEventListener('error', () => resolve(null));
+    reader.addEventListener('abort', () => resolve(null));
+    try { reader.readAsDataURL(file); } catch (e) { resolve(null); }
+  });
+}
+
+/** 그 첨부를 쓰는 편집기 그림 부품만 다시 그린다(노드 값 — 폭 · 설명 — 은 그대로) */
+function redrawAttachmentViews(ids) {
+  for (const v of Array.from(liveImageViews)) {
+    const ref = v.ref();
+    if (typeof ref === 'string' && ref.slice(0, 4) === 'att:' && ids.has(ref.slice(4))) { v.draw(); }
+  }
+}
+
+/**
+ * 검사 중 첨부 다시 묻기 한 벌(페이지 · 작업 칸 공용). cfg: { pageId() → 문서 id, titles() → 지금 지도(고쳐 쓴다), onChange(Set<첨부 id>) }
+ * → { kick(now) — pending 이 있으면 3분 창을 새로 열고(now 면 곧바로 한 번), stop() }
+ */
+function watchAttachments(cfg) {
+  let timer = null;
+  let until = 0;
+  let busy = false;
+  let stopped = false;
+  const pending = () => {
+    const map = cfg.titles();
+    return !!map && typeof map === 'object' && Object.keys(map).some((k) => map[k] && map[k].scan_status === 'pending');
+  };
+  function arm(ms) {
+    window.clearTimeout(timer);
+    timer = null;
+    if (!stopped && !document.hidden && Date.now() < until && pending()) { timer = window.setTimeout(ask, ms); }
+  }
+  function ask() {
+    timer = null;
+    if (stopped || busy || document.hidden) { return; }
+    const id = String(cfg.pageId() || '');
+    if (!ATT_UUID_RE.test(id)) { return; }
+    busy = true;
+    api('GET', '/api/pages/' + id + '/attachments', null, { background: true }).then((r) => {
+      busy = false;
+      if (stopped || String(cfg.pageId() || '') !== id) { return; }
+      const got = r.status === 200 && r.data && r.data.attachment_titles && typeof r.data.attachment_titles === 'object' && !Array.isArray(r.data.attachment_titles)
+        ? r.data.attachment_titles : null;
+      if (got === null) {
+        if (r.status === 401 || r.status === 403 || r.status === 404) { until = 0; }   // 볼 수 없게 됐다 · 로그인이 끊겼다 — 묻기를 멈춘다
+        arm(ATT_POLL_MS);
+        return;
+      }
+      const map = cfg.titles();
+      const changed = new Set();
+      for (const k of Object.keys(got)) {
+        const now = got[k];
+        if (!ATT_UUID_RE.test(k) || !now || typeof now !== 'object') { continue; }
+        const before = map[k];
+        if (!before || before.scan_status !== now.scan_status) {
+          map[k] = { name: typeof now.name === 'string' ? now.name : '', size: Number(now.size) || 0, image: now.image === true, scan_status: String(now.scan_status || '') };
+          changed.add(k);
+        }
+        if (now.scan_status !== 'pending') { delete attachmentPreviews[k]; }
+      }
+      if (changed.size) { cfg.onChange(changed); }
+      arm(ATT_POLL_MS);
+    }).catch(() => { busy = false; arm(ATT_POLL_MS); });
+  }
+  const onVisible = () => { if (!document.hidden && !stopped && pending()) { until = Date.now() + ATT_POLL_LIMIT_MS; arm(0); } };
+  document.addEventListener('visibilitychange', onVisible);
+  return {
+    kick(now) {
+      if (stopped || !pending()) { return; }
+      until = Date.now() + ATT_POLL_LIMIT_MS;
+      if (now === true && !busy) { window.clearTimeout(timer); timer = null; ask(); return; }
+      arm(ATT_POLL_MS);
+    },
+    stop() {
+      stopped = true;
+      window.clearTimeout(timer);
+      timer = null;
+      document.removeEventListener('visibilitychange', onVisible);
+    }
+  };
+}
+
+/* ── 남긴 댓글의 멘션 표시 (카페 C4 · DESIGN 2.27 「남긴 댓글의 멘션」 · 사용자 지적 2026-10-14 「태그가 됐는지 · 실패인지 · 오타인지 구분」) ──
+ * 댓글 본문(평문) 글자 조각에서 `@아이디` 를 입력 칸과 같은 표시로: 확인됨 `span.mention-mark--ok`(+ title · aria-label 「이름(아이디) — 알림이 갔어요」) ·
+ * 못 찾음 `span.mention-mark--miss`(「찾을 수 없는 사람 — 알림이 가지 않았어요」). 토큰 모양은 입력 부품과 같은 `mentionTokens`(= 서버
+ * `community_mentions_in` — 끝 마침표는 떼고 `@아이디.te` 는 `아이디.te` 한 토큰). 판단은 서버 지도(`comments_list` 의 `mention_status`)뿐 —
+ * 지도에 없는 토큰(3자 미만 · 판정 상한 밖 · 손님 · 익명게시판)은 글자 그대로. 전체 화면 댓글(editor.js) · 작업 칸 댓글(work.js)이 이 함수 하나를 쓴다.
+ * 요소는 createElement, 글자는 createTextNode 로만(HTML 문자열 0). */
+const MENTION_OK_NOTE = '알림이 갔어요';
+const MENTION_MISS_NOTE = '찾을 수 없는 사람 — 알림이 가지 않았어요';
+function mentionInto(host, text, status) {
+  const s = String(text === null || text === undefined ? '' : text);
+  const map = status && typeof status === 'object' && !Array.isArray(status) ? status : {};
+  let at = 0;
+  for (const tok of mentionTokens(s)) {
+    const got = Object.prototype.hasOwnProperty.call(map, tok.name) ? map[tok.name] : null;
+    if (!got || typeof got !== 'object') { continue; }
+    if (tok.at > at) { host.appendChild(document.createTextNode(s.slice(at, tok.at))); }
+    const ok = got.ok === true;
+    const mark = document.createElement('span');
+    mark.className = ok ? 'mention-mark--ok' : 'mention-mark--miss';
+    mark.textContent = s.slice(tok.at, tok.end);
+    const note = ok
+      ? personLabel(typeof got.display_name === 'string' && got.display_name !== '' ? got.display_name : null, tok.name) + ' — ' + MENTION_OK_NOTE
+      : MENTION_MISS_NOTE;
+    mark.setAttribute('title', note);
+    mark.setAttribute('aria-label', mark.textContent + ' — ' + note);
+    host.appendChild(mark);
+    at = tok.end;
+  }
+  if (at < s.length) { host.appendChild(document.createTextNode(s.slice(at))); }
+}
+
 /** 첨부 하나를 올린다(진행률이 필요해 XHR — 같은 CSRF 토큰 · 같은 출처). → { promise: 201 답, abort() } */
 function sendAttachment(pageId, file, onProgress) {
   let xhr = null;
@@ -4848,6 +4996,12 @@ function createUploads(cfg) {
   let queue = Promise.resolve();
   let seq = 0;
   const remember = (data) => { cfg.remember(data.id, { name: data.name || '', size: Number(data.size) || 0, image: data.image === true, scan_status: data.scan_status || 'clean' }); };
+  /* 카페 C4 — 검사 중 그림은 올린 그 파일의 브라우저 안 사본을 기억해 두고(편집기에서만 그린다) 다시 묻기를 켠다(cfg.onUploaded — 그 화면의 watchAttachments) */
+  const settle = (data, preview) => preview.then((url) => {
+    if (url && data.image === true && data.scan_status === 'pending' && ATT_UUID_RE.test(String(data.id))) { attachmentPreviews[data.id] = url; }
+    return data;
+  });
+  const uploaded = () => { if (typeof cfg.onUploaded === 'function') { cfg.onUploaded(); } };
   function placeholder(kind, name, onCancel) {
     const box = elt('div', { class: 'doc-upload', 'data-kind': kind, role: 'status', 'aria-live': 'polite', contenteditable: 'false' });
     const progress = elt('span', { class: 'doc-upload__progress', text: '올리는 중 0%' });
@@ -4890,7 +5044,8 @@ function createUploads(cfg) {
       queue = queue.then(() => {
         if (cancelled || view.isDestroyed) { return null; }
         job = sendAttachment(cfg.pageId(), file, (n) => setText(ph.progress, '올리는 중 ' + n + '%'));
-        return job.promise.then((data) => place(view, id, data, extra), (err) => {
+        const preview = kind === 'image' ? readPreview(file) : Promise.resolve(null);
+        return job.promise.then((data) => settle(data, preview)).then((data) => { place(view, id, data, extra); uploaded(); }, (err) => {
           drop(view, id);
           if (err && err.aborted) { return; }
           if (err && err.status === 401) { toLogin(); return; }
@@ -4949,7 +5104,8 @@ function createUploads(cfg) {
     idle: () => queue.then(() => null, () => null),
     send: (file, onProgress) => {
       const job = sendAttachment(cfg.pageId(), file, onProgress);
-      return { promise: job.promise.then((data) => { remember(data); return data; }), abort: job.abort };
+      const preview = UPLOAD_IMAGE_MIMES.indexOf(file && file.type) !== -1 ? readPreview(file) : Promise.resolve(null);
+      return { promise: job.promise.then((data) => settle(data, preview)).then((data) => { remember(data); uploaded(); return data; }), abort: job.abort };
     }
   };
 }
@@ -6010,6 +6166,7 @@ function initPage() {
       state.fileTitles = result.data.file_titles && typeof result.data.file_titles === 'object' ? result.data.file_titles : {};
       state.attachmentTitles = result.data.attachment_titles && typeof result.data.attachment_titles === 'object' && !Array.isArray(result.data.attachment_titles)
         ? result.data.attachment_titles : {};
+      pageWatch.kick();   // 카페 C4 — 새로 고침 뒤에도 검사 중이면 「검사 중이에요」 상자 → 끝나면 바뀜
       state.synced = result.data.synced || {};
       state.buttons = result.data.buttons || {};
       state.dbViews = result.data.db_views || {};
@@ -6529,12 +6686,14 @@ function initPage() {
    */
   const COMMENT_URL_SPLIT = /(https?:\/\/[^\s<>"'「」『』\u3131-\u318e\uac00-\ud7a3]+)/;
   const COMMENT_URL_TAIL = /[.,;:!?)\]}'"。、…]+$/;
+  let commentMentions = {};
   function linkifyInto(el, text) {
     const parts = String(text).split(COMMENT_URL_SPLIT);
     for (let i = 0; i < parts.length; i++) {
       const piece = parts[i];
       if (piece === '') { continue; }
-      if (i % 2 === 0) { el.appendChild(document.createTextNode(piece)); continue; }
+      // 카페 C4 — 주소가 아닌 글자 조각의 `@아이디` 는 입력 칸과 같은 확인 표시(작업 칸 댓글과 같은 함수 mentionInto)
+      if (i % 2 === 0) { mentionInto(el, piece, commentMentions); continue; }
       let raw = piece;
       let tail = '';
       const cut = raw.replace(COMMENT_URL_TAIL, '');
@@ -6693,6 +6852,9 @@ function initPage() {
     return api('GET', '/api/pages/' + pageId + '/comments').then((result) => {
       if (result.status !== 200) { show(commentsWrap, false); return; }
       const all = Array.isArray(result.data.comments) ? result.data.comments : [];
+      // 카페 C4 — 남긴 댓글의 `@아이디` 확인 지도(서버 판정 — 이 목록에 나온 아이디만)
+      commentMentions = result.data.mention_status && typeof result.data.mention_status === 'object' && !Array.isArray(result.data.mention_status)
+        ? result.data.mention_status : {};
       clear(commentsList);
       // 첫 댓글 → 그 아래 답글 순으로(창구는 시각 순으로 준다)
       const replies = new Map();
@@ -7594,7 +7756,14 @@ function initPage() {
   const pageUploads = createUploads({
     pageId: () => pageId,
     onError: (t) => setText(msg, t),
-    remember: (id, entry) => { state.attachmentTitles[id] = entry; }
+    remember: (id, entry) => { state.attachmentTitles[id] = entry; },
+    onUploaded: () => pageWatch.kick()
+  });
+  /* 카페 C4 (DESIGN 2.26 「검사 중 미리보기」 ②③) — 이 문서의 검사 중 첨부를 다시 묻는다. 끝나면 편집 중이면 그 그림만, 읽기 화면이면 다시 그린다 */
+  const pageWatch = watchAttachments({
+    pageId: () => pageId,
+    titles: () => state.attachmentTitles,
+    onChange: (ids) => { if (view !== null) { redrawAttachmentViews(ids); } else if (!state.editing) { drawRead(); } }
   });
 
   /* ── 편집 모드 ── */
@@ -8011,6 +8180,7 @@ function initPage() {
           firstDirtyAt = 0;
           badge('저장됨', 'badge--ok');
           clearPageDraft();   // B1-2 설계 4 — 이 판이 서버에 있다. 사본은 필요 없다
+          pageWatch.kick(true);   // 카페 C4 — 저장이 끝날 때 검사 중 첨부를 한 번 더 묻는다
           return;
         }
         if (result.status === 409) {
@@ -8408,7 +8578,8 @@ function mountPaneEditor(mount, opts) {
   const uploads = createUploads({
     pageId: () => opts.pageId,
     onError: (t) => opts.onError(t),
-    remember: (id, entry) => { titles.attachment_titles[id] = entry; }
+    remember: (id, entry) => { titles.attachment_titles[id] = entry; },
+    onUploaded: () => { if (typeof opts.onUploaded === 'function') { opts.onUploaded(); } }   // 카페 C4 — 칸의 watchAttachments 를 켠다
   });
   // 「하위 페이지」 블록 — 페이지 화면과 같은 창구(이 작업 아래 새 페이지 = 하위 작업)
   function createChildPage() {
@@ -8536,7 +8707,9 @@ function boot() {
           api: api, base: COMMUNITY_BASE, tboxBase: APP_BASE, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
           genericError: GENERIC_ERROR, toLogin: toLogin, statusLabels: STATUS_LABELS, personLabel: personLabel, shortWhen: shortWhen,
           favorites: { star: navStar, ids: () => favoriteIds, onChange: (fn) => { favoriteListeners.push(fn); } },   // Q:F-12 U2 — 업무함 ★ = 사이드바 즐겨찾기의 같은 함수 · 같은 창구
-          makeIcon: makeIcon, canWrite: () => meCanWrite, meName: () => meUsername || '', loadSpaces: loadSpaces, mountEditor: mountPaneEditor
+          makeIcon: makeIcon, canWrite: () => meCanWrite, meName: () => meUsername || '', loadSpaces: loadSpaces, mountEditor: mountPaneEditor,
+          // 카페 C4 — 검사 중 첨부 다시 묻기 · 편집기 그림 부품 다시 그리기 · 남긴 댓글의 멘션 표시(전체 화면과 같은 함수 한 벌)
+          watchAttachments: watchAttachments, redrawAttachments: redrawAttachmentViews, mentionInto: mentionInto
         });
         // 카페 C2 — 카페 부품(신고 · 이름표 · 관리자 화면 둘) · 「우리 공간」 셸의 관리 묶음(can_admin — 표시용)
         cafe = createCafe({ api: api, personLabel: personLabel, base: COMMUNITY_BASE });

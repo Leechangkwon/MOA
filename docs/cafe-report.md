@@ -97,3 +97,34 @@ board_pages_create(page.create) · SaveDoc(page.update — pages_update 의 몸)
 ### DESIGN 과 다르게 한 것 · 못 한 것
 - 지시서는 shell_top 에서 「data-icon 과 클래스만」이었지만, 아이콘 틀(`<template id="tpl-icon-…">`)은 허용 목록 밖 `shell_bottom.php` 에 고정 목록으로 있어 `apps` 틀이 없다 — summary 안에서 `moa_icon.php` 로 svg 를 바로 그렸다(채운 자리는 app.js `paintIcons` 가 건너뛴다 · app.js 무변경).
 - summary 클래스는 `btn btn--quiet` 를 그대로 둔다 — 빼면 테마(design.css)의 검정 단추 꾸밈(반짝 ::before · overflow hidden · 들림)이 붙는다. 보이는 모양은 app.css 가 덮는다(qf12_shell_browser 의 summary 클래스 문자열 단언도 그대로 성립).
+
+## C4 — 편집 중 그림 「검사 중」 · 남긴 댓글의 멘션 표시 · 2026-10-14 · Opus 구현 에이전트 (DESIGN 2.26 「검사 중 미리보기」 · 2.27 「남긴 댓글의 멘션」 · 지시서 C4)
+
+### 변경 파일
+- 서버: 새 `src/community/handlers/attachments_list.php`(`GET /api/pages/{id}/attachments` — `community_page_row` → `decideAttachmentRead` → `{attachment_titles}` 한 칸 · 지도는 pages_get 과 같은 함수 `community_attachment_titles` · 거부는 전부 404 · 감사 0 · 서버 로그 한 줄) · `src/community/routes.php`(라우트 한 줄 `community.read` + 주석 한 줄) · `src/community/handlers/comments_list.php`(`mention_status` — 아래).
+- 화면: `public/assets/community/editor.js`(① `readPreview` — 올린 그림 파일 → FileReader `data:image/(png|jpeg|gif);base64,` 사본 · 20MB 까지 · 이 탭 메모리 `attachmentPreviews` 에만 ② `createUploads` 가 사본을 첨부 id 로 기억하고 `cfg.onUploaded` 로 다시 묻기를 켬(붙여넣기 · 끌어놓기 · 「이 문서에 올리기」 세 입구 모두 같은 함수) ③ `imageViews` 가 렌더러에 `attachment_previews` 를 넘김(편집기에서만) · 살아 있는 그림 부품 목록 `liveImageViews` + `redrawAttachmentViews` ④ `watchAttachments` — pending 이 있으면 5초 · 최대 3분 · 창이 숨으면 멈춤 · 다시 보이면 이어서 · 저장 200 뒤 곧바로 한 번 · 401/403/404 면 멈춤 ⑤ `mentionInto` — 댓글 글자 조각의 `@아이디` 를 `mention-input.js` 의 `mentionTokens`(= 서버 `community_mentions_in`) 로 끊어 `.mention-mark--ok/--miss` + title · aria-label · 지도에 없는 토큰은 글자 그대로 ⑥ 페이지 화면 — `pageWatch`(첫 읽기 · 올리기 · 저장 뒤) · `linkifyInto` 의 글자 조각이 `mentionInto` 를 지남 ⑦ `mountPaneEditor` 에 `opts.onUploaded` · work 에 deps 셋) · `public/assets/community/work.js`(칸 — 같은 `watchAttachments`(칸을 다시 그리거나 닫으면 멈춤 · 끝나면 편집 중이면 그 그림만, 읽기면 설명 다시 · 「파일 첨부」 줄 배지도 `drawAttRow` 로 다시) · 칸 댓글이 같은 `mentionInto`) · `public/assets/community/doc-render.js`(사본 지도 인자 하나 `ctx.attachment_previews` — 검사 중 그림에 사본이 있으면 같은 `figure.doc-image`(폭 클래스 그대로) + `data-preview` + `.badge` 「검사 중 · 나만 보여요」 · 감염은 「올릴 수 없는 파일이에요」 카드) · `public/assets/community/community.css`(남긴 댓글 표시 두 줄 · 배지 왼쪽 위 한 줄 — 색값 0) · 부품 버전 줄(`php scripts/community_asset_version.php` — dashboard · database · editor · suggestions · table-editor · templates · work · ../messenger.js).
+- 시험: 새 `tests/community/cafe_c4_browser.py` · `memories_harness.py`(choices) · `tests/catalog.json`(community.cafe_c4_browser).
+- `app.css` 는 C4 에서 손대지 않았다.
+
+### `mention_status` 판정 (comments_list.php)
+- 이 목록에 **보이는 본문**에 나온 아이디만(`community_mentions_in` · 댓글당 10 · 목록 전체 판정 상한 20명 — 멘션 후보 창구 D-7 과 같은 「앞에서부터 · 한 명씩」). 계정은 이름 목록으로 질의 **한 번**(`ANY(string_to_array(:names))` — 아이디 글자 `[a-z0-9_.-]` 뿐 · 바인딩) → 활성 · 쓰기 자격(`Authz::canCommunityWrite`)인 사람만 그 사람 몫 문서 행(`community_page_row_nodoc`) + `decideMentionTarget`(댓글 알림과 같은 줄기). 없는 아이디 · 못 보는 사람 · 특권으로만 보는 관리자 · 손님은 모두 `{ok:false}`(이름 0).
+- 보는 사람이 쓰기 자격이 없으면(손님) `{}` · 익명게시판 글은 `{}`.
+
+### 수락 시험
+- 개발 실행: `c4-dev1`(http 85/0) · `c4-dev2`(image · mention 79/16 — 시험 쪽 셋: 넷째 그림이 문서 끝이 아닌 자리에 들어가 「마지막 줄 = 상자」 가정이 틀림 · 412 에서 끌어놓기 자리가 달라 첨부 순서 가정이 틀림 · 대비 계산이 `color(srgb …)`(color-mix 계산값)를 읽지 못해 1.00 — 시험만 고침) · `c4-dev3`(image · mention 95/0).
+- 최종: `python3 tests/community/memories_harness.py --suite cafe_c4_browser.py --output /home/changkwon/qaredi-cafe-results-20261014/c4-run1` → **pass 174 · fail 0**(rc 0) — `c4-run1/cafe-c4-browser-results.json` · `cafe-c4-browser-metrics.json` · `stdout.txt` · `shots/`(셋).
+  - [http] 주인 · 보기 공유 200(본문 키 `attachment_titles` 하나 · pages_get 지도와 같음 · 다른 문서 첨부 0) · 다른 팀 · 손님 · 관리자(특권만) · 없는 문서 404 · 세션 없음 401/403 · pending raw/download 423 그대로 · clean · infected 반영 / mention_status: 공유받은 A · 주인 W ok+이름 · 못 보는 E · 없는 아이디 · `@A.te`(한 토큰) · 관리자 · 손님 `{ok:false}` 만 · `@ab` · `x@y` 0 · 다른 읽는 사람 같은 지도 · 손님 시점 `{}` · 익명게시판 `{}` · **질의 수 댓글 3 → 6 · 30 → 6**(리플렉션 PDO 문장 수).
+  - [image] 1440 · 412: 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」 → 201 pending · 셋 다 즉시 `img data:image/png` 그려짐 · 배지 「검사 중 · 나만 보여요」 왼쪽 위(8,8) · 상자 0 · 손잡이 → p40 · raw/download 요청 0 → DB clean → 서버 raw 그림(1440 1.6초 · 412 1.8초 — 5초 묻기 한 번 안) · 배지 0 · p40 그대로 · 저장 블록 att: 셋(width_pct 40) · 다시 열기 그림 셋 · 새로 고침 뒤 pending 하나 → 「검사 중이에요」 상자 · 보기 공유 A 도 상자(data: 0) → clean → 둘 다 그림(올린 사람 5.3 · 5.1초) · 넘침 0 · 콘솔 0 / 작업 칸 편집기: 붙여넣기 → 사본 + 배지 → clean → 서버 그림(1.9초).
+  - [mention] 1440 · 412 × 밝게 · 어둡게 · 고대비: 전체 화면 `@A` ok(--accent-dark · 500 · aria-label 「@A — A — 알림이 갔어요」) · `@E` · `@A.te` · `@nobody` miss(물결 · 「찾을 수 없는 사람 — 알림이 가지 않았어요」) · 대비 최소 밝게 5.55 · 어둡게 5.05 · 고대비 7.52 · 넘침 0 · 작업 칸 댓글 같은 표시(밝게).
+- 정적: security_lint 통과 0건 · php -l 0 · node --check 0 · asset_version --check 0 · wiki_check 0 · git diff --check 0 — `c4-static.txt`.
+
+### 못 한 것 · 한계
+- 사본은 이 탭 메모리뿐 — 다른 탭 · 새로 고침에는 없다(설계대로 「검사 중이에요」 상자 → 끝나면 바뀜). 20MB 넘는 그림은 사본 없이 상자.
+- 자기 자신을 부른 `@내아이디` 는 ok(파랑)로 보인다 — 판정은 대상 기준(알림 창구는 자기 자신에게 알림을 만들지 않지만 지도는 보는 사람마다 같은 값).
+- 목록 판정 상한 20명 밖 아이디 · 3자 미만 토큰은 표시 없이 글자 그대로.
+- 「파일 첨부」 칸 줄은 배지만 다시 그린다(칸을 다시 열지 않음).
+
+### DESIGN 과 다르게 한 것
+- 못 찾음 글자색: `--danger` 가 밝은 기본 테마에서 `--danger-soft` 위 **4.41:1**(4.5 미달)이라 `color-mix(in srgb, var(--danger) 82%, var(--fg))`(토큰 섞기 · 새 색값 0) — 물결 밑줄은 `--danger` 그대로.
+- 감염 첨부를 「올릴 수 없는 파일이에요」 카드로 그리는 갈래는 공용 렌더러에 두어 읽기 화면에도 같다(전에는 받기 카드 → 403).
+- `mention_status` 의 판정 질의는 「댓글 수와 무관 · 판정 대상 수(상한 20)에 비례」 — 지시서의 「질의 고정」을 댓글 3 · 30 같음으로 확인했다.

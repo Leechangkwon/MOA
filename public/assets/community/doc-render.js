@@ -215,7 +215,13 @@ function renderEmbed(block, id, ctx) {
  * 주소는 첨부 창구(`ctx.base` + `/api/pages/{문서}/attachments/{첨부}/raw|download`) — 가져가는 순간에도 창구가 문서 판정으로 다시 판단한다.
  * 그림은 검사가 끝난(clean) 그림만 `<img>`. 검사 대기(pending)면 그림은 「검사 중이에요」 회색 상자(`.doc-upload` 자리표시 모양),
  * 파일은 이름 + 「검사 중」 배지(받기 링크 0 — 창구 423 을 오류로 띄우지 않는다). 그 밖은 서버 렌더러와 같은 받기 카드.
+ * 카페 C4(DESIGN 2.26 「검사 중 미리보기」) — 사본 지도 인자 하나 `ctx.attachment_previews`(첨부 id → 올린 사람 브라우저 안 사본 `data:image/…` —
+ * **편집기 그림 부품만** 넘긴다 · 읽기 화면 · 다른 사람에게는 없다). 검사 중 그림에 사본이 있으면 상자 대신 **그림 자체**(같은 figure · 같은 폭 클래스)
+ * + 왼쪽 위 `.badge` 「검사 중 · 나만 보여요」. 서버 사본은 검사 전에 주소로 쓰지 않는다. 감염(`infected`)은 받기 카드 대신 「올릴 수 없는 파일이에요」 카드.
  */
+const ATT_PREVIEW_PREFIX = /^data:image\/(png|jpeg|gif);base64,/;
+const ATT_PENDING_MINE = '검사 중 · 나만 보여요';
+const ATT_INFECTED = '올릴 수 없는 파일이에요';
 function renderAttachmentBlock(block, id, ctx) {
   const map = ctx && ctx.attachment_titles && typeof ctx.attachment_titles === 'object' ? ctx.attachment_titles : {};
   const page = ctx && typeof ctx.attachment_page === 'string' && UUID_RE.test(ctx.attachment_page) ? ctx.attachment_page : '';
@@ -246,6 +252,25 @@ function renderAttachmentBlock(block, id, ctx) {
     host.appendChild(cap);
   };
   if (entry.scan_status === 'pending') {
+    const previews = ctx && ctx.attachment_previews && typeof ctx.attachment_previews === 'object' ? ctx.attachment_previews : null;
+    const preview = previews && Object.prototype.hasOwnProperty.call(previews, ref) && typeof previews[ref] === 'string' ? previews[ref] : '';
+    if (block.type === 'image' && entry.image === true && ATT_PREVIEW_PREFIX.test(preview)) {
+      const fig = document.createElement('figure');
+      fig.className = 'doc-image ' + imageWidthClass(block);
+      fig.setAttribute('data-preview', '');
+      if (id) { fig.id = 'block-' + id; }
+      const img = document.createElement('img');
+      img.className = 'doc-image__img';
+      img.setAttribute('src', preview);
+      img.setAttribute('alt', name);
+      const mark = document.createElement('span');
+      mark.className = 'badge';
+      mark.textContent = ATT_PENDING_MINE;
+      fig.appendChild(img);
+      fig.appendChild(mark);
+      addCaption(fig, 'figcaption', 'doc-image__caption');
+      return fig;
+    }
     if (block.type === 'image') {
       const box = document.createElement('div');
       box.className = 'doc-upload';
@@ -273,6 +298,20 @@ function renderAttachmentBlock(block, id, ctx) {
       wrap.appendChild(card);
     }
     addCaption(wrap, 'p', 'doc-file__caption');
+    return wrap;
+  }
+  if (entry.scan_status === 'infected') {
+    const card = document.createElement('div');
+    card.className = 'card card--soon';
+    const t = document.createElement('span');
+    t.className = 'card__title';
+    t.textContent = ATT_INFECTED;
+    const m = document.createElement('span');
+    m.className = 'card__meta';
+    m.textContent = name;
+    card.appendChild(t);
+    card.appendChild(m);
+    wrap.appendChild(card);
     return wrap;
   }
   if (block.type === 'image' && entry.image === true && entry.scan_status === 'clean') {
