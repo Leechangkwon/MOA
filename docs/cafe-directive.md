@@ -114,3 +114,30 @@ C1(`dabdea8`)의 검토 결과 — 설계대로 된 것: 이름표 · 안전망 
 완료 기준   : 1440 · 1280 · 960 에서 summary 높이 44 · 아이콘 24 · 바탕이 --accent-soft 계산값 · 글자 대비 4.5 이상(밝게 · 어둡게 · 고대비 · 열림 상태 포함) ·
               타일 아이콘(20)보다 단추 아이콘이 큼 · 412 에서 summary 0(그대로) · 안 읽은 점 자리 그대로 · 넘침 0 · 스크린샷 3장(밝게 · 어둡게 · 열림)
 ```
+
+## C4 — 편집 중 그림 「검사 중」 · 남긴 댓글의 멘션 표시 (사용자 지적 2026-10-14 · C3 뒤 · 같은 worktree)
+
+사용자(스크린샷 — 작업 칸): 「업무에서 이미지 삽입 시 계속 검사 중임 — 편집 중에는 이미지를 어디에 어떻게 배치할지, 이미지를 보며 글을 쓴 뒤 편집 완료했을 때 검증하면 될 것 같은데」 ·
+「댓글을 @ 해서 태그했을 때만 파란 글씨가 뜨고, 정작 작성된 글은 검은색으로 태그가 된 건지 직관적으로 보여지지 않음 — 실패인지 오타인지 제대로 된 건지 구분 필요」.
+메인 조사: 운영 첨부 3개 모두 DB 는 `clean`(검사 cron `scan_pending.php` 1분마다) — **편집기가 올린 순간의 pending 을 기억한 채 다시 묻지 않는 화면 버그**. 댓글은 평문 저장 · 멘션은 알림에만 해석 · `comments_list` 에 해석 결과 없음.
+
+```
+목표        : 올린 사람은 편집 중 그림을 바로 보고(브라우저 사본) 검사가 끝나면 저절로 서버 그림으로 바뀌며, 남긴 댓글의 @아이디 가 확인됨(파랑) · 못 찾음(빨강)으로 보이게 한다.
+요구사항    : DESIGN 2.26 「검사 중 미리보기」 줄 · 2.27 「남긴 댓글의 멘션」 줄(main 의 DESIGN.md — 2026-10-14) · 커뮤니티 ARCH 24장(첨부 판정 그대로).
+수정 파일   : 서버 — src/community/handlers/attachments_list.php(새 — GET /api/pages/{id}/attachments · 판정 decideAttachmentRead · 응답 {attachment_titles} 만 · 감사 0) ·
+                 src/community/routes.php(라우트 줄 하나 · community.read) · src/community/handlers/comments_list.php(mention_status — 목록 안 아이디만 · 질의 고정 · 익명게시판 빈 지도) ·
+              화면 — public/assets/community/editor.js(올리기 → data: 사본 · 그림 NodeView 가 사본을 쓰는 갈래 · 확인 반복 · 저장 뒤 한 번 · 댓글 멘션 표시) ·
+                 public/assets/community/work.js(칸 댓글 멘션 표시 — 같은 함수) · public/assets/community/doc-render.js(필요하면 사본 지도 인자 하나) · community.css · app.css ·
+                 커뮤니티 JS import 버전 줄 ·
+              시험 — tests/community/cafe_c4_browser.py(새 수락 — HTTP + 브라우저) · memories_harness.py(choices) · tests/catalog.json · docs/cafe-report.md(C4 절)
+금지 패턴   : 검사 전 서버 사본을 내보내기(raw · download 의 423 그대로) · CSP 바꾸기 · blob: · innerHTML · 인라인 style · 새 색값 · 렌더러 · 멘션 표시 두 벌 ·
+              mention_status 에 볼 수 없는 사람의 이름 싣기(못 보는 사람은 ok:false — 존재 여부를 드러내지 않음) · N+1 · git add -A.
+완료 기준   : HTTP — attachments 목록: 볼 수 있는 사람 200(지도 · scan_status) · 못 보는 사람 404 · 손님 규칙 그대로 · 응답에 다른 문서 첨부 0 ·
+                 comments_list mention_status: 있는 · 볼 수 있는 아이디 ok:true+이름 · 없는 아이디 ok:false · 그 문서를 못 보는 사람의 아이디 ok:false(이름 0) · 익명게시판 {} · 질의 수 댓글 3 · 30 같음
+              브라우저(1440 · 412) — 그림을 붙여넣기 · 끌어놓기 · 「이 문서에 올리기」 셋 다: 즉시 img(data:) + 「검사 중 · 나만 보여요」 배지 · 손잡이로 폭 바꿈 ·
+                 서버 scan_status 를 clean 으로 바꾸면(틀이 scan_pending 실행 또는 DB) 5초 안에 서버 주소 img 로 바뀜 · 배지 0 · 폭 그대로 · 저장 뒤 다시 열어도 그림 ·
+                 새로 고침 뒤 pending 이면 「검사 중이에요」 상자 → clean 이 되면 바뀜 · 다른 사람 화면은 clean 전 상자 · 콘솔 0 ·
+                 댓글(전체 화면 · 칸): `@있는아이디` 파랑 + aria-label 「… 알림이 갔어요」 · `@없는아이디` 빨강 + 물결 · `@아이디.te` 처럼 붙은 글자도 서버 규칙(community_mentions_in)대로 끊어 표시 ·
+                 대비 4.5 이상(밝게 · 어둡게 · 고대비) · 넘침 0
+              정적: security_lint 0 · php -l · node --check · asset_version --check · git diff --check
+```
