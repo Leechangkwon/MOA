@@ -2579,6 +2579,17 @@ GRANT  USAGE, SELECT  ON SEQUENCE audit_logs_id_seq TO tbox_app;
 | `access.decide|deny|not_found` | `{actor} 이(가) 없거나 자기가 처리할 수 없는 권한 요청을 처리하려 해서 거부했습니다` | G-0 `POST·DELETE /api/access-requests/{num}` (5.36) |
 | `access.decide|deny|bad_request` | `{actor} 이(가) 권한 요청 처리를 허용되지 않는 형식(모르는 결정·이미 끝난 요청·손님에게 편집)으로 보내서 거부했습니다` | G-0 `POST·DELETE /api/access-requests/{num}` (5.36) |
 | `access.decide|deny|not_private` | `{actor} 이(가) 이제 개인 등급이 아니거나 지워진 항목 「{target}」 의 권한 요청을 허락하려 해서 거부했습니다` | G-0 `POST·DELETE /api/access-requests/{num}` (5.36) |
+| `report.create|allow` | `{actor} 이(가) 카페 글 「{target}」 을(를) 신고했습니다 (사유 종류·댓글 여부는 상세 기록)` | 카페 C1 `POST /community/api/reports` |
+| `report.create|deny|rate_limited` | `{actor} 이(가) 하루 신고 상한을 넘겨 카페 글 「{target}」 을(를) 신고하려 해서 막았습니다` | 카페 C1 |
+| `report.resolve|allow` | `{actor} 이(가) 카페 글 「{target}」 에 대한 신고를 처리했습니다 (숨김·반려와 메모는 상세 기록)` | 카페 C1 `POST …/reports/{id}/resolve` |
+| `anon.reveal|allow` | `{actor} 이(가) 신고된 익명 글 「{target}」 의 쓴 사람을 확인했습니다 (신고 번호·사유는 상세 기록)` | 카페 C1 `POST …/reports/{id}/reveal` (커뮤니티 ARCH 25.5) |
+| `anon.reveal|deny|not_anon_board` | `{actor} 이(가) 익명게시판이 아닌 글 「{target}」 의 쓴 사람을 확인하려 해서 거부했습니다` | 카페 C1 |
+| `anon.reveal|deny|reauth_required` | `{actor} 이(가) 비밀번호를 다시 확인하지 않고 익명 글 「{target}」 의 쓴 사람을 확인하려 해서 막았습니다` | 카페 C1 |
+| `anon.reveal|deny|bad_reason` | `{actor} 이(가) 사유 없이(20자 미만) 익명 글 「{target}」 의 쓴 사람을 확인하려 해서 거부했습니다` | 카페 C1 |
+| `anon.reveal|deny|role_not_permitted` | `{actor} 이(가) 관리자가 아닌데 익명 글 「{target}」 의 쓴 사람을 확인하려 해서 막았습니다` | 카페 C1 |
+| `board_request.create|allow` | `{actor} 이(가) 게시판 「{target}」 을(를) 만들어 달라고 요청했습니다` | 카페 C1 `POST /community/api/board-requests` |
+| `board_request.create|deny|rate_limited` | `{actor} 이(가) 요청 상한을 넘겨 게시판 「{target}」 을(를) 요청하려 해서 막았습니다` | 카페 C1 |
+| `board_request.decide|allow` | `{actor} 이(가) 게시판 요청 「{target}」 을(를) 처리했습니다 (만들기·반려와 메모는 상세 기록)` | 카페 C1 `POST …/board-requests/{id}/decide` |
 
 > 7·8·9단계(URL 가져오기·감사 로그 조회·백업)의 행동은 그 단계 지시서에서 이 표에 행을 먼저 추가한 뒤 구현한다.
 
