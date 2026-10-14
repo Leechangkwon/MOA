@@ -1,5 +1,14 @@
 [
     {
+        "version": "2.67.1",
+        "level": "patch",
+        "released_at": "2026-10-14 14:59",
+        "title": "AI 비서 모델 연결 갱신",
+        "changes": [
+            "Gemini 3.6 Flash를 직접 사용하여 대화와 글쓰기 연결을 유지합니다."
+        ]
+    },
+    {
         "version": "2.67.0",
         "level": "minor",
         "released_at": "2026-10-14 14:26",
