@@ -20,7 +20,7 @@
   --bg: #ffffff;              /* background */
   /* 사이트 H4 (DESIGN 2.33 「갈래별 값」) — 「모아.」 글자 로고 네 갈래의 색(테마와 무관 · 값은 2.33 표뿐 — 밝게 · 어둡게 · 고대비 블록이 바꾼다).
      지금 고른 갈래는 아래 고대비 절 앞 `[data-wordmark]` 줄이 --brand-wordmark* 로 옮긴다(테마 창의 미리보기도 같은 줄) */
-  --wm-d: #6d28d9; --wm-d-dot: #f59e0b; --wm-a: #7c3aed; --wm-a-fill: linear-gradient(100deg, #7c3aed, #4f46e5, #2563eb); --wm-b: #f97316; --wm-b-fill: linear-gradient(100deg, #f97316, #ef4444, #ec4899); --wm-c-mo: #7c3aed; --wm-c-a: #0d9488; --wm-on: #ffffff;
+  --wm-d: #6d28d9; --wm-d-dot: #f59e0b; --wm-a: #7c3aed; --wm-a-fill: linear-gradient(100deg, #7c3aed, #4f46e5, #2563eb); --wm-b: #c2410c; --wm-b-fill: linear-gradient(100deg, #c2410c, #b91c1c, #be185d); --wm-c-mo: #7c3aed; --wm-c-a: #0f766e; --wm-on: #ffffff;
   --surface: #ffffff;         /* card · popover */
   --surface-2: #fafafa;       /* zinc-50 — 사이드바 · 모달 본문 */
   --muted-bg: #f4f4f5;        /* zinc-100 — muted · secondary · accent */

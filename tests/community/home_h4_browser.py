@@ -175,12 +175,9 @@ try:
                             ok_c = mark != 'c' or all(m['mo'] != m['a'] for m in marks)
                             check(ok_text and ok_label and ok_col and ok_dot and ok_c, '[places] %s: text 「모아.」 800 · label · colors = tokens%s · dot only D' % (tag, ' · C two colors' if mark == 'c' else ' · gradient' if mark in ('a', 'b') else ''))
                             # 로그인 화면의 왼쪽 판은 사진 바탕이라 칠 값으로 잴 수 없다(어둡게 값을 쓴다 — 스크린샷으로 본다).
-                            # B 밝게의 첫 색 #f97316 은 흰 바탕 대비 약 2.8 — DESIGN 2.33 표의 값 그대로라 이 시험이 고칠 수 없다(보고서 「다르게 한 것」 · 사용자 판단) → 값만 남긴다
+                            # 메인 검토(2026-10-14): B · C 밝게 값을 대비 4.5 이상으로 고침(DESIGN 2.33) — 네 갈래 모두 단언
                             rated = [m for m in marks if m['where'] != 'login']
-                            if mark == 'b' and theme == 'light':
-                                metrics.setdefault('b-light-ratio', {})[tag] = [round(m['ratio'], 2) for m in rated]
-                            else:
-                                check(all(m['ratio'] >= 4.5 for m in rated), '[places] %s: first color contrast ≥ 4.5 %s' % (tag, [round(m['ratio'], 2) for m in rated]))
+                            check(all(m['ratio'] >= 4.5 for m in rated), '[places] %s: first color contrast ≥ 4.5 %s' % (tag, [round(m['ratio'], 2) for m in rated]))
                             if mark == 'd' and theme == 'light' and name in ('home', 'landing', 'join'):
                                 # 테마 여섯을 바꿔도 같은 색
                                 base_col = [(m['mo'], m['dot']) for m in marks]
