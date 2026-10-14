@@ -71,11 +71,15 @@ try:
  headers={'User-Agent':'tbox-review/'+time.strftime('%Y-%m-%d'),'Cookie':'__Host-tbox_session='+users['employee']['session'],'X-CSRF-Token':users['employee']['csrf']}
  r=requests.post(site+'/tbox/api/messages/ai',headers=headers,json={'thread_id':None,'text':'일반 대화 시험','request_id':str(uuid.uuid4())},timeout=10)
  check(r.status_code==200 and r.json()['turn']['state']=='complete','ordinary Gemini chat still completes')
+ # R1b — 대화 기록의 모델 = 실제로 부른 모델(MemberAi::MODEL · 열 기본값 3.5 에 맡기지 않음)
+ check(sql("SELECT model FROM member_ai_turns ORDER BY id DESC LIMIT 1")=='gemini-3.6-flash','R1b chat turn records model gemini-3.6-flash')
  check(all('inlineData' not in p for p in captures()[-1]['contents'][-1]['parts']),'ordinary Gemini chat remains text only')
  for error in (None,429):
   mode(**({'error':error} if error else {}));reset_rate()
   r=requests.post(site+'/tbox/api/messages/assist',headers=headers,json={'action':'polish','aspect':'1:1','language':'ko','peer_id':int(users['other']['id']),'request_id':str(uuid.uuid4()),'source_id':None,'text':'기존 문장 도구 시험'},timeout=10)
   check(r.status_code==200 and r.json()['job']['state']==('failed' if error else 'complete'),'ordinary Gemini writing tool '+('provider failure' if error else 'success'))
+  # R1b — 문장 도구 줄의 모델 = gemini-3.6-flash(DB CHECK 가 3.6 을 받는다 — 2026-10-15_member_ai_model_36.sql)
+  check(sql("SELECT model FROM member_ai_assists WHERE action='polish' ORDER BY created_at DESC LIMIT 1")=='gemini-3.6-flash','R1b writing tool row records model gemini-3.6-flash'+(' (provider failure)' if error else ''))
  check(sql("SELECT count(*) FROM audit_logs WHERE action IN ('member.ai.send','member.ai.assist') AND result='deny' AND reason IN ('provider_limit','provider_unavailable')")=='3','provider failures retain reason-coded audit records')
  mode()
  reset_rate();before=post(pid)

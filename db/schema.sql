@@ -532,7 +532,7 @@ CREATE TABLE IF NOT EXISTS public.member_ai_turns (
  prompt text NOT NULL CHECK(length(prompt) BETWEEN 1 AND 4000),
  answer text CHECK(length(answer) BETWEEN 1 AND 20000),
  state text NOT NULL DEFAULT 'pending' CHECK(state IN ('pending','complete','failed')),
- error_code text, model text NOT NULL DEFAULT 'gemini-3.5-flash' CHECK(model='gemini-3.5-flash'),
+ error_code text, model text NOT NULL DEFAULT 'gemini-3.5-flash' CHECK(model IN ('gemini-3.5-flash','gemini-3.6-flash')),   -- R1b: 3.6 더함(2026-10-15_member_ai_model_36.sql)
  input_tokens integer CHECK(input_tokens>=0), output_tokens integer CHECK(output_tokens>=0),
  total_tokens integer CHECK(total_tokens>=0),
  created_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz,
@@ -560,7 +560,7 @@ CREATE TABLE IF NOT EXISTS public.member_ai_assists (
  result text CHECK(length(result) BETWEEN 1 AND 4000), error_code text,
  stored_name text UNIQUE, image_mime text CHECK(image_mime IN ('image/png','image/jpeg','image/webp')),
  image_bytes integer CHECK(image_bytes BETWEEN 1 AND 6291456), image_sha256 char(64),
- model text NOT NULL CHECK(model IN ('gemini-3.5-flash','gemini-3.1-flash-lite-image')),
+ model text NOT NULL CHECK(model IN ('gemini-3.5-flash','gemini-3.6-flash','gemini-3.1-flash-lite-image')),   -- R1b: 3.6 더함(2026-10-15_member_ai_model_36.sql)
  input_tokens integer CHECK(input_tokens>=0), output_tokens integer CHECK(output_tokens>=0), total_tokens integer CHECK(total_tokens>=0),
  created_at timestamptz NOT NULL DEFAULT now(), finished_at timestamptz,
  UNIQUE(user_id,request_id), CHECK(user_id<>peer_id),

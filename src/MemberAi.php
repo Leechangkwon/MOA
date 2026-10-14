@@ -206,8 +206,9 @@ final class MemberAi
                     [':uid' => $uid, ':title' => $title])->fetch();
                 $thread = (int)$row['id'];
             }
-            $turn = $db->run('INSERT INTO member_ai_turns(user_id,thread_id,request_id,prompt) VALUES(:uid,:thread,CAST(:request AS uuid),:prompt) RETURNING *',
-                [':uid' => $uid, ':thread' => $thread, ':request' => $request, ':prompt' => $text])->fetch();
+            // R1b — 부르는 모델을 그대로 기록한다(열 기본값 3.5 에 맡기지 않음 · 2026-10-15_member_ai_model_36.sql)
+            $turn = $db->run('INSERT INTO member_ai_turns(user_id,thread_id,request_id,prompt,model) VALUES(:uid,:thread,CAST(:request AS uuid),:prompt,:model) RETURNING *',
+                [':uid' => $uid, ':thread' => $thread, ':request' => $request, ':prompt' => $text, ':model' => self::MODEL])->fetch();
             $db->commit();
         } catch (Throwable $e) {
             $db->rollback();

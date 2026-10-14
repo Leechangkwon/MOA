@@ -130,7 +130,8 @@ def main():
                            # Q:F-13 P2 — 탈퇴 요청 표 · 소유자 전용 파기 함수(합성 DB 에서는 소유자 = tbox_testdb, 위 갈음)
                            '2026-10-21_privacy_retention.sql', '2026-10-22_owner_fix.sql', '2026-10-23_feedback_indexes.sql','2026-10-11_product_spaces.sql',
                            '2026-10-13_community_page_attachments.sql', '2026-10-14_community_cafe.sql',
-                           '2026-10-14_task_start_date.sql', '2026-10-14_invite_requests.sql']  # P2-R3 소유자 바로잡기 — 합성 DB 는 소유자 tbox_testdb 라 바꿀 것 0 · Q:F-12 W1 시작 예정(끝에)
+                           '2026-10-14_task_start_date.sql', '2026-10-14_invite_requests.sql',  # P2-R3 소유자 바로잡기 — 합성 DB 는 소유자 tbox_testdb 라 바꿀 것 0 · Q:F-12 W1 시작 예정(끝에)
+                           '2026-10-15_member_ai_model_36.sql']  # R1b — AI 기록 모델 이름 3.6 허용(member_ai_assists · member_ai_turns CHECK)
         for _ in range(2):
             for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)

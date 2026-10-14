@@ -100,9 +100,29 @@
 
 `stage5c` · `stage5d` · `qf2_search` · `stage7d3` · `stage89_*` · `qf12_u4_http` · `stage5e` 는 기준 판에서도 실패(SAME 이거나 합계만 다름)라 지시서의 여섯 · 열셋 밖 — 손대지 않음. 원문의 `consent_required` 가 기준 판에도 보인다.
 
+## R1b — 문장 도우미 DB CHECK(메인 결정 (가) · 2026-10-15)
+
+메인 결정: 위 ★ 를 (가) 이주로. 이 항목에 한해 `db/migrations/2026-10-15_member_ai_model_36.sql`(새) · `db/schema.sql` 허용. 메인의 운영 읽기 확인: `member_ai_assists_model_check` = 3.5 · 이미지 둘 · `member_ai_turns_model_check` = 3.5 하나 · 10-06 뒤 문장 도우미 사용 0(실패 기록 아직 없음 — 다음 사용이 실패).
+
+| 파일 | 바꾼 것 |
+|---|---|
+| `db/migrations/2026-10-15_member_ai_model_36.sql`(새) | `BEGIN` · `SET LOCAL lock_timeout='5s'` · 정의에 `gemini-3.6-flash` 가 없을 때만 같은 이름으로 다시 만듦 — `member_ai_assists_model_check` = `IN ('gemini-3.5-flash','gemini-3.6-flash','gemini-3.1-flash-lite-image')` · `member_ai_turns_model_check` = `IN ('gemini-3.5-flash','gemini-3.6-flash')`(옛 3.5 행 보존) · `check1`(action↔이미지 모델) 그대로 · 행 변경 0 · 권한 변경 0(표 단위) · 실행 계정 tbox_owner |
+| `db/schema.sql` | 같은 두 CHECK(인라인 — 자동 이름이 위와 같다) |
+| `src/MemberAi.php`(보안 핵심 아님) | 대화 INSERT 가 `model` 열에 `self::MODEL` 을 넣음(지금까지 열 기본값 3.5 로 기록 — 3.6 을 부르며 3.5 로 적던 것) · 기본값 자체는 그대로 |
+| `tests/community/memories_harness.py` | 합성 DB 이주 목록 끝에 새 이주(두 번 — 멱등) |
+| `tests/community/memory_ai_http.py` | 단언 3 더함 — 대화 줄 모델 = 3.6 · 문장 도구 줄 모델 = 3.6(성공 · 공급자 실패 둘 다) |
+
+다른 시험의 스키마 만들기는 새 `db/schema.sql` 을 그대로 읽어 새 CHECK 를 갖는다(이주 목록을 따로 돌리는 것은 memories_harness 하나).
+
+확인:
+- 이주 = 새 설치: 합성 DB 둘 — 「R1b 전 `db/schema.sql` + 새 이주 ×2 + grants」 ↔ 「새 `db/schema.sql` + grants」의 public 모양(열 · 제약 정의 · 색인 · 표 권한 · 두 표 열 권한 · 시퀀스) **SAME 1448줄 · 차이 0**. 두 번째 적용 rc 0(멱등) · 결과 정의 `CHECK ((model = ANY (ARRAY['gemini-3.5-flash'::text, 'gemini-3.6-flash'::text, 'gemini-3.1-flash-lite-image'::text])))` · `check1` 그대로.
+- run **#30**(`--fresh`): `community.qf12_floor_http` **✔ 268/0** · `tbox.messenger_store_browser` **✔ 75/0**(R1 전 ✖ — 기준 판과 같은 75) · `community.memory_ai_http` **PASS 52 · FAIL 0** 뒤 106행 `from PIL import Image` → `ModuleNotFoundError: No module named 'PIL'` 로 멈춤(rc 1). 이 멈춤은 **기준 판 #26 과 같은 자리**(이 서버의 python3 에 Pillow 없음 — 환경 · R1b 와 무관, 설치하지 않음). 그 앞에서: `PASS ordinary Gemini writing tool success` · `PASS R1b chat turn records model gemini-3.6-flash` · `PASS R1b writing tool row records model gemini-3.6-flash` · `… (provider failure)` · 공급자 실패 감사 단언 통과.
+- `messenger_window_browser` 의 마지막 끊김(714행 `#assist-result`)도 같은 원인이었다 — 이번에 다시 돌리지 않음(지시 범위: 셋).
+- 운영 반영(메인): 이주를 tbox_owner 로 적용 → `src/MemberAi.php` 배포. 이주 전에 코드만 나가도 대화는 3.6 을 넣어 **실패**하므로 순서는 이주 먼저.
+
 ## 정리 · 남은 것
 
 - 남긴 것 0: 시험 틀 · php · 브라우저 프로세스 0 · 기준 판 worktree 지움(`git worktree list` 에 없음) · 이 작업의 임시 DB 0(합성 비교 DB 4개 모두 지움). 디스크 여유 4.1G.
 - 이 작업 것이 아닌 잔여(보고만): 밤 회귀 22:30 끊김이 남긴 `tbox_memories_test_8768_3029628` DB · `/tmp/qaredi-stage13-0ia2r_g_` · (다른 세션의) `tbox_qf9_8421_test` · `tbox_qf9_8423_test`.
 - 밤 회귀 실행기(`~/.cache/qaredi-check/nightly/nightly.py`)는 바꾸지 않았다 — 진행 줄은 저장소의 `results.py` 가 내고, main 에 합쳐지면 다음 밤부터 적용. 시험 하나가 30분 넘게 조용히 돌면 300초 진행 줄이 감시를 살려 두고, 진짜 멈춤은 시험별 시간 제한(RC)이 잡는다.
-- 다음 조치(메인): ★ 문장 도우미 DB 판단 · 이 묶음 합치기 뒤 밤 회귀 대기열에 넣을 것 — `community.lib_contrast` · `design.*` · `community.qf12_floor_http` · `tbox.sec4` · 위 열셋 · `community.qf12_w1_browser` · `community.home_h4_browser`.
+- 다음 조치(메인): R1b 이주 운영 적용(이주 먼저 → 코드) · Pillow 없는 환경이라 memory_ai_http 뒷부분은 미검증 · 이 묶음 합치기 뒤 밤 회귀 대기열에 넣을 것 — `community.lib_contrast` · `design.*` · `community.qf12_floor_http` · `tbox.sec4` · 위 열셋 · `community.qf12_w1_browser` · `community.home_h4_browser`.
