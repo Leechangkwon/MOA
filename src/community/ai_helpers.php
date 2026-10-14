@@ -144,7 +144,7 @@ function community_ai_insert(array $user,string $id): array
             }
         }
         $result=community_save_doc($u,$id,['doc_version'=>$body['doc_version'],'doc'=>$doc],['force_snapshot'=>true]);
-        Audit::allow('ai.insert',['target_type'=>'page','target_id'=>(int)$p['id'],'detail'=>['ai_log_id'=>$r['public_id'],'doc_version'=>$result['doc_version']]]);
+        Audit::allow('ai.insert',['target_type'=>'page','target_id'=>(int)$p['id'],'detail'=>community_anon_audit_detail($p,['ai_log_id'=>$r['public_id'],'doc_version'=>$result['doc_version']])]);
         $db->commit();return $result;
     }catch(Throwable $e){$db->rollback();throw $e;}
 }

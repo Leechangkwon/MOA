@@ -120,6 +120,14 @@ def no_canary(text):
     return CANARY_USER not in text and CANARY_NAME not in text
 
 
+NAMES = {}   # C1b — W · A · B 의 아이디 · 표시 이름(준비에서 DB 로 채움)
+
+
+def no_names(text, skip=''):
+    """C1b ②: 카나리아에 더해 댓글 쓴 사람 A · B 의 아이디 · 표시 이름도 0 — skip 은 본인 시점(그 사람 이름은 빼고 본다)."""
+    return all(v not in text for k, vals in NAMES.items() if k not in skip for v in vals)
+
+
 def doc_with_text(text, extra=None):
     blocks = [{'id': str(uuid.uuid4()), 'type': 'paragraph', 'text': [{'t': text, 'm': {}}]}]
     return {'schema': 1, 'blocks': blocks + (extra or [])}
@@ -233,6 +241,10 @@ try:
     for k in ('W', 'A', 'B', 'E', 'M', 'G'):
         expect('GET', '/api/me/space', None, k, 200, 'setup: personal space ' + k)
     WAB = {UID['W'], UID['A'], UID['B']}
+    for k in ('W', 'A', 'B'):
+        dn = sql('SELECT coalesce(display_name, \'\') FROM users WHERE id=' + str(UID[k]))
+        NAMES[k] = [x for x in (UNAME[k], dn) if x and len(x) >= 2]
+    codes['wab_names_checked'] = {k: len(v) for k, v in NAMES.items()}
 
     # ════════ ① 스키마 ═══════════════════════════════════════════════════════════════
     # 첫 게시판 셋은 운영 이주(2026-09-24)가 만든 것 — 합성 새 설치에는 없으므로 같은 모양으로 넣은 뒤 카페 이주를 두 번 더 돌린다.
@@ -309,15 +321,16 @@ try:
     for who in ('E', 'M'):
         for label, path in surfaces:
             r = req('GET', path, None, who)
-            ok = r.status_code == 200 and no_canary(r.text)
+            ok = r.status_code == 200 and no_canary(r.text) and no_names(r.text)
             leaks = []
             if r.headers.get('Content-Type', '').startswith('application/json'):
                 leaks = id_leaks(r.json(), WAB)
-            check(ok and not leaks, '② ' + who + ' ' + label + ': 200 · canary id/name 0 · W/A/B user-id keys 0'
+            check(ok and not leaks, '② ' + who + ' ' + label + ': 200 · canary id/name 0 · A/B id/name 0 · W/A/B user-id keys 0'
                   + ('' if not leaks else ' LEAK ' + ','.join(leaks[:3])) + ('' if r.status_code == 200 else ' (got ' + str(r.status_code) + ')'))
     for who in ('W', 'A', 'B'):
         r = notifications(who)
-        check(r.status_code == 200 and no_canary(r.text) and not id_leaks(r.json(), WAB), '② notifications_list of ' + who + ': canary 0 · ids 0')
+        check(r.status_code == 200 and no_canary(r.text) and no_names(r.text, skip=who) and not id_leaks(r.json(), WAB),
+              '② notifications_list of ' + who + ': canary 0 · other W/A/B names 0 · ids 0')
 
     pg = req('GET', '/api/pages/' + P, None, 'E').json()
     check(pg['writer'] == {'username': None, 'display_name': '글쓴이', 'anon': True, 'is_me': False}
@@ -453,6 +466,8 @@ try:
     reauth('M')
     rl = expect('GET', '/api/reports', None, 'M', 200, '⑤ reports_list by admin (reauth)')
     check(no_canary(rl.text) and not id_leaks(rl.json(), WAB), '② reports_list (M): canary 0 · ids 0')
+    anon_targets = json.dumps([x['target'] for x in rl.json()['reports'] if x['target']['anonymous']], ensure_ascii=False)
+    check(anon_targets != '[]' and no_names(anon_targets), '② reports_list (M): anon targets carry no A/B id/name (reporters are shown by design)')
     mine = [x for x in rl.json()['reports'] if x['id'] == rep_E]
     check(mine and mine[0]['target']['author']['display_name'] == '글쓴이' and mine[0]['reporter']['username'] == 'claude_employee02'
           and mine[0]['same_target_count'] == 2, '⑤ reports_list: target author label · reporter name · same-target count 2')
@@ -522,7 +537,7 @@ try:
     check(n("SELECT count(*) FROM information_schema.columns WHERE table_schema='community' AND table_name='reports' AND column_name LIKE '%reveal%'") == 0,
           '⑥ reveal result not stored (no reveal column)')
     r = req('GET', '/api/pages/' + P + '/comments', None, 'M')
-    check(r.status_code == 200 and no_canary(r.text), '⑥ after reveal: comments_list (M) still canary 0')
+    check(r.status_code == 200 and no_canary(r.text) and no_names(r.text), '⑥ after reveal: comments_list (M) still canary 0 · A/B names 0')
 
     # ════════ ⑦ 감사 화면 ═════════════════════════════════════════════════════════════
     reauth('M')
@@ -534,6 +549,7 @@ try:
                             and x['user_agent'] is None and CANARY_USER not in x['summary'] for x in anon_rows),
           '⑦ anon rows: actor 「익명(익명게시판)」 · ip null · login_ref 0 · summary actor masked')
     check(no_canary(json.dumps(rows, ensure_ascii=False)), '⑦ target-filtered audit list: canary 0')
+    check(no_names(json.dumps(anon_rows, ensure_ascii=False)), '⑦ anon-marked audit rows: A/B id/name 0')
     for action in ('page.create', 'page.update', 'comment.create', 'comment.resolve'):
         check(any(x['action'] == action for x in anon_rows), '⑦ marker present on ' + action)
     rep_rows = [x for x in rows if x['action'] in ('report.resolve', 'anon.reveal')]
@@ -617,6 +633,22 @@ try:
     check(r.status_code == 201 and data2 == gps, '⑩ 자유게시판 upload stored as before (bytes unchanged)')
     check(n("SELECT count(*) FROM audit_logs WHERE action='attachment.upload' AND result='allow' AND detail->>'anon_board'='true'") == 1,
           '⑦ marker present on attachment.upload (anon only)')
+
+    # ════════ C1b ① AI 넣기 감사 표식 — AI 열쇠 없이 합성 ai_log 행 ═══════════════════════════
+    log_id = sql("INSERT INTO community.ai_log (user_id, feature, output_text, model, started_at, status, chars_in, chars_out)"
+                 " VALUES (" + str(UID['W']) + ", 'summary', '합성 요약 zebracafe', 'synthetic', now(), 'ok', 0, 9) RETURNING public_id").splitlines()[0]
+    ver = req('GET', '/api/pages/' + PI, None, 'W').json()['page']['doc_version']
+    r = expect('POST', '/api/pages/' + PI + '/ai-insert', {'log_id': log_id, 'doc_version': ver}, 'W', 200, 'C1b① ai-insert on anon post (synthetic ai_log)')
+    ai_marker = sql("SELECT coalesce(detail->>'anon_board','') FROM audit_logs WHERE action='ai.insert' AND result='allow' AND detail->>'ai_log_id'=" + lit(log_id))
+    codes['ai_insert_anon_board'] = ai_marker
+    check(ai_marker == 'true', 'C1b① ai.insert audit detail.anon_board = true')
+    reauth('M')
+    r, wrows2 = audit_rows({'actor': CANARY_USER})
+    check(r.status_code == 200 and not [x for x in wrows2 if x['action'] == 'ai.insert'], 'C1b① actor=<W> audit filter → ai.insert row 0')
+    r = http('GET', site + '/tbox/api/audit?page=1', None, 'M')   # 'ai.insert' 는 「어떻게」 필터 목록 밖 — 최신 첫 쪽에서 찾는다
+    ai_rows = [x for x in (r.json().get('rows', []) if r.status_code == 200 else []) if x['action'] == 'ai.insert']
+    check(r.status_code == 200 and ai_rows and all(x['actor_name'] == '익명(익명게시판)' and x['ip'] is None for x in ai_rows),
+          'C1b① ai.insert row on audit screen masked (익명(익명게시판) · ip null)')
 
     # ════════ 감사 표식을 단 커뮤니티 동작(합성 DB 실측) ════════════════════════════════════
     codes['anon_marked_actions'] = sql("SELECT string_agg(DISTINCT action, ',' ORDER BY action) FROM audit_logs WHERE detail->>'anon_board'='true'").split(',')

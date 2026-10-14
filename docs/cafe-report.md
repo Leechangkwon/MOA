@@ -38,3 +38,15 @@ board_pages_create(page.create) · SaveDoc(page.update — pages_update 의 몸)
 - board_request 알림은 페이지 없는 행(요청 번호를 잇는 열 없음 — 화면은 신고함 · 요청 목록으로).
 - schema.sql 은 익명게시판 행을 넣지 않는다(다른 첫 게시판처럼 이주 파일만).
 - 게시판 만들기 검사가 공용 함수로 옮겨져 400 검사가 트랜잭션 안에서 난다(응답 같음 · 요청 끝 되돌림 로그 한 줄).
+
+## C1b — 검토 보정 · 2026-10-14 · Opus 구현 에이전트
+
+### 변경 파일
+- `src/community/ai_helpers.php` — `ai.insert` 감사 detail 을 `community_anon_audit_detail($p, …)` 로(한 줄).
+- `tests/community/cafe_c1_http.py` — ② 카나리아 단언에 A · B 의 아이디 · 표시 이름(`no_names` — 준비에서 DB 로 읽음. 합성 fixture 의 A · B 는 표시 이름이 비어 있어 아이디만 셈: `wab_names_checked` W 2 · A 1 · B 1)을 더함: E · M 시점 모든 자리 · 알림(W/A/B 시점은 본인 이름만 빼고) · 신고함의 익명 대상 칸(신고자 이름은 설계상 보이므로 대상 칸만) · 확인 뒤 댓글 목록 · 익명 표식 감사 행. C1b① AI 넣기: 합성 `ai_log` 행(status ok · summary · output_text) → `POST /api/pages/{id}/ai-insert` 200 → `detail.anon_board = true` · `actor=<W>` 필터에 그 행 0 · 감사 화면에서 「익명(익명게시판)」 · ip null(`ai.insert` 는 「어떻게」 필터 목록 밖이라 최신 첫 쪽에서 찾음).
+
+### 수락 시험
+- `python3 tests/community/memories_harness.py --suite cafe_c1_http.py --output /home/changkwon/qaredi-cafe-results-20261014/c1b-run1` → **pass 215 · fail 0**(rc 0). 정적: security_lint 0 · php -l 0 · git diff --check 0 — `c1b-static.txt`.
+
+### 못 한 것
+- 없음(AI 넣기 길은 틀에서 막히지 않아 「미검증」 0).
