@@ -773,3 +773,38 @@ CREATE TABLE IF NOT EXISTS public.product_space_items (
 CREATE INDEX IF NOT EXISTS product_space_items_space ON public.product_space_items(space_id,kind,updated_at DESC) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS product_space_invites_space ON public.product_space_invites(space_id);
 CREATE INDEX IF NOT EXISTS product_space_items_file ON public.product_space_items(file_id) WHERE file_id IS NOT NULL;
+
+-- ─────────────────────────────────────────────────────────────
+-- invite_requests — 초대 요청 (사이트 H2 · 기획 ../docs/invite-request-plan.md 3장 · 결정 IR-1 ~ IR-4)
+--   로그인 전 공개 폼(/tbox/request-invite)으로 남긴 이름 · 소속 · 이유 · 접속 IP. 확인 코드는 sha256(status_hash)만 — 원문 0.
+--   상태 open → approved | rejected 한 번만. 승인된 요청은 확인 주소가 열릴 때 초대(member_invites — 1회용 · 7일)를 만든다(발급 0~3번).
+--   앱 계정은 SELECT · INSERT(다섯 칸) · UPDATE(상태 · 결정 · 발급 칸) 만(db/grants.sql) — DELETE 없음.
+--   보관: 결정 30일 뒤 · 결정 없으면 접수 30일 뒤 — scripts/privacy_purge.php 가 표 소유자로 지운다.
+--   (기존 DB 는 db/migrations/2026-10-14_invite_requests.sql 로 같은 모양이 된다.)
+-- ─────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS public.invite_requests (
+    id            BIGSERIAL   PRIMARY KEY,
+    name          TEXT        NOT NULL CHECK (char_length(name) BETWEEN 1 AND 40),
+    org           TEXT        NOT NULL CHECK (char_length(org) BETWEEN 1 AND 80),
+    reason        TEXT        NOT NULL CHECK (char_length(reason) BETWEEN 1 AND 500),
+    status_hash   TEXT        NOT NULL UNIQUE CHECK (status_hash ~ '^[0-9a-f]{64}$'),
+    ip            INET,
+    status        TEXT        NOT NULL DEFAULT 'open' CHECK (status IN ('open', 'approved', 'rejected')),
+    team_id       BIGINT      REFERENCES public.teams(id),
+    decided_by    BIGINT      REFERENCES public.users(id),
+    decision_note TEXT        CHECK (decision_note IS NULL OR char_length(decision_note) BETWEEN 1 AND 300),
+    invite_id     BIGINT      REFERENCES public.member_invites(id) ON DELETE SET NULL,
+    issued_count  INTEGER     NOT NULL DEFAULT 0 CHECK (issued_count BETWEEN 0 AND 3),
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    decided_at    TIMESTAMPTZ,
+    CONSTRAINT invite_requests_shape CHECK (
+           (status = 'open'     AND decided_by IS NULL     AND decided_at IS NULL     AND team_id IS NULL
+                                AND decision_note IS NULL  AND invite_id IS NULL      AND issued_count = 0)
+        OR (status = 'rejected' AND decided_by IS NOT NULL AND decided_at IS NOT NULL AND team_id IS NULL
+                                AND invite_id IS NULL      AND issued_count = 0)
+        OR (status = 'approved' AND decided_by IS NOT NULL AND decided_at IS NOT NULL))
+);
+CREATE INDEX IF NOT EXISTS invite_requests_status_idx  ON public.invite_requests (status, id DESC);
+CREATE INDEX IF NOT EXISTS invite_requests_ip_idx      ON public.invite_requests (ip, created_at);
+CREATE INDEX IF NOT EXISTS invite_requests_created_idx ON public.invite_requests (created_at) WHERE decided_at IS NULL;
+CREATE INDEX IF NOT EXISTS invite_requests_decided_idx ON public.invite_requests (decided_at) WHERE decided_at IS NOT NULL;

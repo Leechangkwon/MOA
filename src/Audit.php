@@ -701,6 +701,17 @@ final class Audit
         // 사유(detail.reason_text)·이전값/새값(detail.before/after)·끊은 세션 수는 전부 상세에 남는다.
         'member.invite.create|allow' => '{actor} 이(가) 가입 초대를 만들었습니다',
         'member.invite.revoke|allow' => '{actor} 이(가) 가입 초대를 회수했습니다',
+        // ── 초대 요청 (사이트 H2 · 기획 ../docs/invite-request-plan.md 3장 「감사」) ──
+        // 대상 이름은 언제나 「초대 요청 #번호」 — 요청한 사람의 이름 · 소속 · 이유 · 확인 코드는 감사에 넣지 않는다(감사 3년 > 요청 30일).
+        // 요청 · 발급은 로그인 전이라 {actor} 가 「(로그인 전)」 이다. 거부(속도 · 상한 · 미끼)는 대상 번호가 없어 {target} 을 쓰지 않는다.
+        'invite_request.create|allow'               => '{actor} 이(가) 「{target}」 을(를) 남겼습니다 (이름 · 소속 · 이유는 요청 표에만 — 30일 뒤 삭제)',
+        'invite_request.create|deny|rate_limited'   => '{actor} 이(가) 같은 IP 에서 초대 요청을 너무 자주 보내 막았습니다 (1시간 3건 · 24시간 5건)',
+        'invite_request.create|deny|too_many_open'  => '{actor} 의 초대 요청을 열린 요청이 200건에 이르러 받지 않았습니다 (잠시 뒤에)',
+        'invite_request.create|deny|honeypot'       => '{actor} 의 초대 요청에 사람에게 보이지 않는 칸이 채워져 있어 저장하지 않았습니다 (자동 입력 의심)',
+        'invite_request.decide|allow|approve'       => '{actor} 이(가) 「{target}」 을(를) 승인했습니다 (고른 팀은 상세 기록 · 초대 링크는 요청한 사람이 확인 주소를 열 때 만든다)',
+        'invite_request.decide|allow|reject'        => '{actor} 이(가) 「{target}」 을(를) 반려했습니다 (메모는 요청 표에만)',
+        'invite_request.issue|allow'                => '「{target}」 의 확인 주소에서 1회용 초대 링크(7일)를 만들었습니다 (앞 링크는 거둠 · 몇 번째인지는 상세 기록)',
+        'invite_request.issue|deny|issue_limit'     => '「{target}」 의 확인 주소가 초대 링크를 세 번 받은 뒤 다시 요청해 거부했습니다',
         'member.installer.update|allow' => '{actor} 이(가) 비서 설치 주소를 바꿨습니다',
         'member.message.send|allow' => '{actor} 이(가) 메시지를 보냈습니다',
         'member.ai.send|allow' => '{actor} 이(가) AI와 대화했습니다',

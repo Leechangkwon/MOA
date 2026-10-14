@@ -6441,6 +6441,91 @@
       "est_sec": 900,
       "writes_prod": false,
       "notes": "사이트 H1 「모아 홈 — 구글 첫 화면 방식」(docs/home-google-directive.md 완료 기준 ①~⑤ · DESIGN 2.31 · 2.30 「테마」 타일) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · Chromium. [grid] 1440 · 1280 · 960 · 720 · 412 · 360 × 밝게 · 어둡게 · 고대비: 머리 = div.shell-tools 하나(메신저 · 앱 · 칩 · 44) · 「m. 모아」 · 「전체 서비스」 · 「테마」 글자 단추 · 「내 홈」 0 · 「Qaredi」 64(<720 44) · h1 화면 읽기 「모아 홈」 · 검색 칸 52 · 반경 26 · 폭 min(720) · 자동 초점 0 · 원 56 · 아이콘 24 · 이름 13 · 기본 다섯 + 「＋ 바로가기」 · 줄 [6] / <720 [4,2] · 최대 8(824px) · 대시보드 접힘 · 접힌 동안 위젯 창구 0(요청 기록) · 넘침 0 · 누름 자리 < 44 0 · 대비 4.5 · 콘솔 0. [tools] 서버 HTML 의 div.shell-tools 가 / · /tbox/ · /community/ 에서 같음(aria-current 만 다름) · 검색 창 · #messenger-open 하나 · 「모아 홈」 aria-current · 칩 → 내 계정 · 내 활동 · 테마 · 로그아웃 · 하나만 열림 · 「테마」 → 테마 창 · 셸 두 화면에도 「테마」 · 관리자 타일 관리자만 · 412 판 전체 폭 · Esc 초점. [search] `/` 초점 · 칸 안 `/` 는 글자 · Enter → 공통 검색 창 그 글자 · 페이지 · 파일 묶음 · 앱 판 「검색」 타일. [short] 메신저 바로가기 → 메신저 창(주소 그대로) · 「＋ 바로가기」 → 펼침 + 홈 편집 + 상단 바로가기 설정(1440 옆 칸 · 412 창) · 설정 순서 · 여덟 개 한 줄 · 편집 중 접기 막힘 · 취소 쓰기 0. [dash] 펼친 뒤에만 위젯 창구 · 「접기 ▴」 · 홈 편집 · 내용 새로고침 · localStorage qaredi-home-dashboard:v1:<아이디> · 새로 고침 뒤 펼침 기억 · 접고 새로 고침 → 접힘. [before] 로그인 전 · 동의 전 런처 서버 HTML 이 main 의 launcher.php 와 글자 그대로 같음 + 실제 서버 머리 · 소개 화면. [logout] 모아 홈 「로그아웃」 → 로그인 화면. 결과: home-h1-browser-results.json · home-h1-browser-metrics.json · shots/."
+    },
+    {
+      "id": "tbox.invite_request_http",
+      "cmd": "python3 tests/community/memories_harness.py --suite invite_request_http.py --output /tmp/qaredi-invite-request-http-results",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "src/handlers/invite_request_page.php",
+        "src/handlers/invite_request_status_page.php",
+        "src/handlers/invite_requests_create.php",
+        "src/handlers/invite_requests_status.php",
+        "src/handlers/invite_requests_list.php",
+        "src/handlers/invite_request_decide.php",
+        "src/Member.php",
+        "src/handlers/member_invites.php",
+        "src/handlers/member_register.php",
+        "public/index.php",
+        "src/Audit.php",
+        "db/migrations/2026-10-14_invite_requests.sql",
+        "db/schema.sql",
+        "db/grants.sql",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        "scripts/privacy_purge.php",
+        "scripts/alerts.php",
+        "src/Legal.php",
+        "config/legal.json",
+        "content/legal/privacy-2026-10-14.html",
+        "tests/community/invite_request_http.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-122"
+      ],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "사이트 H2 「초대 요청」(docs/invite-request-directive.md 완료 기준 HTTP · 기획 ../docs/invite-request-plan.md 3장) — 빈 합성 DB · 로컬 php -S 127.0.0.1:8768 · fixture claude_ 계정 · 외부 요청 0. 마이그레이션 두 번 · 모양 · 권한(DELETE 0) · 화면 둘 public(로그인한 사람 302 /) · 요청 201 {status_path} · 해시만 · 400(키 · 길이 · 제어 문자 · agree) · CSRF 403 · 1시간 4번째 · 24시간 6번째 429 · 미끼 201 같은 모양 + 행 0 + deny · 열린 200 → 503 · 목록 · 결정 직원 403 · 재인증 403 · 409 · 없는 팀 400 · 확인 404 · 대기 · 반려(메모 0) · 승인 → 초대(1회 · 7일 · 팀 · 이름표 「초대 요청 #번호」) → 가입 · joined · 다시 열기 거둠 + 새 발급 · 넷째 409 · 1분 21번째 429 · 감사 문장 · 감사 · 감사 파일 · 접근 로그에 이름 · 코드 0 · 처리방침 새 판 · 옛 판 · 동의 관문 · AL-25 dry-run 21건 → 한 줄 · privacy_purge 보관 삭제(소유자 · 앱 DELETE 42501). 결과: invite-request-http-results.json · metrics · 명령 출력(건수만)."
+    },
+    {
+      "id": "tbox.invite_request_browser",
+      "cmd": "python3 tests/community/memories_harness.py --suite invite_request_browser.py --output /tmp/qaredi-invite-request-browser-results",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/handlers/invite_request_page.php",
+        "src/handlers/invite_request_status_page.php",
+        "src/handlers/invite_requests_create.php",
+        "src/handlers/invite_requests_status.php",
+        "src/handlers/invite_requests_list.php",
+        "src/handlers/invite_request_decide.php",
+        "src/Member.php",
+        "src/handlers/member_invites.php",
+        "src/handlers/member_register.php",
+        "public/index.php",
+        "src/Audit.php",
+        "db/migrations/2026-10-14_invite_requests.sql",
+        "db/schema.sql",
+        "db/grants.sql",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php",
+        "src/views/launcher.php",
+        "src/views/member_top.php",
+        "src/views/member_invites.php",
+        "public/assets/moa.css",
+        "public/assets/invite-request.js",
+        "public/assets/member.js",
+        "tests/community/invite_request_browser.py"
+      ],
+      "requirements": [],
+      "risks": [
+        "R-122"
+      ],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "사이트 H2 「로그인 전 첫 화면 · 초대 요청」(DESIGN 2.32) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [same] 동의 전 · 로그인 뒤 런처 서버 HTML = main launcher.php(바이트). [grid] 1440 · 1200 · 720 · 412 · 360 × 밝게 · 어둡게 · 고대비: ①~⑥ · 옛 블록 0 · 카드 4/2/1열 같은 높이 · 세 걸음 · 안전 넷 · 질문 넷 접힘 · 초대 요청 화면(폭 480 · 미끼 숨김) · 요청 확인 화면 · 관리자 「초대 요청」 표 — 넘침 0 · 대비 4.5 · 누름 자리 < 44 0 · 콘솔 0. [flow] 1440 · 412 폼 → 완료 · 복사 · 확인 화면 다섯 상태 · 가입하기 → 가입 화면에 초대 코드. [admin] 이유 60자 → 펼침 · 승인 창(팀) · 반려 창(메모) · Esc 초점. 결과: results.json · metrics · shots/."
     }
   ]
 }

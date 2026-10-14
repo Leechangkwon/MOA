@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,8778,8818))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py','invite_request_http.py','invite_request_browser.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()
@@ -129,7 +129,7 @@ def main():
                            '2026-10-15_remote_mcp.sql', '2026-10-19_qf12_work.sql',
                            # Q:F-13 P2 — 탈퇴 요청 표 · 소유자 전용 파기 함수(합성 DB 에서는 소유자 = tbox_testdb, 위 갈음)
                            '2026-10-21_privacy_retention.sql', '2026-10-22_owner_fix.sql', '2026-10-23_feedback_indexes.sql','2026-10-11_product_spaces.sql',
-                           '2026-10-13_community_page_attachments.sql', '2026-10-14_community_cafe.sql']  # P2-R3 소유자 바로잡기 — 합성 DB 는 소유자 tbox_testdb 라 바꿀 것 0
+                           '2026-10-13_community_page_attachments.sql', '2026-10-14_community_cafe.sql', '2026-10-14_invite_requests.sql']  # P2-R3 소유자 바로잡기 — 합성 DB 는 소유자 tbox_testdb 라 바꿀 것 0
         for _ in range(2):
             for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)

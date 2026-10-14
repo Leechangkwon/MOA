@@ -1,3 +1,27 @@
+<?php /* 사이트 H2 「초대 요청」 (DESIGN 2.32 「관리자 초대 요청」 · 2.4 표 · 2.7 창 · 기획 ../docs/invite-request-plan.md 2 ③) — 「초대 링크」 절 위.
+   목록은 GET /api/invite-requests(user.manage · 재인증)를 member.js 가 textContent 로만 그린다. 승인(팀 고르개 창 — 선택) · 반려(메모 창 — 관리자만 봄)
+   → POST /api/invite-requests/{번호}/decide. 초대 링크는 요청한 사람이 확인 주소를 열 때 만들어진다(이 화면에서 코드를 보지 않는다). 새 클래스 0. */ ?>
+<section class="panel moa-invite-panel" id="invite-requests" aria-labelledby="invite-requests-title">
+<div class="panel__head"><h2 class="panel__title" id="invite-requests-title">초대 요청 <span class="badge badge--internal" id="invite-requests-open" hidden></span></h2><p class="panel__sub">로그인 전 화면에서 남긴 요청이에요. 승인하면 요청한 사람이 자기 확인 주소에서 1회용 초대 링크(7일)를 받아요. 처리한 요청은 30일 뒤 지워져요.</p></div>
+<div id="invite-requests-ok" class="ok-note" role="status" hidden></div>
+<div class="table-wrap"><table class="files"><thead><tr><th scope="col">이름</th><th scope="col">소속</th><th scope="col">쓰려는 이유</th><th scope="col">받은 때</th><th scope="col">상태</th><th scope="col">작업</th></tr></thead><tbody id="invite-requests-body"></tbody></table></div>
+<p id="invite-requests-empty" class="muted" hidden>초대 요청이 없습니다.</p>
+<p id="invite-requests-msg" class="msg" role="alert"></p>
+</section>
+<dialog id="invite-approve-dialog" class="modal modal--form" aria-labelledby="invite-approve-title">
+<form id="invite-approve-form" class="form" autocomplete="off">
+<div class="modal__head"><h2 class="modal__title" id="invite-approve-title">초대 요청 승인</h2><button class="btn btn--icon" type="button" data-dialog-close aria-label="닫기"><span class="icon" data-icon="x"></span></button></div>
+<div class="modal__body"><p id="invite-approve-lead" class="muted"></p><label class="field"><span class="field__label">소속 팀 (선택)</span><select id="invite-approve-team"><option value="">팀 없음</option></select></label><p class="help">초대 링크는 요청한 사람이 확인 주소를 열 때 만들어져요(1회용 · 7일 · 고른 팀). 다시 열면 앞 링크를 거두고 새로 만들어요(세 번까지).</p><p id="invite-approve-msg" class="msg" role="alert"></p></div>
+<div class="modal__foot"><button class="btn btn--quiet" type="button" data-dialog-close>닫기</button><button class="btn" type="submit">승인하기</button></div>
+</form>
+</dialog>
+<dialog id="invite-reject-dialog" class="modal modal--form" aria-labelledby="invite-reject-title">
+<form id="invite-reject-form" class="form" autocomplete="off">
+<div class="modal__head"><h2 class="modal__title" id="invite-reject-title">초대 요청 반려</h2><button class="btn btn--icon" type="button" data-dialog-close aria-label="닫기"><span class="icon" data-icon="x"></span></button></div>
+<div class="modal__body"><p id="invite-reject-lead" class="muted"></p><label class="field"><span class="field__label">메모 (선택 · 관리자만 봄 · 300자)</span><textarea id="invite-reject-note" rows="3" maxlength="300"></textarea></label><p class="help">요청한 사람에게는 「이번에는 초대해 드리기 어려워요」 만 보이고 메모는 보이지 않아요. 되돌릴 수 없어요.</p><p id="invite-reject-msg" class="msg" role="alert"></p></div>
+<div class="modal__foot"><button class="btn btn--quiet" type="button" data-dialog-close>닫기</button><button class="btn btn--danger" type="submit">반려하기</button></div>
+</form>
+</dialog>
 <section class="panel moa-invite-panel" id="member-invites" data-base="<?= TBOX_BASE ?>">
 <div class="panel__head"><h2 class="panel__title">초대 링크로 함께 시작하기</h2><p>링크를 받은 사람이 아이디·비밀번호·OTP를 직접 설정합니다. 일반 구성원 권한으로 가입합니다.</p></div>
 <form id="invite-form" class="form form--grid"><label class="field"><span>초대 이름 / 사유</span><input id="invite-label" maxlength="80" placeholder="예: 새로 합류한 구성원" required></label><label class="field"><span>소속 팀</span><select id="invite-team"><option value="">팀 없음</option></select></label><label class="field"><span>가입 가능 인원</span><input id="invite-uses" type="number" min="1" max="100" value="1" required></label><label class="field"><span>유효기간 (일)</span><input id="invite-days" type="number" min="1" max="30" value="7" required></label><button type="submit" class="btn">초대 링크 만들기</button></form>

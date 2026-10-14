@@ -395,3 +395,28 @@ DO $$ BEGIN
   GRANT SELECT ON public.product_spaces,public.product_space_members,public.product_space_invites,public.product_space_dashboards,public.product_personal_dashboards,public.product_space_items TO tbox_backup;
  END IF;
 END $$;
+
+-- ─── 초대 요청 (사이트 H2 · 기획 ../docs/invite-request-plan.md 3장 — db/migrations/2026-10-14_invite_requests.sql 과 같은 줄) ───
+--   tbox_app    SELECT · INSERT(name · org · reason · status_hash · ip — 상태 · 시각은 기본값만) ·
+--               UPDATE(status · team_id · decided_by · decision_note · decided_at · invite_id · issued_count) · 시퀀스 USAGE·SELECT
+--               ★ DELETE 없음 — 보관 기한 삭제는 scripts/privacy_purge.php 가 표 소유자(tbox_owner)로
+--   tbox_backup SELECT 만 · tbox_perm · tbox_push 0
+DO $$
+BEGIN
+    IF to_regclass('public.invite_requests') IS NULL THEN
+        RAISE NOTICE 'invite_requests 표가 없다 — db/migrations/2026-10-14_invite_requests.sql 을 먼저 돌린다(이 절은 건너뜀)';
+    ELSE
+        REVOKE ALL ON public.invite_requests FROM tbox_app, tbox_backup, tbox_perm;
+        REVOKE ALL ON SEQUENCE public.invite_requests_id_seq FROM tbox_app, tbox_backup, tbox_perm;
+        IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'tbox_push') THEN
+            REVOKE ALL ON public.invite_requests FROM tbox_push;
+        END IF;
+        GRANT SELECT ON public.invite_requests TO tbox_app;
+        GRANT INSERT (name, org, reason, status_hash, ip) ON public.invite_requests TO tbox_app;
+        GRANT UPDATE (status, team_id, decided_by, decision_note, decided_at, invite_id, issued_count) ON public.invite_requests TO tbox_app;
+        GRANT USAGE, SELECT ON SEQUENCE public.invite_requests_id_seq TO tbox_app;
+        GRANT SELECT ON public.invite_requests TO tbox_backup;
+        GRANT SELECT ON SEQUENCE public.invite_requests_id_seq TO tbox_backup;
+    END IF;
+END
+$$;

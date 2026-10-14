@@ -17,12 +17,10 @@ if (Http::method()==='DELETE') {
 if (array_diff(array_keys($body),['label','team_id','max_uses','days'])!==[]) Http::error(400,Http::MSG_BAD_REQUEST);
 $label=$body['label']??null; $team=$body['team_id']??null; $uses=$body['max_uses']??1; $days=$body['days']??7;
 if (!is_string($label)||preg_match('//u',$label)!==1||trim($label)===''||iconv_strlen($label,'UTF-8')>80||preg_match('/\p{C}/u',$label)||!is_int($uses)||$uses<1||$uses>100||!is_int($days)||$days<1||$days>30||($team!==null&&(!is_int($team)||$team<1))) Http::error(400,Http::MSG_BAD_REQUEST);
-if ($team!==null&&!$db->run('SELECT id FROM teams WHERE id=:id AND is_active',
-        [':id'=>$team])->fetch()) Http::error(400,'활성 팀을 골라 주세요.');
+if (!Member::activeTeam($team)) Http::error(400,'활성 팀을 골라 주세요.');
 Member::rate('invite',(string)$user['id'],10);
-$code=bin2hex(random_bytes(32));
-$row=$db->run("INSERT INTO member_invites(code_hash,label,team_id,created_by,expires_at,max_uses) VALUES(:hash,:label,:team,:by,now()+make_interval(days=>:days),:uses) RETURNING id,expires_at",
-        [':hash'=>hash('sha256',$code),':label'=>trim($label),':team'=>$team,':by'=>(int)$user['id'],':days'=>$days,':uses'=>$uses])->fetch();
+// 사이트 H2 — 발급(코드 · 해시 · 행)은 Member::issueInvite 한 벌(초대 요청 확인 주소도 같은 함수). 판정 · 응답 · 감사는 전과 같다.
+$invite=Member::issueInvite((int)$user['id'],trim($label),$team,$uses,$days);
 Audit::allow('member.invite.create',
-        ['target_type'=>'system','target_id'=>(int)$row['id'],'detail'=>['reason_text'=>trim($label),'target_team'=>$team]]);
-Http::json(['id'=>(int)$row['id'],'path'=>Http::url('/join').'#invite='.$code,'expires_at'=>$row['expires_at']],201);
+        ['target_type'=>'system','target_id'=>$invite['id'],'detail'=>['reason_text'=>trim($label),'target_team'=>$team]]);
+Http::json(['id'=>$invite['id'],'path'=>$invite['path'],'expires_at'=>$invite['expires_at']],201);

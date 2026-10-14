@@ -533,7 +533,7 @@ $launcherUser=($argv[2]??'')==='consent'?['id'=>1001,'username'=>'claude_manager
 $launcherApps=[];
 require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baseline.php':'launcher.php');
 """)
-                for who in ('out', 'consent'):
+                for who in ('consent',):   # 사이트 H2 — 로그인 전 갈래는 2.32 첫 화면으로 바뀌었다(그 갈래는 invite_request_browser.py [grid] 가 잰다) · 동의 전만 그대로
                     a = subprocess.run(['php', str(stub), 'base', who], cwd=str(root), check=True, capture_output=True).stdout
                     b = subprocess.run(['php', str(stub), 'new', who], cwd=str(root), check=True, capture_output=True).stdout
                     summary['html-' + who] = {'base': len(a), 'new': len(b), 'sha_equal': hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()}
@@ -553,10 +553,10 @@ require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baselin
                             p.goto(site + '/', wait_until='networkidle')
                             p.wait_for_timeout(300)
                             st = p.evaluate("""() => ({tools: document.querySelectorAll('.shell-tools').length, hero: !!document.querySelector('.home-hero, .home-dashboard, .home-search'),
-                                logo: !!document.querySelector('body > header .moa-logo'), intro: !!document.querySelector('.moa-service-hero'), cta: (document.getElementById('home-open-dashboard') || {}).textContent,
+                                logo: !!document.querySelector('body > header .moa-logo'), intro: !!document.querySelector('.moa-service-hero'), landing: !!document.querySelector('.landing-hero'), cta: (document.getElementById('home-open-dashboard') || {}).textContent,
                                 overflow: document.documentElement.scrollWidth - innerWidth, signed: document.body.dataset.signed})""")
                             summary[tag] = st
-                            check(st['tools'] == 0 and not st['hero'] and st['logo'] and st['intro'] and st['signed'] == 'no' and st['overflow'] <= 0,
+                            check(st['tools'] == 0 and not st['hero'] and st['logo'] and (st['intro'] if who == 'consent' else st['landing']) and st['signed'] == 'no' and st['overflow'] <= 0,   # H2 — 로그인 전은 .landing-hero
                                   '⑤ %s: header (logo) · intro screen as before · shell-tools 0 · H1 parts 0 · overflow 0 (%s)' % (tag, (st['cta'] or '').strip()))
                             if who == 'consent':
                                 check((st['cta'] or '').startswith('동의하고 내 홈 열기'), '⑤ %s: consent CTA unchanged' % tag)

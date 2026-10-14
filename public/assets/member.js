@@ -34,6 +34,8 @@
   const date=s=>new Date(s).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
   const scopes={'read':'파일 읽기','read+upload':'파일 읽기·업로드 (비서 파일 기능)','read+upload+delete':'파일 읽기·업로드·삭제','community.read':'커뮤니티 읽기','community.write':'커뮤니티 읽기·쓰기','travel.read':'여행 계획 읽기','travel.write':'여행 계획 읽기·쓰기','assistant.run':'비서 실행','session.open':'이 PC에서 바로 로그인'};
   if(page==='join'){
+    // 사이트 H2 — 초대 요청 · 요청 확인 화면도 가입 화면과 같은 머리(memberPage 'join')를 쓴다. 그 두 화면의 일은 invite-request.js 몫이라 가입 폼이 없으면 여기서 끝난다.
+    if(!$('join-form'))return;
     const fragment=new URLSearchParams(location.hash.slice(1)), invite=fragment.get('invite');
     if(invite&&/^[a-f0-9]{64}$/.test(invite)){$('join-invite').value=invite;history.replaceState(null,'',location.pathname);}
     $('join-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{
@@ -139,6 +141,7 @@
   }
   async function initInvites(){
     const teams=await api('/api/teams');for(const t of teams.teams){const o=node('option',t.name);o.value=t.id;$('invite-team').append(o);}
+    teamList=teams.teams;
     await invitations();
     $('invite-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{
       const result=await api('/api/invites','POST',{label:$('invite-label').value,team_id:$('invite-team').value?Number($('invite-team').value):null,max_uses:Number($('invite-uses').value),days:Number($('invite-days').value)});
@@ -146,6 +149,69 @@
     });});
     $('invite-copy').addEventListener('click',()=>copy($('invite-url')));
     $('installer-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{await api('/api/member-installer','POST',{url:$('installer-url').value});say('설치 파일 주소를 저장했습니다.');});});
+  }
+  /* 사이트 H2 「초대 요청」 표 (DESIGN 2.32 · 2.4 · 2.7) — 열린 것 먼저 · 첫 칸 이름 · 이유는 앞 60자(누르면 행 아래 전체) · 상태 칩 · td.actions 에 「승인」(팀 고르개 창) ·
+     「반려」(메모 창). 열린 요청 수는 절 머리 배지. 재인증 15분 창이 닫혀 있으면(403 next:reauth) 공용 재인증 창 뒤 같은 요청을 한 번 더. 글자는 textContent 만. */
+  let teamList=[];
+  async function initInviteRequests(){
+    const body=$('invite-requests-body');if(!body)return;
+    const STATUS={open:['검토 대기','badge badge--internal'],approved:['승인','badge badge--ok'],rejected:['반려','badge badge--off']};
+    const okNote=$('invite-requests-ok'),msg=$('invite-requests-msg');
+    const approve=$('invite-approve-dialog'),reject=$('invite-reject-dialog');
+    let current=null,opener=null;
+    for(const t of teamList){const o=node('option',t.name);o.value=t.id;$('invite-approve-team').append(o);}
+    for(const dlg of [approve,reject]){
+      dlg.querySelectorAll('[data-dialog-close]').forEach(b=>b.addEventListener('click',()=>dlg.close()));
+      dlg.addEventListener('close',()=>{if(opener&&opener.isConnected)opener.focus();});
+    }
+    const shortWhen=v=>String(v||'').replace('T',' ').slice(0,19);
+    function render(data){
+      body.replaceChildren();
+      const open=Number(data.open_count)||0,badge=$('invite-requests-open');
+      badge.hidden=open===0;badge.textContent=open>0?'열린 요청 '+open:'';
+      for(const item of data.requests){
+        const tr=node('tr');
+        tr.append(node('td',item.name),node('td',item.org));
+        const why=node('td');const text=String(item.reason);
+        if(Array.from(text).length>60){
+          const more=node('button',Array.from(text).slice(0,60).join('')+'…','btn btn--plain');more.type='button';more.setAttribute('aria-expanded','false');
+          more.addEventListener('click',()=>{
+            const next=tr.nextElementSibling;
+            if(next&&next.dataset.inviteReasonRow===String(item.id)){next.remove();more.setAttribute('aria-expanded','false');return;}
+            const row=node('tr');row.dataset.inviteReasonRow=String(item.id);const cell=node('td',text);cell.colSpan=6;row.append(cell);tr.after(row);more.setAttribute('aria-expanded','true');
+          });
+          why.append(more);
+        }else why.textContent=text;
+        tr.append(why);
+        const when=node('td');when.append(node('span',shortWhen(item.created_at).slice(0,10),'nowrap'),document.createTextNode(' '),node('span',shortWhen(item.created_at).slice(11),'nowrap'));when.title=String(item.created_at);tr.append(when);
+        const st=node('td');const [label,cls]=STATUS[item.status]||[item.status,'badge'];st.append(node('span',item.status==='approved'&&item.joined?'가입함':label,cls));
+        if(item.status==='approved'&&item.team_name)st.append(document.createTextNode(' '),node('span',item.team_name,'muted'));
+        if(item.status==='rejected'&&item.decision_note)st.append(node('p',item.decision_note,'help'));
+        tr.append(st);
+        const act=node('td');act.className='actions';
+        if(item.status==='open'){
+          const ok=node('button','승인','btn btn--quiet btn--small');ok.type='button';ok.setAttribute('aria-haspopup','dialog');
+          ok.addEventListener('click',()=>{current=item;opener=ok;$('invite-approve-lead').textContent='「'+item.name+'」('+item.org+') 의 요청을 승인합니다.';$('invite-approve-team').value='';$('invite-approve-msg').textContent='';approve.showModal();});
+          const no=node('button','반려','btn btn--danger btn--small');no.type='button';no.setAttribute('aria-haspopup','dialog');
+          no.addEventListener('click',()=>{current=item;opener=no;$('invite-reject-lead').textContent='「'+item.name+'」('+item.org+') 의 요청을 반려합니다.';$('invite-reject-note').value='';$('invite-reject-msg').textContent='';reject.showModal();});
+          act.append(ok,no);
+        }
+        tr.append(act);body.append(tr);
+      }
+      $('invite-requests-empty').hidden=data.requests.length!==0;
+    }
+    async function load(){try{render(await api('/api/invite-requests'));msg.textContent='';}catch(e){msg.textContent=e.message;}}
+    function decide(dlg,payload,done,errorAt){
+      const send=()=>busy(dlg.querySelector('form'),async()=>{
+        try{await api('/api/invite-requests/'+current.id+'/decide','POST',payload);}
+        catch(e){if(e.status===403&&e.data?.next==='reauth'&&typeof window.qarediHandleReauth==='function'){dlg.close();window.qarediHandleReauth({status:403},e.data,()=>{dlg.showModal();send();});return;}errorAt.textContent=e.message;if(e.status===409)await load();return;}
+        dlg.close();okNote.textContent=done;okNote.hidden=false;await load();
+      });
+      send();
+    }
+    $('invite-approve-form').addEventListener('submit',e=>{e.preventDefault();const team=$('invite-approve-team').value;decide(approve,{action:'approve',team_id:team?Number(team):null},'승인했어요 — 요청한 사람이 확인 주소를 열면 초대 링크를 받아요.',$('invite-approve-msg'));});
+    $('invite-reject-form').addEventListener('submit',e=>{e.preventDefault();const note=$('invite-reject-note').value.trim();decide(reject,note?{action:'reject',note}:{action:'reject'},'반려했어요.',$('invite-reject-msg'));});
+    await load();
   }
   async function initAiSettings(){
     const form=$('ai-settings-form');if(!form)return;
@@ -168,5 +234,5 @@
     addEventListener('pagehide',()=>{$('ai-settings-key').value='';});
     try{paint(await api('/api/member-ai-settings'));}catch(error){notice.textContent=error.message;}
   }
-  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(page==='buddy-guide')await window.MoaBuddySetup.init({api,me});if(page==='consent')await consent();if(admin)await Promise.all([initInvites(),initAiSettings()]);if(page==='messages'){if(!window.MoaMessenger)throw Error('메신저를 불러오지 못했습니다. 새로고침해 주세요.');await window.MoaMessenger.mount({api,me,node,say,date,label,mode:'page'});}}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
+  api('/api/me').then(async data=>{me=data;csrf=data.csrf_token;if(page==='mcp-connect')await window.MoaMcpConnect.init({api,me});if(page==='welcome')await welcome();if(page==='buddy-guide')await window.MoaBuddySetup.init({api,me});if(page==='consent')await consent();if(admin)await Promise.all([initInvites().then(initInviteRequests),initAiSettings()]);if(page==='messages'){if(!window.MoaMessenger)throw Error('메신저를 불러오지 못했습니다. 새로고침해 주세요.');await window.MoaMessenger.mount({api,me,node,say,date,label,mode:'page'});}}).catch(e=>{if(page==='mcp-connect'&&window.MoaMcpConnect)window.MoaMcpConnect.failure(e);else say(e.message);});
 })();

@@ -568,3 +568,70 @@ dialog.floating .moa-ai-prompts > .btn { padding: 6px 8px; font-size: 12px; }
   .home-compact > .moa-nav > .shell-tools .shell-tools__me > .icon { display: none; }
   .home-compact > .moa-nav > .shell-tools .app-menu { position: fixed; top: 64px; right: 0; left: 0; width: auto; max-height: calc(100dvh - 64px); padding: 12px 16px; border-width: 0 0 1px; border-radius: 0; }
 }
+
+/* ─── 로그인 전 첫 화면 · 초대 요청 (사이트 H2 · DESIGN 2.32 · 결정 IR-1 ~ IR-4) ───────────────────────────────────────────────
+   로그인 전 런처(`launcher.php` 의 `!$signed` 갈래)만 — 동의 전 · 로그인 뒤 갈래의 마크업에는 이 클래스가 없다. 글자 로고는 2.31 의 `.home-wordmark` 그대로.
+   새 클래스는 2.32 의 여섯(.landing-hero · .landing-features · .landing-steps · .landing-trust · .landing-faq · .invite-request)과 그 안 요소 · 색값 0(토큰만) · 인라인 style 0. */
+.moa-nav nav:has(> .moa-nav-join:only-child) { justify-content: flex-end; }
+.moa-nav .moa-nav-join.btn { height: 44px; min-height: 44px; padding: 0 20px !important; font-size: 14px !important; }
+.landing-hero { display: flex; flex-direction: column; align-items: center; padding: clamp(40px, 10vh, 96px) 0 48px; text-align: center; }
+.landing-hero h1 { margin: 16px 0 0; color: var(--fg); font-size: 40px; font-weight: 700; line-height: 1.25; letter-spacing: -0.02em; }
+.landing-hero__lead { max-width: 640px; margin: 12px 0 0; color: var(--muted); font-size: 17px; line-height: 1.6; }
+.landing-hero__actions { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; margin-top: 28px; }
+.landing-hero__actions .btn { height: 44px; min-height: 44px; padding: 0 22px; font-size: 15px; }
+.landing-hero > .help { margin-top: 12px; }
+.landing-hero > .help a { display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+:is(.landing-features, .landing-steps, .landing-trust, .landing-faq) { max-width: 1200px; margin: 0 auto 56px; }
+:is(.landing-features, .landing-steps, .landing-trust, .landing-faq) > h2 { margin: 0 0 20px; color: var(--fg); font-size: 24px; font-weight: 700; line-height: 1.3; letter-spacing: -0.01em; }
+.landing-features__grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); align-items: stretch; gap: 16px; }
+.landing-features .card { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.landing-features__head { display: flex; align-items: center; gap: 12px; }
+.landing-features__head h3 { margin: 0; color: var(--fg); font-size: 16px; font-weight: 600; line-height: 1.3; }
+.landing-features__icon { display: flex; align-items: center; justify-content: center; flex: none; width: 40px; height: 40px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); }
+.landing-features__icon svg { width: 22px; height: 22px; }
+.landing-features__label { margin: 0; color: var(--muted); font-size: 13px; font-weight: 600; }
+.landing-features ul { margin: 0; padding-left: 18px; color: var(--fg); font-size: 14px; line-height: 1.6; }
+.landing-features li + li { margin-top: 4px; }
+.landing-features > .help { margin-top: 16px; }
+.landing-steps ol { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px; margin: 0; padding: 0; list-style: none; }
+.landing-steps li { display: flex; align-items: flex-start; gap: 12px; min-width: 0; }
+.landing-steps__num { display: flex; align-items: center; justify-content: center; flex: none; width: 32px; height: 32px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-dark); font-size: 15px; font-weight: 700; }
+.landing-steps h3 { margin: 4px 0; color: var(--fg); font-size: 16px; font-weight: 600; }
+.landing-steps p { margin: 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
+:is(.landing-steps, .landing-faq) p a { color: var(--fg); text-decoration: underline; text-underline-offset: 3px; }
+.landing-trust ul { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; margin: 0; padding: 0; list-style: none; }
+.landing-trust li { display: flex; align-items: center; gap: 10px; min-width: 0; color: var(--fg); font-size: 14px; }
+.landing-trust li > svg { flex: none; width: 20px; height: 20px; color: var(--accent-dark); }
+.landing-faq details { border-bottom: 1px solid var(--line); }
+.landing-faq details:first-of-type { border-top: 1px solid var(--line); }
+.landing-faq summary { display: flex; align-items: center; min-height: 48px; padding: 8px 0; color: var(--fg); font-size: 15px; font-weight: 600; cursor: pointer; }
+.landing-faq details > p { margin: 0 0 16px; color: var(--muted); font-size: 14px; line-height: 1.7; }
+@media (max-width: 1199.98px) { .landing-features__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 719.98px) {
+  .landing-hero h1 { font-size: 28px; }
+  .landing-features__grid, .landing-steps ol, .landing-trust ul { grid-template-columns: minmax(0, 1fr); }
+}
+/* 초대 요청 · 요청 확인 화면 — 가입 화면과 같은 머리(member_top.php) · 패널 하나 · 폭 480 */
+.invite-request { max-width: 480px; margin: 0 auto; }
+.invite-request .panel__title { font-size: 20px; }
+.invite-request > .form, .invite-request > #invite-request-done { display: flex; flex-direction: column; gap: 16px; }
+.invite-request .field { font-size: 14px; }
+.invite-request .field__label { color: var(--fg); font-size: 14px; font-weight: 500; }
+.invite-request label.field:has(input[type="checkbox"]) > .field__label { display: flex; align-items: center; gap: 10px; min-height: 44px; }
+.invite-request input[type="checkbox"] { flex: none; width: 20px; height: 20px; margin: 0; }
+.invite-request textarea { min-height: 120px; resize: vertical; }
+.invite-request .btn { min-height: 44px; }
+.invite-request > .help a, .invite-request #invite-request-privacy a { display: inline-flex; align-items: center; min-height: 44px; color: var(--fg); text-decoration: underline; }
+.invite-request [data-trap] { position: absolute; left: -10000px; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.invite-request #invite-status-text { margin: 0 0 16px; color: var(--fg); font-size: 16px; line-height: 1.6; }
+.invite-request #invite-status-text + .btn, .invite-request .btn + .btn { margin-bottom: 12px; }
+/* ⑥ 로그인 전 첫 화면의 「함께 보는 이야기」 접힘 머리 — 누름 자리 44(접힘 · 내용은 그대로 — 로그인 뒤 대시보드의 같은 부품은 건드리지 않는다) */
+.landing-faq ~ .moa-home-extra > summary { display: flex; flex-wrap: wrap; align-items: center; min-height: 44px; }
+/* 「사용자 관리」 의 「초대 요청」 표 — 폰 폭에서 행 동작 · 이유 펼치기 단추도 누름 자리 44(DESIGN 4장) */
+@media (max-width: 719.98px) { #invite-requests-body .btn { min-height: 44px; } }
+/* 「초대 요청」 표 — 이유 칸(앞 60자 단추 · 누르면 행 아래 전체)은 글 줄처럼 접힌다(2.4 폭 규칙 — 이 표의 thead 순서: 이름 · 소속 · 이유 · 받은 때 · 상태 · 작업) */
+#invite-requests-body td:nth-child(1), #invite-requests-body td:nth-child(2) { min-width: 5rem; overflow-wrap: anywhere; }
+#invite-requests-body td:nth-child(3) { min-width: 10rem; overflow-wrap: anywhere; }
+#invite-requests-body td.actions { min-width: 7.5rem; }
+#invite-requests-body .btn--plain { justify-content: flex-start; height: auto; min-height: 32px; padding: 4px 0; color: var(--fg); font-weight: 400; line-height: 1.5; text-align: left; white-space: normal; }
+#invite-requests-body tr[data-invite-reason-row] > td { white-space: pre-wrap; overflow-wrap: anywhere; }
