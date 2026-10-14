@@ -532,11 +532,6 @@
   text-align:center;
   transform:rotate(-18deg);
 }
-.community-threads .main-columns {
-  display:grid;
-  grid-template-columns:minmax(0,1fr) 235px;
-  gap:30px;
-}
 .community-threads .feed-column {
   min-width:0;
 }
@@ -545,11 +540,6 @@
   align-items:center;
   justify-content:space-between;
   margin-bottom:20px;
-}
-.community-threads .feed-head .eyebrow {
-  margin-bottom:5px;
-  font-size:8px;
-  letter-spacing:1.9px;
 }
 .community-threads .feed-head h2 {
   font-size:21px;
@@ -774,102 +764,6 @@
 .community-threads .owner-actions .danger {
   margin-left:auto;
 }
-.community-threads .journal-aside {
-  padding-top:2px;
-}
-.community-threads .journal-card {
-  background:var(--surface-2,#f0ede5);
-  border:1px solid #e8e3d8;
-  border-radius:15px;
-  padding:24px 22px;
-  position:relative;
-}
-.community-threads .card-label {
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  font-size:8px;
-  letter-spacing:1.7px;
-  color:#9c9d8b;
-  margin-bottom:27px;
-}
-.community-threads .card-label svg {
-  width:17px;
-  color:#abae97;
-}
-.community-threads .journal-card h3 {
-  font-size:19px;
-  font-weight:500;
-  line-height:1.65;
-  color:#515e4c;
-}
-.community-threads .journal-card>p {
-  font-size:12px;
-  color:#8b907f;
-  line-height:2;
-  margin-top:18px;
-}
-.community-threads .journal-line {
-  display:block;
-  width:28px;
-  height:1px;
-  background:#c7c9ba;
-  margin-top:26px;
-}
-.community-threads .journal-card .handwritten {
-  font-family:Georgia,serif;
-  font-size:11px;
-  font-style:italic;
-  line-height:1.7;
-  margin:15px 0;
-  color:#959985;
-}
-.community-threads .journal-card .text-button {
-  font-size:11px;
-  color:#808e74;
-}
-.community-threads .studio-card {
-  border:1px solid var(--line);
-  border-radius:15px;
-  padding:23px 21px;
-  margin-top:20px;
-}
-.community-threads .studio-badge {
-  font-size:8px;
-  letter-spacing:1.4px;
-  display:flex;
-  align-items:center;
-  gap:7px;
-  color:var(--accent);
-}
-.community-threads .studio-badge svg {
-  width:15px;
-  height:15px;
-}
-.community-threads .studio-card h3 {
-  font-size:15px;
-  margin:15px 0 10px;
-  font-weight:500;
-}
-.community-threads .studio-card p {
-  font-size:11px;
-  color:#8c9589;
-  line-height:1.95;
-}
-.community-threads .small-muted {
-  display:block;
-  font-size:9px;
-  color:#a2a99d;
-  margin-top:18px;
-}
-.community-threads .aside-footer {
-  font-size:8px;
-  line-height:2.5;
-  letter-spacing:1.4px;
-  color:#adb2a7;
-  margin-top:26px;
-  text-align:center;
-}
 .community-threads .empty {
   text-align:center;
   padding:50px 22px 45px;
@@ -939,60 +833,109 @@
   width:max-content;
   font-size:13px;
 }
+/* DESIGN 2.36 (S1) — 프로필 한 줄 머리: 배너 띠 0 · 바깥 카드 테두리 0(열 안 흐름 · 아래 구분선) ·
+   아바타 48 + 이름 18/600 + 소개 한 줄(말줄임) · 그 아래 숫자 줄(숫자 15/600 · 이름 13 --muted · 사이 16) · 오른쪽 위 작은 단추.
+   `.profile-content` 는 칸(display:contents)만 넘겨 아바타 · 글 · 단추 · 숫자 줄이 한 격자에 놓인다(마크업 · 클래스 그대로). */
 .community-threads .profile-panel {
-  background:var(--surface,#fff);
-  border:1px solid var(--line);
-  border-radius:20px;
-  overflow:hidden;
-  margin-bottom:35px;
-}
-.community-threads .profile-cover {
-  height:105px;
-  background:radial-gradient(ellipse at 20% 180%,#8d9a80 0 48%,transparent 49%),radial-gradient(ellipse at 80% 140%,#bfccb3 0 55%,transparent 56%),#e7e9dc;
+  display:grid;
+  grid-template-columns:48px minmax(0,1fr) auto;
+  column-gap:12px;
+  align-items:start;
+  padding:4px 0 12px;
+  margin-bottom:16px;
+  border-bottom:1px solid var(--line);
+  color:var(--ink);
 }
 .community-threads .profile-content {
-  display:flex;
-  align-items:center;
-  gap:20px;
-  padding:26px 30px;
+  display:contents;
 }
 .community-threads .profile-avatar {
-  width:70px;
-  height:70px;
-  border:5px solid white;
-  margin-top:-45px;
-  font-size:25px;
-  box-shadow:0 2px 8px #00000008;
+  grid-column:1;
+  grid-row:1 / span 2;
+  width:48px;
+  height:48px;
+  font-size:18px;
 }
-.community-threads .profile-content .eyebrow {
-  font-size:8px;
-  margin-bottom:5px;
+.community-threads .profile-content > div:not(.profile-actions) {
+  grid-column:2;
+  grid-row:1;
+  min-width:0;
 }
 .community-threads .profile-content h1 {
-  font-size:23px;
-  font-weight:550;
+  font-size:18px;
+  font-weight:600;
+  line-height:1.35;
+  letter-spacing:-.01em;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
 }
 .community-threads .muted {
   font-size:12px;
   color:var(--muted);
   margin-top:7px;
 }
-.community-threads .profile-content .secondary {
-  margin-left:auto;
-  font-size:11px;
+.community-threads .profile-content .muted {
+  margin-top:0;
+  font-size:14px;
+  line-height:1.4;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.community-threads .profile-actions {
+  grid-column:3;
+  grid-row:1;
+  display:flex;
+  gap:8px;
+}
+.community-threads .profile-actions .secondary {
+  min-height:32px;
+  height:32px;
+  padding:0 12px;
+  border-radius:var(--r-sm,6px);
+  font-size:13px;
+  font-weight:500;
+  white-space:nowrap;
 }
 .community-threads .profile-stats {
+  grid-column:2 / -1;
+  grid-row:2;
   display:flex;
-  gap:35px;
-  padding:0 30px 23px 120px;
-  font-size:11px;
+  flex-wrap:wrap;
+  column-gap:16px;
+  margin-top:4px;
+  font-size:13px;
+  line-height:1.4;
   color:var(--muted);
 }
+.community-threads .profile-stats > * {
+  display:inline-flex;
+  align-items:baseline;
+  gap:4px;
+  min-height:24px;
+  padding:0;
+  white-space:nowrap;
+  color:var(--muted);
+  font-size:13px;
+}
 .community-threads .profile-stats strong {
-  font-size:19px;
-  font-weight:550;
-  color:var(--green);
-  margin-right:6px;
+  font-size:15px;
+  font-weight:600;
+  color:var(--ink);
+}
+.community-threads .profile-stats .social-stat:hover {
+  color:var(--ink);
+}
+/* 폰: 아바타 + 이름 한 줄 → 숫자 줄 → 단추(누름 자리 44) */
+@media(max-width:700px) {
+  .community-threads .profile-panel { grid-template-columns:48px minmax(0,1fr); row-gap:8px; }
+  .community-threads .profile-avatar { grid-row:1; }
+  .community-threads .profile-content > div:not(.profile-actions) { align-self:center; }
+  .community-threads .profile-stats { grid-column:1 / -1; grid-row:2; margin-top:0; column-gap:12px; }
+  .community-threads .profile-stats > * { min-height:44px; align-items:center; }
+  .community-threads .profile-actions { grid-column:1 / -1; grid-row:3; flex-wrap:wrap; }
+  .community-threads .profile-actions .secondary { min-height:44px; height:auto; }
 }
 .community-threads .feed.grid {
   grid-template-columns:repeat(3,minmax(0,1fr));
@@ -1341,22 +1284,12 @@
 .community-threads.shared-mode .bottom-nav {
   display:none;
 }
-.community-threads.shared-mode .profile-content {
-  padding-bottom:15px;
-}
-.community-threads.shared-mode .profile-stats {
-  padding-left:30px;
-}
 @media(min-width:1450px) {
 .community-threads .hero {
     padding:42px 48px;
   }
 .community-threads .hero h1 {
     font-size:44px;
-  }
-.community-threads .main-columns {
-    grid-template-columns:minmax(0,1fr) 265px;
-    gap:38px;
   }
 .community-threads .hero-art {
     transform:scale(1.08);
@@ -1375,10 +1308,6 @@
 .community-threads main {
     padding:28px;
   }
-.community-threads .main-columns {
-    grid-template-columns:minmax(0,1fr) 200px;
-    gap:22px;
-  }
 .community-threads .hero {
     padding:28px;
     min-height:300px;
@@ -1394,31 +1323,8 @@
     font-size:7px;
     letter-spacing:1px;
   }
-.community-threads .journal-card,
-.community-threads .studio-card {
-    padding:20px 17px;
-  }
-.community-threads .journal-card h3 {
-    font-size:17px;
-  }
-.community-threads .profile-content {
-    gap:12px;
-    padding:20px;
-  }
-.community-threads .profile-content h1 {
-    font-size:20px;
-  }
-.community-threads .profile-stats {
-    padding-left:100px;
-  }
 }
 @media(max-width:960px) {
-.community-threads .journal-aside {
-    display:none;
-  }
-.community-threads .main-columns {
-    grid-template-columns:minmax(0,1fr);
-  }
 .community-threads .hero-art {
     transform:scale(.8);
     min-width:225px;
@@ -1435,12 +1341,6 @@
   }
 .community-threads .hero-sub {
     font-size:11px;
-  }
-.community-threads .profile-content {
-    flex-wrap:wrap;
-  }
-.community-threads .profile-content .secondary {
-    margin-left:0;
   }
 }
 @media(max-width:700px) {
@@ -1550,9 +1450,6 @@
 .community-threads .feed-head h2 {
     font-size:20px;
   }
-.community-threads .feed-head .eyebrow {
-    font-size:7px;
-  }
 .community-threads .feed-tools {
     margin-bottom:17px;
   }
@@ -1619,44 +1516,6 @@
     bottom:calc(85px + env(safe-area-inset-bottom));
     font-size:12px;
     padding:12px 17px;
-  }
-.community-threads .profile-cover {
-    height:85px;
-  }
-.community-threads .profile-content {
-    padding:22px;
-    gap:14px;
-  }
-.community-threads .profile-content h1 {
-    font-size:22px;
-  }
-.community-threads .profile-content .muted {
-    font-size:11px;
-  }
-.community-threads .profile-avatar {
-    width:54px;
-    height:54px;
-    margin-top:-56px;
-    font-size:20px;
-  }
-.community-threads .profile-content .eyebrow {
-    font-size:7px;
-  }
-.community-threads .profile-content .secondary {
-    min-height:36px;
-    font-size:10px;
-    padding:7px 12px;
-  }
-.community-threads .profile-stats {
-    padding:0 22px 21px;
-    gap:24px;
-    font-size:10px;
-  }
-.community-threads .profile-stats strong {
-    font-size:19px;
-  }
-.community-threads .profile-panel {
-    margin-bottom:26px;
   }
 .community-threads .empty {
     padding:40px 18px;
@@ -1801,23 +1660,20 @@
 .community-threads { --paper:var(--bg,#f7f6f2); --ink:var(--fg,#283c36); width:100%; min-width:0; background:transparent; color:var(--ink); }
 .community-threads .threads-heading { display:flex; justify-content:space-between; gap:16px; align-items:center; margin:8px 0 26px; }
 .community-threads .threads-heading h1 { font-size:clamp(24px,3vw,34px); margin:6px 0; }
-.community-threads .hero-sub { margin:0; font-size:14px; }
+.community-threads .hero-sub { margin:0; font-size:14px; color:var(--muted); }
 .community-threads .threads-tabs { display:flex; gap:8px; border-bottom:1px solid var(--line); margin-bottom:18px; overflow-x:auto; }
 .community-threads .threads-tabs button { padding:12px 14px; white-space:nowrap; border-bottom:3px solid transparent; color:var(--muted); }
 .community-threads .threads-tabs button.active { border-color:var(--accent); color:var(--ink); font-weight:700; }
 .community-threads .threads-quick { display:flex; gap:12px; align-items:center; margin-bottom:26px; }
 .community-threads .threads-write { display:flex; gap:12px; align-items:center; background:var(--surface); border:1px solid var(--line); border-radius:16px; padding:14px; flex:1; min-width:0; text-align:left; }
 .community-threads .threads-write > span:nth-child(2) { flex:1; color:var(--muted); }
-.community-threads .main-columns { grid-template-columns:minmax(0,720px) minmax(200px,260px); justify-content:center; }
 .community-threads .feed-column { min-width:0; }
 .community-threads .feed-head { margin-top:0; }
 .community-threads .feed-tools input { min-width:0; }
 .community-threads .toast { z-index:1500; }
-.community-threads .profile-panel { margin-bottom:24px; }
-.threads-public { --surface:#fff; --muted:#78817a; --line:#e8e8e0; margin:0; padding:24px; background:#f7f6f2; }
+.threads-public { --surface:#fff; --muted:#5d675f; --line:#e8e8e0; margin:0; padding:24px; background:#f7f6f2; }
 .threads-public .community-threads { max-width:1100px; margin:auto; }
 .community-threads.shared-mode .threads-tabs { display:none; }
-@media(max-width:1100px) { .community-threads .journal-aside { display:none; } .community-threads .main-columns { grid-template-columns:minmax(0,720px); } }
 @media(max-width:700px) { .community-threads .threads-heading { margin:0 0 18px; } .community-threads .threads-heading #today { display:none; } .community-threads .threads-quick { gap:8px; } .community-threads .threads-write { padding:12px; } .community-threads .threads-write > span:nth-child(2) { font-size:12px; } .threads-public { padding:12px; } }
 
 /* Photo essays: pictures and concise scene text belong together. */
@@ -1847,7 +1703,6 @@
 /* Preview and detail share the same surface/foreground pair in every theme. */
 .community-threads { --green:var(--primary,#2d5347); --soft:var(--surface-2,#eef1e9); }
 .community-threads .post,
-.community-threads .profile-panel,
 .community-threads .social-person { background:var(--surface,#fff); color:var(--ink); }
 .community-threads .post-cover { background:var(--soft); }
 .community-threads .post-cover img,
@@ -1889,9 +1744,6 @@
 .community-threads .post-detail { border:0; border-radius:0; }
 .community-threads .post-detail .post-media img,
 .community-threads .post-detail .post-media video { max-height:65dvh; object-fit:contain; }
-.community-threads .profile-actions { display:flex; flex-wrap:wrap; gap:8px; }
-.community-threads .profile-stats { flex-wrap:wrap; gap:16px 24px; }
-.community-threads .profile-stats .social-stat { display:flex; align-items:center; gap:8px; min-height:44px; padding:0; border-bottom:1px solid var(--line); }
 .community-threads .social-person { display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 0; border-bottom:1px solid var(--line); }
 .community-threads .social-person a { overflow-wrap:anywhere; min-width:0; }
 .community-threads .social-person .secondary { flex:none; }
@@ -1901,8 +1753,6 @@
 @media(max-width:600px) {
   .community-threads .feed-tools { flex-wrap:wrap; }
   .community-threads .feed-tools .search-label { flex-basis:60%; }
-  .community-threads .profile-actions { width:100%; }
-  .community-threads .profile-content { flex-wrap:wrap; }
   .community-threads .detail-dialog { width:calc(100vw - 12px); max-height:96dvh; }
 }
 
@@ -1925,3 +1775,14 @@
 .community-threads dialog::backdrop { backdrop-filter:blur(2px); }
 .community-threads .post { box-shadow:none; }
 @media (max-width:600px) { .community-threads #comments-dialog[open] { width:calc(100vw - 16px); max-height:90dvh; } }
+
+/* DESIGN 2.36 (S1) — 한 열: 화면 머리 · 탭 · 글쓰기 칸 · 프로필 · 피드 머리 · 도구 · 피드가 같은 가운데 열(최대 680 — 스레드 앱 폭).
+   오른쪽 칸(.journal-aside)은 없앴다 — 넓은 화면에서 열 밖은 빈 바탕. */
+.community-threads > .connection,
+.community-threads > .threads-heading,
+.community-threads > .threads-tabs,
+.community-threads > .threads-quick,
+.community-threads > .profile-panel,
+.community-threads > .main-columns { width:100%; max-width:680px; margin-left:auto; margin-right:auto; }
+.community-threads .main-columns { display:block; }
+.community-threads .feed-head h2 { font-size:18px; font-weight:600; }

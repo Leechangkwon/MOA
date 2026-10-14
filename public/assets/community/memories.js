@@ -111,7 +111,6 @@
     $('hero').hidden = isProfile || Boolean(state.post);
     $('profile-panel').hidden = !isProfile;
     $('feed-title').textContent = state.post ? '스레드' : isProfile ? (state.view === 'mine' ? '나의 스레드' : '이 사람의 스레드') : state.view === 'discover' ? '새로운 이야기 발견' : '팔로잉의 이야기';
-    $('feed-kicker').textContent = isProfile ? 'COLLECTED MOMENTS' : 'OUR MOMENTS';
     const profile = state.sharedProfile || {}, mine = state.view === 'mine' || profile.mine || state.profile === state.me?.username;
     const name = shared ? (state.sharedProfile?.display_name || state.sharedProfile?.username || '친구') : state.view === 'mine' ? (state.me?.display_name || state.me?.username || '나') : (profile.display_name || state.profile);
     $('profile-title').textContent = name + '의 스레드';

@@ -6665,6 +6665,34 @@
       "est_sec": 600,
       "writes_prod": false,
       "notes": "사이트 H4 「모아.」 글자 로고 · 바닥 붙이기(DESIGN 2.33) + H5 사이드바 머리 · 앱 판 검색 타일(2.19 ⑩ · 2.30) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [places] 모아 홈 · 로그인 전 · 동의 전 런처 · 로그인 · 가입 · 동의 · 초대 요청 · 확인 · 처리방침: 「모아.」 계산된 색 = 토큰 · 점 D 만 · A · B 그라데이션 · C 두 색 · 테마 여섯 그대로 · 고대비 --fg · 대비 4.5(B 밝게는 값만 기록) · 「Qaredi」 0. [pick] 첫 HTML data-wordmark(쿠키 a b c d · 엉뚱한 값 · 없음 → d) · 테마 창 넷 · 미리보기 · 즉시 · 닫으면 되돌림 · 저장 쿠키 · 새로 고침 · 다른 화면. [foot] 1440×900 · 1920×1080 · 412×900 짧은 화면 바닥 = 창 아래 끝 · 긴 화면 내용 뒤 · 폭 ≤ 1200 · 넘침 0 · 콘솔 0. [h5] 셸 다섯 사이드바 머리 글자 0 · 아이콘 36 · aria-label · 풍선 · 앱 판 검색 타일 0 · 검색 길 그대로."
+    },
+    {
+      "id": "community.story_s1_browser",
+      "cmd": "python3 tests/community/memories_harness.py --port 8768 --suite story_s1_browser.py --output /tmp/qaredi-story-s1-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/handlers/memories_page.php",
+        "src/community/handlers/memories_shared.php",
+        "public/assets/community/memories.js",
+        "public/assets/community/memories.css",
+        "public/assets/community/travel-plans.js",
+        "src/views/shell_top.php",
+        "tests/community/story_s1_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 420,
+      "writes_prod": false,
+      "notes": "이야기 S1 스레드 화면 정리(DESIGN 2.36 · 지시서 S1) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [grid] 1440 · 1280 · 960 · 412 · 360 × 밝게 · 어둡게 · 고대비 × 팔로잉 · 나의 스레드 · 발견 · 남의 프로필 · 공유 공개 화면: .profile-cover · .journal-aside · 옛 영문 문구 · eyebrow 0 · 프로필 높이 ≤ 96(1440) · 숫자 한 줄 · 단추(내 것 둘 · 남의 것 팔로우) · 한 열(≤ 680 · 가운데 · 왼끝 · 폭 같음) · 넘침 0 · 대비 4.5 · 콘솔 0. [act] 글쓰기 · 사진 이야기 · AI로 꾸미기 · 좋아요 · 댓글 · 공유 · 공개 범위 · 여행 계획 · 팔로우 그대로. [shot] 나의 스레드 1440 밝게 · 어둡게 · 412."
     }
   ]
 }
