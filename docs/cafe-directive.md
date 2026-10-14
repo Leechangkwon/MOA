@@ -1,0 +1,89 @@
+# 지시서 카페 — 「우리 공간」 카페 · 자유 · 익명게시판 · 신고 · 작성자 확인 (2026-10-14)
+
+사용자 요청(2026-10-13): 「우리 공간은 이름은 좋은데 아이콘이 우리 공간처럼 안 느껴짐. 자유게시판, 익명게시판 등 업무와 관련되지 않은 네이버 카페나 다음 카페 같은 기능을 넣고 싶음」. 결정 CF-1 ~ CF-7(2026-10-13 · 14).
+기준 문서(**정답지**): 기획 `/var/www/qaredi/community/cafe-plan.md` · **`/var/www/qaredi/community/ARCHITECTURE.md` 25장**(둘이 다르면 25장) · `DESIGN.md` **2.29**(+ 2.3 · 2.4 · 2.6 · 2.7 · 2.21 · 6장) · `ARCHITECTURE.md` 13장 · `/var/www/qaredi/CLAUDE.md` 2 · 3 · 4장.
+단위: 한 기능 묶음 두 조각 — **C1 보안 바닥**(서버 · 스키마 · 판정 · 가림 · 신고 · 확인) → 메인 검토 → **C2 화면**. 시험은 「한 기능에 한 번」 — 구현 에이전트는 **그 조각의 수락 시험만**. 기준 판 시험 · 다른 회귀 · 같은 묶음 반복은 하지 않는다(메인이 최종 판에서 한 번).
+
+## 공통
+
+| 항목 | 내용 |
+|---|---|
+| 구현 자리 | 격리 worktree **`/home/changkwon/qaredi-cafe-20261014`**(브랜치 `feat/cafe` — 메인이 만든다). 결과 **`/home/changkwon/qaredi-cafe-results-20261014/`**. 운영 · 운영 DB · 다른 worktree 읽기 · 쓰기 0(기준 문서만 읽기) |
+| 격리 틀 | `python3 tests/community/memories_harness.py --suite <파일> --output <폴더>` — 포트 8768 한 번에 하나(시작 전 `ss -ltn \| grep 8768`). 새 스위트는 `--suite` choices 에, 새 마이그레이션은 `migrations` 목록 **끝**에(그 두 자리만) |
+| 브라우저 | `. /home/changkwon/qaredi-cafe-results-20261014/env.sh` |
+| 계정 | 시험은 틀이 만드는 합성 계정 · 검토 표식 UA `tbox-review/<날짜>` — 시드 계정 0 |
+| 커밋 | 파일 지정(`git add -A` 금지) · 한글 · 첫 줄 `Qaredi 카페 C1: …` / `C2: …` · 끝 `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` · push · 발행 · 합치기 0 |
+| 디스크 | 스크린샷은 필요한 것만 |
+
+## C1 — 보안 바닥 (서버)
+
+```
+목표        : 게시판에 자리(업무 · 카페)와 익명 종류를 더하고, 익명게시판 글 · 댓글의 쓴 사람을 모든 응답에서 별칭으로 바꾸며,
+              신고 · 관리자 처리 · 작성자 확인(재인증 + 사유 + 감사) · 게시판 요청 · 카페 홈 창구를 서버에 만든다.
+요구사항    : community ARCH 25장 전부(25.1 원칙 ~ 25.8) — 읽고 시작할 것. 조사 근거(파일:줄)는 25장 표와 cafe-plan 2장.
+수정 파일   : DB — db/migrations/2026-10-14_community_cafe.sql(새 — 25.2 열 · CHECK · 25.4 anon_aliases · 25.5 reports · 25.7 board_requests ·
+                 알림 종류 CHECK 누적(2026-10-19_qf12_work.sql 방식) · GRANT · 자유게시판 area 이동 · 익명게시판 행 — 두 번 돌려도 같음 · 되돌리기 주석) ·
+                 db/community/schema.sql · db/community/grants.sql(같은 내용을 정본에) ·
+              판정 — src/community/CommunityAuthz.php(BOARD_KINDS · decideBoardWrite · decidePublish · decideSuggestionCreate 갈래 · 새 decideReportCreate ·
+                 decideReportManage · decideAnonReveal · decideBoardRequest — 25.1 의 「얇은 갈래」만) ·
+              가림 — src/community/anon_helpers.php(새 — 25.4 헬퍼 다섯 + community_anon_audit_detail) · src/community/routes.php(require · 라우트 줄 · community_page_row_sql 읽기 열(게시판 kind · area) ·
+                 숨김 쓰기 공용 함수 · 게시판 만들기 공용 함수 · 검색 댓글 SQL 의 이름표) ·
+                 handlers: pages_get.php · board_pages_list.php · src/community/BoardCursor.php · board_pages_create.php(별칭 0) · comments_create.php(별칭 · 멘션 끔) ·
+                 comments_list.php · search.php · notifications_list.php · history.php · versions_list.php · version_get.php · mention_candidates.php ·
+                 export_helpers.php · procedures_list.php · pages_properties.php(검증 거부) · pages_update.php(자료실 참조 거부) · attachments_upload.php(그림 메타 지움) ·
+                 pages_hide.php · comment_hide.php(공용 함수로 옮김 — 입력 · 응답 · 감사 그대로) · boards_create.php(area · anonymous) · boards_list.php(?area) ·
+                 감사 detail 표식이 필요한 커뮤니티 핸들러(구현자가 grep 으로 목록화 — 보고서에) ·
+                 새 handlers: reports_create.php · reports_list.php · report_resolve.php · report_reveal.php · board_requests_create.php · board_requests_list.php ·
+                 board_request_decide.php · cafe_home.php ·
+              감사 — src/Audit.php(SUMMARY_TEMPLATES 에 새 동작 다섯만) · src/handlers/audit_list.php(25.6 가림 · 필터 제외 — 화면 · 내보내기 같은 함수) ·
+              그 밖 — src/community/Memories.php(stripPhotoMetadata 가시성만 public static) ·
+              시험 — tests/community/cafe_c1_http.py(새 수락) · tests/community/memories_harness.py(두 자리) · tests/catalog.json ·
+                 옛 시험이 바뀐 동작(boards_list 항목 키 · BOARD_KINDS 개수 등)으로 깨지면 그 파일의 그 단언만(이유를 보고서에) ·
+              문서 — docs/cafe-report.md(새 — C1 절)
+              그 밖 0. 보안 핵심 파일은 위에 적은 자리만: Audit.php(틀 다섯) · db/**(위 셋). Authz.php · Auth.php · Http.php · Db.php · Upload.php · Doc.php · public/index.php 0.
+금지 패턴   : SQL 문자열 결합 · innerHTML · 판정 두 벌(익명 여부 판정은 community_page_is_anon 하나) · 가린 행으로 판정 · 감사 · 총량 계산 ·
+              응답에 익명 대상의 사용자 id · username · 실제 display_name 싣기(본인 포함 — 본인은 is_me 만) · 작성자 확인 결과 저장 ·
+              화면에서만 막고 서버가 받아 주는 「끈 기능」 · N+1(목록의 이름표는 질의 하나) · 기존 hide 창구의 입력 · 응답 모양 바꾸기 · git add -A.
+완료 기준   : cafe_c1_http(격리) — 계정: 글쓴이 W(아이디 · 이름에 카나리아 문자열 예 `anoncanary7f3a` · `익명카나리아`) · 댓글 쓴 사람 A · B · 다른 직원 E · 관리자 M · 손님 G.
+              ① 스키마: 자유게시판 area=cafe · 익명게시판 1행 · 이주 두 번 같음 · anonymous+work 조합 CHECK 거부 · tbox_app 의 reports DELETE 권한 0 · anon_aliases UPDATE · DELETE 0
+              ② 카나리아: W 가 익명게시판에 글 · A · B · W 가 댓글 · 답글 · 도움됐어요 · 해결 → E 와 M 시점으로 25.4 표의 **모든 자리**(pages_get · 게시판 목록 · 런처 피드에 쓰는 같은 목록 ·
+                 comments_list · search · notifications_list(답글 · 내 글 댓글 알림) · history · versions_list · version_get · export(md · html) · page_print · cafe 홈 · audit_list(M · 재인증) ·
+                 reports_list) 응답 본문에 카나리아 아이디 · 이름 0 · W/A/B 의 사용자 id 키 0 · 이름표 「글쓴이」 · 「익명1」 · 「익명2」(A 가 먼저면 1) · 같은 사람 같은 번호 · W 시점은 is_me true
+              ③ 끈 기능: 개인 페이지를 익명게시판에 게시 403 · 수정 제안 403 · 검증 400/403 · mention_candidates 403 · `@E` 댓글 → 알림 0 · 절차 목록에 0 · 자료실 참조 본문 저장 400 · 같은 본문을 자유게시판엔 200
+              ④ 일반 카페 게시판(자유게시판)은 이름이 그대로(가림이 익명게시판에만) · 업무 게시판 · 개인 문서 응답은 전과 같은 키(바뀐 것 0)
+              ⑤ 신고: E 가 W 글 신고 201 · 같은 것 다시 409 · W 가 자기 글 신고 400 · G 403 · 못 보는 글 404 · 업무 게시판 글 400 · 하루 21번째 429 · reports_list E 403 · M 재인증 없으면 403(reauth) ·
+                 resolve hide 메모 없으면 400 · hide → 글 숨김 · 같은 대상 열린 신고 모두 hidden · W 에게 moderated 알림(actor 없음) · reject → 그 신고만 · 감사 행
+              ⑥ 확인: M · 재인증 · 사유 20자 → 200 실제 이름 · 사유 19자 400 · 재인증 없음 403 · 자유게시판 대상 신고 400 · 신고 없는 익명 글 확인 창구 없음(신고 id 로만) · E 403 ·
+                 감사 anon.reveal allow/deny · W · 신고자 알림 0 · 응답 뒤 어떤 창구에도 실제 이름 0(②를 다시 한 자리만)
+              ⑦ 감사 화면: 익명 대상 행 actor · ip · login_ref 가림 · `actor=<W 아이디>` 필터 결과에 익명 행 0 · `ip=` 필터도 0 · report.* · anon.reveal 행은 M 이름 그대로
+              ⑧ 게시판 요청: 직원 201 · 열린 요청 4번째 429 · 손님 403 · M 알림 · decide create → area=cafe 게시판 · 요청자 알림 · reject 메모
+              ⑨ 카페 홈: 읽을 수 있는 카페 게시판만(team 등급 다른 팀 0) · recent 숨김 · 지운 글 0 · 질의 수 고정(행 10 · 100 에서 같은 수 — 틀의 질의 수 세기 또는 EXPLAIN 기록)
+              ⑩ 그림: 익명게시판 글에 GPS EXIF 붙은 JPEG 첨부 → 저장된 파일에 EXIF 0 · 자유게시판은 전처럼
+              ⑪ 정적: security_lint 0 · php -l(바뀐 PHP) · git diff --check · 마이그레이션 두 번(틀)
+              그 밖 시험(stage* · qf12_* · board 시험 등)은 **돌리지 않는다** — 메인이 최종 판에서.
+보고 형식   : docs/cafe-report.md C1 절 — 변경 파일 / 감사 표식을 단 핸들러 목록 / 돌린 수락 시험과 결과(결과 폴더) / 못 한 것 / ARCH 25장과 다르게 한 것. 짧게.
+```
+
+## C2 — 화면 (C1 검토 통과 뒤 · 같은 worktree)
+
+```
+목표        : 「우리 공간」 맨 위에 카페 홈(게시판 카드 · 새 글 · 인기 글 · 게시판 요청)을 놓고, 카페 게시판 · 글을 「우리 공간」 셸로 보여 주며,
+              익명 표시 · 신고 · 관리자 신고함 · 작성자 확인 · 게시판 요청 화면을 만든다.
+요구사항    : DESIGN 2.29 · 6장 체크리스트 · ARCH 25장(창구 모양) — 읽고 시작할 것. 새 색값 0 · 새 클래스는 2.29 의 다섯만.
+수정 파일   : 서버 화면 — src/views/space_page.php(카페 홈 자리) · src/community/handlers/board_view.php · page_view.php(data-area — 읽기 판정 통과 때만) ·
+                 src/community/handlers/reports_page.php · board_requests_page.php(새 — 관리자 화면 · 라우트는 routes.php 에 줄만) · src/views/shell_top.php(카페 사이드바 묶음) ·
+              JS — public/assets/space-page.js(카페 홈) · public/assets/community/editor.js(loadBoards area=work · 카페 셸 갈래 · 익명 표시 · 신고 메뉴 · 자료실 탭 0) ·
+                 public/assets/community/work.js(칸 댓글 익명 표시 — 칸이 게시판 글을 열 때만) · public/assets/community/mention-input.js(끄기 옵션 하나) ·
+                 public/assets/community/cafe.js(새 — 신고 모달 · 신고함 · 확인 모달 · 요청 모달) · public/assets/space-page.css · public/assets/community/community.css · public/assets/app.css(필요한 최소) ·
+                 커뮤니티 JS import 버전 줄(`php scripts/community_asset_version.php` 인자 없이) ·
+              시험 — tests/community/cafe_c2_browser.py(새 수락) · memories_harness.py(choices) · tests/catalog.json · 바뀐 화면을 재던 옛 단언이 깨지면 그 단언만(이유를 보고서에) ·
+              문서 — wiki/community/guide-cafe.json(새 — 카페 · 익명 · 신고 · 요청 사용법, 「화면만 익명 — 신고가 들어오면 관리자가 확인할 수 있어요」 문장 필수) · 위키 index · docs/cafe-report.md(C2 절)
+              그 밖 0. 보안 핵심 파일 0(C2 는 서버 판정을 바꾸지 않는다 — 판정이 모자라면 멈추고 보고).
+금지 패턴   : innerHTML · 인라인 style · 새 색값 · 작성자 확인 결과를 DOM 밖(저장소 · 주소 · 콘솔)에 남기기 · 모달 닫은 뒤 이름이 DOM 에 남기 · 부품 두 벌(칸 · 모달 · 멘션) · git add -A.
+완료 기준   : cafe_c2_browser(격리 · 1440 · 412): 「우리 공간」 카페 홈(카드 · 새 글 · 인기 · 빈 상태) · 「내 공간」 아래 그대로 · 카페 게시판 · 글 → 카페 사이드바(업무 트리 0) ·
+                 업무 사이드바 게시판 묶음에 자유게시판 0 · 익명 글 머리 「글쓴이」 · 댓글 「익명N」 · 내 것 「(나)」 · 안내 한 줄 · @ 목록 0 · 자료실 탭 0 ·
+                 신고 모달(라디오 · 409 문구 · 토스트) · 신고함(관리자만 · 탭 · 칸 · 메모 필수 · 숨기기 · 반려) · 작성자 확인(재인증 → 사유 20 → 이름 → 닫으면 DOM 에서 0) ·
+                 게시판 요청 → 관리자 만들기 → 카페 홈에 카드 · 폭 여섯 × 밝게 · 어둡게 · 고대비 넘침 0 · 콘솔 0 · 누름 자리 < 44 0
+              정적: security_lint 0 · php -l · node --check · asset_version --check · wiki_check · git diff --check
+보고 형식   : docs/cafe-report.md C2 절 — 변경 파일 / 수락 시험과 결과 / 못 한 것 / DESIGN 과 다르게 한 것. 짧게.
+```
