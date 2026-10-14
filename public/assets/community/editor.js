@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=a2ea5ead9817';
-import { hydrateDashboard } from './dashboard.js?v=a2ea5ead9817';
+import { createTableEditor } from './table-editor.js?v=9df1ae04439b';
+import { hydrateDashboard } from './dashboard.js?v=9df1ae04439b';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=a2ea5ead9817';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=a2ea5ead9817';
-import { createMentionInput, mentionTokens } from './mention-input.js?v=a2ea5ead9817';
-import { createDatabaseView } from './database.js?v=a2ea5ead9817';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=a2ea5ead9817';
-import { bindEmbedAdmin } from './embeds.js?v=a2ea5ead9817';
-import { bindPopular } from './popular.js?v=a2ea5ead9817';
-import { bindPalettes } from './palettes.js?v=a2ea5ead9817';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=a2ea5ead9817';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=a2ea5ead9817';
-import { drawTrust, bindProcedures } from './procedures.js?v=a2ea5ead9817';
-import { createPageExport } from './export.js?v=a2ea5ead9817';
-import { createDrafts } from './drafts.js?v=a2ea5ead9817';
-import { drawPageAi, bindAiCenter } from './ai.js?v=a2ea5ead9817';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=a2ea5ead9817';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=9df1ae04439b';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=9df1ae04439b';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=9df1ae04439b';
+import { createDatabaseView } from './database.js?v=9df1ae04439b';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=9df1ae04439b';
+import { bindEmbedAdmin } from './embeds.js?v=9df1ae04439b';
+import { bindPopular } from './popular.js?v=9df1ae04439b';
+import { bindPalettes } from './palettes.js?v=9df1ae04439b';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=9df1ae04439b';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=9df1ae04439b';
+import { drawTrust, bindProcedures } from './procedures.js?v=9df1ae04439b';
+import { createPageExport } from './export.js?v=9df1ae04439b';
+import { createDrafts } from './drafts.js?v=9df1ae04439b';
+import { drawPageAi, bindAiCenter } from './ai.js?v=9df1ae04439b';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=9df1ae04439b';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=a2ea5ead9817';
-import { createCafe, personInto, isAnon } from './cafe.js?v=a2ea5ead9817';
+import { createWork } from './work.js?v=9df1ae04439b';
+import { createCafe, personInto, isAnon } from './cafe.js?v=9df1ae04439b';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -8704,7 +8704,8 @@ function boot() {
   const page = body && body.dataset ? body.dataset.page : '';
   // Q:F-12 D — 업무 홈 · 포트폴리오(`community-overview`) · 내 작업(`community-today`)도 이 한 벌로 시작한다(셸 키는 C 가 정한 그대로)
   if (page !== 'community-home' && page !== 'community-page' && page !== 'community-board' && page !== 'community-ai' && page !== 'community-threads'
-      && page !== 'community-overview' && page !== 'community-today' && page !== 'community-reports' && page !== 'community-board-requests') { return; }
+      && page !== 'community-overview' && page !== 'community-today' && page !== 'community-reports' && page !== 'community-board-requests'
+      && page !== 'community-cafe') { return; }   // 사이트 H3 — 카페 홈(/community/cafe)
   if (COMMUNITY_BASE === '' || APP_BASE === '') { return; }
 
   // CSRF 토큰은 t-box 창구가 준다 — 한 앱·한 세션이라 같은 토큰이 커뮤니티 창구에도 통한다.
@@ -8747,6 +8748,7 @@ function boot() {
         if (page !== 'community-page') { loadRecentNav(); }
         if (page === 'community-reports') { cafe.initReports(); }
         else if (page === 'community-board-requests') { cafe.initBoardRequests(); }
+        else if (page === 'community-cafe') { cafe.initHome(); }   // 사이트 H3 — 카페 홈(/community/cafe · DESIGN 2.29 「「우리 공간」 = 카페」)
         else if (page === 'community-ai' || page === 'community-threads') { loadSpaces(); }
         else if (page === 'community-overview') {
           // Q:F-12 D — 업무 홈 · 포트폴리오 화면(같은 셸 키 — 화면은 자기 뼈대의 id 로 고른다)
