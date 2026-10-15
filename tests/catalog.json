@@ -6693,6 +6693,34 @@
       "est_sec": 420,
       "writes_prod": false,
       "notes": "이야기 S1 스레드 화면 정리(DESIGN 2.36 · 지시서 S1) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [grid] 1440 · 1280 · 960 · 412 · 360 × 밝게 · 어둡게 · 고대비 × 팔로잉 · 나의 스레드 · 발견 · 남의 프로필 · 공유 공개 화면: .profile-cover · .journal-aside · 옛 영문 문구 · eyebrow 0 · 프로필 높이 ≤ 96(1440) · 숫자 한 줄 · 단추(내 것 둘 · 남의 것 팔로우) · 한 열(≤ 680 · 가운데 · 왼끝 · 폭 같음) · 넘침 0 · 대비 4.5 · 콘솔 0. [act] 글쓰기 · 사진 이야기 · AI로 꾸미기 · 좋아요 · 댓글 · 공유 · 공개 범위 · 여행 계획 · 팔로우 그대로. [shot] 나의 스레드 1440 밝게 · 어둡게 · 412."
+    },
+    {
+      "id": "core.scale_d1",
+      "cmd": "python3 tests/scale/d1_measure.py --output /home/changkwon/qaredi-scale-d-results-20261014/run1 --tiers S,M,L --reps 7",
+      "module": "core",
+      "env": "temp-instance",
+      "status": "manual_only",
+      "needs": [],
+      "covers": [
+        "tests/scale/d1_measure.py",
+        "tests/scale/d1_seed.sql",
+        "tests/community/export_router.php",
+        "public/index.php",
+        "src/community/routes.php",
+        "db/schema.sql",
+        "db/community/schema.sql",
+        "db/grants.sql",
+        "db/community/grants.sql",
+        "db/migrations/2026-10-24_scale_comments.sql",
+        "db/migrations/2026-10-25_scale_board_counts.sql",
+        "db/migrations/2026-10-25_scale_board_indexes.sql",
+        ".env.example"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 5400,
+      "writes_prod": false,
+      "notes": "규모 D1 측정(docs/scale-d1-directive.md · 보고 docs/scale-d1-report.md) — 단언이 아니라 측정이라 manual_only. 같은 클러스터에 합성 DB tbox_scale_d_<pid>(tbox_testdb 역할로 만들고 끝에 DROP · 표는 UNLOGGED 로 바꿔 WAL 0 · generate_series 데이터만 · 운영 기록 복사 0) · 로컬 php -S 127.0.0.1:8838(직결 · 시간)·8839(질의 수 · SQL — 이 스크립트의 평문 중계 127.0.0.1:8848 경유). 단계 S/M/L 을 차례로 다시 만들고(TRUNCATE) 라우트 표의 GET 창구를 분류해 p50·p95·질의 수·다음 쪽·OFFSET 깊은 쪽(약 1만 번째 줄)을 재고 느린 문장을 EXPLAIN (ANALYZE, BUFFERS). 디스크: 시작 여유 6GB 미만이면 M 의 행당 크기로 L 을 줄이고(meta.json l_plan) DB 3GB 상한 · 여유 2GB 아래로 가면 자기 문장을 취소하고 멈춘다. 결과 폴더: tier-S/M/L.json · plans/ · summary.json · summary.md · meta.json. 기준 단언을 밤 회귀로 고정하는 일은 D2."
     }
   ]
 }
