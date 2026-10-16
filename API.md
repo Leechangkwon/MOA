@@ -1454,3 +1454,7 @@ nginx는 검색·파일목록·게시판글목록의 GET에 IP당8r/s+burst16을
 ### 프로젝트 섹션 이름·삭제 (2026-10-16)
 
 기존 PATCH /community/api/databases/{id}/schema에 `section:{action:"rename",value:<저장된 선택값>,name:<1~50자>}` 또는 `section:{action:"remove",value:<저장된 선택값>}`를 보낸다. 같은 요청의 version은 rows.database.version으로 받는 스키마 갱신 시각이다. 기존 decidePageManage와 낙관 잠금을 사용한다. 이름은 section 속성의 option_labels에 저장하며 작업의 properties·본문·버전은 변경하지 않는다. 섹션 삭제는 선택지를 제외할 뿐 작업과 저장된 값은 보존하고 목록/보드의 섹션 없음에 표시한다. section만 빈 options를 허용하며 기존의 다른 select 속성 최소1개 제한은 유지한다. 중복 표시 이름·잘못된 입력400, 자격 없음403, 버전 충돌409.
+
+### 2026-10-17 프로젝트 작업글 생성
+
+`POST /community/api/work/documents` (`community.write`, 세션 CSRF 또는 개인 토큰): `project_id`, `request_id` UUID, `title`(1~200자), `blocks`(평문 문단/제목/목록/인용 1~100개, 문구 10000자), 선택 `status`(기존 5상태, 기본 todo), `section`(현재 section select의 저장값). 읽고 편집 가능한 살아 있는 업무 프로젝트의 직계 행만 만든다. 부모 공간·범위를 상속하고 소유권/공유/스키마/첨부 입력은 받지 않는다. 생성201, 동일 본문·상태·섹션·부모·작성자의 같은 요청 UUID 재전송200(`created:false`), 다른 요청/이후 수정/휴지통 UUID 충돌409. 응답 `id,url,doc_version,status,section,created`. UUID는 새 작업의 public ID이므로 응답 불명 시 해당 ID를 다시 읽는다. 기존 POST pages 토큰 위치 제한은 유지한다. 업무 문서 읽기는 프로젝트일 때 `project.sections:[{value,name}]`를 추가한다. OAuth `qaredi_create_work_document`는 기존 `work.read`+`work.write`와 같은 행 판정을 적용한다.

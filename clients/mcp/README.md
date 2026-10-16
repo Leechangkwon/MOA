@@ -145,3 +145,7 @@ bash tests/validate_with_php.sh               # 변환 결과를 저장소의 �
 ## ChatGPT용 원격 연결
 
 이 디렉터리는 기존 PC stdio 클라이언트입니다. 별도 HTTP 원격 MCP 후보는 앱 본체의 `src/mcp/`에 있으며 사용자/서버 안내는 `docs/chatgpt-remote-mcp.md`와 `docs/work-items/chatgpt-remote-mcp.md`를 참조하세요. 원격 연결은 모아 OAuth 로그인으로 본인 기록·사진·여행 권한을 선택하며 기존 QAREDI_TOKEN_FILE을 ChatGPT에 붙여 넣지 않습니다. 원격 기능의 서버 배포와 ChatGPT 실계정 등록이 끝나기 전에는 연결 완료가 아닙니다. 두 연결은 권한·전송 방식이 다르고 기존 문서용 stdio 도구는 유지됩니다.
+
+### 프로젝트 작업 목록에 새 개발 기록 만들기 (0.3.0)
+
+`qaredi_create_work_document`는 사용자가 지정한 기존 프로젝트 안에 새 작업글을 만듭니다. 먼저 프로젝트를 읽어 `project.sections`를 확인하고 저장값 `value`를 사용하세요. 입력은 project_id/request_id UUID/title/평문 blocks와 선택 status/section입니다. 같은 요청 재전송은 동일 UUID를 유지하고 응답이 불분명하면 그 UUID를 먼저 읽습니다. 기존 작업을 수정·삭제한 뒤 충돌하면 새 UUID로 복제하지 않습니다. 프로젝트 자체·소유권·공유·섹션 설정은 변경하지 않습니다. 기존 문서 부분 갱신 도구도 그대로 제공됩니다.

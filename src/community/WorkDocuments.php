@@ -88,9 +88,126 @@ final class WorkDocuments
     public static function read(array $user, string $id): array
     {
         $row = self::row($user, $id);
-        return ['id'=>$id, 'url'=>'/community/p/' . $id, 'title'=>$row['title'],
+        $result = ['id'=>$id, 'url'=>'/community/p/' . $id, 'title'=>$row['title'],
             'doc_version'=>(int) $row['doc_version'], 'doc'=>json_decode($row['doc'], true, 64, JSON_THROW_ON_ERROR),
             'can_edit'=>Authz::canCommunityWrite($user) && CommunityAuthz::decidePageChange($user, $row)[0]];
+        if ($row['dbself_public_id'] !== null) {
+            $db = community_db_row((string) $row['dbself_public_id']);
+            if ($db !== null && $db['purpose'] === 'project') {
+                $section = DbProps::find(community_db_schema_of($db['schema']), 'section');
+                $result['project'] = ['sections'=>array_map(static fn (string $value): array =>
+                    ['value'=>$value, 'name'=>$section['option_labels'][$value] ?? $value], $section['options'] ?? [])];
+            }
+        }
+        return $result;
+    }
+
+    /** Plain blocks only: no HTML, attachments, references, mentions or executable content. */
+    private static function plainBlocks(array $items, ?string $requestId = null): array
+    {
+        $blocks = [];
+        foreach ($items as $i => $item) {
+            if (!is_array($item)) { Http::error(400, Http::MSG_BAD_REQUEST); }
+            self::fields($item, ['type','text','level']);
+            $type = $item['type'] ?? 'paragraph';
+            if (!in_array($type, ['paragraph','heading','bulleted','numbered','quote'], true)
+                || (isset($item['level']) && ($type !== 'heading' || !in_array($item['level'], [1,2,3], true)))) {
+                Http::error(400, '문단·제목·목록·인용만 추가할 수 있습니다.');
+            }
+            $text = self::text($item['text'] ?? null, 10000);
+            // Stable block IDs make a byte-for-byte retry distinguishable from a changed request.
+            $hash = $requestId === null ? null : hash('sha256', $requestId . ':' . $i);
+            $id = $hash === null ? Doc::uuid4() : substr($hash,0,8) . '-' . substr($hash,8,4)
+                . '-4' . substr($hash,13,3) . '-a' . substr($hash,17,3) . '-' . substr($hash,20,12);
+            $block = ['id'=>$id, 'type'=>$type, 'text'=>[]];
+            for ($pos=0; $pos<iconv_strlen($text,'UTF-8'); $pos+=Doc::limit('segment_chars')) {
+                $block['text'][] = ['t'=>iconv_substr($text,$pos,Doc::limit('segment_chars'),'UTF-8'), 'm'=>[]];
+            }
+            if ($type === 'heading') { $block['level'] = $item['level'] ?? 2; }
+            $blocks[] = $block;
+        }
+        return $blocks;
+    }
+
+    /** Creates one direct project task. No project/schema, ownership, sharing or location changes. */
+    public static function create(array $user, array $body): array
+    {
+        self::fields($body, ['project_id','request_id','title','blocks','status','section']);
+        $projectId = self::id($body['project_id'] ?? null);
+        $requestId = self::id($body['request_id'] ?? null);
+        $title = trim(self::text($body['title'] ?? null, 200));
+        if (preg_match('/\p{C}/u', $title)) { Http::error(400, '제목에는 줄바꿈이나 제어 문자를 넣을 수 없습니다.'); }
+        $status = $body['status'] ?? 'todo';
+        if (!in_array($status, COMMUNITY_STATUSES, true)) { Http::error(400, '작업 상태를 확인해 주세요.'); }
+        $section = isset($body['section']) ? self::text($body['section'], 50) : null;
+        $items = $body['blocks'] ?? null;
+        if (!is_array($items) || !array_is_list($items) || count($items)<1 || count($items)>100) {
+            Http::error(400, '본문은 1~100개 문단으로 보내 주세요.');
+        }
+        $doc = ['schema'=>1,'blocks'=>self::plainBlocks($items, $requestId)];
+        if (!Doc::validate($doc, COMMUNITY_DOC_STAGE)['ok']) { Http::error(400, '본문이 문서 규칙에 맞지 않습니다.'); }
+        $db = Db::instance();
+        $db->begin();
+        try {
+            $parent = self::row($user, $projectId);
+            $db->run(COMMUNITY_PAGE_LOCK_SQL, [':pid'=>(int)$parent['id']]);
+            $parent = self::row($user, $projectId);
+            [$allowed,$code] = CommunityAuthz::decidePageChange($user, $parent);
+            if (!Authz::canCommunityWrite($user) || !$allowed) {
+                $db->rollback();
+                Audit::deny('page.create', $code, ['target_type'=>'page','target_id'=>(int)$parent['id']]);
+                Http::error(403, '이 프로젝트에 작업을 추가할 권한이 없습니다.');
+            }
+            $info = $parent['dbself_public_id'] === null ? null : community_db_row((string)$parent['dbself_public_id']);
+            if ($info === null || $info['purpose'] !== 'project' || $parent['database_id'] !== null
+                || community_page_depth((int)$parent['id']) >= CommunityAuthz::MAX_DEPTH) {
+                Http::error(400, '업무 프로젝트 바로 아래에만 작업을 만들 수 있습니다.');
+            }
+            $lockSql = 'SELECT id FROM community.databases WHERE id=CAST(:id AS bigint) FOR UPDATE';
+            $db->run($lockSql, [':id'=>(int)$info['id']]);
+            $info = community_db_row((string)$parent['dbself_public_id']);
+            if ($info === null || $info['purpose'] !== 'project') { Http::error(409, '프로젝트의 구성이 변경되었습니다. 다시 읽어 주세요.'); }
+            $props = $section === null ? [] : ['section'=>$section];
+            if ($section !== null) {
+                $field = DbProps::find(community_db_schema_of($info['schema']), 'section');
+                if ($field === null || $field['type'] !== 'select' || !DbProps::cleanValue($field, $section)[0]) {
+                    Http::error(400, '프로젝트를 다시 읽고 현재 섹션을 선택해 주세요.');
+                }
+            }
+            // A public UUID is a per-request uniqueness key. Existing rows are never modified or resurrected.
+            $existingSql = 'SELECT public_id,parent_page_id,author_id,title,doc,doc_version,status,properties,deleted_at
+                FROM community.pages WHERE public_id=CAST(:id AS uuid)';
+            $existing = $db->run($existingSql, [':id'=>$requestId])->fetch();
+            if (is_array($existing)) {
+                if ($existing['deleted_at'] !== null || (int)$existing['author_id'] !== (int)$user['id']
+                    || (int)$existing['parent_page_id'] !== (int)$parent['id'] || $existing['title'] !== $title
+                    || $existing['status'] !== $status || json_decode($existing['doc'],true) != $doc
+                    || json_decode($existing['properties'] ?? '{}',true) != $props) {
+                    Http::error(409, '같은 요청 번호의 작업이 이미 있거나 변경되었습니다. 목록을 다시 확인해 주세요.');
+                }
+                $db->commit();
+                return ['id'=>$requestId,'url'=>'/community/p/'.$projectId.'?task='.$requestId,
+                    'doc_version'=>(int)$existing['doc_version'],'status'=>$status,'section'=>$section,'created'=>false];
+            }
+            $extract = Doc::extract($doc);
+            $row = community_insert_page([
+                'public_id'=>$requestId,'status'=>$status,'title'=>$title,'doc_json'=>json_encode($doc,JSON_UNESCAPED_UNICODE|JSON_THROW_ON_ERROR),
+                'space_id'=>(int)$parent['space_id'],'parent_id'=>(int)$parent['id'],
+                'position'=>community_next_position((int)$parent['space_id'],(int)$parent['id']),
+                'visibility'=>$parent['space_kind']==='personal' ? CommunityAuthz::baseVisibility($parent) : 'private',
+                'database_id'=>(int)$info['id'],'properties'=>$props,
+            ], $extract, $user, $code);
+            community_sync_after_save($user,$row,$doc,$extract,1);
+            $db->commit();
+            return ['id'=>$requestId,'url'=>'/community/p/'.$projectId.'?task='.$requestId,
+                'doc_version'=>1,'status'=>$status,'section'=>$section,'created'=>true];
+        } catch (DomainException $e) {
+            $db->rollback(); Http::error(400, '이 프로젝트의 작업 수 한도에 도달했습니다.');
+        } catch (PDOException $e) {
+            $db->rollback();
+            if ($e->getCode() === '23505') { Http::error(409, '같은 요청 번호가 이미 사용되었습니다. 목록을 다시 확인해 주세요.'); }
+            throw $e;
+        } catch (Throwable $e) { $db->rollback(); throw $e; }
     }
 
     /** Replaces exactly one occurrence in a named text block. Marks, sibling blocks and children survive. */

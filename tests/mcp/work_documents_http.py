@@ -132,7 +132,7 @@ try:
     ro = a.grant(client, scope='memories.read work.read')['access_token']
     old = a.grant(client, scope='memories.read')['access_token']
     tools = a.rpc(writer,'tools/list')['result']['tools']
-    a.check(len([t for t in tools if '_work_' in t['name']]) == 4,'approved work tools advertised')
+    a.check(len([t for t in tools if '_work_' in t['name']]) == 5,'approved work tools advertised')
     a.check(not any('_work_' in t['name'] for t in a.rpc(old,'tools/list')['result']['tools']), 'existing scopes do not gain work access')
     a.tool(old,'qaredi_read_work_document',{'page_id':pid},error=403)
     a.tool(ro,'qaredi_update_work_document',{'page_id':pid,'doc_version':1,'append':[{'text':'x'}]},error=403)
@@ -185,6 +185,8 @@ try:
         a.check(False,'revoked token must fail')
     except QarediError as exc:
         a.check(exc.status==401,'revoked local token rejected immediately')
+
+
 finally:
     a.output.mkdir(parents=True,exist_ok=True)
     (a.output/'work-documents-results.json').write_text(json.dumps(a.checks,ensure_ascii=False,indent=2))

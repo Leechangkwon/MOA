@@ -322,6 +322,14 @@ class QarediClient:
     def read_work_document(self, page_id: str) -> dict[str, Any]:
         return self._call('GET', '/community/api/work/documents/' + page_id_from(page_id))
 
+    def create_work_document(self, project_id: str, request_id: str, title: str,
+                             blocks: list[dict[str, Any]], status: str = 'todo', section: str | None = None) -> dict[str, Any]:
+        body = dict(project_id=page_id_from(project_id), request_id=page_id_from(request_id),
+                    title=title, blocks=blocks, status=status)
+        if section is not None:
+            body['section'] = section
+        return self._call('POST', '/community/api/work/documents', body)
+
     def update_work_document(self, page_id: str, doc_version: int,
                              replacements: list[dict[str, Any]] | None = None,
                              append: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -465,6 +473,9 @@ def _http_error(status: int, raw: bytes, method: str, path: str) -> QarediError:
         ]
         parts.append("검증 오류 " + ", ".join(shown) + (" …" if len(errors) > 10 else ""))
     scope_denied = reason == "token_scope" or (status == 403 and err.get("error") == "token_scope")
+    if '/api/work/documents' in path and status == 409:
+        parts.append('프로젝트와 해당 문서를 다시 읽어 저장 여부·최신 판을 확인하세요. 새 요청 번호로 중복 생성하거나 기존 내용을 덮어쓰지 마세요')
+        return QarediError(' · '.join(parts), status, reason)
     if "/api/travel-plans" in path and status in (401, 403, 404, 409):
         travel_hint = {
             401: "여행 권한을 선택해 발급한 개인 토큰의 만료·회수를 확인하세요",

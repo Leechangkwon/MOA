@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,8778,8818))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('project_sections.py','work_documents_http.py','task_parent_browser.py','memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py','qf12_w1_http.py','qf12_w1_browser.py','invite_request_http.py','invite_request_browser.py','cafe_h3_browser.py','home_h4_browser.py','story_s1_browser.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('project_sections.py','work_documents_http.py','work_document_create_http.py','task_parent_browser.py','memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py','qf12_w1_http.py','qf12_w1_browser.py','invite_request_http.py','invite_request_browser.py','cafe_h3_browser.py','home_h4_browser.py','story_s1_browser.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()
@@ -101,7 +101,7 @@ def main():
                       STORAGE_DIR=str(work / 'storage'), AUDIT_LOG_FILE=str(work / 'logs/audit.log'),
                       APP_URL='http://127.0.0.1:{}'.format(args.port), API_TOKEN=secrets.token_hex(24),
                       API_TOKEN_USER='claude_employee01', SCAN_ENABLED='0', ALERT_COMMAND='')
-        if args.suite in ('remote_http.py', 'work_documents_http.py'):
+        if args.suite in ('remote_http.py', 'work_documents_http.py','work_document_create_http.py'):
             # OAuth issuer stays HTTPS; tests connect directly to the owned loopback
             # PHP listener and never resolve/follow this reserved .invalid origin.
             config.update(APP_URL='https://mcp-fixture.invalid', MCP_REMOTE_ENABLED='1',
@@ -172,12 +172,12 @@ def main():
             else:
                 raise RuntimeError('Test HTTP startup timed out')
             print('SYNTHETIC_DB_CREATED=1; PRODUCTION_RECORDS_COPIED=0', flush=True)
-            suite_directory = ('tests/mcp' if args.suite in ('remote_http.py', 'work_documents_http.py')
+            suite_directory = ('tests/mcp' if args.suite in ('remote_http.py', 'work_documents_http.py','work_document_create_http.py')
                                else 'tests' if args.suite == 'qf13_retention_http.py' else 'tests/community')
             result = subprocess.run([sys.executable, str(ROOT / suite_directory / args.suite)],
                                     env=dict(fixture_env, FILE_RENAME_MANIFEST=str(work / 'manifest.json'),
                                              FILE_RENAME_OUTPUT=str(args.output), STAGE89_SECOND_PORT=str(args.port+1),
-                                             REMOTE_MCP_HARNESS='1' if args.suite in ('remote_http.py', 'work_documents_http.py') else '0'), cwd=instance)
+                                             REMOTE_MCP_HARNESS='1' if args.suite in ('remote_http.py', 'work_documents_http.py','work_document_create_http.py') else '0'), cwd=instance)
             server_log.flush()
             (args.output / 'http.log').write_bytes((work / 'logs/php.log').read_bytes())
             if result.returncode:

@@ -217,6 +217,7 @@ const COMMUNITY_ROUTES = [
     ['GET', '/api/admin/ai-log', 'ai_admin_log.php', 'role:Admin'],
     ['GET', '/api/work/projects', 'work_documents_list.php', 'community.read'],
     ['GET', '/api/work/documents', 'work_documents_list.php', 'community.read'],
+    ['POST', '/api/work/documents', 'work_document_create.php', 'community.write'],
     ['GET', '/api/work/documents/{id}', 'work_document.php', 'community.read'],
     ['PATCH', '/api/work/documents/{id}', 'work_document.php', 'community.write'],
     ['GET',    '/api/search',                'search.php',          'community.read'],
@@ -411,6 +412,7 @@ const COMMUNITY_API_TOKEN_ROUTES = [
     // Targeted work-document edits only; generic page PATCH remains session-only.
     'GET /api/work/projects',
     'GET /api/work/documents',
+    'POST /api/work/documents',
     'GET /api/work/documents/{id}',
     'PATCH /api/work/documents/{id}',
     'GET /api/travel-plans',
@@ -4225,7 +4227,7 @@ function community_db_person_ok(string $username, string $pagePublicId): bool
 function community_db_row(string $dbPublicId): ?array
 {
     $sql = <<<'SQL'
-        SELECT d.id, d.public_id, d.page_id, d.schema, d.views, d.updated_at, p.public_id AS page_public_id
+        SELECT d.id, d.public_id, d.page_id, d.schema, d.views, d.updated_at, d.purpose, p.public_id AS page_public_id
           FROM community.databases d
           JOIN community.pages p ON p.id = d.page_id
          WHERE d.public_id = CAST(:id AS uuid)

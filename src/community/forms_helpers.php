@@ -19,14 +19,15 @@ function community_insert_page(array $data, array $extract, ?array $actor, strin
     }
     $sql = <<<'SQL'
         INSERT INTO community.pages
-            (space_id,parent_page_id,title,doc,doc_version,plain_text,search_tsv,block_count,
+            (public_id,status,space_id,parent_page_id,title,doc,doc_version,plain_text,search_tsv,block_count,
              author_id,last_edited_by,visibility,position,database_id,properties,icon,form_view_id,form_anonymous,public_form_response)
-        VALUES (CAST(:space AS bigint),CAST(:parent AS bigint),:title,CAST(:doc AS jsonb),1,:plain,
+        VALUES (CAST(:public_id AS uuid),:status,CAST(:space AS bigint),CAST(:parent AS bigint),:title,CAST(:doc AS jsonb),1,:plain,
                 strip(to_tsvector('simple',:tsv)),CAST(:blocks AS int),CAST(:author AS bigint),CAST(:author AS bigint),
                 :vis,CAST(:position AS int),CAST(:db AS bigint),CAST(:properties AS jsonb),:icon,:form,CAST(:anonymous AS boolean),CAST(:public_form AS boolean))
         RETURNING id,public_id,created_at,updated_at
         SQL;
     $row = $db->run($sql, [
+        ':public_id' => $data['public_id'] ?? Doc::uuid4(), ':status' => $data['status'] ?? null,
         ':space' => $data['space_id'], ':parent' => $data['parent_id'] ?? null, ':title' => $data['title'],
         ':doc' => $data['doc_json'], ':plain' => $extract['plain_text'],
         ':tsv' => community_search_text($data['title'], $extract['plain_text']), ':blocks' => count($extract['blocks']),

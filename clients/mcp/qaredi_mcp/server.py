@@ -194,6 +194,20 @@ def qaredi_read_work_document(page_id: str) -> str:
     return _run(lambda c: c.read_work_document(page_id))
 
 
+@mcp.tool(name="qaredi_create_work_document", description=(
+    "사용자가 지정한 기존 업무 프로젝트 안에 작업글 하나를 만든다. 생성 요청을 받았을 때만 사용한다. "
+    "프로젝트를 먼저 읽어 편집 권한과 project.sections를 확인한다. section은 표시명이 아닌 value를 보낸다. "
+    "새 작업마다 request_id UUID를 만들고 같은 작업 재전송은 같은 UUID를 사용한다. "
+    "응답이 불명확하면 request_id 문서를 먼저 읽고 중복 생성하지 않는다. 409이면 기존 작업을 확인한다. "
+    "프로젝트·공유·소유권·스키마 변경, 파일 업로드, 기존 문서 삭제·이동은 지원하지 않는다. "
+    "\nCreate a task only in the user-designated existing project; read first, use a stable request UUID, "
+    "preserve originals and distinguish shipped features from plans and unverified work."),
+    annotations=ToolAnnotations(title="모아: 프로젝트 작업글 만들기", readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False))
+def qaredi_create_work_document(project_id: str, request_id: str, title: str,
+                               blocks: list[dict[str, Any]], status: str = 'todo', section: str | None = None) -> str:
+    return _run(lambda c: c.create_work_document(project_id, request_id, title, blocks, status, section))
+
+
 @mcp.tool(name="qaredi_update_work_document", description=(
     "사용자가 승인한 업무 기록 흐름에서 기존 문서 일부를 수정하고 기록을 추가한다. 먼저 read_work_document로 읽은 doc_version 필수. "
     "replacements=[{block_id,old_text,new_text}]: 해당 블록에서 단 한 번 나오는 기존 문구만 교체. "
