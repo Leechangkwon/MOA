@@ -436,6 +436,9 @@ nginx 검색 전용 location은 정규화 URI로 제한, access 로그의 검색
 
 ## 7. 검토 이력
 
+- 작업 상위 이동 운영 검증: 운영 v2.69.1 `f67ea4a69173e866d0a4cad84c072f644744e82b` · 2026-10-16T14:55:22.396752+09:00. 고정 후보 22파일 모의 적용·드리프트 확인 후 코드 FF/PHP-FPM reload. 실제 HTTPS 10개와 운영 브라우저 점검 통과(기존 QA 하위→상위 실제 클릭: True). 기존 업무 100표 원래 행·저장소 798파일·설정 10파일 및 기존 코드 파일 owner/mode 보존. 암호화 DB·코드/설정 백업 전체 복호화·DB/tar 구조 확인. DB/패키지/설정 변경 없음. 검토 로그인 세션 회수 완료. 관련 회귀 3개는 밤 대기. 실물 휴대폰/Safari/스크린리더 미검증.
+
+
 - 2026-10-16 작업 상위 이동: 기존 API의 권한 필터를 거친 page.parent만 UUID 검사 후 사용하고 제목은 textContent로 출력한다. 상세창 내부 이동과 저장 실패 시 초안 보존을 격리 브라우저로 확인한다. DB/API/권한/외부 요청 변경 없음. 정적 검사와 최종 수락 결과는 docs/work-items/task-parent-navigation.md. 회귀는 밤 대기(community.qf12_work_browser, community.qf12_u4_browser, community.stale_modules). 실물 휴대폰·스크린리더는 미검증.
 
 
