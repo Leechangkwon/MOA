@@ -5,6 +5,8 @@
 
 ## 요약
 
+- **운영 반영 완료(2026-10-16 13:53 KST): v2.69.0 / runtime `33db1603c983528e3226531975a2b3b53bb33688`**. 실제 HTTPS26/0, 기존100표·798원본·owner/ACL·기존 색인 보존, 카운터 불일치0. 야간 회귀15개는 등록 완료했고 2026-10-16 22:00 KST 실행 예정이다. 자세한 기록은 문서 끝을 따른다.
+
 - A1~A9 창구를 「읽는 행 수 ≈ 보이는 행 수」 모양으로 바꿨다. L(글 50만 · 나머지 33% — D1 과 같은 비율)에서 **카페 홈 16.3s(500) → 58ms** · 자료실 4.56s → 18ms · 폴더 3.13s → 95ms · 공유 받은 글 6.13s → 29ms · 공간 목록 2.23s → 44ms · 나무 2.15s → 56ms · 휴지통 3.11s → 27ms · 게시판 목록 2.19s → 12ms · 알림 610ms(질의 122) → 62ms(질의 24).
 - **새로 찾은 원인 하나 — JIT 컴파일.** 큰 권한 조건절이 붙은 문장은 계획기가 비용을 크게 어림해 PostgreSQL JIT 를 켰고, L 에서 실행은 수십 ms 인데 **컴파일이 2~2.6초**였다(D1 의 공간 목록 · 나무 · 휴지통 시간 대부분, D2a 1차의 공지 문장 374ms). 그 문장들만 `SET LOCAL jit = off`(트랜잭션 안 — 검색의 `enable_seqscan` 과 같은 방식, 서버 설정 0).
 - 보안 바닥 ①~④: 원본 30/30, **10-16 인수 최종 32/32 통과** — 옛 SQL(D2a 앞 판 63aba86) vs 새 SQL 응답 **3,732/3,732 쌍 글자 그대로 같음**(23명 × 15 창구 갈래), 미리 센 글 수 19가지 쓰기 섞은 뒤 24개 게시판 모두 같음, 상한 개수 권한 조건 그대로, 익명 글쓴이 0.
@@ -119,8 +121,8 @@
 
 | 이주 | 잠금 | 어림 |
 |---|---|---|
-| `2026-10-26_scale_d2a_board_counts.sql`(두 트랜잭션 · 각각 lock_timeout 3s · statement_timeout 600s) | ① `ALTER TABLE spaces ADD COLUMN … DEFAULT 0`(PG14 — 표 다시 쓰기 0)의 ACCESS EXCLUSIVE를 바로 COMMIT으로 해제. ② `LOCK pages IN SHARE ROW EXCLUSIVE` → 트리거 교체와 채움 → COMMIT. 두 번째 단계는 pages 쓰기를 막고 spaces 일반 조회는 허용한다. 첫 단계 뒤 실패하면 재실행해 두 번째 단계를 완료해야 한다 | 운영 행 수와 적용 시간은 미검증. 기존 「쓰기 멈춤 1초 안」 추정은 보장하지 않는다. 합성 시험에서 실제 채움 뒤 COMMIT 직전 잠금을 유지한 채 spaces/pages 조회 성공, ACCESS EXCLUSIVE 없음 확인. 원래 한 트랜잭션 판은 이 지점의 spaces 조회가 잠금 시간 초과였음 |
-| `2026-10-26_scale_d2a_indexes.sql`(CONCURRENTLY 12개 · BEGIN 없음) | SHARE UPDATE EXCLUSIVE(읽기 · 쓰기 그대로) — 끝나기 전 열린 트랜잭션을 기다림 | 운영 생성 시간은 미검증. 적용 전후 이름·정의·indisvalid·indisready를 대조한다. 실패 시 invalid 색인 유무를 기록하고 자동 삭제·재시도하지 않는다 |
+| `2026-10-26_scale_d2a_board_counts.sql`(두 트랜잭션 · 각각 lock_timeout 3s · statement_timeout 600s) | ① `ALTER TABLE spaces ADD COLUMN … DEFAULT 0`(PG14 — 표 다시 쓰기 0)의 ACCESS EXCLUSIVE를 바로 COMMIT으로 해제. ② `LOCK pages IN SHARE ROW EXCLUSIVE` → 트리거 교체와 채움 → COMMIT. 두 번째 단계는 pages 쓰기를 막고 spaces 일반 조회는 허용한다. 첫 단계 뒤 실패하면 재실행해 두 번째 단계를 완료해야 한다 | 운영 적용·집계 일치는 확인했다. 개별 이주의 소요 시간은 별도 측정하지 않았다. 기존 「쓰기 멈춤 1초 안」 추정은 보장하지 않는다. 합성 시험에서 실제 채움 뒤 COMMIT 직전 잠금을 유지한 채 spaces/pages 조회 성공, ACCESS EXCLUSIVE 없음 확인. 원래 한 트랜잭션 판은 이 지점의 spaces 조회가 잠금 시간 초과였음 |
+| `2026-10-26_scale_d2a_indexes.sql`(CONCURRENTLY 12개 · BEGIN 없음) | SHARE UPDATE EXCLUSIVE(읽기 · 쓰기 그대로) — 끝나기 전 열린 트랜잭션을 기다림 | 운영 생성 완료와 이름·정의·정렬 옵션·indisvalid·indisready를 확인했다. 개별 생성 시간은 별도 측정하지 않았다. 실패 시 invalid 색인 유무를 기록하고 자동 삭제·재시도하지 않는다 |
 
 반영 순서: **이주(둘) → 코드**. 코드가 `spaces.post_count` 를 읽으므로 이주 전 코드면 게시판 목록 · 카페 홈이 500 이다(운영 사본에 옛 이주만 거는 `community.stage5c` 가 그렇게 실패 — 아래).
 
@@ -138,18 +140,18 @@
 
 ## ⑧ 밤 회귀 대상 시험 id
 
-2026-10-16 최종 선택(운영 반영 뒤 대기열에 넣음): `community.cafe_c1_http` · `community.qf12_server_http` · `community.qf12_floor_http` · `community.stage89_http` · `community.stage89_backend` · `community.stage89_integrity` · `community.stage89_legacy` · `community.stage9d` · `community.qf12_work_browser` · `tbox.stage89_cross_regression` · `tbox.file_rename` · `core.scale_d2a_counter_lock` · `core.scale_d2a_evidence` · `core.scale_d2a_equiv` · `core.scale_d2a_budget`.
+2026-10-16 최종 선택15개(운영 반영·기존 대기열 등록 완료; 2026-10-16 22:00 KST 실행 예정, 결과는 아직 없음): `community.cafe_c1_http` · `community.qf12_server_http` · `community.qf12_floor_http` · `community.stage89_http` · `community.stage89_backend` · `community.stage89_integrity` · `community.stage89_legacy` · `community.stage9d` · `community.qf12_work_browser` · `tbox.stage89_cross_regression` · `tbox.file_rename` · `core.scale_d2a_counter_lock` · `core.scale_d2a_evidence` · `core.scale_d2a_equiv` · `core.scale_d2a_budget`.
 
 제외: `stage4d/5a/5c/5d/7a`, `g0_private_grants`, `qf2b_files_search`, `dbg_s_security`는 운영 DB를 pg_dump로 읽으므로 이번 범위의 격리 규칙에 맞지 않는다. `api_folders/api_read`도 운영 시험이어서 제외한다. `stage5c` 이주 누락의 게시판 500은 같은 창구의 합성 최종 동등성 결과로 별도 확인한다. 정적 검사는 최종 후보에서 끝내므로 밤에 전체 린트를 중복 실행하지 않는다. 기존 known_fail 정책은 유지하며 새 실패를 그 목록에 숨기지 않는다.
 
 ## 한계 · 지킨 것 · 못 지킨 것
 
-### 2026-10-16 인수 검토 — 완료 판정 전 보정 중
+### 2026-10-16 인수 검토 이력 — 보정·수락 후 운영 반영 완료
 
 - Claude는 10-15 16:05 예산 재판정 뒤 보고서를 마무리하기 전에 주간 한도로 중단했다. 기존 36파일과 결과는 `resume-codex-20261016/before/` 및 SHA256 manifest에 보존했다. 이 문서의 앞부분 수치는 당시 구현자가 잰 값이다.
 - 기존 예산 시험은 계획이 없거나 실패해도 통과했고, 동시 쓰기 시험은 작업 스레드의 실패를 부모 시험에 전달하지 않았다. 누락·실패를 거절하는 판정과 정확한 400건 삽입 검사를 보완했다. 합성 JSON/가짜 작업/가짜 소켓 기반 음성 시험 28/28 통과. 중간 재판정 44/4를 보존했고, SQL·인자·SET LOCAL 설정까지 대조하는 최종 재판정은 **40/8**(계획 증거 부족 4곳 + 옛 계획에 설정 기록이 없는 폴더·공간·팀공간·나무 4곳)이다. 이 8건을 성능 실패로 단정하거나, 증거 없이 통과로 바꾸지 않는다. 원본 `budget/` 파일은 재판정 전후 SHA256 동일하며 새 결과는 `resume-codex-20261016/budget-rejudge/`에 있다.
 - 기존 M 예산 시험은 30.1분으로 지시서의 20분 목표도 충족하지 못했다. 최종 시험은 측정·정리 시간을 따로 기록한다. L의 남은 성능 목표 초과는 앞의 ⑤처럼 그대로 공개한다.
-- 독립 검토에서는 실제 새 PostgreSQL 14 임시 클러스터로 기존 글 수 트리거의 교착과 이주 중 조회 차단을 재현했다. `resume-codex-20261016/lock-repro-result.json`에 오류·잠금·정리 확인을 남겼다. 후보에 대한 보정 및 최종 수락은 진행 중이며 운영 반영 전이다.
+- 독립 검토에서는 실제 새 PostgreSQL 14 임시 클러스터로 기존 글 수 트리거의 교착과 이주 중 조회 차단을 재현했다. `resume-codex-20261016/lock-repro-result.json`에 오류·잠금·정리 확인을 남겼다. 이후 문장 트리거 보정·최종 수락과 운영 반영을 완료했다. 최초 재현 증거는 보존한다.
 
 - **운영 DB 를 읽은 시험이 있었다(지시 위반 — 보고).** `tests/run.sh` 의 temp-instance 묶음 중 sudo 를 쓰는 7개(stage5a · 5c · 5d · 7a · qf2b · dbg_s · g0)는 `pg_dump tbox_re` 로 운영 DB 를 **읽어** 임시 DB 를 만든다(쓰기 0 · 임시 DB 는 시험이 지움). 후보 · 기준 판 비교로 두 번 돌렸다. 시작 전 시험 스크립트를 확인하지 않은 실수다. 운영 .env · env-src 내용은 열지 않았다(경로만 `QCHECK_ENV_SRC` — 파이썬 틀 다섯에 같은 규칙을 넣음).
 - 합성 DB DROP: L 을 잰 세 번 모두 도구의 끝 정리가 「다른 연결이 쓰는 중」으로 5분 재시도 뒤 실패해, 그때마다 손으로 `dropdb` 하고 0개를 확인했다(D1 과 같은 증상 — 남은 연결은 확인 시점에 0). 도구 수정은 하지 않음.
@@ -186,10 +188,20 @@
 
 추가 `briefing-semantics/result.json`은 **14통과/0실패**, 기준 `63aba86` 대비 **24/24쌍 전체 응답 일치**(generated_at만 제외): 활성23명은200, 비활성1명은401이다. 사람1000·팀30·기본 글1000의 새 작은 합성 DB에서 동일 fixture 데이터 문장을 적용하고 마지막 ANALYZE만 제외했다. 소유자의 숨김·폼·직접 공유 폼·숨김 게시 글, 삭제 제외, 다른 팀 폼의 공유 유무, 공지 숨김 및 익명성·브리핑 종류를 확인했다. 성능은 다시 측정하지 않았다. DB 0.026GiB, 최소 여유11.36GiB이며 DB/프로세스/임시 디렉터리 정리를 확인했다.
 
-원본 전체 M **47통과/1실패**, 후속 M 실행 **11통과/1실패**(성능4/4), 별도 작은 DB 의미 검사 **14/0**을 각각 보존한다. 동일 앱 소스 SHA와 원본 증거 SHA로 두 추가 검사를 연결했다. `resume-codex-20261016/acceptance-gate-precommit.json`의 실제 보충 gate 검증에서 기존 나머지11개 창구와 보정한 브리핑 성능을 합친 예산 **48통과/0실패**를 확인했다(`measured+briefing-performance-and-semantics`). 관문은 카운터28, 기존 동등성32·3,732쌍, 추가 브리핑24쌍, 합성 업그레이드56 및 실행 소스26개 SHA 연결을 확인한다. 이는 별도 실행의 증거를 결합한 판정이며 원본47/1이나 후속M11/1을 바꾸지 않는다. 후보 확정·최신 main 통합은 후속 단계다. **D2a 운영 배포는 아직 하지 않았다.**
+원본 전체 M **47통과/1실패**, 후속 M 실행 **11통과/1실패**(성능4/4), 별도 작은 DB 의미 검사 **14/0**을 각각 보존한다. 동일 앱 소스 SHA와 원본 증거 SHA로 두 추가 검사를 연결했다. `resume-codex-20261016/acceptance-gate-precommit.json`의 실제 보충 gate 검증에서 기존 나머지11개 창구와 보정한 브리핑 성능을 합친 예산 **48통과/0실패**를 확인했다(`measured+briefing-performance-and-semantics`). 관문은 카운터28, 기존 동등성32·3,732쌍, 추가 브리핑24쌍, 합성 업그레이드56 및 실행 소스26개 SHA 연결을 확인한다. 이는 별도 실행의 증거를 결합한 판정이며 원본47/1이나 후속M11/1을 바꾸지 않는다. 이후 후보 확정·최신 main 통합과 D2a 운영 배포를 완료했다. 상세는 아래 운영 완료 기록을 따른다.
 
 측정기는 반복별 HTTP 상태를 저장하지 않는다. 별도 PHP로그 관찰도 상태코드를 제공하지 않았다(관찰 결과false, HTTP오류가 검출됐다는 뜻은 아님). 따라서 7회 모두200으로 주장하지 않으며 마지막 응답/프록시200과 별도24명 상태·내용 비교를 구분한다. 관찰로그원본도 보존한다.
 
 ### 최종 main 통합·정적 검사
 
 기능 커밋 `6bba091` 뒤 운영 main `b6a6385`(붙여넣기 v2.68.3)를 합쳤다. JS 충돌은 동일 import의 생성 버전뿐이어서 최신 내용을 보존하고 버전을 다시 생성했으며, 두 작업의 보안/단계 이력을 모두 남겼다. 관련 수락 입력26개 중 Briefing.php의 SQL WHERE 한 줄에 공백 줄바꿈만 추가했다. 원문은 `resume-codex-20261016/briefing-format/Briefing.tested.php`에 보존하며 정확히 그 한 치환만 별도 관문에서 허용한다. 값·바인딩·조건식·실행 경로는 동일하다. 이 줄의 정적 lint 실패를 숨기지 않으며 수정 후 PHP 구문 및 lint0을 확인했다. 통합 PHP/JS19파일 구문, 자산42파일/75import, 위키70편/0문제 통과. 실행 소스의 의미 변화가 없어 대규모 측정과24명 비교를 반복하지 않았다. 배포 준비 시 동적 제외16표 중 audit_logs와 automation_runs를 제외에서 빼 기존행 보존 범위를 넓혔다.
+
+### 운영 반영 완료 — 2026-10-16T13:53:41.390835+09:00
+
+운영 **v2.69.0**, runtime `33db1603c983528e3226531975a2b3b53bb33688`. 붙여넣기 변경이 있는 기준 main `b6a6385`를 보존 통합한 고정 후보를 반영했다. `resume-codex-20261016/deploy/applied.json`의 최종 `passed=true`와 실제 HTTPS **26/0**을 확인했다. HTTPS에는 대상 목록·브리핑·알림, 비로그인 거부2개, 변경 자산10개의 정확한 바이트 검증이 포함된다. 이는 운영 단일 요청 확인이며 합성 M/L 성능 수락과 구분한다. 업무 내용 생성·수정·삭제 HTTP 요청은0이고, GET 알림의 기존 만료 알림 지연 생성 가능성은 남는다. 검토 세션 회수와 로컬 쿠키 삭제도 확인했다.
+
+보존 검사는 기존 업무 **100표의 모든 기존 행**, **798개 원본 파일**, 기존 소유자/ACL 및 기존 색인 보존을 확인했다(`preservation-verified.json`). 새 `community.spaces.post_count`만 기존행 비교에서 제외하고 실제 집계 불일치0을 별도로 확인했다. `pages.view_count`는 제외하지 않았다. 새 색인12개는 정의·정렬 옵션·valid/ready/live가 일치하며, 카운터 함수와 문장 트리거3개도 확인했다. 암호화 백업 `/var/backups/tbox-v2/scale-d2a-20261016`의 DB·코드/설정2종은 전체 복호화, DB archive 해석, tar 전체 읽기 및 필수파일 존재 확인을 완료했다(`backup-verification-summary.json`: 모두true, 코드/설정 일반파일2338개).
+
+배포 도중 코드 FF가 기존0644 파일4개의 모드를0664로 만들어 메타데이터 검사가 중단됐다. 원래 내용/소유자는 일치했으며, 독립 검토한 `continue-metadata.py`(SHA256 `6fda0bb499cb361d4c722d2a1ceb02d4072d6825860e68a3b1321bb49f76a25a`)로 해당4개의 원래0644만 복구했다. DB 이주 재적용0, FPM reload1회 후 최종 검사를 통과했다. 최초 중단 기록 `code-metadata-interruption.json`과 후속 `manual-metadata-continuation.json`을 모두 보존한다.
+
+야간 회귀15개를 기존 대기열 `2026-10-16-scale-d2a.json`에 등록 완료했다(`resume-codex-20261016/nightly-registered.json`, registered=true). 실행은 오늘 **2026-10-16 22:00 KST 예정**이며 아직 시험 실행·통과로 표시하지 않는다. 기존 L 성능 목표 초과, A9 권한 요청/만료 생성의 반복 조회, 실물 휴대폰·장기 동시 부하 미검증은 유지한다. 원래 규모 C는 별도 독립 검토 및 사용자 통과 통보 대기이며 이번 배포에 포함하지 않았다.
