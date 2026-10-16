@@ -1,6 +1,6 @@
 # 설치한 모아 플러그인의 ChatGPT 연결 활성화
 
-- 상태: 서버 검증 완료·배포 대기
+- 상태: 운영 배포·서버 연결 검증 완료 (실제 사용자 ChatGPT 연결 확인 대기)
 - 작업 브랜치: `codex/mcp-chatgpt-activation`
 - 기준 main: `f38b59201212` (v2.70.1)
 - 담당 환경: 서버의 격리 작업본
@@ -25,7 +25,7 @@ OpenAI 공식 인증 계약(2026-10-16 확인, https://developers.openai.com/plu
 
 ## 배포 결과
 
-미반영. 수락 검사와 운영 결과는 실행 후 기록한다.
+운영 v2.70.2 `1904afcba11583fb1ca3a81a5be226733bcdaa6d`, 2026-10-16T18:19:21+09:00. 고정13파일 모의 적용·서버/원격 drift 확인·암호화 DB/코드·설정 checksum/전체 복호화·DB/tar 파싱 후 FF. `.env`는 MCP 활성화/정확 callback 두 키만 추가, 기존 바이트·owner/group/mode 보존. FPM reload 완료. 기존 업무100표 원래 행·원본798파일·설정10파일·ownerACL 보존. DB migration/패키지/nginx 변경0.
 
 ## 수락 결과 — 2026-10-16
 
@@ -33,3 +33,8 @@ OpenAI 공식 인증 계약(2026-10-16 확인, https://developers.openai.com/plu
 - 최초 실행은 257/1: 예전 사진 fixture가 업로드 전후 메타데이터까지 같아야 한다고 가정했다. 현재 G-2 사진 개인정보 제거와 충돌하므로 시험에서 tEXt만 없는 정확 PNG 바이트를 기대하도록 보정했다. 이미지 덩어리와 MCP 저장 후 원본 바이트 보존 검증은 유지. 운영 사진 코드는 변경하지 않았다. 전체 suite 재실행 위 결과.
 - OAuth 단위141/0, protocol94/0, scripted DB tools61/0, PHP 문법 통과, 보안 린트0. 별도 컨텍스트 독립 검토·실제 ChatGPT 사용자 로그인·실물 휴대폰은 미검증. 직접 diff 검토: callback 전 사전 검증 실패는 로컬 JSON 오류를 유지하며 유효 URI로 돌아가는 승인/거절에만 iss를 붙인다. 새 외부 요청·권한 완화 없음.
 - 증거 `/home/changkwon/qaredi-mcp-activation-results-20261016/`; 원문 자격/업무 자료를 출력하지 않는다. 비례 회귀는 밤 대기열에 넣는다.
+
+
+실제 운영 HTTPS **48/0**: discovery200/issuer 지원, 무인증 MCP401+challenge, 임의 callback400·정확 공식 callback201, 정상 claude_employee01 비밀번호+OTP 로그인, 승인·거절 callback의 state/iss, code 교환, MCP initialize/tools/list/본인 확인/업무 프로젝트 목록 읽기, grant 회수 뒤401·활성 목록 제외·검토 세션 로그아웃. 업무 문서 저장 호출0. 시험 자격이 해당 구간 앱/nginx 로그에 없는지 확인. 처음 실행은 검토 도구가 계정 파일의 비밀번호 열을 잘못 읽어 로그인 실패(13/1)했고 도구만 보정해 재확인했다. 사용자 로그인이나 운영 인증 정책은 변경하지 않았다. 실제 ChatGPT의 도구 실행·모바일·외부 TLS 프록시 로그는 미검증이며 기존 설치 ZIP은 변경하지 않았다. 별도 컨텍스트 독립 검토 미검증을 유지한다. `community.remote_mcp_http` 밤 회귀 대기열은 기존 업무 MCP 항목과 합쳐 한 번 실행한다.
+
+운영 OAuth 시험 뒤 기존 업무99표 원래 행·ownerACL·원본/설정 다시 보존 확인. public.users는 검토 계정의 정상 로그인/TOTP 상태 변화 때문에 후속 해시 대조에서만 제외했으며, 코드 반영 직후100표 검사는 제외 없이 통과했다.
