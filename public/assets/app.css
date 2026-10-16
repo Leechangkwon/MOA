@@ -740,6 +740,25 @@ input[type="checkbox"][data-bulk] { accent-color: var(--primary); vertical-align
   font-weight: 400;
   cursor: pointer;
 }
+.choice-list { display: grid; gap: 8px; min-width: 0; }
+.choice-row {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr);
+  align-items: start;
+  gap: 12px;
+  min-height: 44px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+}
+.choice-row:hover, .choice-row:has(> input:checked) { background: var(--surface-2); }
+.choice-row:has(> input:checked) { border-color: var(--primary); }
+.field .choice-row > input[type="checkbox"],
+.field .choice-row > input[type="radio"] { width: 18px; height: 18px; margin-top: 2px; }
+.choice-row__body { display: grid; gap: 4px; min-width: 0; }
+.choice-row__title { font-size: 14px; font-weight: 500; line-height: 1.5; color: var(--fg); }
+.choice-row__description { font-size: 13px; line-height: 1.5; color: var(--muted); overflow-wrap: anywhere; }
 .field input:disabled,
 .field select:disabled { opacity: .5; cursor: not-allowed; }
 .field input[type="file"] {

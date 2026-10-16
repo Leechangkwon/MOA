@@ -7457,12 +7457,12 @@ var TOKEN_SCOPE_NOTES = {
   'read': '목록·검색·내려받기',
   'upload': '올리기·이름 바꾸기·옮기기 (파일 읽기 포함)',
   'delete': '지우기 (파일 읽기·올리기 포함)',
-  'community.read': '검색·공간 목록·글 읽기',
-  'community.write': '비공개 페이지 만들기·편집 가능한 업무 문서 갱신 (커뮤니티 읽기 포함)',
+  'community.read': '업무 프로젝트·문서 찾기와 내용 읽기',
+  'community.write': '업무 문서 수정·개발 기록 추가·새 비공개 페이지 만들기. 커뮤니티 읽기도 함께 선택됩니다.',
   'travel.read': '내 여행 일정과 연결 기록 조회 · 다른 사람의 계획은 열리지 않습니다.',
   'travel.write': '내 여행 계획 만들기·수정·기록 연결 (여행 계획 읽기 포함)',
   'assistant.run': '읽기 전용 파일 검색·근거 조회와 내 실행 상태. 다른 범위와 함께 발급하지 않습니다.',
-  'session.open': '지금 접속한 IP 에서만 · 로그인 없이 화면 열기(민감한 일은 다시 인증)'
+  'session.open': '발급한 접속 주소(IP)에서만 로그인 없이 화면을 엽니다. 다른 PC·서버 연결용으로는 선택하지 마세요.'
 };
 
 /** Q:F-10 — 원자 → 함께 켜지는 원자(체크 연동 — 서버 규칙 normalizeScope 와 같은 뜻 · 편의일 뿐 권한이 아니다) */
@@ -10211,8 +10211,7 @@ function initMyTokens(csrfToken, me) {
 
   /* 범위 선택지 — **서버가 내려 준 원자 목록만**(`token_scopes`). 화면에 고정 목록을 두지 않는다.
      Q:F-10 — 원자마다 체크박스 하나(여러 개를 골라 한 토큰에 묶는다 · ARCH 4.10). 화면 틀의 `<label class="field">` 안
-     `<select>` 를 같은 클래스의 묶음(`div.field` · role=group)으로 바꾸고, 줄마다 기존 체크박스 줄 모양
-     (`.field__label` 안 체크박스 — settings 「고대비 화면」 과 같은 규칙)을 쓴다. 새 클래스·색값 0 · 글자는 전부 textContent. */
+     `<select>` 를 같은 클래스의 묶음(`div.field` · role=group)으로 바꾸고, 줄마다 DESIGN 2.5의 choice-row로 체크·제목·설명을 묶는다. 글자는 전부 textContent. */
   var scopes = me && Array.isArray(me.token_scopes) ? me.token_scopes : [];
   var scopeChecks = {};
   var scopeHelp = null;
@@ -10241,16 +10240,32 @@ function initMyTokens(csrfToken, me) {
     while (scopeBox.firstChild) {
       scopeBox.removeChild(scopeBox.firstChild);
     }
-    scopes.forEach(function (atom) {
+    scopeBox.className = 'choice-list';
+    scopes.forEach(function (atom, index) {
       var row = document.createElement('label');
-      row.className = 'field__label';
+      row.className = 'choice-row';
       var box = document.createElement('input');
       box.type = 'checkbox';
       box.value = String(atom);
       box.checked = atom === 'read';          // 처음에는 「파일 읽기」 하나(옛 select 의 첫 값과 같은 자리)
       row.appendChild(box);
-      var note = Object.prototype.hasOwnProperty.call(TOKEN_SCOPE_NOTES, atom) ? ' — ' + TOKEN_SCOPE_NOTES[atom] : '';
-      row.appendChild(document.createTextNode(tokenScopeLabel([atom]) + note));
+      var body = document.createElement('span');
+      body.className = 'choice-row__body';
+      var title = document.createElement('span');
+      title.className = 'choice-row__title';
+      title.id = 'token-scope-name-' + index;
+      setText(title, tokenScopeLabel([atom]));
+      box.setAttribute('aria-labelledby', title.id);
+      body.appendChild(title);
+      if (Object.prototype.hasOwnProperty.call(TOKEN_SCOPE_NOTES, atom)) {
+        var description = document.createElement('span');
+        description.className = 'choice-row__description';
+        description.id = 'token-scope-description-' + index;
+        setText(description, TOKEN_SCOPE_NOTES[atom]);
+        box.setAttribute('aria-describedby', description.id);
+        body.appendChild(description);
+      }
+      row.appendChild(body);
       scopeBox.appendChild(row);
       scopeChecks[atom] = box;
     });

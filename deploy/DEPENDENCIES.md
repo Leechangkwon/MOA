@@ -210,14 +210,16 @@ PRD S-10-C 가 "배포판 패키지만·의존성 0 이 기본" 이라고 못박
 
 ### 5.5 PC 클라이언트 — Qaredi MCP 서버 `clients/mcp/` (Q:F-8 조각 C, 2026-09-28)
 
-**PC 클라이언트 전용 · 서버에 설치하지 않는다.** 사용자의 PC 에서 Claude Desktop·Claude Code 가 띄우는 stdio 프로그램이고,
+**AI 클라이언트 전용.** 사용자의 PC 또는 SSH Codex 사용자 환경에서 띄우는 stdio 프로그램이고,
 `deploy/install.sh`·운영 서버·앱 코드는 이 패키지를 부르지 않는다(서버 런타임 의존성 0 그대로 — PRD S-10-C).
 HTTP 는 표준 라이브러리(`urllib` · `ssl.create_default_context()`)로 하고 외부 HTTP 라이브러리를 직접 쓰지 않는다.
 
 | 패키지 | 버전(고정) | 라이선스 | sha256 | 어디에 | 왜 |
 |---|---|---|---|---|---|
-| `mcp` (PyPI, Model Context Protocol 공식 Python SDK) | `1.12.4` (`clients/mcp/pyproject.toml`) — **판단 대기**: 이 문맥에서 PyPI 가 막혀(403) 이 번호의 존재·최신 여부를 확인하지 못했다. 반영 전 확인해 고친다 | MIT (반영 전 받은 배포본의 메타데이터로 확인) | **이 문맥에서 받지 못함 — 반영 전 채운다** (`pip download mcp==<버전> --no-deps` 뒤 `sha256sum`) | `clients/mcp/qaredi_mcp/server.py` 한 곳(`mcp.server.fastmcp.FastMCP` · `ToolError` · `mcp.types.ToolAnnotations`) | stdio MCP 서버 틀(도구 등록·스키마·전송) |
-| (`mcp` 가 끌어오는 것 — `pydantic` 등) | `mcp` 의 의존 선언을 따른다 | 각자 | 받지 못함 — 반영 전 `pip download mcp==<버전>` 로 목록·sha256 을 적는다 | 같은 PC 환경(`pipx` 로 따로 떨어진 환경 권장) | — |
+| `mcp` (공식 Python SDK) | `1.12.4` | MIT | `7aa884648969fab8e78b89399d59a683202972e12e6bc9a1c88ce7eda7743789` | `clients/mcp/qaredi_mcp/server.py` | stdio MCP |
+| `pydantic` | `2.11.7` | MIT | `dde5df002701f6de26248661f6835bbe296a47bf73990135c7d07ce741b9623b` | 같은 격리 환경 | SDK1.12.4의 eval_type_backport 사용과 호환되는 판 고정 |
+| `pydantic-core` | `2.33.2` (Pydantic 의존성) | MIT | `6bdfe4b3789761f3bcb4b1ddf33355a71079858958e3a552f16d5af19768fef2` (Linux CPython3.10 x86_64 wheel) | 같은 격리 환경 | Pydantic 검증 엔진 |
+| 그 밖의 간접 의존성 | SDK의 의존 선언을 따름, 전체 잠금 아님 | 각 패키지 메타데이터 | 전체 배포본 해시 미수집 | 격리 사용자 환경 | 플랫폼별 설치 결과를 확인 |
 
 - 변환기(`markdown_doc.py`)·HTTP 클라이언트(`client.py`)는 표준 라이브러리만 쓴다 — 단위 시험은 `mcp` 없이 돈다.
 - Python 3.10 이상. 설치는 `pipx install ./clients/mcp`(README).

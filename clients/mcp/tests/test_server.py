@@ -22,7 +22,9 @@ sys.path.insert(0, str(PKG / "tests"))
 try:
     import mcp.server.fastmcp  # noqa: F401
     REAL_MCP = True
-except ImportError:
+except ModuleNotFoundError as exc:
+    if exc.name != "mcp":
+        raise  # An installed but broken SDK must fail, never silently become a stub.
     REAL_MCP = False
 
 

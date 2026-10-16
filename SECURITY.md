@@ -1251,3 +1251,7 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 배포 도중 코드 FF가 기존0644 파일4개의 모드를0664로 만들어 메타데이터 검사가 중단됐다. 원래 내용/소유자는 일치했으며, 독립 검토한 `continue-metadata.py`(SHA256 `6fda0bb499cb361d4c722d2a1ceb02d4072d6825860e68a3b1321bb49f76a25a`)로 해당4개의 원래0644만 복구했다. DB 이주 재적용0, FPM reload1회 후 최종 검사를 통과했다. 최초 중단 기록 `code-metadata-interruption.json`과 후속 `manual-metadata-continuation.json`을 모두 보존한다.
 
 야간 회귀15개를 기존 대기열 `2026-10-16-scale-d2a.json`에 등록 완료했다(`resume-codex-20261016/nightly-registered.json`, registered=true). 실행은 오늘 **2026-10-16 22:00 KST 예정**이며 아직 시험 실행·통과로 표시하지 않는다. 기존 L 성능 목표 초과, A9 권한 요청/만료 생성의 반복 조회, 실물 휴대폰·장기 동시 부하 미검증은 유지한다. 원래 규모 C는 별도 독립 검토 및 사용자 통과 통보 대기이며 이번 배포에 포함하지 않았다.
+
+### 2026-10-16 토큰 권한 선택과 업무 MCP 연결
+
+① 근거: 서버 옵션 목록/기본 선택/연동/인증/POST 정책 불변, textContent·native label/checkbox로 제목/설명 분리. PC/모바일 합성38/0·정적0·실제 SDK114/0·실제 stdio 계정/문서 읽기. 사용자 승인된 문서 갱신은 정상 토큰/판 번호로 하고 원래2블록을 보존했다. ② 잔여: 토큰 범위 자체가 단일 프로젝트로 제한되는 것은 아니며 기존 서버 권한을 따른다. SDK의 간접 의존성 전체 잠금은 아니고 비치명적 lifespan 경고가 남는다. ③ 미검증: 실물 모바일·Safari·스크린리더·별도 컨텍스트 독립 검토. 기존 SDK114/0의 흉내 fallback 한계를 docs/work-items/work-document-mcp.md에 정정했다. ④ 운영 후 검토 계정으로 발급 없는 화면 확인, 비례 회귀 core.qf10_multi_scope는 이미 오늘 밤 대기열에 포함. 상세 docs/work-items/token-scope-layout.md.

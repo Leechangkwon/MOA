@@ -382,10 +382,10 @@ require __DIR__ . '/../views/shell_top.php';
             <input id="token-purpose" type="text" maxlength="500" required>
             <span class="help">무엇에 쓰는 토큰인지 적습니다. 감사 기록에 함께 남습니다.</span>
           </label>
-          <label class="field">
-            <span class="field__label">범위 (필수)</span>
+          <label class="field field--full">
+            <span class="field__label">허용할 기능 (필수)</span>
             <select id="token-scope" required></select>
-            <span class="help">계정 권한보다 넓은 범위는 고를 수 없습니다.</span>
+            <span class="help">개발 기록 연결에는 「커뮤니티 글쓰기」를 선택하세요. 읽기도 함께 선택됩니다. 필요한 기능만 고르면 됩니다.</span>
           </label>
           <label class="field">
             <span class="field__label">현재 비밀번호</span>
