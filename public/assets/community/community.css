@@ -873,7 +873,7 @@ span.crumb__item:hover { text-decoration: none; }   /* 링크가 아닌 첫 칸(
 /* Reading tables size short values by their content. Row headings retain room for item names;
    long prose wraps within a bounded cell, while a wide table scrolls in its existing wrapper. */
 .doc-table:not(.atom-grid):not(.db-table) { min-width: 0; line-height: 1.5; }
-.doc-table:not(.atom-grid):not(.db-table) .doc-table__cell { min-width: 0; max-width: 24rem; padding: 4px 8px; overflow-wrap: break-word; }
+.doc-table:not(.atom-grid):not(.db-table) .doc-table__cell { min-width: 0; max-width: 24rem; padding: 4px 8px; overflow-wrap: break-word; white-space: pre-line; }
 .doc-table:not(.atom-grid):not(.db-table) tr:has(> td) > th:first-child { min-width: 11rem; max-width: 16rem; }
 th.doc-table__cell { font-weight: 600; }
 /* Header fallback lives behind row and cell colors. A foreground pal:bg is not a background. */
@@ -953,7 +953,7 @@ body[data-image-resizing] { cursor: ew-resize; user-select: none; }
 #atom-dialog:has(#atom-table:not([hidden])) { width: min(960px, calc(100vw - 32px)); }
 #atom-table { min-width: 0; }
 #atom-table > .doc-table-wrap { max-height: min(20rem, 35vh); overflow: auto; }
-.table-cell-preview { display: block; width: 100%; min-width: 5rem; max-width: 16rem; min-height: 44px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: transparent; color: inherit; font: inherit; font-size: 14px; line-height: 1.5; text-align: left; white-space: normal; word-break: keep-all; overflow-wrap: break-word; cursor: pointer; }
+.table-cell-preview { display: block; width: 100%; min-width: 5rem; max-width: 16rem; min-height: 44px; padding: 6px 8px; border: 1px solid var(--line); border-radius: var(--r-ctl); background: transparent; color: inherit; font: inherit; font-size: 14px; line-height: 1.5; text-align: left; white-space: pre-line; word-break: keep-all; overflow-wrap: break-word; cursor: pointer; }
 .table-cell-preview:disabled { color: var(--muted); background: var(--surface-2); cursor: default; }
 .atom-grid td.is-picked .table-cell-preview { border-color: var(--ring); box-shadow: inset 0 0 0 1px var(--ring); }
 .table-cell-preview:focus-visible { outline: 2px solid var(--ring); outline-offset: 1px; }

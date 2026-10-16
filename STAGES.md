@@ -3070,3 +3070,7 @@ v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`. 최종 독립 검토 manifes
 ## 2026-10-14 Gemini 3.6 Flash 직접 호출 — 운영 변경
 
 실제 사용 중인 MemberAi/Fetch와 문서 Ai의 고정 모델을3.6으로 전환. 키·동의·한도·사용자/스레드 판정·SSRF/TLS 방어는 기존 계약 유지. 이미지/임베딩/DB/키/패키지 변경0. 원본 Ai TLS10/0, PHP3파일·security lint·자산/위키0, PC11/0, ERP2계약3/0. 실제3.6 단문·대화·요약 완료, 전사55초 timeout 미검증. assistant 재실행376/0→chat38/0 및 baseline376/0→38/0. 최초 단언 실패 원인미확정·미재현. 운영v2.67.1 적용 및 원본Fetch 실제3.6/STOP, 공개·로컬 health200, 기존22대화 보존. 회귀: 기존 밤 대기열에 해당 AI 창구 목록 추가. 상세 `docs/work-items/gemini-36-flash.md`.
+
+## 2026-10-16 커뮤니티 답변 붙여넣기 — 후보
+
+마우스로 복사한 외부 HTML 표를 기존 표 블록으로 보존하고 숫자 굵기 및 셀 문단·줄바꿈을 유지한다. 작업 설명과 문서 전체에 동일 parser를 적용한다. 이미 저장된 평문은 자동 변경하지 않는다. 구현·검토·운영 상태는 `docs/work-items/community-clipboard-html.md`에 기록한다. DB/패키지/설정 변경0, 회귀는 밤 대기열로 분리한다.

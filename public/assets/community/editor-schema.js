@@ -315,6 +315,7 @@ export const schema = new Schema({
       group: 'block', atom: true, selectable: true,
       // 6-C — spans: 합친 칸 {'행,열': [세로, 가로]} (시작 칸만). 덮이는 칸은 비어 있다.
       attrs: { id: { default: null }, header_row: { default: true }, header_col: { default: false }, rows: { default: [['', ''], ['', '']] }, spans: { default: {} }, raw: { default: null } },
+      parseDOM: [{ tag: 'table', getAttrs: externalTableAttrs }],
       toDOM: (node) => ['div', { class: 'card card--link doc-atom', contenteditable: 'false', 'data-atom': 'table' },
         ['span', { class: 'card__title' }, '표 ' + String((node.attrs.rows || []).length) + '×' + String(((node.attrs.rows || [])[0] || []).length)],
         ['span', { class: 'card__meta' }, (((node.attrs.rows || [])[0] || []).join(' · ') || '빈 표') + ' · 두 번 눌러 고치기']]
@@ -362,7 +363,7 @@ export const schema = new Schema({
 
   marks: {
     bold: {
-      parseDOM: [{ tag: 'strong' }, { tag: 'b' }, { style: 'font-weight=bold' }],
+      parseDOM: [{ tag: 'strong' }, { tag: 'b' }, { style: 'font-weight', getAttrs: value => /^(bold|[6-9]00)$/.test(value) ? null : false }],
       toDOM: () => ['strong', 0]
     },
     italic: {
@@ -467,8 +468,8 @@ export function mentionLabel(kind, id, labels) {
  *   · `editorDomParser` — 편집기가 **자기 DOM** 을 다시 읽을 때(친 글자·조합)만 쓴다. 스키마 규칙 + 멘션 규칙 하나: 우리 `toDOM` 이 그린
  *     `span.doc-mention[data-mention-kind]` 에서 kind·id 를 되읽고 모양이 맞을 때만 마크(아니면 글자). 이것이 없으면 멘션 바로 뒤에 친
  *     글자가 span 안에 들어간 순간 그 자리를 다시 읽으며 「@」 의 마크가 사라진다(2026-09-27 첫 수락 시험에서 겪음).
- *   · `clipboardDomParser` — 붙여넣기·끌어 놓기. **스키마 그대로**(멘션 규칙 없음 — `mention` 마크에 `parseDOM` 이 없다) — 붙여넣은 HTML
- *     에서는 멘션이 생기지 않는다(지시서 M-7 · 14.3).
+ *   · `clipboardDomParser` — 붙여넣기·끌어 놓기. 외부 표만 안전한 표/평문으로 준비한 뒤 스키마 규칙으로 읽는다.
+ *     멘션 규칙이 없어(`mention` 마크에 `parseDOM` 없음) 붙여넣은 HTML 에서는 멘션이 생기지 않는다(지시서 M-7 · 14.3).
  */
 const MENTION_DOM_RULE = {
   tag: 'span.doc-mention[data-mention-kind]',
@@ -481,8 +482,147 @@ const MENTION_DOM_RULE = {
     return { kind: kind, id: id, label: dom.getAttribute('data-label') || '', key: dom.getAttribute('data-mention-key') || null };
   }
 };
-export const clipboardDomParser = DOMParser.fromSchema(schema);
+// Only tables need preprocessing. Plain-text and all other HTML follow the existing parser.
+class ClipboardDOMParser extends DOMParser {
+  parse(dom, options) { return super.parse(clipboardTableDOM(dom), options); }
+  parseSlice(dom, options) { return super.parseSlice(clipboardTableDOM(dom), options); }
+}
+export const clipboardDomParser = new ClipboardDOMParser(schema, DOMParser.schemaRules(schema));
 export const editorDomParser = new DOMParser(schema, [MENTION_DOM_RULE].concat(clipboardDomParser.rules));
+
+/* External table import (C:F-15/F-16, C:S-11/S-12).
+ * doc-schema limits: 200 rows, 20 columns, spans <=20, 100 segments of <=2000 characters.
+ * No source attributes, internal IDs, colors, mentions or atom references enter the raw block.
+ * Invalid/oversize tables become plain paragraphs without truncating their safe text.
+ */
+const CLIPBOARD_DROP_TAGS = new Set(['SCRIPT', 'STYLE', 'IFRAME', 'OBJECT', 'EMBED', 'IMG', 'SVG', 'MATH', 'TEMPLATE', 'NOSCRIPT']);
+const CLIPBOARD_BLOCK_TAGS = new Set(['P', 'DIV', 'LI', 'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'BLOCKQUOTE', 'PRE']);
+const externalTableCache = new WeakMap();
+
+function clipboardCellText(cell) {
+  const clean = document.createElement('div');
+  let count = 0;
+  function copy(source, target, depth) {
+    if (++count > 12000 || depth > 80) { throw new Error('clipboard cell complexity'); }
+    if (source.nodeType === 3) {
+      target.appendChild(document.createTextNode(source.nodeValue.replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, '')));
+      return;
+    }
+    if (source.nodeType !== 1 || CLIPBOARD_DROP_TAGS.has(source.tagName)) { return; }
+    if (source.tagName === 'BR') { target.appendChild(document.createTextNode('\n')); return; }
+    let tag = source.tagName.toLowerCase();
+    if (CLIPBOARD_BLOCK_TAGS.has(source.tagName)) { tag = 'p'; }
+    else if (!['strong', 'b', 'em', 'i', 'u', 's', 'del', 'code', 'a'].includes(tag)) { tag = 'span'; }
+    const next = document.createElement(tag);
+    const href = source.getAttribute('href');
+    if (tag === 'a' && schemeOkForEditor(href) && new TextEncoder().encode(href).length <= 2048) { next.setAttribute('href', href); }
+    // Chromium selection copies may express bold as a numeric CSS weight.
+    // Keep that semantic mark only; no arbitrary CSS or classes are copied.
+    let inner = next;
+    if (/^(bold|[6-9]00)$/.test(source.style.fontWeight)) {
+      inner = document.createElement('strong');
+      next.appendChild(inner);
+    }
+    for (const child of source.childNodes) { copy(child, inner, depth + 1); }
+    target.appendChild(next);
+  }
+  copy(cell, clean, 0);
+  const parsed = DOMParser.fromSchema(schema).parse(clean, { preserveWhitespace: 'full' });
+  const rich = [];
+  parsed.forEach((block, _offset, index) => {
+    if (index > 0) { rich.push({ t: '\n', m: {} }); }
+    rich.push(...pmToRich(block.toJSON().content));
+  });
+  const bounded = [];
+  for (const seg of rich) {
+    const chars = Array.from(seg.t);
+    for (let at = 0; at < chars.length; at += 2000) {
+      bounded.push({ t: chars.slice(at, at + 2000).join(''), m: seg.m });
+      if (bounded.length > 100) { return null; }
+    }
+  }
+  return bounded;
+}
+
+function externalTableAttrs(table) {
+  if (externalTableCache.has(table)) { return externalTableCache.get(table); }
+  if (table.querySelector('table, caption')) { return false; }
+  const sourceRows = Array.from(table.rows);
+  if (!sourceRows.length || sourceRows.length > 200) { return false; }
+  const grid = sourceRows.map(() => []);
+  const spans = {};
+  const heads = sourceRows.map(() => []);
+  let width = null;
+  try {
+    for (let y = 0; y < sourceRows.length; y++) {
+      let x = 0;
+      for (const source of sourceRows[y].cells) {
+        while (grid[y][x]) { x++; }
+        const readSpan = name => {
+          const value = source.getAttribute(name);
+          return value === null ? 1 : (/^[1-9][0-9]?$/.test(value) ? Number(value) : 0);
+        };
+        const rs = readSpan('rowspan'), cs = readSpan('colspan');
+        if (rs < 1 || rs > 20 || cs < 1 || cs > 20 || y + rs > sourceRows.length || x + cs > 20) { return false; }
+        const text = clipboardCellText(source);
+        if (!text) { return false; }
+        const cell = { text: text };
+        if (rs > 1) { cell.rowspan = rs; }
+        if (cs > 1) { cell.colspan = cs; }
+        if (rs > 1 || cs > 1) { spans[y + ',' + x] = [rs, cs]; }
+        for (let yy = y; yy < y + rs; yy++) {
+          for (let xx = x; xx < x + cs; xx++) {
+            if (grid[yy][xx]) { return false; }
+            grid[yy][xx] = yy === y && xx === x ? cell : { text: [] };
+            heads[yy][xx] = source.tagName === 'TH';
+          }
+        }
+        x += cs;
+      }
+      if (width === null) { width = grid[y].length; }
+      if (!width || grid[y].length !== width || Array.from({ length: width }, (_, c) => grid[y][c]).some(c => !c)) { return false; }
+    }
+  } catch (_error) { return false; }
+  const raw = { type: 'table', header_row: heads[0].every(Boolean), header_col: heads.every(row => row[0] === true), rows: grid.map(cells => ({ cells: cells })) };
+  // Leave room inside the document's 1 MiB ceiling for surrounding text and existing blocks.
+  if (new TextEncoder().encode(JSON.stringify(raw)).length > 262144) { return false; }
+  const attrs = { header_row: raw.header_row, header_col: raw.header_col, rows: grid.map(row => row.map(cell => plainOf(cell.text))), spans: spans, raw: raw };
+  externalTableCache.set(table, attrs);
+  return attrs;
+}
+
+function clipboardTablePlain(table) {
+  const pieces = [];
+  const pending = [table];
+  while (pending.length) {
+    const item = pending.pop();
+    if (typeof item === 'string') { pieces.push(item); continue; }
+    if (item.nodeType === 3) { pieces.push(item.nodeValue); continue; }
+    if (item.nodeType !== 1 || CLIPBOARD_DROP_TAGS.has(item.tagName)) { continue; }
+    if (item.tagName === 'BR') { pieces.push('\n'); continue; }
+    if (CLIPBOARD_BLOCK_TAGS.has(item.tagName) || ['TD', 'TH', 'TR', 'TABLE'].includes(item.tagName)) { pending.push('\n'); }
+    for (let i = item.childNodes.length - 1; i >= 0; i--) { pending.push(item.childNodes[i]); }
+  }
+  return pieces.join('').replace(/[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/g, '');
+}
+
+function clipboardTableDOM(dom) {
+  if (!dom.querySelector || !dom.querySelector('table')) { return dom; }
+  const copy = dom.cloneNode(true);
+  for (const table of copy.querySelectorAll('table')) {
+    if (table.parentElement && table.parentElement.closest('table')) { continue; }
+    if (externalTableAttrs(table)) { continue; }
+    const chars = Array.from(clipboardTablePlain(table));
+    const fragment = document.createDocumentFragment();
+    for (let at = 0; at < chars.length; at += 2000) {
+      const paragraph = document.createElement('p');
+      paragraph.textContent = chars.slice(at, at + 2000).join('');
+      fragment.appendChild(paragraph);
+    }
+    table.replaceWith(fragment);
+  }
+  return copy;
+}
 
 /** 링크 스킴 검사 — `Doc::schemeOk`·`doc-render.js` 와 같은 규칙 */
 export function schemeOkForEditor(href) {

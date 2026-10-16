@@ -1,10 +1,10 @@
 /** Lossless table atom draft. Only the selected cell owns a ProseMirror view. */
 import {
   schema, fromDoc, toDoc, uuid4, COLORS, schemeOkForEditor, colorAllowed, editorDomParser, clipboardDomParser
-} from './editor-schema.js?v=b30fccb8c911';
+} from './editor-schema.js?v=ccbf1ba61555';
 import {
   renderDoc
-} from './doc-render.js?v=b30fccb8c911';
+} from './doc-render.js?v=ccbf1ba61555';
 import {
   EditorState
 } from './vendor/pm/prosemirror-state.js?v=5823578fa61a';
@@ -239,6 +239,18 @@ export function createTableEditor( {
           slice.content.forEach((node, _offset, index) => {
             if (index > 0) nodes.push(schema.text('\n'));
             if (node.isText) nodes.push(node);
+            else if (node.type.name === 'table' && node.attrs.raw) {
+              // A cell cannot contain a table atom. Preserve imported cell marks/text
+              // in reading order instead of dropping the new leaf node's contents.
+              node.attrs.raw.rows.forEach((row, y) => {
+                if (y > 0) nodes.push(schema.text('\n'));
+                row.cells.forEach((cell, x) => {
+                  if (x > 0) nodes.push(schema.text(' | '));
+                  const paragraph = schema.nodeFromJSON(fromDoc({ blocks: [{ type: 'paragraph', text: cell.text }] }).content[0]);
+                  paragraph.forEach(child => nodes.push(child));
+                });
+              });
+            }
             else node.descendants(child => { if (child.isText) nodes.push(child); });
           });
           return new Slice(Fragment.fromArray(nodes),0,0);
