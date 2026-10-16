@@ -1445,3 +1445,7 @@ nginx는 검색·파일목록·게시판글목록의 GET에 IP당8r/s+burst16을
 정렬은 최신 게시 시각+id, 수정 시각+id, 조회수+게시 시각+id의 내림차순이다. 이전은 같은 경계의 역순 질의 후 화면 순서를 복원한다. 커서는 고정 스냅샷이 아니므로 읽는 동안 수정·조회수·권한이 바뀌면 목록도 달라질 수 있다. 옛 `page=1..20`은 커서를 최대 20회 진행해 호환하며 그 밖은 400, cursor와 동시 사용도 400이다. `per_page=5` 호출은 기존처럼 서버 20개 중 호출자가 5개를 사용한다. 게시판 목록 자체(`/api/boards`)의 게시판별 글 수는 이 변경 범위가 아니다. 검색 보호의 두 글자·3초·동시 1개 규칙은 유지한다.
 
 조회수는 `pages.view_count`를 읽는다. 기존 사람×날 유일키로 `page_views`에 새 기록이 생긴 경우에만 AFTER INSERT가 같은 트랜잭션에서 +1한다. 중복·롤백은 증가시키지 않는다. 기존 영구삭제의 기록 제거에 대응하는 AFTER DELETE도 같은 트랜잭션에서 -1한다. 앱에 기록 수정/삭제나 함수 직접 호출 권한을 추가하지 않는다. 마이그레이션(기록 쓰기 잠금+초기화+트리거)을 코드보다 먼저 적용한다.
+
+## 업무 문서 갱신 MCP (2026-10-16)
+
+개인 토큰 전용 허용 목록에 `GET /community/api/work/projects`, `GET /community/api/work/documents?parent_id=<uuid>`, `GET /community/api/work/documents/{id}`, `PATCH /community/api/work/documents/{id}`를 추가한다. 읽기 정책 community.read, 갱신 community.write; 세션은 기존 CSRF 관문을 유지한다. 일반 페이지 PATCH/생성 위치 제한은 유지. PATCH는 doc_version + replacements/append만 받고 전체 문서·제목·공유 등 다른 필드는 거부한다. 409는 다시 읽기, 자동 재전송 금지. 자세한 입력과 사용 예: docs/work-document-mcp.md. OAuth MCP는 별도 work.read/work.write이며 기존 승인을 확대하지 않는다.

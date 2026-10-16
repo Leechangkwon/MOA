@@ -6842,6 +6842,52 @@
       "est_sec": 2,
       "timeout_sec": 30,
       "notes": "합성JSON·가짜작업·가짜로컬소켓: 계획/설정누락·실패·실측누락거절,원본결과불변,동시쓰기예외/400건검사,proxy종료·3GB/VACUUM감시·정리실패. 실DB/HTTP0."
+    },
+    {
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [],
+      "requirements": [],
+      "risks": [
+        "R-112",
+        "R-114"
+      ],
+      "writes_prod": false,
+      "id": "community.work_document_mcp",
+      "cmd": "python3 tests/community/memories_harness.py --suite work_documents_http.py --output /tmp/qaredi-work-document-mcp-results",
+      "covers": [
+        "src/community/WorkDocuments.php",
+        "src/community/SaveDoc.php",
+        "src/community/handlers/work_document.php",
+        "src/community/handlers/work_documents_list.php",
+        "src/mcp/McpTools.php",
+        "clients/mcp/qaredi_mcp/client.py"
+      ],
+      "est_sec": 60,
+      "timeout_sec": 600,
+      "notes": "빈 합성 DB와 별도 PHP 서버만 사용. 운영 checkout 직접 실행 거부. 기존 데이터/원본/서비스 변경 없음. 실제 ChatGPT 앱 연결 검증과 구분."
+    },
+    {
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [],
+      "requirements": [],
+      "risks": [
+        "R-112",
+        "R-114"
+      ],
+      "writes_prod": false,
+      "id": "community.remote_mcp_http",
+      "cmd": "python3 tests/community/memories_harness.py --suite remote_http.py --output /tmp/qaredi-remote-mcp-results",
+      "covers": [
+        "src/mcp/",
+        "src/community/SaveDoc.php"
+      ],
+      "est_sec": 120,
+      "timeout_sec": 600,
+      "notes": "빈 합성 DB와 별도 PHP 서버만 사용. 운영 checkout 직접 실행 거부. 기존 데이터/원본/서비스 변경 없음. 실제 ChatGPT 앱 연결 검증과 구분."
     }
   ]
 }

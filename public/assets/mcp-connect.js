@@ -7,6 +7,8 @@
     'memories.read': ['내 글 읽기 (기본)', '내가 쓴 글의 목록과 본문을 읽습니다.'],
     'photos.read': ['내 사진 읽기', '내 글에 현재 첨부된 사진의 축소본을 ChatGPT로 보냅니다.'],
     'memories.write': ['내 글 쓰기', '새 비공개 글을 만들고 내 글을 수정합니다. 내 글 읽기를 포함합니다.'],
+    'work.read': ['업무 프로젝트·문서 읽기', '내가 볼 수 있는 프로젝트와 문서를 읽습니다. 관리자 특권으로만 보이는 문서는 제외합니다.'],
+    'work.write': ['업무 문서 갱신', '편집 권한이 있는 문서의 문구를 고치고 개발 기록을 덧붙입니다. 함께 보는 사람에게도 변경 내용이 보입니다.'],
     'travel.read': ['내 여행 계획 읽기', '내 여행 계획과 연결된 글 정보를 읽습니다.'],
     'travel.write': ['내 여행 계획 쓰기', '내 여행 계획을 저장하고 글을 연결합니다. 여행 계획 읽기를 포함합니다.']
   };
@@ -83,7 +85,9 @@
     function syncScopes(changed) {
       if (changed === 'travel.write' && inputs.get(changed)?.checked) inputs.get('travel.read').checked = true;
       if (changed === 'travel.read' && !inputs.get(changed)?.checked && inputs.has('travel.write')) inputs.get('travel.write').checked = false;
-      $('mcp-write-note').hidden = !['memories.write', 'travel.write'].some(scope => inputs.get(scope)?.checked);
+      if (changed === 'work.write' && inputs.get(changed)?.checked) inputs.get('work.read').checked = true;
+      if (changed === 'work.read' && !inputs.get(changed)?.checked && inputs.has('work.write')) inputs.get('work.write').checked = false;
+      $('mcp-write-note').hidden = !['memories.write', 'travel.write', 'work.write'].some(scope => inputs.get(scope)?.checked);
     }
     function consent(data) {
       pending = null;
@@ -104,6 +108,7 @@
       $('mcp-client').textContent = request.client_name;
       $('mcp-consent-account').textContent = name(data.user);
       for (const scope of requested) {
+        if (scope === 'work.write' && !requested.includes('work.read')) continue;
         if (scope === 'travel.write' && !requested.includes('travel.read')) continue;
         const label = node('label', undefined, 'field');
         const title = node('span', undefined, 'field__label');

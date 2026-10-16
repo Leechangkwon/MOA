@@ -10,7 +10,7 @@ require __DIR__ . '/../../views/member_top.php';
   <header class="page-head">
     <div class="page-head__text">
       <h1 class="page-head__title">ChatGPT에 모아 연결하기</h1>
-      <p class="page-head__sub">ChatGPT에서 내 글·사진을 살펴보고, 허용한 경우 글과 여행 계획을 저장합니다.</p>
+      <p class="page-head__sub">ChatGPT에서 내 글·사진을 살펴보고, 허용한 경우 글·여행 계획·업무 문서를 갱신합니다.</p>
     </div>
   </header>
   <p>원격 MCP(외부 도구 연결)를 사용합니다. AI 모델은 ChatGPT에서 선택하고 실행하므로 이 연결에는 OpenAI API 키가 필요하지 않습니다.</p>
@@ -41,7 +41,7 @@ require __DIR__ . '/../../views/member_top.php';
       <p>연결할 계정: <strong id="mcp-consent-account"></strong></p>
       <form id="mcp-consent-form" class="form">
         <fieldset class="panel panel--tight"><legend>ChatGPT에 허용할 권한</legend><div id="mcp-scopes" class="form"></div></fieldset>
-        <p id="mcp-write-note" class="notice notice--recommend" hidden>쓰기 권한을 허용하면 ChatGPT가 내 글 또는 여행 계획을 저장할 수 있습니다. 저장 전에 내용을 읽고 확인하도록 요청하세요. 이미 공개한 글을 수정하면 공개된 본문도 바뀝니다.</p>
+        <p id="mcp-write-note" class="notice notice--recommend" hidden>쓰기 권한을 허용하면 ChatGPT가 내 글·여행 계획 또는 편집 권한이 있는 업무 문서를 저장할 수 있습니다. 저장 전에 내용을 읽고 확인하도록 요청하세요. 이미 공유한 글이나 업무 문서를 수정하면 함께 보는 사람에게도 변경 내용이 보입니다.</p>
         <p class="help">사진은 따로 허용해야 합니다. 이 승인 자체로 글·사진·여행 계획을 저장하거나 공개하지 않습니다. 언제든 아래 연결 목록에서 해제할 수 있습니다.</p>
         <p id="mcp-consent-expiry" class="help"></p>
         <div class="form-actions"><button id="mcp-deny" class="btn btn--quiet" type="button">허용하지 않기</button><button id="mcp-approve" class="btn" type="submit">선택한 권한으로 연결 승인하기</button></div>

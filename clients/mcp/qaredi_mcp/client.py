@@ -303,6 +303,38 @@ class QarediClient:
             return f"「{query}」 검색 결과가 없습니다(내가 볼 수 있는 페이지 안에서)"
         return "\n".join(lines)
 
+    def list_work_projects(self, limit: int = 30, after_id: str | None = None) -> dict[str, Any]:
+        return self._work_list('/community/api/work/projects', limit, after_id)
+
+    def list_work_documents(self, parent_id: str, limit: int = 30, after_id: str | None = None) -> dict[str, Any]:
+        return self._work_list('/community/api/work/documents', limit, after_id, parent_id)
+
+    def _work_list(self, path: str, limit: int, after_id: str | None, parent_id: str | None = None) -> dict[str, Any]:
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise QarediError('한 번에 1~100개를 읽을 수 있습니다')
+        query = {'limit': str(limit)}
+        if after_id is not None:
+            query['after_id'] = self._travel_id(after_id)
+        if parent_id is not None:
+            query['parent_id'] = page_id_from(parent_id)
+        return self._call('GET', path + '?' + urllib.parse.urlencode(query))
+
+    def read_work_document(self, page_id: str) -> dict[str, Any]:
+        return self._call('GET', '/community/api/work/documents/' + page_id_from(page_id))
+
+    def update_work_document(self, page_id: str, doc_version: int,
+                             replacements: list[dict[str, Any]] | None = None,
+                             append: list[dict[str, Any]] | None = None) -> dict[str, Any]:
+        if type(doc_version) is not int or not 1 <= doc_version <= 2147483646:
+            raise QarediError('먼저 읽은 문서의 판 번호가 필요합니다')
+        body = {'doc_version': doc_version}
+        if replacements is not None:
+            body['replacements'] = replacements
+        if append is not None:
+            body['append'] = append
+        # One request only. A conflict or uncertain response must never cause a blind retry.
+        return self._call('PATCH', '/community/api/work/documents/' + page_id_from(page_id), body)
+
     def write_page(self, title: str, markdown: str) -> dict[str, Any]:
         doc = markdown_to_doc(markdown)             # 상한을 넘으면 DocLimitError — 부르기 전에 멈춘다
         self.my_space()                             # 개인 공간이 없으면 만든다(멱등) — POST 의 409 를 막는다

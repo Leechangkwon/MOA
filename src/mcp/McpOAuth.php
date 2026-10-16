@@ -6,7 +6,7 @@ declare(strict_types=1);
  */
 final class McpOAuth
 {
-    public const SCOPES = ['memories.read', 'photos.read', 'memories.write', 'travel.read', 'travel.write'];
+    public const SCOPES = ['memories.read', 'photos.read', 'memories.write', 'travel.read', 'travel.write', 'work.read', 'work.write'];
     public const ACCESS_SECONDS = 600;
     private const HANDLE_RE = '/^[A-Za-z0-9_-]{43}$/D';
     private static bool $auditProtocolFailures = false;
@@ -158,6 +158,7 @@ final class McpOAuth
         $parts = explode(' ', $raw);
         if (count($parts) !== count(array_unique($parts)) || array_diff($parts, self::SCOPES)
             || !in_array('memories.read', $parts, true)
+            || (in_array('work.write', $parts, true) && !in_array('work.read', $parts, true))
             || (in_array('travel.write', $parts, true) && !in_array('travel.read', $parts, true))) { return null; }
         return array_values(array_intersect(self::SCOPES, $parts));
     }
@@ -175,6 +176,7 @@ final class McpOAuth
     public static function availableScopes(array $user): array
     {
         $map = ['memories.read' => 'community.read', 'photos.read' => 'community.read',
+            'work.read' => 'community.read', 'work.write' => 'community.write',
             'memories.write' => 'community.write', 'travel.read' => 'travel.read', 'travel.write' => 'travel.write'];
         $out = [];
         foreach ($map as $scope => $policy) { if (Authz::authorize($policy, $user)) { $out[] = $scope; } }

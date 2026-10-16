@@ -40,6 +40,7 @@ require_once __DIR__ . '/Doc.php';
 require_once __DIR__ . '/Automation.php';
 require_once __DIR__ . '/Suggestion.php';
 require_once __DIR__ . '/SaveDoc.php';
+require_once __DIR__ . '/WorkDocuments.php';
 require_once __DIR__ . '/suggestion_helpers.php';
 require_once __DIR__ . '/DocRender.php';
 require_once __DIR__ . '/DocMarkdown.php';
@@ -214,6 +215,10 @@ const COMMUNITY_ROUTES = [
     ['POST', '/api/pages/{id}/ai-insert', 'ai_insert.php', 'community.write'],
     ['GET', '/api/me/ai-log', 'ai_my_log.php', 'community.read'],
     ['GET', '/api/admin/ai-log', 'ai_admin_log.php', 'role:Admin'],
+    ['GET', '/api/work/projects', 'work_documents_list.php', 'community.read'],
+    ['GET', '/api/work/documents', 'work_documents_list.php', 'community.read'],
+    ['GET', '/api/work/documents/{id}', 'work_document.php', 'community.read'],
+    ['PATCH', '/api/work/documents/{id}', 'work_document.php', 'community.write'],
     ['GET',    '/api/search',                'search.php',          'community.read'],
     ['POST',   '/api/pages',                 'pages_create.php',    'community.write'],
     ['GET',    '/api/pages/{id}',            'pages_get.php',       'community.read'],
@@ -403,6 +408,11 @@ const COMMUNITY_ROUTES = [
  * ★ 전부 화면도 쓰는 라우트라, 헤더가 **왔을 때만** 토큰 갈래로 간다 — 헤더가 없으면 세션 경로가 한 글자도 바뀌지 않는다.
  */
 const COMMUNITY_API_TOKEN_ROUTES = [
+    // Targeted work-document edits only; generic page PATCH remains session-only.
+    'GET /api/work/projects',
+    'GET /api/work/documents',
+    'GET /api/work/documents/{id}',
+    'PATCH /api/work/documents/{id}',
     'GET /api/travel-plans',
     'POST /api/travel-plans',
     'GET /api/travel-plans/{id}',

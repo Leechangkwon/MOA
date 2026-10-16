@@ -3328,3 +3328,7 @@ PostgreSQL 설정 예시는 `deploy/postgresql/scale-*`, 운영 경로/diff/검�
 게시판 글 목록만 두 정렬된 갈래를 UNION ALL/Merge Append로 모으고 기존 community_visible_pages_where를 글자 그대로 LATERAL에 적용한다. 21번째 행은 다음 목록 유무 판정에만 쓴다. 세 정렬에 대응하는 갈래별 부분 색인 6개를 CONCURRENTLY 추가하며 기존 색인은 제거하지 않는다. new/updated는 timestamp+id, views는 count+posted+id가 위치다. AES-256-GCM 커서는 게시판/정렬/필터에 귀속되고 UTC 날짜·정수 범위를 엄격 검증한다. 페이지 권한은 커서와 무관하게 매번 적용한다. 상세 API.md·docs/work-items/scale-b.md.
 
 조회수 표 대안은 5천 갱신에서 68.483ms·WAL 2,379,944바이트, pages에 6색인을 둔 방식은 376.010ms·10,404,104바이트였다. pages의 view_count를 진실로 하라는 사용자 결정에 맞춰 후자를 택한다. 쓰기 비용/HOT 손실을 숨기지 않으며 별도 표의 동기화 상태를 추가하지 않는다.
+
+## 업무 문서 MCP 부분 갱신 (2026-10-16)
+
+WorkDocuments는 OAuth MCP와 개인 토큰의 업무 전용 창구가 공유한다. 프로젝트/직계 하위 목록은 public_id 커서, 1~100개, 검색 SQL 권한(관리자 우회 제외)+활성 개인/팀 공간+비게시 페이지만. 읽기/쓰기 전 현재 행 권한을 재검사하고, 쓰기는 페이지 행 잠금 뒤 재조회 및 doc_version 검사 → 지정 텍스트 교체/끝 추가 → community_save_doc(force_snapshot)로 저장한다. Doc/첨부/팔레트/파생값/이력/감사 저장은 기존 경로 하나다. 기존 표·그림·블록 ID·자식·수정 대상 밖 서식과 부모/공유/소유권은 보존한다. MCP 호출의 SaveDoc 거부는 일반 JSON 종료 대신 기존 Http::error→McpToolError 경계를 사용한다. 웹 세션 응답 계약은 유지. work.write는 work.read를 함께 승인해야 하고 옛 OAuth 토큰에 소급하지 않는다. 로컬 개인 토큰은 기존 community.write가 새 창구를 허용하므로 해당 권한 안내를 함께 갱신한다. DB/새 패키지/외부 요청/cron 없음.

@@ -47,6 +47,9 @@ function community_save_doc(array $user, string $publicId, array $body, array $o
                 'target_name' => $pageTitle,
                 'detail'      => array_merge(['page_title' => $pageTitle], $detail),
             ]);
+            if (class_exists('RemoteMcp', false) && RemoteMcp::isToolCall()) {
+                Http::error($status, (string) ($payload['error'] ?? Http::MSG_BAD_REQUEST));
+            }
             Http::json($payload, $status);
             exit;
         };

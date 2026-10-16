@@ -2,7 +2,9 @@
 
 Claude Desktop · Claude Code 에서 「○○ 주제로 글 써서 올려」라고 하면, Claude 가 Markdown 으로 쓴 글을
 Qaredi 커뮤니티 **내 개인 공간에 비공개 페이지**로 만듭니다(Q:F-8).
-**공개·게시는 사람이 화면에서** 합니다 — 이 프로그램은 비공개 페이지를 만들고 읽는 일, 그리고 내가 볼 수 있는 페이지를 **검색**하는 일(Q:F-10)만 합니다.
+**업무 프로젝트의 기존 문서 갱신도 지원합니다** — [개발 기록 사용 안내](../../docs/work-document-mcp.md). 최신 프로그램으로 업데이트한 뒤 MCP를 재시작하세요.
+
+**공개·게시는 사람이 화면에서** 합니다 — 이 프로그램은 비공개 페이지를 만들고 읽는 일, 그리고 내가 볼 수 있는 페이지를 **검색**하는 일(Q:F-10), 편집 가능한 업무 문서의 지정 문구 수정·기록 추가를 합니다.
 
 - PC 에서 도는 프로그램입니다(표준입출력 stdio). Qaredi 서버에는 설치하지 않습니다.
 - 부르는 창구는 다섯뿐입니다: `GET /tbox/api/whoami` · `GET /community/api/me/space` · `POST /community/api/pages` · `GET /community/api/pages/{id}` · `GET /community/api/search?q=`.

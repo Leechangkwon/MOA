@@ -142,17 +142,18 @@
       "page_id": "uuid"
     },
     "image": {
-      "file_ref": "tbox-ref",
+      "file_ref": "tbox-ref|att-ref",
       "caption": "richtext?",
       "width": [
         "full",
         "wide",
         "normal",
         "small"
-      ]
+      ],
+      "width_pct": "pct5?"
     },
     "file": {
-      "file_ref": "tbox-ref",
+      "file_ref": "tbox-ref|att-ref",
       "caption": "richtext?"
     },
     "column_list": {

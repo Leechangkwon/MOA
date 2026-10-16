@@ -87,7 +87,7 @@ class ServerTools(unittest.TestCase):
 
     def test_stub_or_real_tools(self):
         tools = self._tools()
-        self.assertEqual(set(tools), {"qaredi_whoami", "qaredi_write_page", "qaredi_read_page", "qaredi_search_pages", "qaredi_list_travel_plans", "qaredi_read_travel_plan", "qaredi_save_travel_plan", "qaredi_link_travel_record"})
+        self.assertEqual(set(tools), {"qaredi_whoami", "qaredi_write_page", "qaredi_read_page", "qaredi_search_pages", "qaredi_list_travel_plans", "qaredi_read_travel_plan", "qaredi_save_travel_plan", "qaredi_link_travel_record", "qaredi_list_work_projects", "qaredi_list_work_documents", "qaredi_read_work_document", "qaredi_update_work_document"})
         for name, t in tools.items():
             with self.subTest(tool=name):
                 lines = t["description"].split("\n")

@@ -20,7 +20,7 @@ ORIGIN = 'https://moa.test'
 PENDING = 'P' * 43
 CSRF = 'synthetic-csrf-for-ui-test'
 GRANT = '11111111-1111-4111-8111-111111111111'
-SCOPES = ['memories.read', 'photos.read', 'memories.write', 'travel.read', 'travel.write']
+SCOPES = ['memories.read', 'photos.read', 'memories.write', 'travel.read', 'travel.write', 'work.read', 'work.write']
 SCREENSHOTS = Path(os.environ.get('MCP_UI_SCREENSHOTS', '/tmp/qaredi-remote-mcp-ui'))
 SCREENSHOTS.mkdir(parents=True, exist_ok=True)
 PARTIAL = (ROOT / 'src/mcp/handlers/connect_page.php').read_text().split('?>', 1)[1]
@@ -162,6 +162,13 @@ with sync_playwright() as pw:
         expect(page.locator('#mcp-scope-travel-write')).not_to_be_checked()
         expect(page.locator('#mcp-write-note')).to_be_hidden()
         check(f'{width}/{theme}: travel scope dependency and write warning')
+        page.locator('#mcp-scope-work-write').check()
+        expect(page.locator('#mcp-scope-work-read')).to_be_checked()
+        expect(page.locator('#mcp-write-note')).to_be_visible()
+        page.locator('#mcp-scope-work-read').uncheck()
+        expect(page.locator('#mcp-scope-work-write')).not_to_be_checked()
+        expect(page.locator('#mcp-write-note')).to_be_hidden()
+        check(f'{width}/{theme}: work scope opt-in, dependency and warning')
         if width == 390:
             page.locator('#mcp-scope-photos-read').check()
             page.locator('#mcp-scope-memories-write').check()

@@ -13,6 +13,7 @@ function mcp_dispatch(string $path, string $method): void
             define('TBOX_AUTH_METHOD', 'mcp_oauth');
             // Even failed Bearer auth must never attribute a request to an incidental cookie.
             Audit::remoteMcpActor(null);
+            require_once __DIR__ . '/../community/routes.php';
             require_once __DIR__ . '/../community/Memories.php';
             require_once __DIR__ . '/../community/TravelPlans.php';
             require_once __DIR__ . '/McpTools.php';
