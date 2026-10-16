@@ -98,3 +98,13 @@ After this passes, independently verify production-shaped nginx/PHP-FPM HTTPS,
 DB owner/ACL preservation, fail-closed disabled/unconfigured behavior, callback
 allowlist values taken from the actual client, and an actual ChatGPT OAuth +
 read/photo/confirmed-write/disconnect cycle. Record those results separately.
+
+## Server verification 2026-10-16
+
+The isolated actual PHP/PostgreSQL suite passed **755/0** for the RFC9207 issuer
+change (metadata, successful consent, denial). The initial run stopped at an old
+photo fixture expectation: uploads now strip private PNG metadata under G-2.
+The fixture now checks the exact PNG without the private tEXt chunk, keeping
+image bytes and post-upload preservation assertions. No production media code
+was changed. Evidence: `/home/changkwon/qaredi-mcp-activation-results-20261016/`.
+This does not establish the user's actual ChatGPT OAuth connection.

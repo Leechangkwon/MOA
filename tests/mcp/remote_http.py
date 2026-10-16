@@ -266,6 +266,7 @@ class Acceptance:
         self.check(redirect._replace(query='').geturl() == CALLBACK, 'approved redirect matches registered callback exactly')
         params = parse_qs(redirect.query)
         self.check(params['state'] == [pending['query']['state']], 'OAuth state preserved')
+        self.check(params.get('iss') == [ISSUER], 'authorization success/denial identifies the configured issuer')
         if approve:
             pending['code'] = params['code'][0]
         else:
@@ -331,12 +332,12 @@ class Acceptance:
               ' fail=' + str(sum(not item['pass'] for item in self.checks)), flush=True)
 
 
-def synthetic_png():
+def synthetic_png(private_metadata=True):
     """A real decodable RGB image with a private text chunk; no image dependency."""
     def chunk(kind, data):
         return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
     return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 4, 4, 8, 2, 0, 0, 0)) +
-            chunk(b'tEXt', b'Comment\x00SYNTHETIC_PRIVATE_METADATA') +
+            (chunk(b'tEXt', b'Comment\x00SYNTHETIC_PRIVATE_METADATA') if private_metadata else b'') +
             chunk(b'IDAT', zlib.compress((b'\x00' + b'\x70\x90\xb0' * 4) * 4)) + chunk(b'IEND', b''))
 
 
@@ -346,8 +347,9 @@ def run_acceptance(t):
         metadata = t.request('GET', path, headers={'Host': 'host-header.invalid'}).json()
         t.check(metadata['resource'] == t.resource and metadata['authorization_servers'] == [ISSUER],
                 'protected-resource metadata ignores Host')
-    metadata = t.request('GET', '/.well-known/oauth-authorization-server').json()
+    metadata = t.request('GET', '/.well-known/oauth-authorization-server', headers={'Host': 'host-header.invalid'}).json()
     t.check(metadata['issuer'] == ISSUER and metadata['code_challenge_methods_supported'] == ['S256'], 'issuer and S256 discovery')
+    t.check(metadata.get('authorization_response_iss_parameter_supported') is True, 'RFC9207 issuer response support advertised')
     t.check(metadata['token_endpoint'] == ISSUER + '/tbox/oauth/token', 'configured token endpoint discovery')
     for uri in ('http://127.0.0.1/callback', CALLBACK + '/child', CALLBACK + '?extra=1',
                 'https://attacker.invalid/callback', CALLBACK + '#fragment'):
@@ -527,7 +529,8 @@ def memory_acceptance(t, access, other, read):
     snapshot_sql = "SELECT row_to_json(p)::text FROM community.memory_posts p WHERE id=CAST(:'id' AS uuid)"
     before = json.loads(t.sql(snapshot_sql, id=post))
     original_bytes = (t.instance.parent / 'storage/memories' / media).read_bytes()
-    t.check(original_bytes == png, 'synthetic original photo fixture stored intact')
+    t.check(original_bytes == synthetic_png(private_metadata=False),
+            'upload removes private metadata and preserves original image chunks')
     listing = t.tool(access, 'qaredi_list_memories')['memories']
     t.check(post in [row['id'] for row in listing] and foreign not in [row['id'] for row in listing],
             'owner list omits other account even for community-visible posts')

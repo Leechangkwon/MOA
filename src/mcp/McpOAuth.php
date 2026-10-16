@@ -116,7 +116,8 @@ final class McpOAuth
                 'scopes_supported' => self::SCOPES, 'bearer_methods_supported' => ['header'],
                 'resource_name' => '모아 내 글·사진·여행'];
         }
-        return ['issuer' => $issuer, 'authorization_endpoint' => $issuer . '/tbox/oauth/authorize',
+        return ['issuer' => $issuer, 'authorization_response_iss_parameter_supported' => true,
+            'authorization_endpoint' => $issuer . '/tbox/oauth/authorize',
             'token_endpoint' => $issuer . '/tbox/oauth/token', 'registration_endpoint' => $issuer . '/tbox/oauth/register',
             'revocation_endpoint' => $issuer . '/tbox/oauth/revoke', 'response_types_supported' => ['code'],
             'grant_types_supported' => ['authorization_code', 'refresh_token'],
@@ -343,7 +344,7 @@ final class McpOAuth
         if ($current === null) { $db->rollback(); self::fail('access_denied', 403); }
         if ($approve && ($chosen === null || array_diff($chosen, explode(' ', $request['scope']))
             || array_diff($chosen, self::availableScopes($current)))) { $db->rollback(); self::fail('invalid_scope'); }
-        $result = ['state' => $request['state']];
+        $result = ['state' => $request['state'], 'iss' => self::issuer()];
         if ($approve) {
             // Old credentials cannot occupy a hidden, unrevokable slot in the live grant cap.
             $db->run('UPDATE public.mcp_grants SET revoked_at=now() WHERE user_id=:user
