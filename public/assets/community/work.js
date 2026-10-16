@@ -1,7 +1,7 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=c43bf2af9110';
-import { renderDoc } from './doc-render.js?v=c43bf2af9110';
-import { createMentionInput } from './mention-input.js?v=c43bf2af9110';
-import { personText } from './cafe.js?v=c43bf2af9110';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=bdafc5f7a886';
+import { renderDoc } from './doc-render.js?v=bdafc5f7a886';
+import { createMentionInput } from './mention-input.js?v=bdafc5f7a886';
+import { personText } from './cafe.js?v=bdafc5f7a886';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -687,6 +687,7 @@ export function createWork(deps) {
     let currentId = null;
     let loadSeq = 0;
     let editor = null;
+    let editorHasError = false;
     let attWatch = null;   // 카페 C4 — 칸에 그린 문서의 검사 중 첨부 다시 묻기(editor.js watchAttachments 한 벌)
     const full = ctx.mode === 'full';
     const sizer = full ? null : paneSizer(paneEl);
@@ -808,6 +809,9 @@ export function createWork(deps) {
          U4-2 전체 화면: 「‹ 프로젝트」(그 프로젝트 주소 — 경로 줄의 바로 위 칸) · 완료 표시 · 링크 복사 · 더보기(+ 「문서로 보기」) */
       const head = el('div', 'task-pane__head');
       const crumbsHead = Array.isArray(data.breadcrumb) ? data.breadcrumb : [];
+      // page.parent는 서버가 읽기 권한을 확인한 바로 위 항목이다(숨겨진 조상은 null).
+      const parent = page.parent && UUID_RE.test(String(page.parent.id)) && page.parent.id !== id ? page.parent : null;
+      const parentTask = !full && !data.row && parent;
       if (full) {
         const proj = data.row && crumbsHead.length >= 2 ? crumbsHead[crumbsHead.length - 2] : null;
         projectHref = proj && UUID_RE.test(String(proj.id)) ? pageUrl(proj.id) : base + '/';
@@ -890,6 +894,42 @@ export function createWork(deps) {
       }
       head.appendChild(tools);
       paneEl.appendChild(head);
+
+      if (parentTask) {
+        const nav = el('nav', 'task-pane__parent');
+        nav.setAttribute('aria-label', '상위 항목');
+        const up = el('a', 'btn btn--quiet btn--small');
+        const parentTitle = parent.title || '제목 없는 페이지';
+        up.href = urlFor(parent.id);
+        up.setAttribute('data-task-parent', '');
+        up.setAttribute('aria-label', '상위 항목 「' + parentTitle + '」로 돌아가기');
+        up.title = parentTitle;
+        up.append(el('span', null, '‹ 상위 항목'), el('span', 'task-pane__parent-title', parentTitle));
+        let navigating = false;
+        up.addEventListener('click', async (e) => {
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
+          e.preventDefault();
+          if (navigating) { return; }
+          navigating = true;
+          up.setAttribute('aria-disabled', 'true');
+          try {
+            if (editor) {
+              await editor.flush();
+              if (editorHasError) { return; }
+            }
+            if (currentId !== id || !up.isConnected) { return; }
+            open(parent.id, { push: true });
+            if (!full) { paneEl.scrollTop = 0; }
+          } catch (error) {
+            say(msg, genericError);
+          } finally {
+            navigating = false;
+            up.removeAttribute('aria-disabled');
+          }
+        });
+        nav.appendChild(up);
+        paneEl.appendChild(nav);
+      }
 
       /* 제목 — 누르면 그 자리 고치기(고칠 수 있을 때 · 지금 페이지 제목 고치기와 같은 창구) */
       const title = el('h2', 'task-pane__title', page.title || '');
@@ -1120,12 +1160,13 @@ export function createWork(deps) {
         const endBtn = textButton('편집 마침', 'btn btn--quiet btn--small');
         docSec.firstChild.appendChild(endBtn);
         say(msg, '');
+        editorHasError = false;
         editor = deps.mountEditor(mount, {
           pageId: id, doc: page.doc, version: page.doc_version, titles: readCtx,
           onState: (t) => { setText(editState, t); show(editState, t !== ''); },
-          onSaved: (doc, version) => { page.doc = doc; page.doc_version = version; if (attWatch) { attWatch.kick(true); } },
+          onSaved: (doc, version) => { editorHasError = false; page.doc = doc; page.doc_version = version; if (attWatch) { attWatch.kick(true); } },
           onUploaded: () => { if (attWatch) { attWatch.kick(); } },
-          onError: (t) => say(msg, t)
+          onError: (t) => { editorHasError = true; say(msg, t); }
         });
         if (!editor) { drawDoc(); endBtn.remove(); setDocEditable(true); return; }
         editor.focus();

@@ -436,6 +436,9 @@ nginx 검색 전용 location은 정규화 URI로 제한, access 로그의 검색
 
 ## 7. 검토 이력
 
+- 2026-10-16 작업 상위 이동: 기존 API의 권한 필터를 거친 page.parent만 UUID 검사 후 사용하고 제목은 textContent로 출력한다. 상세창 내부 이동과 저장 실패 시 초안 보존을 격리 브라우저로 확인한다. DB/API/권한/외부 요청 변경 없음. 정적 검사와 최종 수락 결과는 docs/work-items/task-parent-navigation.md. 회귀는 밤 대기(community.qf12_work_browser, community.qf12_u4_browser, community.stale_modules). 실물 휴대폰·스크린리더는 미검증.
+
+
 | 일자 | 단계 | 검토자 | 범위 | 결과 | 비고 |
 |---|---|---|---|---|---|
 | 2026-10-01 | **커뮤니티8~9 구현·기능 독립 검토·격리 검증 완료** | Codex root 독립 공격 + 디자이너 상호 검토, 문서 별도 점검 | C:F-38~45·S-16·17, ARCH21.28~33 | **기능 검증·v2.41.0 운영 DB/코드 반영 완료**: ① 8-B97·9-D55·HTTP97·backend109·batch39·UI31·integrity39·F2123·공통149·이전호환184 통과, 정적0. ② 지적 결함 보강·재검증 완료, 내보낸 사본 회수 한계는 수용. ③ 자연 cron 종료코드 직접 미수집·원본 공통8 전체 미실행·사용자 자기 공격 미보고. ④ 파일 패키지 모의검사53/0·운영읽기전용75파일 기준 일치, 별도 실행기 검토 통과, 사용자 「반영해」 승인 후 최종78파일 적용·새 해시 일치, DB trust→automation→grants 적용 | 상세4부분 `docs/community-stage89-security-review.md`. C:R-12~14. 반영 직후 기존 업무 건수·본문/파일 식별자 집계 보존. 운영스모크82/0(CSS후보 대체 브라우저 포함), cron 등록·수동실행0/0/0·첫 자연 실행 확인. 후속2.41.1 운영4파일 SHA일치·CSS대체 없는 공개 HTTPS42/0, health200 확인 |
