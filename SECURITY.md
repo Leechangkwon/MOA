@@ -1214,3 +1214,8 @@ v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`. 최종 독립 검토 manifes
 ## 2026-10-14 Gemini 3.6 Flash 직접 호출 — 보안 검토
 
 실제 사용 중인 MemberAi/Fetch와 문서 Ai의 고정 모델을3.6으로 전환. 키·동의·한도·사용자/스레드 판정·SSRF/TLS 방어는 기존 계약 유지. 이미지/임베딩/DB/키/패키지 변경0. 원본 Ai TLS10/0, PHP3파일·security lint·자산/위키0, PC11/0, ERP2계약3/0. 실제3.6 단문·대화·요약 완료, 전사55초 timeout 미검증. assistant 재실행376/0→chat38/0 및 baseline376/0→38/0. 최초 단언 실패 원인미확정·미재현. 운영v2.67.1 적용 및 원본Fetch 실제3.6/STOP, 공개·로컬 health200, 기존22대화 보존. 회귀: 기존 밤 대기열에 해당 AI 창구 목록 추가. 상세 `docs/work-items/gemini-36-flash.md`.
+
+
+### 외부 답변 붙여넣기 운영 결과 — 2026-10-16
+
+운영 v2.68.3 `6a5f3923cef235fdefb55056c4db0047d191f769` / 2026-10-16T12:37:39.331524+09:00. 기능 ed422f5. 암호화 DB·코드/설정 백업 checksum·전체복호화, 24파일 고정 모의 적용, fresh 운영/main drift 및 FF/FPM reload 완료. 공개 health와 변경 자산10개 HTTPS200·바이트 일치(11검사). 기존 업무19표의 모든 행/ownerACL, 원본799파일, 설정10파일 해시 보존. DB/인증/설정 변경0. 실제 사용자 글 수정0. 초기 운영 확인은 잘못된 /health 경로404였고 제품 라우터의 /tbox/api/health로 바로잡아 확인했다(제품 고장 아님). 최종 합성 수락37/0·PHP24, 표시6/0·PHP1, 정적0. 기존 평문 글 자동복원/실제 사용자 OS clipboard/계정 저장은 미검증. 회귀4개는 밤 대기열. 근거 `/home/changkwon/qaredi-clipboard-results-20261016/`.
