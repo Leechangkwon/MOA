@@ -705,16 +705,52 @@ function community_page_row_read(string $publicId, int $viewerId, bool $withDoc)
 }
 
 /**
+ * 규모 D2a A9 — 같은 행을 **여러 글에 한 번에** 읽는다(알림 목록 — 글마다 `community_page_row()` 를 부르던 N+1 을 질의 하나로).
+ * SQL 은 `community_page_row_sql()` 한 벌에서 `WHERE` 한 줄만 `= ANY(번호 목록)` 으로 바꾼 것이고(판정 칸 · 공유 등급 조각 · 후처리
+ * 같음), 본문 칸은 싣지 않는다(`community_page_row_nodoc()` 과 같은 행 — 판정은 본문을 보지 않는다). 공유 등급은 `$viewerId` 몫.
+ * 번호는 DB 에서 읽은 UUID 문자열만 받는다(모양이 아니면 버린다) — 바인딩 한 칸으로 넘긴다.
+ *
+ * @param  list<string> $publicIds
+ * @return array<string,array<string,mixed>> public_id → 행 (없는 글은 키가 없다)
+ */
+function community_page_rows_nodoc(array $publicIds, int $viewerId): array
+{
+    $ids = [];
+    foreach ($publicIds as $id) {
+        if (is_string($id) && preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/', $id) === 1) {
+            $ids[$id] = true;
+        }
+    }
+    if ($ids === []) {
+        return [];
+    }
+    $out = [];
+    $rows = Db::instance()->run(community_page_row_sql(false, true),
+        [':pids' => implode(',', array_keys($ids)), ':viewer' => $viewerId])->fetchAll();
+    foreach ($rows as $row) {
+        $row['share_level']   = community_share_level_name($row['share_rank']);
+        $row['share_user_id'] = $viewerId > 0 ? $viewerId : null;
+        unset($row['share_rank']);
+        $out[(string) $row['public_id']] = $row;
+    }
+    return $out;
+}
+
+/**
  * 페이지 한 건 질의 **한 벌** (ARCH 13.2 판정 칸 전부). 바뀌는 것은 본문 칸 하나다 (Q:F-4 P-4b).
  *
  * `$withDoc` 이 거짓이면 `p.doc` 을 SELECT 목록에서 뺀다. 끼워 넣는 조각은 코드에 적힌 리터럴 두 값
  * (`'p.doc, '`·`''`)과 공유 등급 조각(위 상수)뿐이다 — 요청 값이 한 글자도 SQL 에 들어가지 않는다 (PRD S-04).
  * 시험(`tests/qf4b1.sh`)이 이 함수의 결과로 쿼리 계획을 떠 `doc` 열이 없는지 본다.
+ * 규모 D2a A9 — `$many` 가 참이면 `WHERE` 한 줄만 여러 번호(`:pids` — 쉼표로 이은 UUID)로 바뀐다(`community_page_rows_nodoc`).
  */
-function community_page_row_sql(bool $withDoc): string
+function community_page_row_sql(bool $withDoc, bool $many = false): string
 {
     $shareRank = community_share_rank_sql('p.id', ':viewer');
     $docCol    = $withDoc ? 'p.doc, ' : '';
+    $where     = $many
+        ? "p.public_id = ANY (CAST(string_to_array(CAST(:pids AS text), ',') AS uuid[]))"
+        : 'p.public_id = CAST(:pid AS uuid)';
     return <<<SQL
         SELECT p.id, p.public_id, p.space_id, p.parent_page_id, p.position,
                p.title, p.icon, p.font, p.small_text, p.full_width, p.visibility,
@@ -793,7 +829,8 @@ function community_page_row_sql(bool $withDoc): string
           LEFT JOIN community.spaces pb   ON pb.id       = p.published_board_id
           LEFT JOIN community.databases dbself ON dbself.page_id = p.id
           LEFT JOIN community.databases dbrow  ON dbrow.id       = p.database_id
-         WHERE p.public_id = CAST(:pid AS uuid)
+         WHERE
+               {$where}
         SQL;
 }
 
@@ -1443,6 +1480,37 @@ SQL;
  */
 const COMMUNITY_SEARCH_PAGES_PLAN_ON  = 'SET LOCAL enable_seqscan = off';
 const COMMUNITY_SEARCH_PAGES_PLAN_OFF = 'SET LOCAL enable_seqscan = on';
+
+/*
+ * 규모 D2a A6 — 공간 페이지 목록 · 개수 · 나무 문장에 거는 계획 설정(같은 트랜잭션 안에서만 — SET LOCAL, 끝나면 저절로 풀린다).
+ * 이 문장들의 행 조건절(`community_visible_pages_where` — 공유 등급 재귀 · 게시판 EXISTS 하위 계획)은 계획기가 비용을 크게 어림해
+ * JIT 컴파일 문턱(jit_above_cost)을 넘긴다. D1 · D2a 합성 L(글 50만)에서 실행은 수십 ms 인데 **JIT 컴파일이 2~2.6초**였다
+ * (EXPLAIN 의 JIT Timing — 개인 공간 목록 2,198/2,257ms · 나무 2,151/2,205ms). 결과 · 판정은 같고 컴파일만 끈다 — 서버 설정
+ * (postgresql.conf · 역할 기본값)은 바꾸지 않는다(검색의 enable_seqscan 과 같은 방식).
+ */
+const COMMUNITY_LIST_PLAN_NO_JIT = 'SET LOCAL jit = off';
+
+/**
+ * 규모 D2a A6 — `$fn` 을 읽기 트랜잭션 하나 안에서 JIT 없이 돌린다(위 상수). 돌려준 값을 그대로 돌려준다.
+ *
+ * @template T
+ * @param callable(Db):T $fn
+ * @return T
+ */
+function community_run_without_jit(callable $fn)
+{
+    $db = Db::instance();
+    $db->begin();
+    try {
+        $db->run(COMMUNITY_LIST_PLAN_NO_JIT);
+        $out = $fn($db);
+        $db->commit();
+        return $out;
+    } catch (Throwable $e) {
+        $db->rollback();
+        throw $e;
+    }
+}
 
 /**
  * 찾기 SQL 한 벌 — 화면 창구(search.php)와 성능 시험(tests/perf/qf2_search_perf.sh 의 EXPLAIN)이 **같은 문장**을 쓴다.

@@ -138,12 +138,17 @@ $actorOf = static function (array $n, ?array $row) use ($user, $me, $aliasNo): ?
     ];
 };
 
+/* 규모 D2a A9 — 알림이 가리키는 글 행을 **한 번에** 읽는다(글마다 `community_page_row()` 를 부르던 N+1 → 질의 하나).
+   같은 SQL 한 벌(`community_page_row_sql` — 본문 칸만 뺀 행)이고 공유 등급은 내 몫이다. 판정은 아래에서 줄마다 같은 함수로 한다. */
+$rowsByPage = community_page_rows_nodoc(array_values(array_filter(array_map(
+    static fn (array $n): ?string => $n['page_public_id'] === null ? null : (string) $n['page_public_id'], $fetched))), $me);
+
 $items = [];
 foreach ($fetched as $n) {
     $page = null;
     $row = null;
     if ($n['page_public_id'] !== null) {
-        $row = community_page_row((string) $n['page_public_id'], $me);
+        $row = $rowsByPage[(string) $n['page_public_id']] ?? null;
         if ($row !== null) {
             /* 만들 때와 **같은 기준**(`decideMentionTarget` — 관리자 특권·숨긴 글 관리자 갈래로만 보는 것은 아니다)으로
                다시 판정한다. 목록에서 더 넓게 보면 공유가 빠진 뒤에도 관리자 알림함에 제목이 남는다(독립 검토 2026-09-23). */

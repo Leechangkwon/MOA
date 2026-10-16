@@ -1129,7 +1129,8 @@ final class Authz
      * 조상은 언제나 항목 바로 위부터 이어진 한 토막이다). 깊이 ≤ 5 라 조상 조인 다섯 번(파일)·네 번(폴더)으로 끝난다.
      *
      * ★ **판정 ↔ 목록 짝** — 아래 privateChainSql 이 만드는 조인·주인 식·권한 식 **한 벌**을 두 곳이 함께 쓴다:
-     *   목록 조건절 visibleWhere 의 개인 갈래 = EXISTS(… WHERE 주인 식 OR 권한 식(아무거나))           — privateVisibleSql
+     *   목록 조건절 visibleWhere 의 개인 갈래 = 주인 식 OR 권한 식(아무거나)의 같은 뜻을 「닿는 개인 폴더」 묶음으로 — privateVisibleSql
+     *                                          (규모 D2a 에서 모양만 바꿈 — 그 함수 머리글)
      *   판정 decideRead [P] 의 privateReach  = CASE WHEN 주인 식 … WHEN 권한 식(편집) … WHEN 권한 식(아무거나) … END — privateReach
      *   둘의 「null 아님」 ⇔ 「EXISTS 참」 은 같은 두 식의 OR 이다. 시험 tests/g0_private_grants.sh 가 계정 × 항목 × 깊이 ×
      *   권한 자리 전부에서 둘을 대조한다(C:T-56 방식). 한쪽만 고치면 그 시험이 깨진다.
@@ -1183,20 +1184,57 @@ final class Authz
     }
 
     /**
-     * 목록 조건절의 개인 갈래 — visibleWhere 가 붙인다. **privateReach 와 짝**(같은 조각 · 주인 식 OR 권한 식).
+     * 목록 조건절의 개인 갈래 — visibleWhere 가 붙인다. **privateReach 와 짝**(같은 뜻 · 주인 식 OR 권한 식).
+     *
+     * 규모 D2a A3 · A4 — 모양만 바꿨다(뜻은 같다 — tests/scale/d2a_equivalence.py 의 옛/새 목록 대조 · tests/g0_private_grants.sh 의
+     * privateReach 대조). 옛 모양은 행마다 `EXISTS (… LEFT JOIN folders pv_c1 … pv_c5 …)` 를 돌려, 폴더 표가 작으면 계획기가 행마다
+     * folders 를 다섯 번 훑었다(D1 — 개인 파일 2.75만 행 × 5). 새 모양은 **「내가 닿는 개인 폴더」 묶음을 문장마다 한 번** 만든다
+     * (상관 없는 하위 질의 — 해시 한 번):
+     *   닿는 개인 폴더 R = 내가 만든 개인 폴더 · 나에게 권한을 준 개인 폴더(z) 와, 거기서 **개인 폴더만 따라** 아래로 4걸음까지 내려간 폴더.
+     *   옛 조인 사슬(항목 바로 위부터 개인 등급인 동안 위로 — 파일은 든 폴더부터 다섯 · 폴더는 자기 + 위로 넷)에 주인 · 권한 자리가
+     *   있다 ⇔ 그 자리 z 에서 같은 사슬을 거꾸로(아래로) 4걸음 안에 이 폴더에 닿는다 — 같은 묶음이다.
+     *   파일(f): 올린 사람이 나 · 이 파일에 나에게 준 권한 · 든 폴더가 R — 옛 주인 후보(f.uploaded_by + 사슬 폴더의 만든 사람) ·
+     *            옛 권한 자리(f.id + 사슬 폴더)와 같다.
+     *   폴더(d): 이 폴더가 R — 옛 주인 후보(d.created_by + 위 넷) · 권한 자리(d.id + 위 넷)와 같다.
+     * 값이 NULL 이 되지 않게 적었다(든 폴더 없음 → 거짓) — 불리언 칸으로 쓰는 자리(_folder_paths.php `vis`)도 같은 값을 받는다.
      *
      * @return array{0:string,1:array<string,int>}
      */
     private static function privateVisibleSql(string $alias, int $me): array
     {
-        $c = self::privateChainSql($alias, 'pv' . $alias, $me);
-        $bind = $c['bind'];
-        unset($bind[':pv' . $alias . '_me2']);   // 목록은 편집 식을 쓰지 않는다 — 쓰지 않는 자리표시자를 넘기지 않는다
-        $tpl = <<<'SQL'
-            (@A.access_level = 'private' AND EXISTS (SELECT 1 FROM (SELECT 1) AS pv_z@JOINS
-              WHERE @OWNER OR @GRANT))
+        if (!in_array($alias, ['f', 'd'], true)) {
+            throw new RuntimeException('허용되지 않는 별칭·자리표시자입니다');
+        }
+        $ph   = 'pv' . $alias;
+        $bind = [':' . $ph . '_me1' => $me, ':' . $ph . '_me3' => $me, ':' . $ph . '_me4' => $me, ':' . $ph . '_me5' => $me];
+        $reach = <<<'SQL'
+            (WITH RECURSIVE pv_r(id, hop) AS (
+                  SELECT z.id, 0 FROM public.folders z
+                   WHERE z.access_level = 'private'
+                     AND (z.created_by = CAST(@ME4 AS bigint)
+                          OR EXISTS (SELECT 1 FROM public.access_grants zg
+                                      WHERE zg.user_id = CAST(@ME5 AS bigint) AND zg.folder_id = z.id))
+                  UNION ALL
+                  SELECT c.id, pv_r.hop + 1 FROM public.folders c JOIN pv_r ON c.parent_id = pv_r.id
+                   WHERE c.access_level = 'private' AND pv_r.hop < 4)
+             SELECT pv_r.id FROM pv_r)
             SQL;
-        $sql = strtr($tpl, ['@A' => $alias, '@JOINS' => $c['joins'], '@OWNER' => $c['owner'], '@GRANT' => $c['grant']]);
+        $tpl = $alias === 'f'
+            ? <<<'SQL'
+                (f.access_level = 'private' AND (f.uploaded_by = CAST(@ME1 AS bigint)
+                  OR EXISTS (SELECT 1 FROM public.access_grants pv_g
+                              WHERE pv_g.user_id = CAST(@ME3 AS bigint) AND pv_g.file_id = f.id)
+                  OR (f.folder_id IS NOT NULL AND f.folder_id IN @REACH)))
+                SQL
+            : <<<'SQL'
+                (d.access_level = 'private' AND d.id IN @REACH)
+                SQL;
+        $sql = strtr(strtr($tpl, ['@REACH' => $reach]), [
+            '@ME1' => ':' . $ph . '_me1', '@ME3' => ':' . $ph . '_me3', '@ME4' => ':' . $ph . '_me4', '@ME5' => ':' . $ph . '_me5',
+        ]);
+        if ($alias === 'd') {
+            unset($bind[':' . $ph . '_me1'], $bind[':' . $ph . '_me3']);   // 폴더 갈래는 쓰지 않는 자리표시자를 넘기지 않는다
+        }
         return [$sql, $bind];
     }
 

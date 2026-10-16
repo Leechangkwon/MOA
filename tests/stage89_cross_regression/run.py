@@ -32,7 +32,7 @@ def main():
         shutil.copytree(ROOT,instance,ignore=shutil.ignore_patterns('.git','.env','__pycache__','.stage89-fixture.env'))
         for name in ['storage','logs']: (work/name).mkdir(mode=0o700)
         config=helpers.values(ROOT/'.env.example')
-        connection=helpers.values(Path('/var/www/qaredi/tbox-v2/.env'))
+        connection=helpers.values(Path(os.environ.get('QCHECK_ENV_SRC') or '/var/www/qaredi/tbox-v2/.env'))
         for key in ['DB_HOST','DB_PORT','DB_USER','DB_PASS']:config[key]=connection[key]
         config.update(DB_NAME=db_name,APP_SECRET=secrets.token_hex(32),STORAGE_DIR=str(work/'storage'),
             AUDIT_LOG_FILE=str(work/'logs/audit.log'),APP_URL=f'http://127.0.0.1:{args.port}',

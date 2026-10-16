@@ -97,6 +97,14 @@ SELECT :users + :teams + b, 'board',
   FROM generate_series(1, :boards) b;
 SELECT :users + :teams AS board_base \gset
 
+-- 규모 D2a — 미리 센 게시판 글 수 트리거(있으면)는 대량 넣기 동안 끄고, 넣은 뒤 이주와 같은 식으로 한 번 채운다
+-- (행마다 게시판 행을 두 번 고치면 넣기가 느려지고 spaces 가 부푼다 — 측정 데이터 · 결과는 같다).
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'community.pages'::regclass AND tgname = 'scale_board_post_count_insert') THEN
+        ALTER TABLE community.pages DISABLE TRIGGER scale_board_post_count_insert;
+    END IF;
+END $$;
+
 -- ─── 페이지(게시판 글 60% · 문서 30% · 작업 10%) ───
 -- i % 10: 0..5 게시판 글 · 6..8 문서 · 9 작업.  i % 50 = 7 지움(휴지통) · 게시판 글 i % 100 = 13 숨김.
 INSERT INTO community.pages (id, space_id, position, title, visibility, doc, doc_version, plain_text, search_tsv, block_count,
@@ -143,6 +151,16 @@ SELECT i,
  CROSS JOIN LATERAL (SELECT string_agg(a.ws[x.n], ' ') AS words, string_agg(a.tk[x.n], ' ') AS toks
                        FROM (SELECT 1 + floor(power(random(), 2) * :vocab_size)::int + 0 * s.i AS n
                                FROM generate_series(1, 10 + (s.i % 15)::int) g) x CROSS JOIN d1_arr a) bw;
+
+DO $$ BEGIN
+    IF EXISTS (SELECT 1 FROM pg_trigger WHERE tgrelid = 'community.pages'::regclass AND tgname = 'scale_board_post_count_insert') THEN
+        ALTER TABLE community.pages ENABLE TRIGGER scale_board_post_count_insert;
+        UPDATE community.spaces b SET post_count = (SELECT count(*) FROM community.pages p
+              WHERE p.deleted_at IS NULL AND p.hidden_at IS NULL
+                AND (p.space_id = b.id OR (p.visibility = 'published' AND p.published_board_id = b.id)))
+         WHERE b.kind = 'board';
+    END IF;
+END $$;
 
 -- 게시판 글 30% 에 태그 하나
 INSERT INTO community.page_tags (page_id, tag, tag_norm, created_by, created_at)

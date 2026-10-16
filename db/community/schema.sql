@@ -1001,3 +1001,96 @@ BEGIN
     END LOOP;
 END
 $$;
+
+-- ─────────────────────────────────────────────────────────────
+-- 규모 D2a (docs/scale-d2a-directive.md A1 · A2 · A5~A8) — 미리 센 게시판 글 수 · 목록 모양 색인
+--   이미 있는 DB 는 db/migrations/2026-10-26_scale_d2a_board_counts.sql(칸 · 트리거 · 채움) ·
+--   db/migrations/2026-10-26_scale_d2a_indexes.sql(CONCURRENTLY)이 **같은 정의**를 만든다(이 절은 그 두 파일과 같은 문장 — 새로 깔 때는 빈 표라 채움 0).
+--   post_count 정의 = 옛 하위 질의: deleted_at IS NULL AND hidden_at IS NULL AND (space_id = b.id OR (visibility='published' AND published_board_id = b.id)).
+-- ─────────────────────────────────────────────────────────────
+ALTER TABLE community.spaces ADD COLUMN IF NOT EXISTS post_count integer NOT NULL DEFAULT 0;
+CREATE OR REPLACE FUNCTION community.scale_board_post_count() RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $$
+DECLARE
+    old_counts jsonb := '{}';
+    new_counts jsonb := '{}';
+    delta record;
+BEGIN
+    IF TG_OP = 'UPDATE' THEN
+        IF NOT EXISTS (
+            SELECT 1 FROM d2a_old_pages o JOIN d2a_new_pages n ON n.id = o.id
+             WHERE o.space_id IS DISTINCT FROM n.space_id
+                OR o.published_board_id IS DISTINCT FROM n.published_board_id
+                OR o.visibility IS DISTINCT FROM n.visibility
+                OR (o.deleted_at IS NULL) <> (n.deleted_at IS NULL)
+                OR (o.hidden_at IS NULL) <> (n.hidden_at IS NULL)
+        ) THEN
+            RETURN NULL;
+        END IF;
+    END IF;
+    -- 게시판만 집계한다. 한 글의 space_id 와 published_board_id 가 같으면 한 번만.
+    IF TG_OP <> 'INSERT' THEN
+        SELECT COALESCE(jsonb_object_agg(c.board_id, c.n), '{}'::jsonb) INTO old_counts
+          FROM (
+            SELECT b.board_id, count(*) AS n
+              FROM d2a_old_pages p
+              CROSS JOIN LATERAL (
+                SELECT p.space_id AS board_id
+                UNION ALL
+                SELECT p.published_board_id WHERE p.visibility = 'published'
+                   AND p.published_board_id IS NOT NULL AND p.published_board_id <> p.space_id
+              ) b
+              JOIN community.spaces s ON s.id = b.board_id AND s.kind = 'board'
+             WHERE p.deleted_at IS NULL AND p.hidden_at IS NULL
+             GROUP BY b.board_id
+          ) c;
+    END IF;
+    IF TG_OP <> 'DELETE' THEN
+        SELECT COALESCE(jsonb_object_agg(c.board_id, c.n), '{}'::jsonb) INTO new_counts
+          FROM (
+            SELECT b.board_id, count(*) AS n
+              FROM d2a_new_pages p
+              CROSS JOIN LATERAL (
+                SELECT p.space_id AS board_id
+                UNION ALL
+                SELECT p.published_board_id WHERE p.visibility = 'published'
+                   AND p.published_board_id IS NOT NULL AND p.published_board_id <> p.space_id
+              ) b
+              JOIN community.spaces s ON s.id = b.board_id AND s.kind = 'board'
+             WHERE p.deleted_at IS NULL AND p.hidden_at IS NULL
+             GROUP BY b.board_id
+          ) c;
+    END IF;
+    -- 문장 전체에서 상쇄된 게시판은 건드리지 않는다. UPDATE 를 한 행씩 명시적으로 id 순서로 실행해 잠금 순서를 고정한다.
+    -- 한 트랜잭션에서 서로 다른 문장을 반대 게시판 순서로 실행하는 임의 SQL 까지 직렬화하지는 않는다(보고서 한계).
+    FOR delta IN
+        SELECT d.board_id, sum(d.n) AS n FROM (
+            SELECT key::bigint AS board_id, -(value::bigint) AS n FROM jsonb_each_text(old_counts)
+            UNION ALL
+            SELECT key::bigint AS board_id, value::bigint AS n FROM jsonb_each_text(new_counts)
+        ) d
+        GROUP BY d.board_id HAVING sum(d.n) <> 0 ORDER BY d.board_id
+    LOOP
+        UPDATE community.spaces SET post_count = post_count + delta.n
+         WHERE id = delta.board_id AND kind = 'board';
+    END LOOP;
+    RETURN NULL;
+END $$;
+REVOKE ALL ON FUNCTION community.scale_board_post_count() FROM PUBLIC;
+CREATE OR REPLACE TRIGGER scale_board_post_count_insert AFTER INSERT ON community.pages
+    REFERENCING NEW TABLE AS d2a_new_pages
+    FOR EACH STATEMENT EXECUTE FUNCTION community.scale_board_post_count();
+CREATE OR REPLACE TRIGGER scale_board_post_count_delete AFTER DELETE ON community.pages
+    REFERENCING OLD TABLE AS d2a_old_pages
+    FOR EACH STATEMENT EXECUTE FUNCTION community.scale_board_post_count();
+CREATE OR REPLACE TRIGGER scale_board_post_count_update AFTER UPDATE ON community.pages
+    REFERENCING OLD TABLE AS d2a_old_pages NEW TABLE AS d2a_new_pages
+    FOR EACH STATEMENT EXECUTE FUNCTION community.scale_board_post_count();
+CREATE INDEX IF NOT EXISTS pages_space_updated_idx      ON community.pages (space_id, updated_at DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS pages_author_updated_idx     ON community.pages (author_id, updated_at DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS pages_author_due_idx         ON community.pages (author_id, due_date) WHERE deleted_at IS NULL AND due_date IS NOT NULL;
+CREATE INDEX IF NOT EXISTS pages_author_status_idx      ON community.pages (author_id, status) WHERE deleted_at IS NULL AND status IS NOT NULL;
+CREATE INDEX IF NOT EXISTS pages_trash_by_idx           ON community.pages (deleted_by, deleted_at DESC) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS pages_trash_parent_idx       ON community.pages (parent_page_id, deleted_at) WHERE deleted_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS page_shares_group_idx        ON community.page_shares (group_id) WHERE group_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS share_group_members_user_idx ON community.share_group_members (user_id, group_id);

@@ -207,6 +207,11 @@ CREATE INDEX files_folder_idx  ON files (folder_id) WHERE deleted_at IS NULL;
 -- 대기열 5b — 한글이 든 파일 검색의 후보를 좁히는 색인 + 아직 채우지 않은 행만 담는 부분 색인(다 채우면 비어 있다)
 CREATE INDEX files_search_tsv_idx      ON files USING GIN (search_tsv);
 CREATE INDEX files_search_tsv_null_idx ON files (id) WHERE search_tsv IS NULL;
+-- 규모 D2a(A3 · A4 · A8) — 폴더 안 정렬 셋 · 검사 중인 내 파일. 기존 DB 는 db/migrations/2026-10-26_scale_d2a_indexes.sql(CONCURRENTLY)이 같은 정의를 만든다.
+CREATE INDEX IF NOT EXISTS files_folder_created_idx   ON files (folder_id, created_at DESC, id DESC) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS files_folder_name_idx      ON files (folder_id, original_name) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS files_folder_size_idx      ON files (folder_id, size_bytes) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS files_pending_uploader_idx ON files (uploaded_by, created_at DESC, id DESC) WHERE scan_status = 'pending' AND deleted_at IS NULL;
 
 -- ─────────────────────────────────────────────────────────────
 -- audit_logs — Append-only (ARCH 7.2, PRD S-07)

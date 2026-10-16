@@ -72,7 +72,7 @@ def main():
             (work / name).mkdir(mode=0o700)
         config = values(ROOT / '.env.example')
         # Connection keys only, used against our new empty DB. Never copy production records/secrets.
-        connection = values(Path('/var/www/qaredi/tbox-v2/.env'))
+        connection = values(Path(os.environ.get('QCHECK_ENV_SRC') or '/var/www/qaredi/tbox-v2/.env'))
         for key in ('DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASS'):
             config[key] = connection[key]
         config.update(DB_NAME=db_name, APP_SECRET=secrets.token_hex(32),

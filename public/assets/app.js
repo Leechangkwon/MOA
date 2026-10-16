@@ -1602,7 +1602,9 @@ function folderMeta(folder) {
   }
   var counts = document.createElement('span');
   counts.className = 'foldertree__count';
-  setText(counts, '파일 ' + (typeof folder.file_count === 'number' ? folder.file_count : 0)
+  // 규모 D2a A4 (DESIGN 2.4) — 서버는 100 까지만 센다. 넘으면 file_count_capped 가 참이고 「100+」로 보인다.
+  setText(counts, '파일 ' + (folder.file_count_capped === true ? '100+'
+      : (typeof folder.file_count === 'number' ? folder.file_count : 0))
     + ' · 하위 ' + (typeof folder.child_count === 'number' ? folder.child_count : 0));
   meta.appendChild(counts);
   return meta;
@@ -3508,6 +3510,8 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
     // 18-3 — 폴더를 옮기면 대화상자가 열려 있어도 「올릴 위치」와 등급 선택지가 따라간다.
     syncUploadWhere();
     state.total = typeof data.total === 'number' ? data.total : 0;
+    // 규모 D2a A3 (DESIGN 2.4) — 서버는 1,000 까지만 센다. 넘으면 total_capped 가 참 → 「1,000+」 · 쪽 번호는 상한(1,000)까지만
+    state.totalCapped = data.total_capped === true;
     state.perPage = typeof data.per_page === 'number' && data.per_page > 0 ? data.per_page : 20;
     state.page = typeof data.page === 'number' && data.page > 0 ? data.page : 1;
 
@@ -3520,10 +3524,11 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
       empty.hidden = files.length !== 0;
     }
 
-    syncFileContext(state.total, searching);
+    var totalText = state.totalCapped ? '1,000+' : String(state.total);
+    syncFileContext(totalText, searching);
     syncEmptyAction();
     var lastPage = state.total === 0 ? 1 : Math.ceil(state.total / state.perPage);
-    setText(pageInfo, state.page + ' / ' + lastPage + ' 페이지 · 전체 ' + state.total + '건');
+    setText(pageInfo, state.page + ' / ' + lastPage + ' 페이지 · 전체 ' + totalText + '건');
     if (prev) {
       prev.disabled = state.page <= 1;
     }

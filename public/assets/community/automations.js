@@ -171,7 +171,8 @@ export function repeatDialog(api, pageId, data) {
             const shared = await request(api, 'GET', '/api/pages?shared=me&page=' + page);
             const rows = shared.pages || [];
             parents.push(...rows.filter(p => p.share_level === 'edit' || p.can_edit === true).map(p => ({ id: p.id, title: '공유받음 · ' + p.title })));
-            remaining = rows.length > 0 && page * (shared.per_page || 20) < (shared.total || 0); page += 1;
+            // 규모 D2a A5 — 개수는 1,000 까지만 센다(total_capped) — 넘으면 빈 쪽이 나올 때까지 계속 받는다
+            remaining = rows.length > 0 && (page * (shared.per_page || 20) < (shared.total || 0) || shared.total_capped === true); page += 1;
           }
         }
         if (!d.isConnected) return;

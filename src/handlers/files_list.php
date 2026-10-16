@@ -69,7 +69,7 @@ $folderGiven  = array_key_exists('folder', $_GET);
 $globalSearch = $q !== '' && !$folderGiven;
 if ($globalSearch && !SearchGuard::longEnough($q)) {
     header('X-Search-Status: short');
-    Http::json($viaToken ? [] : ['files' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage, 'search_status' => 'short', 'notice' => SearchGuard::SHORT]);
+    Http::json($viaToken ? [] : ['files' => [], 'total' => 0, 'total_capped' => false, 'page' => $page, 'per_page' => $perPage, 'search_status' => 'short', 'notice' => SearchGuard::SHORT]);
     return;
 }
 
@@ -121,7 +121,17 @@ if ($folder !== 0 && !$globalSearch) {
 [$visibleWhere, $visibleBind] = Authz::visibleFilesWhere($user);
 
 // ─── SQL 조각 (모두 코드에 적힌 고정 문자열) ───
-// 아래 두 heredoc 은 `WHERE` 에서 끝나고, 바로 뒤에 위 권한 조건절이 붙는다.
+// 아래 heredoc 들은 `WHERE` 에서 끝나고, 바로 뒤에 위 권한 조건절이 붙는다.
+/* 규모 D2a A3 — 목록은 **두 겹**이다: 안쪽(`$sqlPageIds`)이 권한 조건 · 폴더 · 검색으로 거른 뒤 정렬 · LIMIT · OFFSET 으로 이 쪽의
+ * 번호(최대 20)만 고르고, 바깥(`$sqlList`)이 그 행에만 users · teams 를 붙인다. 정렬 키 · 거르기 · 권한 조건절은 옛 한 겹 질의와
+ * 글자 그대로 같고(같은 `$visibleWhere` · `$filter` · `$orderSql`) 바깥은 같은 키로 다시 정렬만 한다 — 행 · 순서가 같다.
+ * 옛 모양은 거른 행 전부(수만)에 users · teams 를 붙인 뒤 정렬했다(D1 — 작은 표를 행마다 훑는 계획). */
+$sqlPageIds = <<<'SQL'
+    SELECT f.id
+      FROM files f
+     WHERE
+    SQL;
+
 $sqlList = <<<'SQL'
     SELECT f.public_id,
            f.original_name,
@@ -151,17 +161,27 @@ $sqlList = <<<'SQL'
            'file' AS item_kind,
            CASE WHEN f.access_level = 'private'
                 THEN (SELECT count(*) FROM access_grants g WHERE g.file_id = f.id) END AS grant_count
-      FROM files f
-      JOIN users u ON u.id = f.uploaded_by
-      LEFT JOIN teams t ON t.id = f.team_id
-     WHERE
+      FROM (
     SQL;
 
+// 바깥 겹 — 안쪽이 고른 번호에만 표시 칸을 붙인다(뒤에 `$orderSql` 로 같은 순서를 다시 건다)
+$sqlListJoin = <<<'SQL'
+           ) pick
+      JOIN files f ON f.id = pick.id
+      JOIN users u ON u.id = f.uploaded_by
+      LEFT JOIN teams t ON t.id = f.team_id
+    SQL;
+
+/* 규모 D2a A3 — 전체 개수는 **상한 1,001 까지만** 센다(같은 권한 조건 · 같은 거르기 — 못 보는 행은 셈에 들지 않는다).
+ * 응답의 `total` 은 1,000 을 넘지 않고, 넘으면 `total_capped: true`(화면은 「1,000+」 · 쪽 번호는 상한까지만 — DESIGN). */
+$filesTotalCap = 1000;
 $sqlCount = <<<'SQL'
     SELECT count(*) AS total
-      FROM files f
-     WHERE
+      FROM (SELECT 1
+              FROM files f
+             WHERE
     SQL;
+$sqlCountTail = ' LIMIT 1001) capped';
 
 // 검색 조건. ESCAPE 문자는 '#' 을 쓴다 — PDO 의 이름 바인딩 파서가 `ESCAPE '\'` 뒤의
 // 자리표시자를 놓치는 것을 실측으로 확인했다(같은 문장에 두 번째 :파라미터가 사라진다).
@@ -183,11 +203,15 @@ $sqlSearchIndexed = <<<'SQL'
        AND (f.search_tsv @@ to_tsquery('simple', :q_tq) OR f.search_tsv IS NULL)
     SQL;
 
-// 18-1 (F-26) — 폴더 필터. `IS NOT DISTINCT FROM` 은 NULL(루트)과 정수를 한 조건으로 다룬다
-// (`= NULL` 은 언제나 UNKNOWN 이라 루트를 고를 수 없다). 목록과 건수에 **똑같이** 붙는다.
+// 18-1 (F-26) — 폴더 필터. 목록과 건수에 **똑같이** 붙는다. 규모 D2a A3 — 옛 `IS NOT DISTINCT FROM CAST(:folder …)` 한 조각은
+// 색인을 탈 수 없어(NULL 과 정수를 한 식으로) 두 고정 조각으로 가른다: 루트(0)면 `IS NULL` · 아니면 `= :folder`(같은 행).
+$sqlFolderRoot = <<<'SQL'
+
+       AND f.folder_id IS NULL
+    SQL;
 $sqlFolder = <<<'SQL'
 
-       AND f.folder_id IS NOT DISTINCT FROM CAST(:folder AS bigint)
+       AND f.folder_id = CAST(:folder AS bigint)
     SQL;
 
 // ORDER BY 는 바인딩할 수 없다 → 허용 목록의 키로만 고정 조각을 고른다 (PRD S-04).
@@ -200,16 +224,28 @@ $orderSql = [
     'size|asc'        => ' ORDER BY f.size_bytes ASC, f.id DESC',
     'size|desc'       => ' ORDER BY f.size_bytes DESC, f.id DESC',
 ];
+/* 규모 D2a A3 — 폴더 안(루트 포함) 목록의 **안쪽 겹** 정렬은 앞에 폴더 칸을 하나 더 둔다. 거른 행은 모두 같은 폴더(루트면 모두 NULL)라
+ * 순서는 위 조각과 같다 — 그런데 `folder_id IS NULL` 은 계획기가 「한 값」으로 보지 않아 (folder_id, 정렬 키) 색인의 순서를 쓰지 못하고
+ * 루트 전체를 정렬했다(D2a L 1차 측정 — 2.8만 행 Sort). 폴더 칸을 정렬에 넣으면 색인 순서 그대로 앞의 한 쪽만 읽는다.
+ * 방향은 색인(files_folder_created_idx 는 created_at DESC · 이름 · 크기는 ASC)을 앞 · 뒤로 읽는 쪽에 맞춘다. 전역 검색에는 붙이지 않는다. */
+$orderInFolder = [
+    'name|asc'        => ' ORDER BY f.folder_id ASC, f.original_name ASC, f.id DESC',
+    'name|desc'       => ' ORDER BY f.folder_id DESC, f.original_name DESC, f.id DESC',
+    'created_at|asc'  => ' ORDER BY f.folder_id DESC, f.created_at ASC, f.id ASC',
+    'created_at|desc' => ' ORDER BY f.folder_id ASC, f.created_at DESC, f.id DESC',
+    'size|asc'        => ' ORDER BY f.folder_id ASC, f.size_bytes ASC, f.id DESC',
+    'size|desc'       => ' ORDER BY f.folder_id DESC, f.size_bytes DESC, f.id DESC',
+];
 $sqlTail = ' LIMIT :lim OFFSET :off';
 
 // ─── 조건·바인딩 조립 ───
 // 전역 검색이면 폴더 조각을 붙이지 않는다(위 규칙). 그 밖에는 목록·건수에 똑같이 붙는다.
-$filter = $globalSearch ? '' : $sqlFolder;
+$filter = $globalSearch ? '' : ($folder === 0 ? $sqlFolderRoot : $sqlFolder);
 // 권한 바인딩(:lvl0.. · :own_team)과 검색·페이지 바인딩(:q_name · :q_desc · :lim · :off)은
 // 이름이 겹치지 않는다 — 겹치면 한쪽이 덮여 조건이 조용히 바뀐다.
 $bind   = $visibleBind;
-if (!$globalSearch) {
-    $bind[':folder'] = $folder === 0 ? null : $folder;
+if (!$globalSearch && $folder !== 0) {
+    $bind[':folder'] = $folder;
 }
 if ($q !== '') {
     $pattern           = '%' . str_replace(['#', '%', '_'], ['##', '#%', '#_'], $q) . '%';
@@ -230,19 +266,21 @@ if ($q !== '') {
 
 $db = Db::instance();
 
-$query = static function (callable $run) use ($sqlCount, $visibleWhere, $filter, $bind, $perPage, $page, $sqlList, $orderSql, $sort, $dir, $sqlTail): array {
-    $countRow = $run($sqlCount . ' ' . $visibleWhere . $filter, $bind)->fetch();
+$innerOrder = $globalSearch ? $orderSql : $orderInFolder;
+$query = static function (callable $run) use ($sqlCount, $sqlCountTail, $visibleWhere, $filter, $bind, $perPage, $page, $sqlList, $sqlPageIds, $sqlListJoin, $orderSql, $innerOrder, $sort, $dir, $sqlTail): array {
+    $countRow = $run($sqlCount . ' ' . $visibleWhere . $filter . $sqlCountTail, $bind)->fetch();
     $total = is_array($countRow) ? (int) $countRow['total'] : 0;
     $listBind = $bind;
     $listBind[':lim'] = $perPage;
     $listBind[':off'] = ($page - 1) * $perPage;
-    $rows = $run($sqlList . ' ' . $visibleWhere . $filter . $orderSql[$sort . '|' . $dir] . $sqlTail, $listBind)->fetchAll();
+    $order = $orderSql[$sort . '|' . $dir];
+    $rows = $run($sqlList . ' ' . $sqlPageIds . ' ' . $visibleWhere . $filter . $innerOrder[$sort . '|' . $dir] . $sqlTail . "\n" . $sqlListJoin . $order, $listBind)->fetchAll();
     return [$total, $rows];
 };
 try {
     [$total, $rows] = $globalSearch ? SearchGuard::execute((int) $user['id'], $query) : $query([$db, 'run']);
 } catch (Throwable $e) {
-    SearchGuard::limited($e, ['files' => [], 'total' => 0, 'page' => $page, 'per_page' => $perPage], $viaToken);
+    SearchGuard::limited($e, ['files' => [], 'total' => 0, 'total_capped' => false, 'page' => $page, 'per_page' => $perPage], $viaToken);
     return;
 }
 
@@ -349,7 +387,9 @@ if ($viaToken) {
 
 Http::json([
     'files'    => $files,
-    'total'    => $total,
+    // 규모 D2a A3 — 상한까지만 센 값(≤ 1,000). 넘으면 total_capped 가 참이다(화면은 「1,000+」).
+    'total'    => min($total, $filesTotalCap),
+    'total_capped' => $total > $filesTotalCap,
     'page'     => $page,
     'per_page' => $perPage,
     // 18-1 검토 결정 — 이번 응답이 **폴더를 가리지 않은 전역 검색**인가. 화면은 이 값이

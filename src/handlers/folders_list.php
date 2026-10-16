@@ -115,24 +115,47 @@ $rows = $db->run(
 
 /* 이 층 폴더들 안의 **볼 수 있는** 파일 수를 한 문장으로 센다(폴더마다 따로 묻지 않는다).
  * 조건은 목록(5.1)과 같은 `visibleWhere($user, 'f')` 이므로, 안 보이는 파일은 애초에 세지
- * 않는다 — 이 값이 곧 `GET /api/files?folder=` 의 total 이다 (PRD S-02). */
+ * 않는다 — 이 값이 곧 `GET /api/files?folder=` 의 total 이다 (PRD S-02).
+ *
+ * 규모 D2a A4 — 폴더마다 **상한 101 까지만** 센다(LATERAL … LIMIT 101 · 같은 권한 조건). 응답 `file_count` 는 100 을 넘지 않고
+ * 넘으면 `file_count_capped: true`(화면 「100+」 — DESIGN). 세는 폴더는 위에서 고른 **보이는 하위 폴더**뿐이다(옛 질의는 이 층의
+ * 모든 폴더를 셌지만 응답에 나가는 것은 보이는 폴더의 수뿐 — 나가는 값은 같다). 번호는 위 질의가 DB 에서 읽은 정수다. */
 $sqlFileCounts = <<<'SQL'
-    SELECT f.folder_id AS fid, count(*) AS n
-      FROM files f
-      JOIN folders d ON d.id = f.folder_id
-     WHERE d.parent_id IS NOT DISTINCT FROM CAST(:parent AS bigint)
-       AND
+    SELECT d.id AS fid, c.n
+      FROM public.folders d
+      CROSS JOIN LATERAL (
+            SELECT count(*) AS n
+              FROM (SELECT 1
+                      FROM files f
+                     WHERE f.folder_id = d.id
+                       AND
     SQL;
 
 $sqlFileCountsTail = <<<'SQL'
-     GROUP BY f.folder_id
+                     ORDER BY f.created_at DESC, f.id DESC   -- 셈에는 뜻 없음 — 폴더 색인(files_folder_created_idx)을 앞에서부터 101개까지만 읽게
+                     LIMIT 101) capped
+      ) c
+     WHERE d.id = ANY (string_to_array(CAST(:fids AS text), ',')::bigint[])
     SQL;
 
-$fileBind[':parent'] = $parent === 0 ? null : $parent;
+$fileBind[':fids'] = implode(',', array_map(static fn (array $r): int => (int) $r['id'], $rows));
 
 $counts = [];
-foreach ($db->run($sqlFileCounts . ' ' . $visibleFiles . ' ' . $sqlFileCountsTail, $fileBind)->fetchAll() as $c) {
-    $counts[(int) $c['fid']] = (int) $c['n'];
+if ($rows !== []) {
+    /* 규모 D2a A4 — 이 문장만 JIT 없이(같은 트랜잭션 안에서만 — SET LOCAL). 권한 조건절 · 폴더 수만큼의 LATERAL 로 계획기 비용이
+     * JIT 문턱을 넘겨 합성 L 에서 컴파일만 48ms 였다(실행 60ms). 결과는 같다 — 서버 설정은 바꾸지 않는다. */
+    $db->begin();
+    try {
+        $db->run('SET LOCAL jit = off');
+        $countRows = $db->run($sqlFileCounts . ' ' . $visibleFiles . ' ' . $sqlFileCountsTail, $fileBind)->fetchAll();
+        $db->commit();
+    } catch (Throwable $e) {
+        $db->rollback();
+        throw $e;
+    }
+    foreach ($countRows as $c) {
+        $counts[(int) $c['fid']] = (int) $c['n'];
+    }
 }
 
 /* S-7 — 이 층 폴더들의 **볼 수 있는** 하위 폴더 수를 한 문장으로 센다(폴더마다 따로 묻지 않는다).
@@ -173,7 +196,9 @@ foreach ($rows as $row) {
         // 호출자가 볼 수 있는 하위 폴더 수 (S-7). 안 보이는 하위는 세지지 않는다 (PRD S-02).
         'child_count'  => $childCounts[$fid] ?? 0,
         // 호출자가 볼 수 있는 파일 수. 안 보이는 파일은 여기 세지지 않는다 (PRD S-02).
-        'file_count'   => $counts[$fid] ?? 0,
+        // 규모 D2a A4 — 100 까지만(넘으면 file_count_capped — 화면 「100+」)
+        'file_count'   => min($counts[$fid] ?? 0, 100),
+        'file_count_capped' => ($counts[$fid] ?? 0) > 100,
         // G-0 — 개인 폴더에 직접 준 권한 수(개인이 아니면 null)
         'grants'       => $row['grant_count'] === null ? null : (int) $row['grant_count'],
     ];

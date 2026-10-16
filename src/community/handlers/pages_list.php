@@ -111,22 +111,32 @@ if (Http::queryText('shared', 8) === 'me') {
     $perPageShared = 20;
     $pageNoShared  = Http::queryInt('page', 1, 1, 100000);
 
+    /* 규모 D2a A5 — 모든 글에서 「나에게 직접 공유된 줄이 있나」를 묻던 옛 모양(LATERAL — 글마다 공유 판정)을 **공유 줄에서 출발**하는
+     * 모양으로 바꿨다: page_shares(user_id = 나) · 내가 든(활성 계정 · 지우지 않은) 그룹의 공유 줄을 글마다 모아 가장 센 직접 등급을
+     * 구한 뒤 그 글만 읽는다. 들어오는 글 · 직접 등급(max)은 옛 LATERAL 의 조건과 같은 식이다(행 · 순서 같음 — 수락 시험).
+     * 행 관문(`$visShared`) · 상태 거르개는 그대로 붙는다. 개수는 상한 1,001 까지만(같은 조건 — 화면 「1,000+」). */
     $sqlSharedCount = <<<SQL
-        SELECT count(*) AS n
-          FROM community.pages p
+        SELECT count(*) AS n FROM (
+        SELECT 1
+          FROM (
+              SELECT ds.page_id,
+                     CASE max(CASE ds.level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' WHEN 1 THEN 'view' END AS level
+                FROM community.page_shares ds
+               WHERE ds.user_id = CAST(:me AS bigint)
+                  OR ds.group_id IN (
+                        SELECT gm.group_id FROM community.share_group_members gm
+                          JOIN community.share_groups gg ON gg.id = gm.group_id
+                          JOIN public.users gu ON gu.id = gm.user_id AND gu.is_active
+                         WHERE gm.user_id = CAST(:me AS bigint) AND gg.deleted_at IS NULL)
+               GROUP BY ds.page_id
+          ) sh
+          JOIN community.pages p ON p.id = sh.page_id
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-          JOIN LATERAL (
-              SELECT CASE max(CASE ds.level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' WHEN 1 THEN 'view' END AS level
-              FROM community.page_shares ds WHERE ds.page_id=p.id AND
-              (ds.user_id=CAST(:me AS bigint) OR EXISTS(
-                SELECT 1 FROM community.share_group_members gm JOIN community.share_groups gg ON gg.id=gm.group_id
-                JOIN public.users gu ON gu.id=gm.user_id AND gu.is_active
-                WHERE gm.group_id=ds.group_id AND gm.user_id=CAST(:me AS bigint) AND gg.deleted_at IS NULL))
-          ) sh ON sh.level IS NOT NULL
          WHERE p.deleted_at IS NULL
            AND {$visShared}
         {$statusWhere}
+         LIMIT 1001) capped
         SQL;
 
     $sqlShared = <<<SQL
@@ -141,17 +151,21 @@ if (Http::queryText('shared', 8) === 'me') {
                left(p.plain_text, 160) AS excerpt,
                sh.level AS direct_level,
                {$rankShared} AS share_rank
-          FROM community.pages p
+          FROM (
+              SELECT ds.page_id,
+                     CASE max(CASE ds.level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' WHEN 1 THEN 'view' END AS level
+                FROM community.page_shares ds
+               WHERE ds.user_id = CAST(:me AS bigint)
+                  OR ds.group_id IN (
+                        SELECT gm.group_id FROM community.share_group_members gm
+                          JOIN community.share_groups gg ON gg.id = gm.group_id
+                          JOIN public.users gu ON gu.id = gm.user_id AND gu.is_active
+                         WHERE gm.user_id = CAST(:me AS bigint) AND gg.deleted_at IS NULL)
+               GROUP BY ds.page_id
+          ) sh
+          JOIN community.pages p ON p.id = sh.page_id
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-          JOIN LATERAL (
-              SELECT CASE max(CASE ds.level WHEN 'edit' THEN 2 ELSE 1 END) WHEN 2 THEN 'edit' WHEN 1 THEN 'view' END AS level
-              FROM community.page_shares ds WHERE ds.page_id=p.id AND
-              (ds.user_id=CAST(:me AS bigint) OR EXISTS(
-                SELECT 1 FROM community.share_group_members gm JOIN community.share_groups gg ON gg.id=gm.group_id
-                JOIN public.users gu ON gu.id=gm.user_id AND gu.is_active
-                WHERE gm.group_id=ds.group_id AND gm.user_id=CAST(:me AS bigint) AND gg.deleted_at IS NULL))
-          ) sh ON sh.level IS NOT NULL
           LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
          WHERE p.deleted_at IS NULL
            AND {$visShared}
@@ -217,7 +231,9 @@ if (Http::queryText('shared', 8) === 'me') {
 
     Http::json([
         'pages'    => $sharedPages,
-        'total'    => $sharedTotal,
+        // 규모 D2a A5 — 상한까지만 센 값(≤ 1,000) · 넘으면 total_capped(화면 「1,000+」)
+        'total'    => min($sharedTotal, 1000),
+        'total_capped' => $sharedTotal > 1000,
         'page'     => $pageNoShared,
         'per_page' => $perPageShared,
         'q'        => '',
@@ -238,7 +254,7 @@ if ($spaceRaw === '') {
     $space = community_my_personal_space($me);
     if ($space === null) {
         Http::json([
-            'pages' => [], 'total' => 0, 'page' => 1, 'per_page' => 20, 'q' => '', 'space' => null,
+            'pages' => [], 'total' => 0, 'total_capped' => false, 'page' => 1, 'per_page' => 20, 'q' => '', 'space' => null,
         ]);
         exit;
     }
@@ -312,11 +328,13 @@ if (Http::queryText('tree', 4) === '1') {
         SELECT p.public_id, p.title, p.icon, p.position, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
                p.author_id,
                parent.public_id AS parent_public_id,
-               who.username AS assignee_name, who.role AS assignee_role
+               -- 규모 D2a A6 — 담당자는 그 줄의 번호로 한 줄씩(사용자 기본 키 — 줄마다 두 번). 조인으로 두면 계획기가 줄 수를 낮게 어림해
+               -- 사용자 표 전체를 줄마다 훑었다(D2a M — 377줄 × 860). 없으면 NULL(옛 LEFT JOIN 과 같은 값).
+               (SELECT w.username FROM public.users w WHERE w.id = p.assignee_id) AS assignee_name,
+               (SELECT w.role FROM public.users w WHERE w.id = p.assignee_id) AS assignee_role
           FROM community.pages p
           JOIN community.spaces s ON s.id = p.space_id
           LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-          LEFT JOIN public.users who ON who.id = p.assignee_id
           LEFT JOIN community.pages parent
                  ON parent.id = p.parent_page_id AND parent.deleted_at IS NULL
          WHERE p.space_id = CAST(:space AS bigint)
@@ -331,7 +349,9 @@ if (Http::queryText('tree', 4) === '1') {
     $treeBind = array_merge([':space' => $spaceId], $visBind, $statusBind);
 
     $tree = [];
-    foreach ($db->run($sqlTree, $treeBind)->fetchAll() as $r) {
+    // 규모 D2a A6 — JIT 없이(routes.php COMMUNITY_LIST_PLAN_NO_JIT 머리글 — 결과 같음 · 컴파일 2초 없앰)
+    $treeRows = community_run_without_jit(static fn (Db $d): array => $d->run($sqlTree, $treeBind)->fetchAll());
+    foreach ($treeRows as $r) {
         $tree[] = [
             'id'         => (string) $r['public_id'],
             'parent_id'  => $r['parent_public_id'] === null ? null : (string) $r['parent_public_id'],
@@ -399,8 +419,12 @@ $bind = array_merge([
     ':parent' => $parentId,
 ], $visBind, $statusBind);
 
+/* 규모 D2a A6 — 개수는 **상한 1,001 까지만** 센다(같은 조건절 · 같은 거르기 — 화면 「1,000+」 · 쪽 번호는 상한까지만).
+ * 목록은 옛 순서(고친 시각 DESC, 번호 DESC) 그대로이고 색인 pages_space_updated_idx(space_id, updated_at DESC, id DESC)가
+ * 그 순서를 준다 — 쪽마다 공간 전체를 정렬하지 않고 앞에서부터 이 쪽까지만 읽는다. */
 $sqlCount = <<<SQL
-    SELECT count(*) AS n
+    SELECT count(*) AS n FROM (
+    SELECT 1
       FROM community.pages p
       JOIN community.spaces s ON s.id = p.space_id
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
@@ -414,21 +438,23 @@ $sqlCount = <<<SQL
        AND (CAST(:pall AS boolean)
             OR p.parent_page_id IS NOT DISTINCT FROM CAST(:parent AS bigint))
     {$statusWhere}
+     LIMIT 1001) capped
     SQL;
 
-$countRow = $db->run($sqlCount, $bind)->fetch();
+// 규모 D2a A6 — 개수 · 목록은 JIT 없이 한 읽기 트랜잭션에서(routes.php COMMUNITY_LIST_PLAN_NO_JIT 머리글)
+$countRow = community_run_without_jit(static fn (Db $d) => $d->run($sqlCount, $bind)->fetch());
 $total    = is_array($countRow) ? (int) $countRow['n'] : 0;
 
 $sqlList = <<<SQL
     SELECT p.public_id, p.title, p.icon, p.block_count, p.doc_version, p.author_id,
            p.created_at, p.updated_at, p.visibility, p.status, p.due_date, p.page_kind, CASE WHEN p.verified_at IS NULL THEN 'none' WHEN p.verify_expires_at <= now() THEN 'expired' ELSE 'verified' END AS verify_state,
            parent.public_id AS parent_public_id,
-           who.username AS assignee_name, who.role AS assignee_role,
+           (SELECT w.username FROM public.users w WHERE w.id = p.assignee_id) AS assignee_name,   -- 규모 D2a A6(나무 문장 머리글)
+           (SELECT w.role FROM public.users w WHERE w.id = p.assignee_id) AS assignee_role,
            left(p.plain_text, 160) AS excerpt
       FROM community.pages p
       JOIN community.spaces s ON s.id = p.space_id
       LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-      LEFT JOIN public.users who ON who.id = p.assignee_id
       LEFT JOIN community.pages parent ON parent.id = p.parent_page_id
      WHERE p.space_id = CAST(:space AS bigint)
        AND p.deleted_at IS NULL
@@ -447,7 +473,7 @@ $sqlList = <<<SQL
 $bind[':lim'] = $perPage;
 $bind[':off'] = ($pageNo - 1) * $perPage;
 
-$rows = $db->run($sqlList, $bind)->fetchAll();
+$rows = community_run_without_jit(static fn (Db $d): array => $d->run($sqlList, $bind)->fetchAll());
 
 $pages = [];
 foreach ($rows as $r) {
@@ -478,7 +504,9 @@ foreach ($rows as $r) {
 
 Http::json([
     'pages'    => $pages,
-    'total'    => $total,
+    // 규모 D2a A6 — 상한까지만 센 값(≤ 1,000) · 넘으면 total_capped(화면 「1,000+」)
+    'total'    => min($total, 1000),
+    'total_capped' => $total > 1000,
     'page'     => $pageNo,
     'per_page' => $perPage,
     'q'        => $q,

@@ -12,7 +12,8 @@ declare(strict_types=1);
  *   등급마다 물어 만든 값이라 `CommunityAuthz::decideBoardRead` 와 한 줄씩 짝이다.
  *
  * 항목: 번호 · 이름 · 설명 · 등급 · 팀(번호·이름) · 종류 · 활성 · 글 수 · `can_write` · `can_moderate`.
- *   글 수 = 그 게시판의 **숨기지 않은** 살아 있는 글(새 글 + 게시된 페이지). 게시판을 읽을 수 있는
+ *   글 수 = 그 게시판의 **숨기지 않은** 살아 있는 글(새 글 + 게시된 페이지) — 규모 D2a 부터 `spaces.post_count`
+ *   (pages 트리거가 미리 센 값 · db/migrations/2026-10-26_scale_d2a_board_counts.sql). 게시판을 읽을 수 있는
  *   사람에게는 그 글들이 전부 보이므로(게시판 등급 갈래) 수가 목록과 어긋나지 않는다.
  *   비활성(보관) 게시판도 나온다 — 읽기 전용으로 남는다(PRD F-03). 화면이 「보관」 배지를 단다.
  *
@@ -40,10 +41,9 @@ if ($area !== '') {
 $sql = <<<SQL
     SELECT b.id, b.kind, b.name, b.description, b.access_level, b.team_id, b.notice,
            b.board_kind, b.is_active, b.created_at, t.name AS team_name, b.area,
-           (SELECT count(*) FROM community.pages p
-             WHERE p.deleted_at IS NULL AND p.hidden_at IS NULL
-               AND (p.space_id = b.id
-                    OR (p.visibility = 'published' AND p.published_board_id = b.id))) AS post_count
+           -- 규모 D2a A2 — 미리 센 글 수(트리거 scale_board_post_count · 정의는 옛 하위 질의 그대로:
+           -- 지우지 · 숨기지 않은 글 중 이 게시판 글 + 이 게시판에 게시된 페이지, 한 글은 한 번)
+           b.post_count
       FROM community.spaces b
       LEFT JOIN public.teams t ON t.id = b.team_id
      WHERE b.kind = 'board'

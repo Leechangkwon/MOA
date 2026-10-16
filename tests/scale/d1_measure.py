@@ -46,7 +46,12 @@ MIGRATIONS = [
     '2026-10-14_community_cafe.sql', '2026-10-14_task_start_date.sql', '2026-10-14_invite_requests.sql',
 ]
 # 운영에 반영된 규모 A · B 색인(시험 틀 기본 목록에는 없다 — 운영과 같은 색인으로 잰다). 한 번만(트리거 생성은 재실행 불가).
-SCALE_MIGRATIONS = ['2026-10-24_scale_comments.sql', '2026-10-25_scale_board_counts.sql', '2026-10-25_scale_board_indexes.sql']
+SCALE_MIGRATIONS = ['2026-10-24_scale_comments.sql', '2026-10-25_scale_board_counts.sql', '2026-10-25_scale_board_indexes.sql',
+                    # 규모 D2a — 같은 틀로 다시 잴 때(두 번 돌려도 같은 이주 — 스키마에 같은 정의가 있어 색인은 건너뛰고 채움은 차이 0)
+                    '2026-10-26_scale_d2a_board_counts.sql', '2026-10-26_scale_d2a_indexes.sql']
+# 연결 열쇠(DB_HOST · DB_PORT · DB_USER · DB_PASS)를 읽을 0600 원본 — 카탈로그 실행기의 --env-src(QCHECK_ENV_SRC)가 경로만 넘긴다.
+# 없으면 옛 자리(운영 앱 .env)를 읽는다(D1 과 같음). 이 스크립트는 네 값만 쓰고 출력하지 않는다(scrub).
+CONN_ENV = Path(os.environ.get('QCHECK_ENV_SRC') or '/var/www/qaredi/tbox-v2/.env')
 OWNER_ADAPT = ('2026-10-01_community_suggestions.sql', '2026-10-18_community_ai.sql',
                '2026-10-21_privacy_retention.sql', '2026-10-11_product_spaces.sql')
 # 기획 3장 — 데이터 단계(누적 목표). L 은 디스크에 맞춰 l_factor 로 줄일 수 있다(줄이면 보고서에 기록).
@@ -108,21 +113,28 @@ class Pg:
 class PgProxy:
     """평문 v3 프로토콜만. 프런트엔드 Parse/Bind/Execute/Query 와 백엔드 ReadyForQuery 를 읽어 기록한다."""
 
-    def __init__(self, port):
+    def __init__(self, port, backend_port=5432):
         self.port = port
+        self.backend_port = backend_port
         self.lock = threading.Lock()
+        self.lifecycle_lock = threading.Lock()
         self.events = []
         self.sock = socket.socket()
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.sock.bind(('127.0.0.1', port))
+        self.port = self.sock.getsockname()[1]
         self.sock.listen(16)
         self.alive = True
-        self.open_socks = []
-        threading.Thread(target=self.accept, daemon=True).start()
+        self.open_socks = set()
+        self.workers = set()
+        self.accept_thread = threading.Thread(target=self.accept, daemon=True)
+        self.accept_thread.start()
 
-    def close(self):
-        self.alive = False
-        for s in [self.sock] + self.open_socks:
+    def close_sockets(self, *sockets):
+        # 다른 스레드가 recv 중이면 close만으로는 연결이 끝나지 않는다.
+        for s in sockets:
+            if s is None:
+                continue
             try:
                 s.shutdown(socket.SHUT_RDWR)
             except OSError:
@@ -131,6 +143,42 @@ class PgProxy:
                 s.close()
             except OSError:
                 pass
+            with self.lifecycle_lock:
+                self.open_socks.discard(s)
+
+    def register_sockets(self, *sockets):
+        with self.lifecycle_lock:
+            if self.alive:
+                self.open_socks.update(sockets)
+                return True
+        self.close_sockets(*sockets)
+        return False
+
+    def start_worker(self, target, *args):
+        def run():
+            try:
+                target(*args)
+            finally:
+                with self.lifecycle_lock:
+                    self.workers.discard(threading.current_thread())
+        with self.lifecycle_lock:
+            if not self.alive:
+                return False
+            worker = threading.Thread(target=run, daemon=True)
+            self.workers.add(worker)
+            worker.start()
+        return True
+
+    def close(self):
+        with self.lifecycle_lock:
+            self.alive = False
+            sockets = list(self.open_socks)
+            workers = list(self.workers)
+        self.close_sockets(self.sock, *sockets)
+        deadline = time.monotonic() + 5
+        for worker in [self.accept_thread] + workers:
+            if worker is not threading.current_thread():
+                worker.join(max(0, deadline - time.monotonic()))
 
     def mark(self):
         with self.lock:
@@ -146,7 +194,8 @@ class PgProxy:
                 client, _ = self.sock.accept()
             except OSError:
                 return
-            threading.Thread(target=self.session, args=(client,), daemon=True).start()
+            if not self.register_sockets(client) or not self.start_worker(self.session, client):
+                self.close_sockets(client)
 
     @staticmethod
     def recv_exact(s, n):
@@ -159,10 +208,18 @@ class PgProxy:
         return buf
 
     def session(self, client):
-        server = socket.create_connection(('127.0.0.1', 5432))
-        self.open_socks += [client, server]
-        for s in (client, server):  # 작은 메시지를 하나씩 넘기므로 Nagle 지연(40ms)을 끈다
-            s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        server = None
+        try:
+            server = socket.create_connection(('127.0.0.1', self.backend_port), timeout=3)
+            server.settimeout(None)
+            if not self.register_sockets(server):
+                self.close_sockets(client, server)
+                return
+            for s in (client, server):  # 작은 메시지를 하나씩 넘기므로 Nagle 지연(40ms)을 끈다
+                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            self.close_sockets(client, server)
+            return
         state = dict(stmts={}, pending=[], current=None)
         cond = threading.Lock()
 
@@ -187,11 +244,7 @@ class PgProxy:
             except (EOFError, OSError):
                 pass
             finally:
-                for s in (client, server):
-                    try:
-                        s.close()
-                    except OSError:
-                        pass
+                self.close_sockets(client, server)
 
         try:
             # 시작 메시지(종류 바이트 없음). SSL/GSS 요청이면 'N' 으로 거절하고 다음 시작 메시지를 받는다.
@@ -204,7 +257,8 @@ class PgProxy:
                     continue
                 server.sendall(struct.pack('!I', ln) + body)
                 break
-            threading.Thread(target=backend, daemon=True).start()
+            if not self.start_worker(backend):
+                return
             while True:
                 head = self.recv_exact(client, 5)
                 kind, ln = head[:1], struct.unpack('!I', head[1:])[0]
@@ -249,11 +303,7 @@ class PgProxy:
         except (EOFError, OSError, ValueError):
             pass
         finally:
-            for s in (client, server):
-                try:
-                    s.close()
-                except OSError:
-                    pass
+            self.close_sockets(client, server)
 
 
 def control_sql(text):
@@ -323,7 +373,7 @@ class Harness:
     def write_instances(self):
         config = env_values(ROOT / '.env.example')
         # 연결 열쇠만(시험 틀과 같음) — 앱 역할(tbox_app, 15s 문장 제한)로 이 합성 DB 에 붙는다.
-        conn = env_values(Path('/var/www/qaredi/tbox-v2/.env'))
+        conn = env_values(CONN_ENV)
         for k in ('DB_HOST', 'DB_PORT', 'DB_USER', 'DB_PASS'):
             config[k] = conn[k]
         self.secrets.append(conn['DB_PASS'])
@@ -372,11 +422,18 @@ class Harness:
             except (ProcessLookupError, subprocess.TimeoutExpired):
                 try:
                     os.killpg(p.pid, signal.SIGKILL)
+                    p.wait(timeout=5)
                 except ProcessLookupError:
                     pass
+            if p.poll() is None:
+                raise RuntimeError('owned PHP process did not stop')
         self.servers = []
         if self.proxy:
             self.proxy.close()
+            with self.proxy.lifecycle_lock:
+                workers_alive = any(t.is_alive() for t in self.proxy.workers)
+            if self.proxy.accept_thread.is_alive() or workers_alive:
+                raise RuntimeError('owned proxy worker did not stop')
             self.proxy = None
 
     def teardown(self):
@@ -458,6 +515,8 @@ def make_unlogged(pg):
 
 def seed(pg, targets, consents, cap_gb, floor_gb, boards=24):
     """d1_seed.sql 을 돌리며 디스크 · DB 크기를 지켜본다 — 넘으면 자기 문장을 취소하고 멈춘다."""
+    if floor_gb < 3 or free_gb() < floor_gb:
+        raise RuntimeError('disk guard refused seeding: at least 3GB free is required')
     vars_ = dict(targets, boards=boards, consent_terms=consents['terms'], consent_privacy=consents['privacy'],
                  consent_age14=consents['age14'], consent_ai=consents['ai_overseas'])
     tail = ['-X', '-d', pg.db, '-v', 'ON_ERROR_STOP=1']
@@ -466,46 +525,62 @@ def seed(pg, targets, consents, cap_gb, floor_gb, boards=24):
     t0 = time.time()
     proc = subprocess.Popen(['psql'] + DB_OPTS + tail + ['-f', str(ROOT / 'tests/scale/d1_seed.sql')], env=pg.env,
                             stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
-    low, peak, abort = 99.0, 0.0, None
+    return _seed_wait(pg, proc, cap_gb, floor_gb, t0)
+
+
+def wait_disk_guarded(pg, proc, cap_gb, floor_gb, phase, timeout=None):
+    """생성/VACUUM 중에도 3초마다 여유 공간을 확인하고 이 실행의 문장만 취소한다."""
+    low, peak = free_gb(), 0.0
     last_size = 0
+    started = time.monotonic()
     try:
-        return _seed_wait(pg, proc, cap_gb, floor_gb, t0)
+        while proc.poll() is None:
+            low = min(low, free_gb())
+            if low < max(3, floor_gb):
+                raise RuntimeError('disk guard stopped %s: free %.2fGB' % (phase, low))
+            if timeout is not None and time.monotonic() - started > timeout:
+                raise RuntimeError('%s timed out' % phase)
+            if time.monotonic() - last_size > 15:
+                last_size = time.monotonic()
+                try:
+                    peak = max(peak, int(pg.sql('SELECT pg_database_size(current_database())', timeout=30)) / 1024 ** 3)
+                except Exception:
+                    pass
+            if peak > cap_gb:
+                raise RuntimeError('disk guard stopped %s: db %.2fGB' % (phase, peak))
+            time.sleep(3)
+        out, err = proc.communicate()
+        low = min(low, free_gb())
+        if low < max(3, floor_gb):
+            raise RuntimeError('disk guard stopped %s: free %.2fGB' % (phase, low))
     except BaseException:
-        # 중단(Ctrl-C · 오류)이면 생성 문장을 취소하고 psql 을 닫는다 — 끝 정리의 DROP 이 기다리지 않게
         try:
             pg.sql("SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() "
                    "AND usename=current_user", timeout=30)
         except Exception:
             pass
-        proc.kill()
+        proc.terminate()
+        try:
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate(timeout=5)
         raise
+    if proc.returncode:
+        raise RuntimeError(phase + ' failed: ' + err.decode(errors='replace')[-1500:])
+    return low, peak
 
 
 def _seed_wait(pg, proc, cap_gb, floor_gb, t0):
-    low, peak, abort = 99.0, 0.0, None
-    last_size = 0
-    while proc.poll() is None:
-        time.sleep(3)
-        low = min(low, free_gb())
-        if time.time() - last_size > 15:
-            last_size = time.time()
-            try:
-                peak = max(peak, int(pg.sql('SELECT pg_database_size(current_database())', timeout=30)) / 1024 ** 3)
-            except Exception:
-                pass
-        if low < floor_gb or peak > cap_gb:
-            abort = 'free %.2fGB / db %.2fGB' % (low, peak)
-            pg.sql("SELECT pg_cancel_backend(pid) FROM pg_stat_activity WHERE datname=current_database() AND pid<>pg_backend_pid() "
-                   "AND usename=current_user")
-            proc.wait(timeout=60)
-            break
-    out, err = proc.communicate()
-    if abort:
-        raise RuntimeError('disk guard stopped seeding: ' + abort)
-    if proc.returncode:
-        raise RuntimeError('seed failed: ' + err.decode(errors='replace')[-1500:])
+    low, peak = wait_disk_guarded(pg, proc, cap_gb, floor_gb, 'seeding')
     t1 = time.time()
-    pg.sql('SET statement_timeout = 0;\nVACUUM (ANALYZE);', timeout=7200)
+    if free_gb() < max(3, floor_gb):
+        raise RuntimeError('disk guard refused VACUUM: less than minimum free space')
+    vacuum = subprocess.Popen(['psql'] + DB_OPTS + ['-X', '-At', '-d', pg.db, '-v', 'ON_ERROR_STOP=1',
+                               '-c', 'SET statement_timeout = 0', '-c', 'VACUUM (ANALYZE)'], env=pg.env,
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
+    vacuum_low, vacuum_peak = wait_disk_guarded(pg, vacuum, cap_gb, floor_gb, 'VACUUM', timeout=7200)
+    low, peak = min(low, vacuum_low), max(peak, vacuum_peak)
     size = int(pg.sql('SELECT pg_database_size(current_database())')) / 1024 ** 3
     return dict(seed_s=round(t1 - t0, 1), vacuum_s=round(time.time() - t1, 1), min_free_gb=round(min(low, free_gb()), 2),
                 db_gb=round(size, 3), peak_db_gb=round(max(peak, size), 3))
@@ -775,7 +850,33 @@ def sql_flags(stmts):
                 ilike=('ILIKE' in text or 'STRPOS(' in text))
 
 
-def measure_endpoint(name, spec, ids, direct, proxied, proxy, reps, deep_rows=10000):
+def is_read_statement(stmt):
+    return stmt.get('sql', '').lstrip('( \n').upper().startswith(('SELECT', 'WITH'))
+
+
+def captured_statements(stmts, all_plans, limit):
+    ordered = sorted(stmts, key=lambda s: -(s['ms'] or 0))
+    return [s for s in ordered if is_read_statement(s)] if all_plans else ordered[:limit]
+
+
+def plan_candidates(result, tier, all_plans=False):
+    if not all_plans:
+        statements = result.get('statements', [])
+        candidates = [s for s in statements[:2] if (s['ms'] or 0) > 2 or (tier == 'L' and s is statements[0])]
+        if result.get('deep', {}).get('statements'):
+            candidates.append(dict(result['deep']['statements'][0], deep=True))
+        return candidates
+    candidates, seen = [], set()
+    for page, deep in ((result, False), (result.get('deep') or {}, True)):
+        for stmt in page.get('statements', []):
+            key = (stmt['sql'], json.dumps(stmt.get('params', [])), tuple(stmt.get('sets', [])))
+            if is_read_statement(stmt) and key not in seen:
+                seen.add(key)
+                candidates.append(dict(stmt, deep=deep))
+    return candidates
+
+
+def measure_endpoint(name, spec, ids, direct, proxied, proxy, reps, deep_rows=10000, all_plans=False):
     cat, user, path, note = spec[:4]
     extra = spec[4] if len(spec) > 4 else {}
     res = dict(name=name, category=cat, user=user, note=note)
@@ -803,6 +904,9 @@ def measure_endpoint(name, spec, ids, direct, proxied, proxy, reps, deep_rows=10
         for k in ('total', 'count', 'unread', 'total_pages'):
             if isinstance(body.get(k), int):
                 res['resp_' + k] = body[k]
+        # 규모 D2a — 상한 개수(「1,000+」) 칸
+        if isinstance(body.get('total_capped'), bool):
+            res['resp_total_capped'] = body['total_capped']
     # 질의 수 · SQL — 중계 서버로 한 번(데운 뒤)
     proxied.get(url, user)
     mark = proxy.mark()
@@ -811,7 +915,9 @@ def measure_endpoint(name, spec, ids, direct, proxied, proxy, reps, deep_rows=10
     stmts = summarize_events(proxy.since(mark))
     res.update(queries=len(stmts), db_ms=round(sum(s['ms'] or 0 for s in stmts), 1), proxied_ms=round(pms, 1),
                proxied_status=rp.status_code, **sql_flags(stmts))
-    res['statements'] = sorted(stmts, key=lambda s: -(s['ms'] or 0))[:4]
+    res['statements'] = captured_statements(stmts, all_plans, 4)
+    if all_plans:
+        res['statement_capture'] = 'all-read-statements'
     same = {}
     for s in stmts:
         same[s['sql']] = same.get(s['sql'], 0) + 1
@@ -855,11 +961,13 @@ def measure_endpoint(name, spec, ids, direct, proxied, proxy, reps, deep_rows=10
         except ValueError:
             dn = None
         mark = proxy.mark()
-        proxied.get(durl, user)
+        drp, _ = proxied.get(durl, user)
         time.sleep(0.05)
         dst = summarize_events(proxy.since(mark))
         res['deep'] = dict(url=durl, page=deep, per_page=per, status=rr.status_code, rows=dn, p50=pct(tt, 50), p95=pct(tt, 95),
-                           statements=sorted(dst, key=lambda s: -(s['ms'] or 0))[:2])
+                           statements=captured_statements(dst, all_plans, 2))
+        if all_plans:
+            res['deep'].update(proxied_status=drp.status_code, statement_capture='all-read-statements')
     return res
 
 
@@ -1096,13 +1204,17 @@ def main():
     ap.add_argument('--port', type=int, default=8838)
     ap.add_argument('--proxy-port', type=int, default=8848)
     ap.add_argument('--cap-gb', type=float, default=3.0)
-    ap.add_argument('--floor-gb', type=float, default=2.0)
+    ap.add_argument('--floor-gb', type=float, default=3.0)
     ap.add_argument('--margin-gb', type=float, default=0.4, help='L 예산에서 VACUUM · 임시 파일 몫으로 남길 여유')
     ap.add_argument('--l-factor', type=float, default=None, help='L 을 이 비율로 강제(없으면 디스크로 정함)')
     ap.add_argument('--l-pages-factor', type=float, default=None, help='L 의 글(pages)만 이 비율로(--l-other-factor 와 함께)')
     ap.add_argument('--l-other-factor', type=float, default=None, help='L 의 글 밖 큰 표 비율')
     ap.add_argument('--only', default='', help='쉼표로 창구 이름 일부(개발용)')
+    ap.add_argument('--select', default='', help='쉼표로 창구 이름(SPEC 키 그대로 — 규모 D2a 수락 · 측정)')
+    ap.add_argument('--all-plans', action='store_true', help='첫/깊은 쪽의 모든 읽기 SQL·인자·SET LOCAL을 저장하고 고유 조합 모두 EXPLAIN')
     args = ap.parse_args()
+    if not args.floor_gb >= 3:
+        ap.error('--floor-gb must be at least 3')
     out = args.output.resolve()
     if args.summarize:
         summarize(out)
@@ -1130,6 +1242,10 @@ def main():
                                              "JOIN pg_roles r ON r.oid=s.setrole WHERE r.rolname='%s'" % h.config['DB_USER'])
         h.start()
         only = [x for x in args.only.split(',') if x]
+        select = [x.strip() for x in args.select.split(',') if x.strip()]
+        unknown = [x for x in select if x not in SPEC]
+        if unknown:
+            raise SystemExit('unknown --select names: %s' % unknown)
         prev = None
         for tier in [x.strip() for x in args.tiers.split(',') if x.strip()]:
             targets = dict(TIERS[tier])
@@ -1162,28 +1278,33 @@ def main():
             for name, spec in SPEC.items():
                 if only and not any(o in name for o in only):
                     continue
+                if select and name not in select:
+                    continue
                 if time.time() - last_reauth > 300:  # 관리 영역은 최근 15분 재인증 세션만 — 합성 세션의 시각을 새로
                     h.pg.sql("UPDATE public.sessions SET reauth_at=now() WHERE user_id IN (1,2)")
                     last_reauth = time.time()
                 try:
-                    r = measure_endpoint(name, spec, ids, direct, proxied, h.proxy, args.reps)
+                    r = measure_endpoint(name, spec, ids, direct, proxied, h.proxy, args.reps, all_plans=args.all_plans)
                 except Exception as e:  # 한 창구 실패가 전체를 멈추지 않게 — 기록한다
                     r = dict(name=name, category=spec[0], error=h.scrub(repr(e))[-300:])
                 results.append(r)
                 print('  %-58s %s p50=%s p95=%s q=%s' % (name, r.get('status'), r.get('p50'), r.get('p95'), r.get('queries')), flush=True)
-            # EXPLAIN — 창구마다 가장 느린 문장(2ms 넘는 것 · L 에서는 1등은 늘) + 깊은 쪽
+            # EXPLAIN은 시간 측정 뒤. 기본은 옛 표본, --all-plans는 고유 읽기 SQL 전체.
             for r in results:
-                cand = [s for s in r.get('statements', [])[:2] if (s['ms'] or 0) > 2 or (tier == 'L' and s is r['statements'][0])]
-                if r.get('deep', {}).get('statements'):
-                    cand.append(dict(r['deep']['statements'][0], deep=True))
+                cand = plan_candidates(r, tier, args.all_plans)
                 plans = []
                 for s in cand:
                     p = explain(h.pg, s)
                     plans.append(dict(sql=s['sql'], params=s['params'], ms=s['ms'], deep=s.get('deep', False), gist=plan_gist(p)))
+                    if args.all_plans:
+                        plans[-1]['sets'] = s.get('sets', [])
                     if p and 'Plan' in p:
                         (out / 'plans').mkdir(exist_ok=True)
                         fn = out / 'plans' / ('%s-%s-%d.json' % (tier, re.sub(r'[^A-Za-z0-9]+', '_', r['name'])[:80], len(plans)))
-                        fn.write_text(json.dumps(dict(sql=s['sql'], params=s['params'], plan=p), ensure_ascii=False, indent=1))
+                        record = dict(sql=s['sql'], params=s['params'], plan=p)
+                        if args.all_plans:
+                            record['sets'] = s.get('sets', [])
+                        fn.write_text(json.dumps(record, ensure_ascii=False, indent=1))
                 r['plans'] = plans
             info['measure_s'] = round(time.time() - t_measure, 1)
             info['loadavg'] = [load0, os.getloadavg()]
@@ -1194,20 +1315,28 @@ def main():
             prev = info
             (out / 'meta.json').write_text(json.dumps(meta, ensure_ascii=False, indent=1))
     finally:
+        cleanup_failed = False
         try:
             h.teardown()
         except Exception as e:
+            cleanup_failed = True
             print('TEARDOWN_ERROR ' + h.scrub(repr(e))[:300], flush=True)
         meta['finished'] = time.strftime('%Y-%m-%dT%H:%M:%S%z')
         meta['elapsed_min'] = round((time.time() - started) / 60, 1)
         meta['free_gb_end'] = round(free_gb(), 2)
-        meta['cleanup'] = 'servers stopped · DB %s · work dir removed' % ('LEFT — drop manually' if h.created else 'dropped')
+        cleanup_ok = not cleanup_failed and not h.created and not h.work.exists()
+        meta['cleanup_ok'] = cleanup_ok
+        meta['cleanup'] = ('servers stopped' if not cleanup_failed else 'cleanup failed') + ' · DB %s · work dir %s' % (
+            'LEFT — drop manually' if h.created else 'dropped', 'LEFT' if h.work.exists() else 'removed')
         (out / 'meta.json').write_text(json.dumps(meta, ensure_ascii=False, indent=1))
         try:
             summarize(out)
         except Exception as e:
             print('SUMMARY_FAILED ' + repr(e)[:200], flush=True)
-        print('OWNED_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=%d; WORK_REMOVED=1' % (0 if h.created else 1), flush=True)
+        print('OWNED_PROCESSES_STOPPED=%d; SYNTHETIC_DB_DROPPED=%d; WORK_REMOVED=%d' % (
+            int(not cleanup_failed), int(not h.created), int(not h.work.exists())), flush=True)
+    if not cleanup_ok:
+        raise SystemExit(1)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=b30fccb8c911';
-import { hydrateDashboard } from './dashboard.js?v=b30fccb8c911';
+import { createTableEditor } from './table-editor.js?v=f9367461b689';
+import { hydrateDashboard } from './dashboard.js?v=f9367461b689';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=b30fccb8c911';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=b30fccb8c911';
-import { createMentionInput, mentionTokens } from './mention-input.js?v=b30fccb8c911';
-import { createDatabaseView } from './database.js?v=b30fccb8c911';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=b30fccb8c911';
-import { bindEmbedAdmin } from './embeds.js?v=b30fccb8c911';
-import { bindPopular } from './popular.js?v=b30fccb8c911';
-import { bindPalettes } from './palettes.js?v=b30fccb8c911';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=b30fccb8c911';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=b30fccb8c911';
-import { drawTrust, bindProcedures } from './procedures.js?v=b30fccb8c911';
-import { createPageExport } from './export.js?v=b30fccb8c911';
-import { createDrafts } from './drafts.js?v=b30fccb8c911';
-import { drawPageAi, bindAiCenter } from './ai.js?v=b30fccb8c911';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=b30fccb8c911';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=f9367461b689';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=f9367461b689';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=f9367461b689';
+import { createDatabaseView } from './database.js?v=f9367461b689';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=f9367461b689';
+import { bindEmbedAdmin } from './embeds.js?v=f9367461b689';
+import { bindPopular } from './popular.js?v=f9367461b689';
+import { bindPalettes } from './palettes.js?v=f9367461b689';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=f9367461b689';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=f9367461b689';
+import { drawTrust, bindProcedures } from './procedures.js?v=f9367461b689';
+import { createPageExport } from './export.js?v=f9367461b689';
+import { createDrafts } from './drafts.js?v=f9367461b689';
+import { drawPageAi, bindAiCenter } from './ai.js?v=f9367461b689';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=f9367461b689';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=b30fccb8c911';
-import { createCafe, personInto, isAnon } from './cafe.js?v=b30fccb8c911';
+import { createWork } from './work.js?v=f9367461b689';
+import { createCafe, personInto, isAnon } from './cafe.js?v=f9367461b689';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -1933,7 +1933,8 @@ function initHome() {
       const pages = Array.isArray(result.data.pages) ? result.data.pages : [];
       clear(sharedBox);
       for (const page of pages) { sharedBox.appendChild(sharedCard(page)); }
-      setText(sharedCount, pages.length === 0 ? '' : String(result.data.total) + '개');
+      // 규모 D2a A5 (DESIGN 2.4) — 서버는 1,000 까지만 센다(넘으면 total_capped → 「1,000+」)
+      setText(sharedCount, pages.length === 0 ? '' : (result.data.total_capped === true ? '1,000+' : String(result.data.total)) + '개');
       // 공유받은 페이지가 하나도 없으면 묶음 자체를 보이지 않는다(빈 칸을 늘리지 않는다).
       show(sharedWrap, pages.length > 0);
     }).catch(() => { show(sharedWrap, false); });
@@ -2356,7 +2357,8 @@ function initHome() {
       show(treeBox, false);
       show(list, true);
       show(empty, pages.length === 0);
-      setText(count, pages.length === 0 ? '' : '페이지 ' + String(result.data.total) + '개');
+      // 규모 D2a A6 (DESIGN 2.4) — 서버는 1,000 까지만 센다(넘으면 total_capped → 「1,000+」)
+      setText(count, pages.length === 0 ? '' : '페이지 ' + (result.data.total_capped === true ? '1,000+' : String(result.data.total)) + '개');
     });
   }
 
