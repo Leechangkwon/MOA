@@ -11,6 +11,7 @@ declare(strict_types=1);
  *            관계(6-B)는 `target` = **같은 공간**의 DB(UUID) — 고치는 사람이 그 DB 페이지를 읽을 수 있어야(없는·못 보는 것 같은 400)
  *   rename   {key, name}              이름 바꾸기
  *   options  {key, options}           선택지 바꾸기(select·multi_select 만). 빠진 선택지를 쓰던 행 값은 그대로 남는다
+ *   section  {action:rename|remove,value,name?} section 표시 이름·선택지 삭제. 작업 행은 보존한다.
  *   remove   {key}                    지우기 — 스키마에서만 뺀다. 행의 값은 칸에 남고 화면·창구에서 사라진다(G-4)
  *   use_as   "project" | "table"      Q:F-12 (WK-16 A · ARCH 23.5) 「프로젝트로 쓰기」 = `purpose='project'` + 섹션 칸(`section`)이 없으면
  *                                     더하기 + 기본 보기 넷 중 **같은 이름이 없는 것**만 더하기 + 색이 없으면 차례 색 — 다시 불러도 칸·보기가
@@ -32,8 +33,8 @@ if ($dbRow === null) {
 }
 
 $body = Http::jsonBody();
-$ops  = array_values(array_intersect(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'use_as']));
-if (array_diff(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'use_as', 'version']) !== [] || count($ops) !== 1
+$ops  = array_values(array_intersect(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'use_as', 'section']));
+if (array_diff(array_keys($body), ['add', 'rename', 'options', 'remove', 'depends', 'use_as', 'section', 'version']) !== [] || count($ops) !== 1
     || ($ops[0] === 'use_as' ? !in_array($body['use_as'], ['project', 'table'], true) : !is_array($body[$ops[0]]))) {
     Http::error(400, Http::MSG_BAD_REQUEST);
 }
@@ -168,6 +169,29 @@ if ($op === 'use_as') {
 
 $propName = '';
 switch ($op) {
+    case 'section':
+        if (array_diff(array_keys($arg), ['action', 'value', 'name']) !== []
+            || !in_array($arg['action'] ?? null, ['rename', 'remove'], true)
+            || !is_string($arg['value'] ?? null)
+            || ($arg['action'] === 'remove' && array_key_exists('name', $arg))) {
+            $bad('섹션 변경 내용을 확인해 주세요', 'bad_section');
+        }
+        $i = $findIndex($schema, DbProps::SECTION_KEY);
+        if ($i === null || !in_array($arg['value'], $schema[$i]['options'], true)) {
+            $bad('섹션을 찾지 못했습니다. 새로 고친 뒤 다시 하세요', 'unknown_section');
+        }
+        if ($arg['action'] === 'rename') {
+            $name = DbProps::cleanName($arg['name'] ?? null);
+            if ($name === null) { $bad('섹션 이름은 1~50자입니다', 'bad_name'); }
+            $schema[$i]['option_labels'][$arg['value']] = $name;
+        } else {
+            $schema[$i]['options'] = array_values(array_filter($schema[$i]['options'], static fn (string $v): bool => $v !== $arg['value']));
+            unset($schema[$i]['option_labels'][$arg['value']]);
+            if (($schema[$i]['option_labels'] ?? []) === []) { unset($schema[$i]['option_labels']); }
+        }
+        if (!DbProps::propShapeOk($schema[$i])) { $bad('같은 이름의 섹션이 이미 있습니다', 'name_taken'); }
+        $propName = '섹션';
+        break;
     case 'add':
         if (array_diff(array_keys($arg), ['name', 'type', 'options', 'target', 'depends']) !== []) {
             Http::error(400, Http::MSG_BAD_REQUEST);
@@ -253,11 +277,16 @@ switch ($op) {
         if (!in_array($schema[$i]['type'], ['select', 'multi_select'], true)) {
             $bad('선택지는 선택·다중 선택 속성에만 있습니다', 'bad_options');
         }
-        $opts = DbProps::cleanOptions($arg['options'] ?? null);
+        $opts = DbProps::cleanOptions($arg['options'] ?? null, $schema[$i]['key'] === DbProps::SECTION_KEY);
         if ($opts === null) {
             $bad('선택지는 1~' . DbProps::MAX_OPTIONS . '개, 각 1~' . DbProps::NAME_MAX . '자이고 겹치면 안 됩니다', 'bad_options');
         }
         $schema[$i]['options'] = $opts;
+        if (isset($schema[$i]['option_labels'])) {
+            $schema[$i]['option_labels'] = array_intersect_key($schema[$i]['option_labels'], array_fill_keys($opts, true));
+            if ($schema[$i]['option_labels'] === []) { unset($schema[$i]['option_labels']); }
+        }
+        if (!DbProps::propShapeOk($schema[$i])) { $bad('같은 이름의 섹션이 이미 있습니다', 'name_taken'); }
         $propName = (string) $schema[$i]['name'];
         break;
 

@@ -1,6 +1,7 @@
-import { drawCalendar, drawLegend, rangeFor, shifted } from './calendar.js?v=bdafc5f7a886';
-import { drawChart } from './charts.js?v=bdafc5f7a886';
-import { openViewSettings } from './db-view-config.js?v=bdafc5f7a886';
+import { drawCalendar, drawLegend, rangeFor, shifted } from './calendar.js?v=0fbd087e9d32';
+import { optionLabel } from './db-option-label.js?v=0fbd087e9d32';
+import { drawChart } from './charts.js?v=0fbd087e9d32';
+import { openViewSettings } from './db-view-config.js?v=0fbd087e9d32';
 /*
  * public/assets/community/database.js — 데이터베이스(6-A) 화면: DB 페이지의 **표**와 행 페이지의 **속성 줄**.
  *
@@ -17,7 +18,7 @@ import { openViewSettings } from './db-view-config.js?v=bdafc5f7a886';
  * editor.js 가 `createDatabaseView(deps)` 로 한 번 만들고, 페이지를 읽을 때마다 `draw(data)` 를 부른다.
  * 7-B — 새 행 고르개(「빈 행」 + 이 DB 의 행 템플릿 · 고른 템플릿 지우기)는 `templates.js` 의 `createRowTemplatePicker` 가 맡는다.
  */
-import { createRowTemplatePicker } from './templates.js?v=bdafc5f7a886';
+import { createRowTemplatePicker } from './templates.js?v=0fbd087e9d32';
 
 const TYPE_LABELS = {
   text: '글', number: '숫자', checkbox: '체크', url: '주소', email: '메일', phone: '전화',
@@ -116,7 +117,7 @@ export function createDatabaseView(deps) {
         }
         return span;
       }
-      case 'select': { span.className = 'badge'; span.textContent = String(v); return span; }
+      case 'select': { span.className = 'badge'; span.textContent = optionLabel(prop, v); return span; }
       case 'relation': {
         // 지도에 있는(볼 수 있는) 행만 제목과 링크 — 없으면 「볼 수 없는 행」
         span.className = 'db-chips';
@@ -192,7 +193,7 @@ export function createDatabaseView(deps) {
         el = document.createElement('select');
         el.className = 'input';
         el.appendChild(new Option('—', ''));
-        for (const o of prop.options || []) { el.appendChild(new Option(o, o, false, o === v)); }
+        for (const o of prop.options || []) { el.appendChild(new Option(optionLabel(prop, o), o, false, o === v)); }
         el.addEventListener('change', done);
         break;
       case 'multi_select': {
@@ -493,6 +494,7 @@ export function createDatabaseView(deps) {
       if (r.status === 401) { toLogin(); return; }
       if (r.status !== 200) { setText(msgEl, errorMessage(r.data)); return; }
       db.schema = r.data.database.schema;
+      db.version = r.data.database.version;
       db.can_add_rows = canWrite() && r.data.can_add_rows === true;
       db.can_edit_values = canWrite() && r.data.can_edit_values === true;
       db.can_manage_schema = canWrite() && r.data.can_manage_schema === true;
@@ -632,7 +634,7 @@ export function createDatabaseView(deps) {
       const lab = !gp && st ? statusLabels[st] : null;
       const inCol = rows.filter((r) => boardValue(gp, r) === st);
       const empty = gp ? (gp.key === 'section' ? '섹션 없음' : gp.name + ' 없음') : '없음';
-      h.textContent = (gp ? (st || empty) : (lab ? lab.text : empty)) + ' ' + String(inCol.length);
+      h.textContent = (gp ? (st === null ? empty : optionLabel(gp, st)) : (lab ? lab.text : empty)) + ' ' + String(inCol.length);
       col.appendChild(h);
       for (const r of inCol) { col.appendChild(boardCard(r)); }
       if (db.can_edit_values) {
@@ -834,7 +836,7 @@ export function createDatabaseView(deps) {
     } else if (p.type === 'select' || p.type === 'multi_select' || p.type === 'status' || p.type === 'verified' || p.type === 'checkbox') {
       el = document.createElement('select');
       const opts = p.type==='verified' ? [['none','미검증'],['verified','검증됨'],['expired','만료']] : p.type === 'status' ? STATUS_ORDER.map((k) => [k, statusLabels[k].text])
-        : p.type === 'checkbox' ? [['true', '예'], ['false', '아니오']] : (p.options || []).map((o) => [o, o]);
+        : p.type === 'checkbox' ? [['true', '예'], ['false', '아니오']] : (p.options || []).map((o) => [o, optionLabel(p, o)]);
       for (const [v, t] of opts) { el.appendChild(new Option(t, v)); }
     } else {
       el = document.createElement('input');

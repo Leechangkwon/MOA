@@ -116,9 +116,9 @@ final class DbProps
      *
      * @return list<string>|null
      */
-    public static function cleanOptions($raw): ?array
+    public static function cleanOptions($raw, bool $allowEmpty = false): ?array
     {
-        if (!is_array($raw) || !array_is_list($raw) || $raw === [] || count($raw) > self::MAX_OPTIONS) {
+        if (!is_array($raw) || !array_is_list($raw) || (!$allowEmpty && $raw === []) || count($raw) > self::MAX_OPTIONS) {
             return null;
         }
         $out  = [];
@@ -611,7 +611,20 @@ final class DbProps
         if ($isRel !== array_key_exists('target', $p) || ($isRel && preg_match(self::UUID_RE, (string) $p['target']) !== 1)) {
             return false;
         }
-        return !$needsOptions || self::cleanOptions($p['options']) !== null;
+        if ($needsOptions && self::cleanOptions($p['options'], $p['key'] === self::SECTION_KEY) === null) {
+            return false;
+        }
+        if (array_key_exists('option_labels', $p)) {
+            if ($p['key'] !== self::SECTION_KEY || !is_array($p['option_labels'])) { return false; }
+            foreach ($p['option_labels'] as $value => $label) {
+                if (!in_array((string) $value, $p['options'], true) || self::cleanName($label) === null) { return false; }
+            }
+        }
+        if ($p['key'] === self::SECTION_KEY) {
+            $labels = array_map(static fn (string $value): string => $p['option_labels'][$value] ?? $value, $p['options']);
+            if (self::cleanOptions($labels, true) === null) { return false; }
+        }
+        return true;
     }
 
     /* ───────────── 6-B 뷰 ───────────── */

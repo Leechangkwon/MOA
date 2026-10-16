@@ -3332,3 +3332,8 @@ PostgreSQL 설정 예시는 `deploy/postgresql/scale-*`, 운영 경로/diff/검�
 ## 업무 문서 MCP 부분 갱신 (2026-10-16)
 
 WorkDocuments는 OAuth MCP와 개인 토큰의 업무 전용 창구가 공유한다. 프로젝트/직계 하위 목록은 public_id 커서, 1~100개, 검색 SQL 권한(관리자 우회 제외)+활성 개인/팀 공간+비게시 페이지만. 읽기/쓰기 전 현재 행 권한을 재검사하고, 쓰기는 페이지 행 잠금 뒤 재조회 및 doc_version 검사 → 지정 텍스트 교체/끝 추가 → community_save_doc(force_snapshot)로 저장한다. Doc/첨부/팔레트/파생값/이력/감사 저장은 기존 경로 하나다. 기존 표·그림·블록 ID·자식·수정 대상 밖 서식과 부모/공유/소유권은 보존한다. MCP 호출의 SaveDoc 거부는 일반 JSON 종료 대신 기존 Http::error→McpToolError 경계를 사용한다. 웹 세션 응답 계약은 유지. work.write는 work.read를 함께 승인해야 하고 옛 OAuth 토큰에 소급하지 않는다. 로컬 개인 토큰은 기존 community.write가 새 창구를 허용하므로 해당 권한 안내를 함께 갱신한다. DB/새 패키지/외부 요청/cron 없음.
+
+
+### 프로젝트 섹션 표시 이름 (2026-10-16)
+
+section의 option_labels는 고정 선택값→표시 이름 지도다. 이름 변경에 pages를 일괄 갱신하지 않아 작업 소속·본문·이전 판을 보존한다. metadata 스키마 변경과 동일한 관리 자격/낙관 잠금을 사용한다. 삭제한 선택값은 기존 G-4대로 원래 행에 남고 섹션 없음에 표시된다. 빈 선택지는 section만 허용한다. 조회·보기·선택·작업 상세는 같은 표시 함수를 사용한다.

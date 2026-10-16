@@ -2533,6 +2533,9 @@ body[data-page="login"] .login__brand .moa-wordmark { --brand-wordmark: var(--wm
 .task-list--project .task-list__head { grid-template-columns: minmax(0, 1fr) 10.5rem 6.5rem 32px; align-items: center; }
 .task-list__rows { list-style: none; margin: 0; padding: 0; }
 .task-group { display: flex; flex-direction: column; }
+.task-group__head { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.task-group__head > .task-group__toggle { flex: 1; min-width: 0; text-align: left; }
+.task-group__head > .task-group__toggle > span:not(.icon):not(.task-group__count) { overflow-wrap: anywhere; }
 .task-group + .task-group { margin-top: 8px; }
 .task-group__toggle { display: inline-flex; align-items: center; gap: 6px; align-self: flex-start; min-height: 36px; padding: 0 6px; border: 0; border-radius: var(--r-sm); background: transparent; color: var(--fg); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
 .task-group__toggle:hover { background: var(--muted-bg); }

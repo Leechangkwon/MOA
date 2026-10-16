@@ -177,6 +177,7 @@ Http::json([
         'id'      => (string) $dbRow['public_id'],
         'page_id' => (string) $dbRow['page_public_id'],
         'schema'  => $schema,
+        'version' => (string) $dbRow['updated_at'],
         'purpose' => is_array($useRow) && $useRow['purpose'] !== null ? (string) $useRow['purpose'] : null,
         'color'   => is_array($useRow) && $useRow['color'] !== null ? (string) $useRow['color'] : null,
     ],

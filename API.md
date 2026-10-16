@@ -1449,3 +1449,8 @@ nginx는 검색·파일목록·게시판글목록의 GET에 IP당8r/s+burst16을
 ## 업무 문서 갱신 MCP (2026-10-16)
 
 개인 토큰 전용 허용 목록에 `GET /community/api/work/projects`, `GET /community/api/work/documents?parent_id=<uuid>`, `GET /community/api/work/documents/{id}`, `PATCH /community/api/work/documents/{id}`를 추가한다. 읽기 정책 community.read, 갱신 community.write; 세션은 기존 CSRF 관문을 유지한다. 일반 페이지 PATCH/생성 위치 제한은 유지. PATCH는 doc_version + replacements/append만 받고 전체 문서·제목·공유 등 다른 필드는 거부한다. 409는 다시 읽기, 자동 재전송 금지. 자세한 입력과 사용 예: docs/work-document-mcp.md. OAuth MCP는 별도 work.read/work.write이며 기존 승인을 확대하지 않는다.
+
+
+### 프로젝트 섹션 이름·삭제 (2026-10-16)
+
+기존 PATCH /community/api/databases/{id}/schema에 `section:{action:"rename",value:<저장된 선택값>,name:<1~50자>}` 또는 `section:{action:"remove",value:<저장된 선택값>}`를 보낸다. 같은 요청의 version은 rows.database.version으로 받는 스키마 갱신 시각이다. 기존 decidePageManage와 낙관 잠금을 사용한다. 이름은 section 속성의 option_labels에 저장하며 작업의 properties·본문·버전은 변경하지 않는다. 섹션 삭제는 선택지를 제외할 뿐 작업과 저장된 값은 보존하고 목록/보드의 섹션 없음에 표시한다. section만 빈 options를 허용하며 기존의 다른 select 속성 최소1개 제한은 유지한다. 중복 표시 이름·잘못된 입력400, 자격 없음403, 버전 충돌409.

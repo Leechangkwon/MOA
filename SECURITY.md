@@ -436,6 +436,9 @@ nginx 검색 전용 location은 정규화 URI로 제한, access 로그의 검색
 
 ## 7. 검토 이력
 
+- 2026-10-16 프로젝트 섹션 편집: ① 관리 자격·CSRF·409·중복/잘못된 값 거부, 작업 소속/본문/버전/사건 보존, 실제 PHP/PG+390/1280 브라우저 수락. 표시 지도만 수정해 일괄 업무 행 쓰기0. ② 삭제한 선택값은 기존 G-4대로 남아 복원 시 다시 묶일 수 있다. ③ 독립 컨텍스트 검토·실물 모바일/Safari/화면읽기 미검증. ④ 백업/모의/드리프트/운영 확인, 관련 회귀 밤 대기열. 상세 docs/work-items/project-sections-and-moa-record.md.
+
+
 - 2026-10-16 MCP 활성화 운영 확인: v2.70.2, exact official callback만 허용. 실제 HTTPS48/0(정상 QA 로그인·승인/거절 iss·Bearer 도구 읽기·회수), 기존100표/798원본/10설정·ownerACL 보존. nginx 기존 off/redaction 유지, 시험 자격의 앱/nginx 새 로그 노출0. 사용자 ChatGPT·외부 TLS 앞단 로그·독립 검토는 미검증 유지. 밤 회귀 `community.remote_mcp_http`.
 
 

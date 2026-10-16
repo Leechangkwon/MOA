@@ -1,7 +1,8 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=bdafc5f7a886';
-import { renderDoc } from './doc-render.js?v=bdafc5f7a886';
-import { createMentionInput } from './mention-input.js?v=bdafc5f7a886';
-import { personText } from './cafe.js?v=bdafc5f7a886';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=0fbd087e9d32';
+import { renderDoc } from './doc-render.js?v=0fbd087e9d32';
+import { createMentionInput } from './mention-input.js?v=0fbd087e9d32';
+import { personText } from './cafe.js?v=0fbd087e9d32';
+import { optionLabel } from './db-option-label.js?v=0fbd087e9d32';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -1041,7 +1042,10 @@ export function createWork(deps) {
         pa.href = pageUrl(proj.id);
         ddProject.appendChild(pa);
         const section = data.row.values ? data.row.values.section : null;
-        if (typeof section === 'string' && section !== '') { ddProject.appendChild(el('span', 'muted', '· ' + section)); }
+        if (typeof section === 'string' && section !== '') {
+          const prop = (data.row.schema || []).find((p) => p.key === 'section');
+          ddProject.appendChild(el('span', 'muted', '· ' + optionLabel(prop, section)));
+        }
       } else {
         ddProject.appendChild(el('span', 'muted', data.space ? '문서 · ' + data.space.name : '없음'));
       }
@@ -1843,6 +1847,11 @@ export function createWork(deps) {
   }
   function pageLoaded(pageId, data) {
     pageData = data;
+    const projectDocument = $('project-document');
+    if (projectDocument) {
+      projectDocument.hidden = !(data.page && data.page.doc && Array.isArray(data.page.doc.blocks)
+        && data.page.doc.blocks.some((b) => b.type !== 'paragraph' || (b.text || []).some((t) => (t.t || '').trim() !== '')));
+    }
     headDrawn = false;
     if (project && body.hasAttribute('data-project-view')) { drawProjectHead(); }
     // Q:F-12 U4-2(DESIGN 2.25) — 서버가 단 첫 화면 종류가 「작업」이면 오른쪽 칸과 같은 부품 한 벌을 `#task-full` 에 본문 폭으로(같은 draw).
@@ -1943,6 +1952,8 @@ export function createWork(deps) {
 
   function bindProjectHead() {
     const asDocBtn = $('project-as-doc');
+    const projectDocument = $('project-document');
+    if (projectDocument && asDocBtn) { projectDocument.addEventListener('click', () => asDocBtn.click()); }
     if (asDocBtn) {
       asDocBtn.addEventListener('click', () => {
         asDoc = true;
@@ -2122,6 +2133,48 @@ export function createWork(deps) {
    * 프로젝트 목록 보기(DESIGN 2.20) — database.js 가 목록 보기일 때 부른다. 섹션(묶는 select 칸)의 선택지 순서로 묶음, 빈 값은 「섹션 없음」.
    * 칸: 이름 · 담당자 · 마감 · ＋(칸 더하기 — 관리 자격). 줄을 누르면 오른쪽 상세 칸(`?task=`).
    */
+  function editProjectSection(ctx, prop, group, trigger) {
+    const m = modal('project-section', '섹션 관리', '이름 저장');
+    const name = el('input');
+    name.type = 'text'; name.maxLength = 50; name.required = true; name.value = group.name;
+    field(m.form, '섹션 이름', name);
+    const hint = el('p', 'muted', '이름을 바꿔도 이 섹션의 작업은 그대로 유지됩니다.');
+    const remove = el('button', 'btn btn--danger btn--small', '섹션 삭제');
+    remove.type = 'button';
+    m.form.append(hint, remove);
+    let action = 'rename'; let busy = false;
+    const lock = (on) => {
+      busy = on;
+      for (const b of m.dialog.querySelectorAll('button, input')) { b.disabled = on; }
+    };
+    remove.addEventListener('click', () => {
+      action = 'remove'; name.hidden = true; name.required = false; remove.hidden = true;
+      hint.textContent = '이 섹션만 삭제합니다. 안에 있는 작업은 삭제되지 않고 「섹션 없음」에 표시됩니다.';
+      m.ok.textContent = '섹션만 삭제'; m.ok.className = 'btn btn--danger';
+      m.ok.focus();
+    });
+    m.dialog.addEventListener('cancel', (e) => { if (busy) { e.preventDefault(); } });
+    m.dialog.addEventListener('close', () => {
+      m.dialog.remove();
+      if (trigger.isConnected) { trigger.focus(); }
+    });
+    m.form.addEventListener('submit', (e) => {
+      e.preventDefault(); if (busy) { return; }
+      const change = { action: action, value: group.value };
+      if (action === 'rename') { change.name = name.value.trim(); }
+      lock(true); setText(m.msg, '');
+      api('PATCH', '/api/databases/' + ctx.db.id + '/schema', { section: change, version: ctx.db.version }).then((r) => {
+        if (r.status !== 200) { lock(false); say(m.msg, failMessage(r)); return; }
+        m.dialog.close();
+        Promise.resolve(ctx.reload()).then(() => {
+          const first = document.querySelector('#project-list .task-group__toggle');
+          if (first) { first.focus(); }
+        });
+      }).catch(() => { lock(false); say(m.msg, genericError); });
+    });
+    m.dialog.showModal(); name.focus(); name.select();
+  }
+
   function drawProjectList(host, ctx) {
     project = ctx;
     const db = ctx.db;
@@ -2142,7 +2195,7 @@ export function createWork(deps) {
       headRow.appendChild(el('span'));
     }
     host.appendChild(headRow);
-    const groups = gp ? gp.options.map((o) => ({ value: o, name: o })) : [];
+    const groups = gp ? gp.options.map((o) => ({ value: o, name: optionLabel(gp, o) })) : [];
     groups.push({ value: '', name: gp ? (gp.key === 'section' ? '섹션 없음' : gp.name + ' 없음') : '작업' });
     const valueOf = (r) => {
       const v = gp && r.values ? r.values[gp.key] : null;
@@ -2164,7 +2217,15 @@ export function createWork(deps) {
         tog.appendChild(el('span', null, g.name));
         tog.appendChild(el('span', 'task-group__count', String(rows.length)));
         tog.addEventListener('click', () => { projectCollapsed[g.value] = open; drawProjectList(host, ctx); });
-        sec.appendChild(tog);
+        const groupHead = el('div', 'task-group__head');
+        groupHead.appendChild(tog);
+        if (gp && gp.key === 'section' && g.value !== '' && db.can_manage_schema === true) {
+          const manage = iconButton('settings', g.name + ' 섹션 관리');
+          manage.setAttribute('data-section-manage', g.value);
+          manage.addEventListener('click', () => editProjectSection(ctx, gp, g, manage));
+          groupHead.appendChild(manage);
+        }
+        sec.appendChild(groupHead);
         if (open) {
           const ul = el('ul', 'task-list__rows');
           for (const r of rows) {
@@ -2245,7 +2306,7 @@ export function createWork(deps) {
             const name = input.value.trim();
             if (name === '') { line.remove(); tail.hidden = false; return; }
             input.disabled = true;
-            api('PATCH', '/api/databases/' + db.id + '/schema', { options: { key: gp.key, options: gp.options.concat([name]) } }).then((r) => {
+            api('PATCH', '/api/databases/' + db.id + '/schema', { version: db.version, options: { key: gp.key, options: gp.options.concat([name]) } }).then((r) => {
               if (r.status !== 200) { input.disabled = false; say(msg, failMessage(r)); return; }
               ctx.reload();
             }).catch(() => { input.disabled = false; say(msg, genericError); });

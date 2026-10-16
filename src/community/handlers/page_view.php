@@ -201,6 +201,9 @@ unset($viewShellTop);
       </div>
       <div class="page-head__actions">
         <span id="project-members" class="task-avatars" hidden></span>
+        <button id="project-document" class="btn btn--quiet" type="button" hidden>
+          <span class="icon" data-icon="files"></span><span>프로젝트 문서</span>
+        </button>
         <button id="project-share" class="btn btn--quiet" type="button" aria-haspopup="dialog" hidden>
           <span class="icon" data-icon="users"></span><span>공유</span>
         </button>
