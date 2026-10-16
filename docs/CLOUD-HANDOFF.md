@@ -1,5 +1,7 @@
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
+> 최신 운영 v2.71.0: 기본 프로젝트 섹션 이름·삭제와 본문 바로 열기. 격리64/0·실제HTTPS자산11/0·화면22/0, 사용자 프로젝트 기획 기록 저장 완료. `docs/work-items/project-sections-and-moa-record.md`.
+
 > 최신 운영 v2.70.2: 설치한 모아 플러그인용 원격 MCP 활성화·RFC9207 issuer 지원. 실제 HTTPS48/0, 사용자 ChatGPT 로그인은 별도 대기. `docs/work-items/mcp-chatgpt-activation.md`.
 
 > 최신 운영 v2.70.1: 토큰 권한 선택 행 분리와 문서 MCP 연결 보정. 실제 화면12/0·자산3/0, 기존 업무/파일 보존. 상세 `docs/work-items/token-scope-layout.md`.

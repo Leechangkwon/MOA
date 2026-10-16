@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.70.2",
-  "verified_runtime_commit": "1904afcba11583fb1ca3a81a5be226733bcdaa6d",
-  "verified_checkout_commit": "1904afcba11583fb1ca3a81a5be226733bcdaa6d",
-  "verified_tree": "1d7bdf247fc0d4de75386bea70592ca4bd70f2c3",
-  "verified_at": "2026-10-16T18:23:07.966141+09:00",
+  "version": "2.71.0",
+  "verified_runtime_commit": "f8f65394540aa60441d6cb07923ba8135d4797bc",
+  "verified_checkout_commit": "f8f65394540aa60441d6cb07923ba8135d4797bc",
+  "verified_tree": "7cf8abb3787663c4c3c753946f85bd026091a758",
+  "verified_at": "2026-10-16T19:42:06.047762+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "1904afcba11583fb1ca3a81a5be226733bcdaa6d",
+  "release_commit": "f8f65394540aa60441d6cb07923ba8135d4797bc",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,99 +15,128 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "ChatGPT MCP issuer compatibility and remote activation",
-    "integration_pass": 755,
-    "integration_fail": 0,
-    "oauth_unit_pass": 141,
-    "protocol_unit_pass": 94,
-    "scripted_tools_unit_pass": 61,
-    "https_oauth_pass": 48,
-    "remote_mcp": {
-      "status": "ready",
-      "enabled": true,
-      "configured": true,
-      "redirect_uris": [
-        "https://chatgpt.com/connector_platform_oauth_redirect"
-      ]
-    },
+    "scope": "프로젝트 기본 섹션 이름·삭제와 프로젝트 문서 열기",
+    "acceptance_pass": 64,
+    "acceptance_fail": 0,
+    "https_assets_pass": 11,
+    "live_ui_pass": 22,
     "rows_preserved": true,
     "business_tables_checked": 100,
     "storage_files_preserved": 798,
     "config_files_preserved": 10,
     "tracked_file_metadata_preserved": true,
+    "after_live_preservation": {
+      "business_tables_checked": 98,
+      "changed_tables": [],
+      "excluded_tables": [
+        "public.users: review login/TOTP metadata",
+        "public.api_tokens: authorized user MCP reads update last_used_at"
+      ],
+      "owners_acl_preserved": true,
+      "original_files_preserved": true
+    },
     "migrations": [],
-    "server_configuration_changes": [
-      ".env: MCP_REMOTE_ENABLED",
-      ".env: MCP_OAUTH_REDIRECT_URIS"
-    ],
+    "server_configuration_changes": 0,
     "php_runtime_dependency_changes": 0,
-    "review_business_write_requests": 0,
-    "review_oauth_grant_revoked": true,
+    "review_created_projects": 2,
+    "review_created_tasks": 2,
+    "review_new_pages_trashed": true,
     "review_session_revoked": true,
     "security_lint_violations": 0,
     "wiki_articles": 70,
     "runtime_sha256": {
-      "VERSION": "196feb6a59ed51c3ae666257ab4b52f4d672506440bc5ed3ec318af2f8e7c0e5",
-      "CHANGELOG.json": "c075d550f9b3ac16d9f26c64a3c85b0789bcc59c340a753e22ba0faf46194151",
-      "src/mcp/McpOAuth.php": "bc47f49092f18bbe66227df6fc77e4b307ee1d3d0ab19b66e6180511cdf44839"
+      "CHANGELOG.json": "1505b2b1b0dd2db3c8cc8b0246ae744686bf5c5939041f0387cfb0174066a59e",
+      "VERSION": "3bda566726111c5cd18bea940d51d7c7ccc0c8dcdce4bcb884a5ee6938f27386",
+      "public/assets/app.css": "40b149f0936d665df378549d80d44f43afbcb86c6e5456b1ed8cc2de0c8035d4",
+      "public/assets/community/dashboard.js": "6b0af948ddb75f99aad21dfe6ad5f4bc138c65bb22aaf605642a7e4afa448f9e",
+      "public/assets/community/database.js": "35520bce7e16de21013a8d7f51043e6014bfdc87b40a00add3b3887ce9795a16",
+      "public/assets/community/db-option-label.js": "dc59ef32c9fb25f1a715cc952d78220d4424a5b6318a55ce12015b6c0c5edb5c",
+      "public/assets/community/editor.js": "9568a809f78a4577bfd712c6b4d2fd36c7215d823e9d682171b07e0bd3756a66",
+      "public/assets/community/suggestions.js": "7a77e6b5ed128e64137ec78f1607216bc752232873c0c2bc216c91e53fb5698f",
+      "public/assets/community/table-editor.js": "b965782c4529847986f7f8fa586e2bb09315c8caa2fd6148ba133ce8f3ce7548",
+      "public/assets/community/templates.js": "f49b0363846be2d477ae6d31d2c301e4f34d1d1a92cf0f24c8be4c8f6864174f",
+      "public/assets/community/work.js": "2dd74a43089221910d6b5ee39b08323b42cd237b0fdede680611dd27ade51f39",
+      "public/assets/messenger.js": "3388963d0a2e58ac1d2f75caa578910b2f9bf0dd9265e491f6c047b0000a3a35",
+      "src/community/DbProps.php": "d40abeabbeb55d3bbc60b47dd980ce283b7315e0c28b7a1e4000447197f453fd",
+      "src/community/handlers/database_rows.php": "cd4fe39fd5432826dc35bac2d58a286dbaeee768a34c3c0fea21a8a4c85b1e2e",
+      "src/community/handlers/database_schema.php": "d3767695fb6eca53b303cf61d52777571a06cddbdf06173cb64ac4df9aaa8e0c",
+      "src/community/handlers/page_view.php": "2978c4fa3e9f6778cd9395960a4c30d2f54437a509e3568a4597693ab740bac4"
+    },
+    "user_requested_record_saved": {
+      "project": "user-designated project (private id excluded)",
+      "appended_blocks": 234,
+      "original_blocks_preserved": true,
+      "readback_verified": true,
+      "scope": "project document only; no child cards created"
     },
     "unverified": [
-      "actual user ChatGPT OAuth and tool call",
+      "separate-context independent review",
       "physical mobile",
-      "external TLS proxy log policy",
-      "separate-context independent review"
+      "Safari",
+      "screen reader"
     ],
     "nightly_regression": [
-      "community.remote_mcp_http (deduplicated with existing queue)"
-    ],
-    "after_live_preservation": {
-      "unchanged_existing_business_tables": 99,
-      "changed_tables": [],
-      "excluded_table": "public.users: normal review login changes login/TOTP metadata; all original rows checked before live login",
-      "owners_acl_preserved": true,
-      "original_files_preserved": true
-    }
+      "community.qf12_server_http",
+      "community.qf12_work_browser"
+    ]
   },
   "previous_verification": {
-    "version": "2.70.1",
-    "verified_runtime_commit": "ac210fa08779093d734cba9d361f9bf2169dbe5e",
-    "verified_at": "2026-10-16T17:10:19.050943+09:00",
+    "version": "2.70.2",
+    "verified_runtime_commit": "1904afcba11583fb1ca3a81a5be226733bcdaa6d",
+    "verified_at": "2026-10-16T18:23:07.966141+09:00",
     "verification": {
-      "scope": "토큰 권한 선택 화면 정리 및 업무 MCP 실제 계정 연결 보정",
-      "ui_synthetic_pass": 38,
-      "ui_live_pass": 12,
-      "https_pass": 3,
-      "actual_sdk_unit_pass": 114,
-      "actual_stdio_verified": true,
+      "scope": "ChatGPT MCP issuer compatibility and remote activation",
+      "integration_pass": 755,
+      "integration_fail": 0,
+      "oauth_unit_pass": 141,
+      "protocol_unit_pass": 94,
+      "scripted_tools_unit_pass": 61,
+      "https_oauth_pass": 48,
+      "remote_mcp": {
+        "status": "ready",
+        "enabled": true,
+        "configured": true,
+        "redirect_uris": [
+          "https://chatgpt.com/connector_platform_oauth_redirect"
+        ]
+      },
       "rows_preserved": true,
       "business_tables_checked": 100,
       "storage_files_preserved": 798,
       "config_files_preserved": 10,
       "tracked_file_metadata_preserved": true,
       "migrations": [],
-      "server_configuration_changes": 0,
+      "server_configuration_changes": [
+        ".env: MCP_REMOTE_ENABLED",
+        ".env: MCP_OAUTH_REDIRECT_URIS"
+      ],
       "php_runtime_dependency_changes": 0,
-      "token_mutation_requests_in_review": 0,
+      "review_business_write_requests": 0,
+      "review_oauth_grant_revoked": true,
       "review_session_revoked": true,
       "security_lint_violations": 0,
       "wiki_articles": 70,
       "runtime_sha256": {
-        "CHANGELOG.json": "bfad018dbcc0c5e1ccd42d34351a14d3d08a82a7c0cd569605c54159a1343589",
-        "VERSION": "f553c319923ad5a4b8ec22499c11e1fa4825cb9f91cf2deeb257fea31bb9c5f8",
-        "public/assets/app.css": "923942fbb38b1848e0ba52d69d6cddef26f967e01251dd23c84ca91732a0ea9e",
-        "public/assets/app.js": "8da7244250118644ebc6312d6eb263a92b7c1de6bf0a64fd6e5891d9cd6fdb61",
-        "src/handlers/settings_page.php": "29f3c4b53bede93016dedff019519b276e325b0d156b977a4aff66e5aaff2cda"
+        "VERSION": "196feb6a59ed51c3ae666257ab4b52f4d672506440bc5ed3ec318af2f8e7c0e5",
+        "CHANGELOG.json": "c075d550f9b3ac16d9f26c64a3c85b0789bcc59c340a753e22ba0faf46194151",
+        "src/mcp/McpOAuth.php": "bc47f49092f18bbe66227df6fc77e4b307ee1d3d0ab19b66e6180511cdf44839"
       },
       "unverified": [
+        "actual user ChatGPT OAuth and tool call",
         "physical mobile",
-        "Safari",
-        "screen reader",
-        "separate-context independent review",
-        "current-chat native MCP catalogue refresh"
+        "external TLS proxy log policy",
+        "separate-context independent review"
       ],
       "nightly_regression": [
-        "core.qf10_multi_scope (already queued)"
-      ]
+        "community.remote_mcp_http (deduplicated with existing queue)"
+      ],
+      "after_live_preservation": {
+        "unchanged_existing_business_tables": 99,
+        "changed_tables": [],
+        "excluded_table": "public.users: normal review login changes login/TOTP metadata; all original rows checked before live login",
+        "owners_acl_preserved": true,
+        "original_files_preserved": true
+      }
     }
   },
   "evidence": [
@@ -120,12 +149,13 @@
     "docs/work-items/task-parent-navigation.md",
     "docs/work-items/work-document-mcp.md",
     "docs/work-items/token-scope-layout.md",
-    "docs/work-items/mcp-chatgpt-activation.md"
+    "docs/work-items/mcp-chatgpt-activation.md",
+    "docs/work-items/project-sections-and-moa-record.md"
   ],
   "git_sync": {
-    "scope": "Runtime verified at release; subsequent record commit only",
-    "branch": "codex/mcp-chatgpt-activation",
-    "main_release": "1904afcba11583fb1ca3a81a5be226733bcdaa6d"
+    "scope": "Runtime verified at release; later record commit only",
+    "branch": "codex/project-section-customization",
+    "main_release": "f8f65394540aa60441d6cb07923ba8135d4797bc"
   },
   "targeted_hotfixes": [
     {
