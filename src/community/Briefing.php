@@ -165,7 +165,8 @@ final class Briefing
         foreach ($branches as [$drive, $inner, $spaceCond, $outer, $ownedPersonal]) {
             $scope = $ownedPersonal ? 'TRUE' : <<<SQL
                 EXISTS (SELECT 1 FROM community.spaces s LEFT JOIN public.users owner ON owner.id = s.owner_user_id
-                         WHERE s.id = p.space_id AND {$spaceCond} AND {$visible})
+                         WHERE s.id = p.space_id
+                           AND {$spaceCond} AND {$visible})
                 SQL;
             $sub = <<<SQL
                 SELECT p.id AS bf_id, p.public_id, p.title, p.updated_at, p.created_at, p.due_date

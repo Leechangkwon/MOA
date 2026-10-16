@@ -1,7 +1,7 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=f9367461b689';
-import { renderDoc } from './doc-render.js?v=f9367461b689';
-import { createMentionInput } from './mention-input.js?v=f9367461b689';
-import { personText } from './cafe.js?v=f9367461b689';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=c43bf2af9110';
+import { renderDoc } from './doc-render.js?v=c43bf2af9110';
+import { createMentionInput } from './mention-input.js?v=c43bf2af9110';
+import { personText } from './cafe.js?v=c43bf2af9110';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
