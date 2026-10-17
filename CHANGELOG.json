@@ -1,5 +1,14 @@
 [
     {
+        "version": "2.73.1",
+        "level": "patch",
+        "released_at": "2026-10-17 21:36",
+        "title": "PC 비서 진단도 백업에서 보호해요",
+        "changes": [
+            "새 진단 표도 기존 읽기 전용 백업으로 보관해요"
+        ]
+    },
+    {
         "version": "2.73.0",
         "level": "minor",
         "released_at": "2026-10-17 21:33",
