@@ -35,7 +35,7 @@ def main():
     parser.add_argument('--port', type=int, default=8497, choices=(8497, 8498))
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--serve-only', action='store_true')
-    parser.add_argument('--suite', choices=('all','closing','closing-ui'), default='all')
+    parser.add_argument('--suite', choices=('all','closing','closing-ui','closing-grants'), default='all')
     parser.add_argument('--ttl', type=int, default=7200)
     args = parser.parse_args()
     if not 60 <= args.ttl <= 7200:
@@ -167,7 +167,9 @@ def main():
         if not args.serve_only:
             test_env = dict(fixture_env, ASSISTANT_TEST_MANIFEST=str(work / 'manifest.json'),
                             ASSISTANT_TEST_OUTPUT=str(args.output))
-            result = subprocess.run([sys.executable, str(ROOT / ('tests/assistant/client_diagnostics_ui.py' if args.suite=='closing-ui' else 'tests/assistant/client_diagnostics.py' if args.suite=='closing' else 'tests/assistant/integration.py'))],
+            if args.suite=='closing':
+                subprocess.run([sys.executable,str(ROOT/'tests/assistant/client_diagnostics_grants.py')],env=test_env,cwd=instance,check=True)
+            result = subprocess.run([sys.executable, str(ROOT / ('tests/assistant/client_diagnostics_grants.py' if args.suite=='closing-grants' else 'tests/assistant/client_diagnostics_ui.py' if args.suite=='closing-ui' else 'tests/assistant/client_diagnostics.py' if args.suite=='closing' else 'tests/assistant/integration.py'))],
                                     env=test_env, cwd=instance)
             # The server log contains no credentials in URI; integration uses headers/stdin only.
             server_log.flush()
@@ -176,7 +178,7 @@ def main():
                 raise RuntimeError('Integration failed; sanitized report contains checks')
             if args.suite=='all':
                 subprocess.run([sys.executable, str(ROOT / 'tests/assistant/chat.py')], env=test_env, cwd=instance, check=True)
-            if args.suite!='closing-ui':
+            if args.suite in ('all','closing'):
                 subprocess.run([sys.executable, str(ROOT / 'tests/assistant/programs.py')], env=test_env, cwd=instance, check=True)
             if args.suite=='closing':
                 subprocess.run([sys.executable, str(ROOT / 'tests/assistant/client_diagnostics_ui.py')], env=test_env, cwd=instance, check=True)

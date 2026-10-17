@@ -420,3 +420,17 @@ BEGIN
     END IF;
 END
 $$;
+
+-- Optional client summaries: new objects only; backup is read-only.
+DO $$
+BEGIN
+ IF to_regclass('public.client_diagnostic_events') IS NOT NULL THEN
+  GRANT SELECT,INSERT,DELETE ON public.client_diagnostic_events TO tbox_app;
+  GRANT USAGE,SELECT ON SEQUENCE public.client_diagnostic_events_id_seq TO tbox_app;
+  GRANT SELECT,UPDATE ON public.client_diagnostic_policy TO tbox_app;
+  GRANT SELECT,INSERT,UPDATE,DELETE ON public.client_diagnostic_rollups TO tbox_app;
+  GRANT SELECT ON public.client_diagnostic_events,public.client_diagnostic_policy,public.client_diagnostic_rollups TO tbox_backup;
+  GRANT SELECT ON SEQUENCE public.client_diagnostic_events_id_seq TO tbox_backup;
+ END IF;
+END
+$$;

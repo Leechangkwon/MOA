@@ -12,6 +12,8 @@ case 'snapshot':
     $files=$db->run("SELECT md5(string_agg(to_jsonb(f)::text,'' ORDER BY id)) FROM files f")->fetchColumn();
     $scopes=$db->run('SELECT id,scope,token_hash FROM api_tokens ORDER BY id')->fetchAll();
     echo json_encode(['files'=>$files,'scopes'=>$scopes]);break;
+case 'grants':
+    echo json_encode($db->run("SELECT has_table_privilege('tbox_backup','client_diagnostic_events','SELECT') AS backup_events,has_table_privilege('tbox_backup','client_diagnostic_policy','SELECT') AS backup_policy,has_table_privilege('tbox_backup','client_diagnostic_rollups','SELECT') AS backup_rollups,has_sequence_privilege('tbox_backup','client_diagnostic_events_id_seq','SELECT') AS backup_sequence,has_table_privilege('tbox_backup','client_diagnostic_events','INSERT') AS backup_write,has_table_privilege('tbox_app','client_diagnostic_events','UPDATE') AS app_update,has_table_privilege('tbox_app','client_diagnostic_events','INSERT') AS app_insert")->fetch());break;
 case 'counts':
     echo json_encode($db->run('SELECT owner_id,count(*) AS events FROM client_diagnostic_events GROUP BY owner_id ORDER BY owner_id')->fetchAll());break;
 case 'age':

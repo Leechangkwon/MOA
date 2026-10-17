@@ -6938,7 +6938,8 @@
         "public/assets/programs.js",
         "db/migrations/2026-10-17_client_diagnostics.sql",
         "protocols/client-diagnostics.json",
-        "scripts/client_diagnostics_rollup.php"
+        "scripts/client_diagnostics_rollup.php",
+        "db/grants.sql"
       ],
       "requirements": [
         "T:S-01",
