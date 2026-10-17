@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.72.0",
-  "verified_runtime_commit": "2edc5043c4ff1842da144405868984d6dee39426",
-  "verified_checkout_commit": "2edc5043c4ff1842da144405868984d6dee39426",
-  "verified_tree": "bd2d807f282366a337f4bd3060b22de63284b22e",
-  "verified_at": "2026-10-17T02:22:39.309788+09:00",
+  "version": "2.73.1",
+  "verified_runtime_commit": "9ce41657dde002c4237df60bd00ff3c2701acfba",
+  "verified_checkout_commit": "9ce41657dde002c4237df60bd00ff3c2701acfba",
+  "verified_tree": "3cd2bfa50dff1d716bdd025e613b8247ea70ef52",
+  "verified_at": "2026-10-17T21:48:18.503813+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "2edc5043c4ff1842da144405868984d6dee39426",
+  "release_commit": "9ce41657dde002c4237df60bd00ff3c2701acfba",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,123 +15,119 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "지정한 업무 프로젝트에 개별 작업글 생성",
-    "acceptance_pass": 138,
-    "acceptance_fail": 0,
-    "real_sdk_tests_pass": 114,
-    "protocol_unit_pass": 94,
-    "https_health_pass": 1,
-    "live_ui_pass": 24,
+    "scope": "PC 검토 안전 재개·선택 진단·일별/주간 개선·검증 배포",
+    "pc_offline_pass": 58,
+    "pc_package_pass": 14,
+    "diagnostics_http_pass": 55,
+    "program_http_pass": 64,
+    "admin_browser_pass": 8,
+    "backup_grants_pass": 7,
+    "https_pass": 7,
+    "publish_download_pass": 29,
+    "mcp_https_oauth_pass": 48,
     "rows_preserved": true,
     "business_tables_checked": 100,
-    "storage_files_preserved": 798,
+    "storage_files_preserved": 378,
     "config_files_preserved": 10,
+    "old_owner_acl_preserved": true,
     "tracked_file_metadata_preserved": true,
-    "after_publication_preservation": {
-      "business_tables_checked": 98,
-      "changed_original_tables": [],
-      "owners_acl_preserved": true,
-      "original_files_preserved": true,
-      "excluded_tables": [
-        "public.users: normal review login/TOTP metadata",
-        "public.api_tokens: authorized user API updates last_used_at"
-      ],
-      "authorized_user_tasks": 36
-    },
-    "migrations": [],
-    "server_configuration_changes": 0,
-    "package_changes": 0,
-    "review_created_projects": 1,
-    "review_created_tasks": 1,
-    "review_new_pages_trashed": true,
-    "review_session_revoked": true,
+    "migrations": [
+      "db/migrations/2026-10-17_client_diagnostics.sql"
+    ],
+    "server_configuration_changes": [
+      "cron:client_diagnostics_rollup hourly/policy-gated",
+      "logrotate:client-diagnostics status"
+    ],
     "security_lint_violations": 0,
     "wiki_articles": 70,
-    "runtime_sha256": {
-      "CHANGELOG.json": "00ec3519fa178f113508d563bd36d6324a2bc67a7023bcd98165a8964fb0fc04",
-      "VERSION": "bbf694ba2005a3783518baf4fcec46e458f17cd1962846b8eeda9690dff44a62",
-      "public/assets/app.css": "40b149f0936d665df378549d80d44f43afbcb86c6e5456b1ed8cc2de0c8035d4",
-      "public/assets/community/dashboard.js": "6b0af948ddb75f99aad21dfe6ad5f4bc138c65bb22aaf605642a7e4afa448f9e",
-      "public/assets/community/database.js": "35520bce7e16de21013a8d7f51043e6014bfdc87b40a00add3b3887ce9795a16",
-      "public/assets/community/db-option-label.js": "dc59ef32c9fb25f1a715cc952d78220d4424a5b6318a55ce12015b6c0c5edb5c",
-      "public/assets/community/editor.js": "9568a809f78a4577bfd712c6b4d2fd36c7215d823e9d682171b07e0bd3756a66",
-      "public/assets/community/suggestions.js": "7a77e6b5ed128e64137ec78f1607216bc752232873c0c2bc216c91e53fb5698f",
-      "public/assets/community/table-editor.js": "b965782c4529847986f7f8fa586e2bb09315c8caa2fd6148ba133ce8f3ce7548",
-      "public/assets/community/templates.js": "f49b0363846be2d477ae6d31d2c301e4f34d1d1a92cf0f24c8be4c8f6864174f",
-      "public/assets/community/work.js": "2dd74a43089221910d6b5ee39b08323b42cd237b0fdede680611dd27ade51f39",
-      "public/assets/messenger.js": "3388963d0a2e58ac1d2f75caa578910b2f9bf0dd9265e491f6c047b0000a3a35",
-      "src/community/DbProps.php": "d40abeabbeb55d3bbc60b47dd980ce283b7315e0c28b7a1e4000447197f453fd",
-      "src/community/handlers/database_rows.php": "cd4fe39fd5432826dc35bac2d58a286dbaeee768a34c3c0fea21a8a4c85b1e2e",
-      "src/community/handlers/database_schema.php": "d3767695fb6eca53b303cf61d52777571a06cddbdf06173cb64ac4df9aaa8e0c",
-      "src/community/handlers/page_view.php": "2978c4fa3e9f6778cd9395960a4c30d2f54437a509e3568a4597693ab740bac4",
-      "src/community/WorkDocuments.php": "0c436c4d0960229e085e0a403a7c97b442a0e1ee46c7346e401610e5389c8409",
-      "src/community/forms_helpers.php": "1612d257af97067a335269d841421672edd77190ea8df45e2a7140ec1f7a6413",
-      "src/community/handlers/work_document_create.php": "16eeb884cbd5678d15834eef0597fd38f88bd6502684d2583e5e38174f7df461",
-      "src/community/routes.php": "56986d14b3c63bc159f667c5cc7f70765a2c1842a4abbf8d06d53648b488c3ea",
-      "src/mcp/McpTools.php": "75314cabd3668a6c2d07fc9d203b533b5a4b54bd78635d0d5996d37218a231ea"
-    },
-    "user_requested_record_saved": {
-      "scope": "36 direct project task documents; no other projects changed",
-      "created_tasks": 36,
-      "status_counts": {
-        "done": 24,
-        "review": 4,
-        "todo": 7,
-        "hold": 1
-      },
-      "original_project_blocks_preserved": 235,
-      "original_doc_version": 4,
-      "all_readbacks_verified": true
-    },
+    "central_diagnostic_event_count": 0,
     "unverified": [
+      "home PC actual AI9/9",
+      "actual Windows DPAPI/install/update",
+      "user other-host/mobile OAuth and tools",
       "separate-context independent review",
-      "physical mobile",
-      "user ChatGPT tool call"
+      "nightly proportional regression"
     ],
     "nightly_regression": [
       "core.qf8_token_write",
-      "community.work_document_mcp",
-      "community.qf12_server_http",
-      "community.remote_mcp_http"
-    ]
+      "core.qf10_multi_scope"
+    ],
+    "runtime_sha256": {
+      "CHANGELOG.json": "b1f6585b670ee9f2b3e44a1a67bed6c4b6eee5176639538f6f80a694b2b91576",
+      "VERSION": "27382dc91b7e0755f5c351a264180349004c51fb1cf6b428d52a0f6de2a61d52",
+      "db/grants.sql": "0caac8708fbaf3c05c43682a594d42bd0fef63705b41faecd0c353305251301c",
+      "db/migrations/2026-10-17_client_diagnostics.sql": "7350590864a7ed93c7bbaa87a0e6c1b48d2b05e349d54fa5da5c1e142cc6a507",
+      "db/schema.sql": "34bd6352b378d5171cccc7321fd15001f6507d5420c4a41481652614b772d812",
+      "deploy/cron.d/tbox-v2": "05a3508051c3e4ad5893dd40b1a3ab6c383301196f5cae48db99cb8713a0dbcf",
+      "deploy/logrotate.d/tbox-v2": "752b02162aab4b1bcfd5f8201d5bd30fddb577e689bdeaeb7861e79fc584c281",
+      "protocols/client-diagnostics.json": "2dd1ea42fd0e3b3dba0008c7b9bc24dc38dabf69456195ba7e652b53edf6f1de",
+      "public/assets/app.js": "e96b27b5727038960cd9eb04dd4afb4f8e9bd5eadfd587a2af632b46a2b838cd",
+      "public/assets/client-diagnostics.js": "1661f0fd5fc086b2d647c8d2ffb8f0cc29fb833b3348ec819728775f41906850",
+      "public/assets/programs.js": "d809d4c3e66a31796963c6c655b1b7576459da1ae36cc769ed8827d51041ea92",
+      "public/index.php": "9abdea750f896f946ecb961d5d77058d5ac89181576b379d3b6f0c39c7d728e4",
+      "scripts/client_diagnostics_rollup.php": "9c21f840ce7ef9231e9eadeebfbd5f80f7fabd49a8c4e8f206abd7b55d68ee50",
+      "src/Audit.php": "27bce8da2284a0a6fd27da6cc3202ebae55549cf4455a91542102cb3df588f4b",
+      "src/Authz.php": "459e28b0dbfd548e8627c43748efe21f6e00574d4e3eeb674b66fa4d1e01e5b0",
+      "src/ClientDiagnostics.php": "3215155f60c602cfd5b3cf29337e8a890967714e3ed107cbc836c7e30f62abee",
+      "src/Programs.php": "75d126b6d24145a2454b2cc4b60f249b858cbd74d9f8bfe8aec9d58de1ca7f22",
+      "src/handlers/client_diagnostics.php": "4bad8ac051ccb844a9d46357e19acc1df3e1208452f0a43f8250f30790bf2c7c",
+      "src/handlers/client_diagnostics_admin.php": "49b36ba4d7641275d0df4f810cdba7f83a0ba6ba5183d1f0363b6281df85db70",
+      "src/handlers/client_release.php": "d9b78a0c251ef0ce7e450258cc7cd14c88e9979a88bc3d61d90d558e373156ba",
+      "src/handlers/programs_control.php": "70f7acf31e77353fb4c7a204dbe7d55ee6f664135ad7926ba772691887f4d6d0",
+      "src/handlers/programs_page.php": "28bacf29aa56bb7faf4149aa5e68ef8f77f2097c8331ae9fd6febf8281cab690",
+      "wiki/tbox/index.json": "269d3ece7f996acd037279da5392d6dfbda06b45f852635b7608a6ca869bad40",
+      "wiki/tbox/stage-28.json": "5c9acec4b4cc74439cd75ad4818c4ec2d0523f67a0ebd574499a2c0f3a121b88"
+    },
+    "user_requested_record_saved": {
+      "page_id": "dcbaac16-d150-44db-9f4f-35421b10e626",
+      "doc_version": 5,
+      "existing_blocks_preserved": 31,
+      "appended_blocks": 7,
+      "readback_verified": true
+    }
   },
   "previous_verification": {
-    "version": "2.71.0",
-    "verified_runtime_commit": "f8f65394540aa60441d6cb07923ba8135d4797bc",
-    "verified_at": "2026-10-16T19:42:06.047762+09:00",
+    "version": "2.72.0",
+    "verified_runtime_commit": "2edc5043c4ff1842da144405868984d6dee39426",
+    "verified_checkout_commit": "2edc5043c4ff1842da144405868984d6dee39426",
+    "verified_tree": "bd2d807f282366a337f4bd3060b22de63284b22e",
+    "verified_at": "2026-10-17T02:22:39.309788+09:00",
     "verification": {
-      "scope": "프로젝트 기본 섹션 이름·삭제와 프로젝트 문서 열기",
-      "acceptance_pass": 64,
+      "scope": "지정한 업무 프로젝트에 개별 작업글 생성",
+      "acceptance_pass": 138,
       "acceptance_fail": 0,
-      "https_assets_pass": 11,
-      "live_ui_pass": 22,
+      "real_sdk_tests_pass": 114,
+      "protocol_unit_pass": 94,
+      "https_health_pass": 1,
+      "live_ui_pass": 24,
       "rows_preserved": true,
       "business_tables_checked": 100,
       "storage_files_preserved": 798,
       "config_files_preserved": 10,
       "tracked_file_metadata_preserved": true,
-      "after_live_preservation": {
+      "after_publication_preservation": {
         "business_tables_checked": 98,
-        "changed_tables": [],
-        "excluded_tables": [
-          "public.users: review login/TOTP metadata",
-          "public.api_tokens: authorized user MCP reads update last_used_at"
-        ],
+        "changed_original_tables": [],
         "owners_acl_preserved": true,
-        "original_files_preserved": true
+        "original_files_preserved": true,
+        "excluded_tables": [
+          "public.users: normal review login/TOTP metadata",
+          "public.api_tokens: authorized user API updates last_used_at"
+        ],
+        "authorized_user_tasks": 36
       },
       "migrations": [],
       "server_configuration_changes": 0,
-      "php_runtime_dependency_changes": 0,
-      "review_created_projects": 2,
-      "review_created_tasks": 2,
+      "package_changes": 0,
+      "review_created_projects": 1,
+      "review_created_tasks": 1,
       "review_new_pages_trashed": true,
       "review_session_revoked": true,
       "security_lint_violations": 0,
       "wiki_articles": 70,
       "runtime_sha256": {
-        "CHANGELOG.json": "1505b2b1b0dd2db3c8cc8b0246ae744686bf5c5939041f0387cfb0174066a59e",
-        "VERSION": "3bda566726111c5cd18bea940d51d7c7ccc0c8dcdce4bcb884a5ee6938f27386",
+        "CHANGELOG.json": "00ec3519fa178f113508d563bd36d6324a2bc67a7023bcd98165a8964fb0fc04",
+        "VERSION": "bbf694ba2005a3783518baf4fcec46e458f17cd1962846b8eeda9690dff44a62",
         "public/assets/app.css": "40b149f0936d665df378549d80d44f43afbcb86c6e5456b1ed8cc2de0c8035d4",
         "public/assets/community/dashboard.js": "6b0af948ddb75f99aad21dfe6ad5f4bc138c65bb22aaf605642a7e4afa448f9e",
         "public/assets/community/database.js": "35520bce7e16de21013a8d7f51043e6014bfdc87b40a00add3b3887ce9795a16",
@@ -145,45 +141,135 @@
         "src/community/DbProps.php": "d40abeabbeb55d3bbc60b47dd980ce283b7315e0c28b7a1e4000447197f453fd",
         "src/community/handlers/database_rows.php": "cd4fe39fd5432826dc35bac2d58a286dbaeee768a34c3c0fea21a8a4c85b1e2e",
         "src/community/handlers/database_schema.php": "d3767695fb6eca53b303cf61d52777571a06cddbdf06173cb64ac4df9aaa8e0c",
-        "src/community/handlers/page_view.php": "2978c4fa3e9f6778cd9395960a4c30d2f54437a509e3568a4597693ab740bac4"
+        "src/community/handlers/page_view.php": "2978c4fa3e9f6778cd9395960a4c30d2f54437a509e3568a4597693ab740bac4",
+        "src/community/WorkDocuments.php": "0c436c4d0960229e085e0a403a7c97b442a0e1ee46c7346e401610e5389c8409",
+        "src/community/forms_helpers.php": "1612d257af97067a335269d841421672edd77190ea8df45e2a7140ec1f7a6413",
+        "src/community/handlers/work_document_create.php": "16eeb884cbd5678d15834eef0597fd38f88bd6502684d2583e5e38174f7df461",
+        "src/community/routes.php": "56986d14b3c63bc159f667c5cc7f70765a2c1842a4abbf8d06d53648b488c3ea",
+        "src/mcp/McpTools.php": "75314cabd3668a6c2d07fc9d203b533b5a4b54bd78635d0d5996d37218a231ea"
       },
       "user_requested_record_saved": {
-        "project": "user-designated project (private id excluded)",
-        "appended_blocks": 234,
-        "original_blocks_preserved": true,
-        "readback_verified": true,
-        "scope": "project document only; no child cards created"
+        "scope": "36 direct project task documents; no other projects changed",
+        "created_tasks": 36,
+        "status_counts": {
+          "done": 24,
+          "review": 4,
+          "todo": 7,
+          "hold": 1
+        },
+        "original_project_blocks_preserved": 235,
+        "original_doc_version": 4,
+        "all_readbacks_verified": true
       },
       "unverified": [
         "separate-context independent review",
         "physical mobile",
-        "Safari",
-        "screen reader"
+        "user ChatGPT tool call"
       ],
       "nightly_regression": [
+        "core.qf8_token_write",
+        "community.work_document_mcp",
         "community.qf12_server_http",
-        "community.qf12_work_browser"
+        "community.remote_mcp_http"
       ]
+    },
+    "evidence": [
+      "docs/work-items/scale-b.md",
+      "docs/work-items/document-bulk-trash.md",
+      "docs/work-items/scale-a.md",
+      "docs/work-items/community-clipboard-html.md",
+      "docs/work-items/scale-d2a-resume.md",
+      "docs/scale-d2a-report.md",
+      "docs/work-items/task-parent-navigation.md",
+      "docs/work-items/work-document-mcp.md",
+      "docs/work-items/token-scope-layout.md",
+      "docs/work-items/mcp-chatgpt-activation.md",
+      "docs/work-items/project-sections-and-moa-record.md",
+      "docs/work-items/work-record-task-creation.md"
+    ],
+    "previous_verification": {
+      "version": "2.71.0",
+      "verified_runtime_commit": "f8f65394540aa60441d6cb07923ba8135d4797bc",
+      "verified_at": "2026-10-16T19:42:06.047762+09:00",
+      "verification": {
+        "scope": "프로젝트 기본 섹션 이름·삭제와 프로젝트 문서 열기",
+        "acceptance_pass": 64,
+        "acceptance_fail": 0,
+        "https_assets_pass": 11,
+        "live_ui_pass": 22,
+        "rows_preserved": true,
+        "business_tables_checked": 100,
+        "storage_files_preserved": 798,
+        "config_files_preserved": 10,
+        "tracked_file_metadata_preserved": true,
+        "after_live_preservation": {
+          "business_tables_checked": 98,
+          "changed_tables": [],
+          "excluded_tables": [
+            "public.users: review login/TOTP metadata",
+            "public.api_tokens: authorized user MCP reads update last_used_at"
+          ],
+          "owners_acl_preserved": true,
+          "original_files_preserved": true
+        },
+        "migrations": [],
+        "server_configuration_changes": 0,
+        "php_runtime_dependency_changes": 0,
+        "review_created_projects": 2,
+        "review_created_tasks": 2,
+        "review_new_pages_trashed": true,
+        "review_session_revoked": true,
+        "security_lint_violations": 0,
+        "wiki_articles": 70,
+        "runtime_sha256": {
+          "CHANGELOG.json": "1505b2b1b0dd2db3c8cc8b0246ae744686bf5c5939041f0387cfb0174066a59e",
+          "VERSION": "3bda566726111c5cd18bea940d51d7c7ccc0c8dcdce4bcb884a5ee6938f27386",
+          "public/assets/app.css": "40b149f0936d665df378549d80d44f43afbcb86c6e5456b1ed8cc2de0c8035d4",
+          "public/assets/community/dashboard.js": "6b0af948ddb75f99aad21dfe6ad5f4bc138c65bb22aaf605642a7e4afa448f9e",
+          "public/assets/community/database.js": "35520bce7e16de21013a8d7f51043e6014bfdc87b40a00add3b3887ce9795a16",
+          "public/assets/community/db-option-label.js": "dc59ef32c9fb25f1a715cc952d78220d4424a5b6318a55ce12015b6c0c5edb5c",
+          "public/assets/community/editor.js": "9568a809f78a4577bfd712c6b4d2fd36c7215d823e9d682171b07e0bd3756a66",
+          "public/assets/community/suggestions.js": "7a77e6b5ed128e64137ec78f1607216bc752232873c0c2bc216c91e53fb5698f",
+          "public/assets/community/table-editor.js": "b965782c4529847986f7f8fa586e2bb09315c8caa2fd6148ba133ce8f3ce7548",
+          "public/assets/community/templates.js": "f49b0363846be2d477ae6d31d2c301e4f34d1d1a92cf0f24c8be4c8f6864174f",
+          "public/assets/community/work.js": "2dd74a43089221910d6b5ee39b08323b42cd237b0fdede680611dd27ade51f39",
+          "public/assets/messenger.js": "3388963d0a2e58ac1d2f75caa578910b2f9bf0dd9265e491f6c047b0000a3a35",
+          "src/community/DbProps.php": "d40abeabbeb55d3bbc60b47dd980ce283b7315e0c28b7a1e4000447197f453fd",
+          "src/community/handlers/database_rows.php": "cd4fe39fd5432826dc35bac2d58a286dbaeee768a34c3c0fea21a8a4c85b1e2e",
+          "src/community/handlers/database_schema.php": "d3767695fb6eca53b303cf61d52777571a06cddbdf06173cb64ac4df9aaa8e0c",
+          "src/community/handlers/page_view.php": "2978c4fa3e9f6778cd9395960a4c30d2f54437a509e3568a4597693ab740bac4"
+        },
+        "user_requested_record_saved": {
+          "project": "user-designated project (private id excluded)",
+          "appended_blocks": 234,
+          "original_blocks_preserved": true,
+          "readback_verified": true,
+          "scope": "project document only; no child cards created"
+        },
+        "unverified": [
+          "separate-context independent review",
+          "physical mobile",
+          "Safari",
+          "screen reader"
+        ],
+        "nightly_regression": [
+          "community.qf12_server_http",
+          "community.qf12_work_browser"
+        ]
+      }
     }
   },
-  "evidence": [
-    "docs/work-items/scale-b.md",
-    "docs/work-items/document-bulk-trash.md",
-    "docs/work-items/scale-a.md",
-    "docs/work-items/community-clipboard-html.md",
-    "docs/work-items/scale-d2a-resume.md",
-    "docs/scale-d2a-report.md",
-    "docs/work-items/task-parent-navigation.md",
-    "docs/work-items/work-document-mcp.md",
-    "docs/work-items/token-scope-layout.md",
-    "docs/work-items/mcp-chatgpt-activation.md",
-    "docs/work-items/project-sections-and-moa-record.md",
-    "docs/work-items/work-record-task-creation.md"
-  ],
+  "evidence": {
+    "work_item": "docs/work-items/closing-review-recovery.md",
+    "root": "/home/changkwon/qaredi-closing-review-results-20261017",
+    "backup": "/var/backups/tbox-v2/closing-diagnostics-20261017",
+    "deployment": "deploy/deployment.json",
+    "publication": "publication/final/result.json"
+  },
   "git_sync": {
-    "scope": "Runtime verified at release; later record commit only",
-    "branch": "codex/work-record-task-creation",
-    "main_release": "2edc5043c4ff1842da144405868984d6dee39426"
+    "verified_remote_main": "9ce41657dde002c4237df60bd00ff3c2701acfba",
+    "pc_source_branch_pushed": true,
+    "snapshot_note": "마지막 서버 확인 시점. 이후 기록 전용 커밋은 런타임을 바꾸지 않음"
   },
   "targeted_hotfixes": [
     {
@@ -214,5 +300,15 @@
       ],
       "details": "docs/work-items/gemini-36-flash.md"
     }
-  ]
+  ],
+  "pc_release": {
+    "version": "2026.10.17.3",
+    "file_id": "8dc4d5f6-931f-4936-af4d-10522e93a496",
+    "sha256": "2021bcce9b727a3613799c4a56354bf5d9b428da58d03baf73c54f4060d9a114",
+    "size_bytes": 1015101,
+    "source_commit": "85b4e8d3971bafbaadb67fa30c262c88a4a5d475",
+    "source_branch": "codex/closing-review-recovery",
+    "update_policy": "user_selected_when_idle",
+    "windows_live_test": false
+  }
 }

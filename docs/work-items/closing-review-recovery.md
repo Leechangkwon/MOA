@@ -40,7 +40,7 @@ PC2026.10.17.2, 소스1b9cde2/Git2 push. TBox-Closing-2026.10.17.2-update.zip/99
 
 공식 https://learn.chatgpt.com/docs/extend/mcp 는 서버 키/호스트 구성과 hosted plugin 연결을 구분하며, https://learn.chatgpt.com/docs/enterprise/plugin-management 는 MCP 설정을 담아 가져온 플러그인의 Desktop only 제한과 기존 app 참조 방식을 설명한다. 따라서 remote HTTPS만으로 모바일 호환이라고 단정하지 않는다. private 플러그인 참조의 public dependency 조회는 plugin_not_found였으며 설치 여부 실패로 해석하지 않는다. 실제 사용자 모바일/OAuth/도구 노출은 미검증이다.
 
-## 다음 구현 상태
+## 20:34 1차 직후 기록 — 후속 구현 전
 
 2~4차는 아직 구현·시험·배포 완료가 아니다. 일반 진단에는 코드/버전·무작위 식별자·단계·오류코드·건수·경과만 허용한다. 인증/원문/응답/사용자 경로는 전송하지 않으며 로컬 기본·사용자 선택 전송·범위/기간/용량/삭제/중단을 명시한다. 완료 응답은 보호된 업무 체크포인트로 일반 진단과 분리하고 현재 입력/모델/프롬프트/무결성/규칙으로 재검증한다. 이후 변경과 확인 결과를 여기에 이어 기록한다.
 
@@ -72,3 +72,19 @@ PC 원본은 codex/closing-review-recovery, 새 표시 버전2026.10.17.3이다.
 운영 backup 역할은 pg_read_all_data 회원/기본권한이 없으므로 새 진단 표·시퀀스에 SELECT가 필요함을 반영 전에 발견했다. 수정 허용 파일에 db/grants.sql을 추가하며 새3표/1시퀀스의 읽기 백업권한만 부여한다. 기존 객체 ACL은 변경하지 않는다. DB 이주·fresh schema·grants 모두 일치시킨다. v2.73.0은 운영 반영하지 않은 후보이며 고정 태그를 옮기지 않고 보완 후보를 v2.73.1로 발행한다.
 
 백업 권한 보완 합성7/0: 새3표/1시퀀스의 backup SELECT 허용, backup 쓰기와 app의 이벤트 UPDATE 거부, app INSERT 허용. migration 반복과 기존 토큰 보존 확인.
+
+## 최종 운영 반영 — 2026-10-17 21:43 KST
+
+1~4차의 구현·관련 수락시험·웹/PC 배포를 완료했다. 누락 검산 수정은1b9cde2/PC17.2, 완료응답 보안 보존·로컬재개·단계별진단·선택 전송/삭제/버전확인은85b4e8d/PC17.3, 중앙 진단·관리 집계·설정형 일별/주간 후보·배포 제어는 웹2.73.1/9ce4165다. PC 개발 원본은 별도 PC 전용 이력 codex/closing-review-recovery이고 웹은 main이다. 기존 소스 이력과 다른 작업은 보존했다.
+
+PC58/0·최종ZIP14/0, 임시DB 진단55/0·배포함64/0·관리화면8/0·백업권한7/0. 옛 스키마36표와 합성 사용자/토큰/파일 행에 새 이주를 두 번 적용해 행·owner/ACL·반복 결과를 보존했다. 보안 lint0·부품 버전 일치·위키70편/0. 운영 전 암호화 백업/전체복호화/파싱, 고정39파일 모의 적용·원격/로컬 drift, owner 역할의 추가 이주·FF·FPM reload·기존 cron/logrotate의 해당 부분 추가를 수행했다. 실제 HTTPS/인증 차단7/0. 정기 작업을 실제 계정으로 한 번 실행해 관측0인 일별 보고를 만들었고, 실제 진단 사건0으로 합성 수치를 운영에 넣지 않았다. 새3표와1시퀀스의 backup SELECT도 확인했다.
+
+운영 기존100표의 원래 행·owner/ACL, 저장 파일378개·설정10개·기존 코드 파일uid/gid/mode 보존. 신규 표3개와 선택 scope CHECK 확장만 이주했다. 원본/계정/초안/확인 이력 삭제·복원/재시드0. 배포함 정상 관리자 인증·OTP·운영 백신·게시·구성원 실제다운로드29/0. 게시 전1048파일행과 저장 원본378개·설정10개를 보존했고 기존판 파일도 남겼다.
+
+사내 배포: https://changkwon.mso.so/tbox/programs — TBox-Closing-2026.10.17.3-update.zip, 1,015,101 bytes, SHA256 2021bcce9b727a3613799c4a56354bf5d9b428da58d03baf73c54f4060d9a114, file8dc4d5f6-931f-4936-af4d-10522e93a496. 기존 업무 완료→트레이 종료→새 ZIP 전체 해제→update.cmd→기존 app.py 폴더 선택. fix-gpt-time.cmd는 시간 전용이다. 새 버전에서 수신하는 완료 응답부터 보호하며 이전에 저장되지 않은 실패 답변을 복원했다고 주장하지 않는다.
+
+MCP: 현재 qaredi 로컬STDIO/5업무도구/API계정 연결과 실제 저장·재조회 성공. 별도 정상 QA HTTPS OAuth/DCR/PKCE·initialize/tools/list/읽기48/0. 모아 프로젝트의 기존 MOA-023에 사용자 인계 원문·1차·2~4차 결과를 저장하고 판4→5 재조회, 기존31블록 불변/추가7블록 정확 일치를 확인했다. https://changkwon.mso.so/community/p/dcbaac16-d150-44db-9f4f-35421b10e626 . 다른 호스트의 moa 이름 등록·실제 사용자 OAuth·모바일 도구 노출은 미검증이며 해당 호스트 확인이 필요하다. 설치/@와 실제 도구 호출을 구분한다.
+
+남은 외부 확인: 실제 집PC AI9/9·Windows DPAPI/설치·업데이트·모바일/다른 호스트 OAuth·별도 독립 문맥 검토. Linux Tk/xvfb·암호화/잠금 대역·가짜 AI 시험을 실물 시험으로 표시하지 않았다. 비례 회귀는 기존 nightly에 core.qf8_token_write·core.qf10_multi_scope를 대기시켰으며 완료라고 하지 않는다. 신규 수락/배포 시험을 다시 목록에 중복하지 않았다.
+
+증빙: /home/changkwon/qaredi-closing-review-results-20261017/{final-gate/release-gate.json,final-package.log,web-acceptance.log,web-ui.log,web-grants.log,migration-rehearsal.json,deploy/deployment.json,deploy/https.json,publication/final/result.json,mcp/https-oauth.json}. 운영 백업 /var/backups/tbox-v2/closing-diagnostics-20261017, parse2304 regular files.
