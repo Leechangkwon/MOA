@@ -14,7 +14,7 @@ final class Programs
         [$where, $bindings] = Authz::visibleFilesWhere($user);
         $sql = <<<'SQL'
             SELECT f.public_id AS id,f.original_name AS name,f.program_version AS version,
-                   f.sha256,f.size_bytes,f.access_level,f.program_published_at AS published_at,u.username AS uploaded_by
+                   f.sha256,f.size_bytes,f.description,f.access_level,f.program_published_at AS published_at,u.username AS uploaded_by
               FROM files f JOIN users u ON u.id=f.uploaded_by
              WHERE f.program AND f.program_current AND f.scan_status='clean' AND
             SQL;
@@ -67,6 +67,9 @@ final class Programs
         try {
             // Serialize publication for this single product, including the first release.
             $db->run("SELECT pg_advisory_xact_lock(74626701)");
+            $conflict=$db->run('SELECT 1 FROM files WHERE program AND program_version=:version AND sha256<>:sha LIMIT 1',
+                              [':version'=>$body['version'],':sha'=>$body['sha256']])->fetchColumn();
+            if ($conflict) { $db->rollback();Http::error(409,'같은 버전에 다른 코드가 이미 있습니다. 새 버전으로 게시하세요.'); }
             $file=$db->run(<<<'SQL'
                 SELECT * FROM files WHERE public_id=CAST(:id AS uuid) AND uploaded_by=:uid
                  AND deleted_at IS NULL AND NOT program AND exec_content AND ext='zip'
@@ -91,6 +94,62 @@ final class Programs
                 'detail'=>['sha256'=>$file['sha256'],'version'=>$body['version'],'otp_verified'=>true]]);
             $db->commit();
         } catch (Throwable $e) { $db->rollback(); throw $e; }
+    }
+
+    public static function history(array $user): array
+    {
+        if (!self::mayPublish($user)) return [];
+        return Db::instance()->run('SELECT public_id AS id,original_name AS name,program_version AS version,sha256 FROM files WHERE program AND NOT program_current AND deleted_at IS NULL AND scan_status=\'clean\' ORDER BY program_published_at DESC LIMIT 10')->fetchAll();
+    }
+
+    public static function control(array $user,string $id,string $action,array $body): void
+    {
+        if (!self::mayPublish($user)) Http::error(403,Http::MSG_FORBIDDEN);
+        $keys=array_keys($body);sort($keys);
+        if (!in_array($action,['restore','withdraw'],true) || !Storage::isValidUuid($id) ||
+            $keys!==['ack','expected_current_id','otp','password','sha256'] || $body['ack']!==true ||
+            !is_string($body['password']) || !is_string($body['otp']) ||
+            !is_string($body['sha256']) || preg_match('/\A[a-f0-9]{64}\z/',$body['sha256'])!==1 ||
+            ($body['expected_current_id']!==null && (!is_string($body['expected_current_id']) || !Storage::isValidUuid($body['expected_current_id'])))) Http::error(400,Http::MSG_BAD_REQUEST);
+        if (!Auth::verifyCurrentPassword($user,$body['password'])) {
+            Audit::deny('program.control','bad_credentials',['target_type'=>'system']);
+            Auth::countFailureAndRevoke((int)$user['id']);Http::error(400,Http::MSG_BAD_REQUEST);
+        }
+        $otp=preg_match(Totp::CODE_RE,$body['otp'])===1 ? Auth::verifyOtpOnce($user,$body['otp']):'bad_code';
+        unset($body['password'],$body['otp']);
+        if ($otp!=='ok') {
+            Audit::deny('program.control',$otp,['target_type'=>'system']);
+            if ($otp!=='mfa_not_enabled') Auth::countFailureAndRevoke((int)$user['id']);
+            Http::error($otp==='mfa_not_enabled'?403:400,Http::MSG_BAD_REQUEST);
+        }
+        $db=Db::instance();$db->begin();
+        try {
+            $db->run('SELECT pg_advisory_xact_lock(74626701)');
+            $current=$db->run('SELECT public_id FROM files WHERE program AND program_current FOR UPDATE')->fetchColumn();
+            if (($current ?: null)!==$body['expected_current_id']) {
+                $db->rollback();Http::error(409,'현재 배포본이 바뀌었습니다. 새로 확인한 뒤 선택하세요.');
+            }
+            $file=$db->run('SELECT * FROM files WHERE public_id=CAST(:id AS uuid) AND program AND deleted_at IS NULL AND scan_status=\'clean\' FOR UPDATE',
+                            [':id'=>$id])->fetch();
+            if (!$file || !hash_equals($file['sha256'],$body['sha256']) || ($action==='withdraw' && !$file['program_current'])) {
+                $db->rollback();Http::error(409,'선택한 배포본의 상태가 바뀌었습니다.');
+            }
+            if ($action==='restore') {
+                $scanned=$db->run('SELECT 1 FROM audit_logs WHERE action=\'file.scan\' AND result=\'allow\' AND target_type=\'file\' AND target_id=:id AND detail->>\'sha256\'=:sha LIMIT 1',
+                                 [':id'=>(int)$file['id'],':sha'=>$file['sha256']])->fetchColumn();
+                Storage::assertExists($file['stored_name']);
+                if (!$scanned || !hash_equals($file['sha256'],Storage::sha256($file['stored_name']))) {
+                    $db->rollback();Http::error(409,'검사 기록과 원본 무결성을 확인하지 못했습니다.');
+                }
+            }
+            $db->run('UPDATE files SET program_current=false WHERE program AND program_current');
+            if ($action==='restore') $db->run('UPDATE files SET program_current=true WHERE id=:id',
+                                              [':id'=>(int)$file['id']]);
+            Audit::allow($action==='restore'?'program.restore':'program.withdraw',['target_type'=>'file',
+                'target_id'=>(int)$file['id'],'target_name'=>$file['original_name'],
+                'detail'=>['sha256'=>$file['sha256'],'version'=>$file['program_version'],'otp_verified'=>true]]);
+            $db->commit();
+        } catch (Throwable $e) { $db->rollback();throw $e; }
     }
 
     public static function download(array $user, string $id): never

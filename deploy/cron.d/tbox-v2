@@ -84,3 +84,6 @@ SHELL=/bin/bash
 
 # 비서의 명시적 파일 검색·근거 조회 대기열. AI 공급자 없이 읽기 도구만 실행한다.
 *    *   *   *  *     tbox-php  /usr/bin/php /var/www/qaredi/tbox-v2/scripts/assistant_worker.php --drain
+
+# PC 비서 선택 전송 요약: 설정된 시각·요일에만 생성하며 중복을 잠금으로 막습니다.
+15 * * * * tbox-php /usr/bin/php /var/www/qaredi/tbox-v2/scripts/client_diagnostics_rollup.php >> /var/log/tbox-v2/client-diagnostics.log 2>&1

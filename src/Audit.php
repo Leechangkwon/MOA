@@ -71,6 +71,8 @@ final class Audit
     }
 
     private const ALLOWED_DETAIL_KEYS = [
+        // Only counts and bounded schedule settings; no diagnostic event contents.
+        'diag_received','diag_duplicate','diag_deleted','diag_policy',
         // Product-space membership/record identifiers and fixed roles; no credentials or content.
         'member_id','role_before','role_after','record_id',
         'format','tree','pages','skipped','bytes','page_ids',
@@ -316,6 +318,15 @@ final class Audit
      * @var array<string,string>
      */
     private const SUMMARY_TEMPLATES = [
+        'program.control|deny|bad_credentials' => '{actor} 이(가) 설치본 배포 변경 인증에 실패했습니다',
+        'program.control|deny|bad_code' => '{actor} 이(가) 설치본 배포 변경 인증에 실패했습니다',
+        'program.control|deny|code_reused' => '{actor} 이(가) 설치본 배포 변경에 이미 쓴 인증 코드를 제출했습니다',
+        'program.control|deny|mfa_not_enabled' => '{actor} 이(가) 2단계 인증 없이 설치본을 배포 변경하려 해서 거부했습니다',
+        'client_diagnostics.receive|allow' => '{actor} 이(가) 선택한 PC 비서 요약 진단을 보냈습니다 (건수만 기록)',
+        'client_diagnostics.delete|allow' => '{actor} 이(가) 자기 설치의 요약 진단을 삭제했습니다',
+        'client_diagnostics.policy|allow' => '{actor} 이(가) 요약 진단의 보관·일별·주간 설정을 바꿨습니다',
+        'program.restore|allow' => '{actor} 이(가) 검증한 기존 프로그램을 다시 배포함에 올렸습니다',
+        'program.withdraw|allow' => '{actor} 이(가) 현재 프로그램 배포를 중단했습니다 (원본은 보존)',
         // Product space records never include invitation secrets or credentials.
         'product.transfer|deny|bad_credentials' => '{actor} 이(가) 공간 소유권 이전 인증에 실패했습니다',
         'product.request|deny|not_authorized' => '{actor} 이(가) 권한이 없는 공간 요청을 보내 막았습니다',

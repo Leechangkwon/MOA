@@ -54,3 +54,18 @@
     notifempty
     create 0640 tbox-php adm
 }
+
+# 요약 집계 작업 결과는 원문 없는 짧은 상태만 보관합니다.
+/var/log/tbox-v2/client-diagnostics.log {
+    su tbox-php adm
+    daily
+    maxsize 1M
+    rotate 14
+    maxage 14
+    compress
+    delaycompress
+    dateext
+    missingok
+    notifempty
+    create 0640 tbox-php adm
+}

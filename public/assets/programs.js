@@ -30,6 +30,19 @@
       finally { button.disabled = false; }
     });
   });
+  const control = document.getElementById('program-control');
+  if (control) control.addEventListener('submit', async event => {
+    event.preventDefault();
+    const option = control.elements.target.selectedOptions[0];
+    if (!option) return;
+    const button = control.querySelector('button'); button.disabled = true;
+    const body = {ack: true, expected_current_id: control.dataset.current || null,
+      sha256: option.dataset.sha, password: control.elements.password.value, otp: control.elements.otp.value};
+    control.elements.password.value = ''; control.elements.otp.value = '';
+    try { await post('/api/programs/' + encodeURIComponent(option.value) + '/' + option.dataset.action, body); window.location.reload(); }
+    catch (error) { status.textContent = error.message; }
+    finally { body.password = ''; body.otp = ''; button.disabled = false; }
+  });
   const publish = document.getElementById('program-publish');
   if (publish) publish.addEventListener('submit', async event => {
     event.preventDefault();

@@ -6913,6 +6913,45 @@
       "est_sec": 120,
       "timeout_sec": 600,
       "notes": "빈 합성 DB와 별도 PHP 서버만 사용. 운영 checkout 직접 실행 거부. 기존 데이터/원본/서비스 변경 없음. 실제 ChatGPT 앱 연결 검증과 구분."
+    },
+    {
+      "id": "tbox.client_diagnostics",
+      "cmd": "bash tests/assistant/closing.sh",
+      "module": "tbox",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/ClientDiagnostics.php",
+        "src/Programs.php",
+        "src/Authz.php",
+        "src/Audit.php",
+        "public/index.php",
+        "src/handlers/client_diagnostics.php",
+        "src/handlers/client_diagnostics_admin.php",
+        "src/handlers/client_release.php",
+        "src/handlers/programs_control.php",
+        "src/handlers/programs_page.php",
+        "public/assets/client-diagnostics.js",
+        "public/assets/programs.js",
+        "db/migrations/2026-10-17_client_diagnostics.sql",
+        "protocols/client-diagnostics.json",
+        "scripts/client_diagnostics_rollup.php"
+      ],
+      "requirements": [
+        "T:S-01",
+        "T:S-02",
+        "T:S-03",
+        "T:S-04",
+        "T:S-07",
+        "T:S-09"
+      ],
+      "risks": [],
+      "est_sec": 45,
+      "writes_prod": false,
+      "notes": "독립 합성 DB/실제HTTP만. 선택권한·동의·개인 격리·중복/한도·집계·보관·일별/주간·배포 중지/검증판 복원과390/1280 브라우저. 운영 데이터 복사·쓰기0. 필수 합성 DB 자격과Playwright 필요."
     }
   ]
 }

@@ -1458,3 +1458,13 @@ nginx는 검색·파일목록·게시판글목록의 GET에 IP당8r/s+burst16을
 ### 2026-10-17 프로젝트 작업글 생성
 
 `POST /community/api/work/documents` (`community.write`, 세션 CSRF 또는 개인 토큰): `project_id`, `request_id` UUID, `title`(1~200자), `blocks`(평문 문단/제목/목록/인용 1~100개, 문구 10000자), 선택 `status`(기존 5상태, 기본 todo), `section`(현재 section select의 저장값). 읽고 편집 가능한 살아 있는 업무 프로젝트의 직계 행만 만든다. 부모 공간·범위를 상속하고 소유권/공유/스키마/첨부 입력은 받지 않는다. 생성201, 동일 본문·상태·섹션·부모·작성자의 같은 요청 UUID 재전송200(`created:false`), 다른 요청/이후 수정/휴지통 UUID 충돌409. 응답 `id,url,doc_version,status,section,created`. UUID는 새 작업의 public ID이므로 응답 불명 시 해당 ID를 다시 읽는다. 기존 POST pages 토큰 위치 제한은 유지한다. 업무 문서 읽기는 프로젝트일 때 `project.sections:[{value,name}]`를 추가한다. OAuth `qaredi_create_work_document`는 기존 `work.read`+`work.write`와 같은 행 판정을 적용한다.
+
+## PC 비서 선택 요약 진단·배포 확인 (2026-10-17)
+
+GET `/api/client/release`는 `file.read`(파일 읽기 토큰 포함)로 현재 사용자에게 보이는 배포판의 버전·SHA256·변경 설명·게시시각·배포함 주소·사용자 선택 정책만 반환한다. 원본 업로더 이름은 제외한다.
+
+GET/POST/DELETE `/api/client/diagnostics`는 `client.diagnostics.write` 정책과 개인 토큰의 선택 범위 `diagnostics.write`를 요구한다. 파일/업무 권한을 자동 확대하지 않는다. GET은 정책/자기 계정 건수, POST는 `schema=1,policy_version=2026-10-17,ack=true,events=[...]`, DELETE는 `installation_id`만 받는다. 자세한 고정 필드/열거형/상한은 `protocols/client-diagnostics.json`이다. POST 최대100건·128KB, 개인1000/서비스10000건/일, 중복은 같은 accepted_ids로 확인하고 내용 충돌409, 한도429/Retry-After3600이다. 업무 원문·응답·첨부·임의 예외 메시지는 받지 않는다.
+
+GET `/admin/client-diagnostics` 및 GET/POST `/api/admin/client-diagnostics`는 관리자 audit.read와 재인증을 사용한다. 세션 쓰기는 CSRF를 요구한다. 정책은 retention_days1..30, daily/weekly_enabled(bool), daily_hour0..23, weekly_weekday1..7이다. 개별 기록은 자기 계정·설치만 지우고, 식별자 없는 기간별 집계는 최대30일 보관한다.
+
+POST `/api/programs/{id}/withdraw|restore`는 관리자 전용 일반 로그인·CSRF·비밀번호·새OTP와 `ack,expected_current_id,sha256`를 요구한다. 다른 파일 또는 현재판 변경409, 검증된 기존 프로그램 파일만 복원하며 파일/업무 자료를 삭제하지 않는다. 같은 버전에 다른 SHA의 신규 게시409이다.

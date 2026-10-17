@@ -64,6 +64,7 @@ final class Authz
          */
         'session.open',
         'assistant.run', // 별도 개인 비서 범위. 파일·로그인 범위와 독립이다.
+        'client.diagnostics.write', // 명시 선택한 자기 계정의 요약 진단만.
     ];
 
     /**
@@ -1442,7 +1443,7 @@ final class Authz
      * 이 표를 늘리려면 DB CHECK(`db/schema.sql` api_tokens_scope_check)·`tokenScopeAllows`·`tokenScopesFor`·화면 라벨
      * (`app.js` TOKEN_SCOPE_LABELS)을 함께 고쳐야 한다.
      */
-    public const TOKEN_SCOPE_ATOMS = ['read', 'upload', 'delete', 'community.read', 'community.write', 'session.open', 'assistant.run', 'travel.read', 'travel.write'];
+    public const TOKEN_SCOPE_ATOMS = ['read', 'upload', 'delete', 'community.read', 'community.write', 'session.open', 'assistant.run', 'travel.read', 'travel.write', 'diagnostics.write'];
 
     /** Q:F-10 — 원자 → 함께 있어야 하는 원자(없으면 정규화가 거부한다 — 「올리기만」「지우기만」 토큰은 없다). */
     private const TOKEN_SCOPE_REQUIRES = [
@@ -1590,6 +1591,7 @@ final class Authz
             $atoms[] = 'travel.read';
             $atoms[] = 'travel.write';
         }
+        if (self::canCommunityWrite($u)) $atoms[] = 'diagnostics.write';
         // Q:F-9 — 「이 PC 로그인 전용」은 2단계 인증이 켜진 계정 · Guest 가 아닌 계정만(판정은 canOpenSessionByToken 한 곳).
         if (self::canOpenSessionByToken($u)) {
             $atoms[] = 'session.open';
@@ -1682,6 +1684,9 @@ final class Authz
 
             case 'assistant.run':
                 return $scope === 'assistant.run';
+
+            case 'client.diagnostics.write':
+                return in_array('diagnostics.write', $held, true);
 
             default:
                 // 모르는 정책은 통과시키지 않는다 (authorize() 의 default 와 같은 원칙).
@@ -1860,6 +1865,7 @@ final class Authz
             case 'community.read':
                 return true;     // 라우터가 이미 requireLogin() 을 통과시켰다 (authenticated 와 같다)
 
+            case 'client.diagnostics.write':
             case 'community.write':
             case 'travel.read':
             case 'travel.write':

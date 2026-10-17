@@ -7448,6 +7448,7 @@ var TOKEN_SCOPE_LABELS = {
   'community.write': '커뮤니티 글쓰기',
   'travel.read': '내 여행 계획 읽기',
   'travel.write': '내 여행 계획 수정',
+  'diagnostics.write': 'PC 비서 요약 진단 전송 (선택)',
   'assistant.run': '비서 실행 (단독)',
   'session.open': '이 PC 로그인'
 };
@@ -7461,6 +7462,7 @@ var TOKEN_SCOPE_NOTES = {
   'community.write': '업무 문서 수정·개발 기록 추가·새 비공개 페이지 만들기. 커뮤니티 읽기도 함께 선택됩니다.',
   'travel.read': '내 여행 일정과 연결 기록 조회 · 다른 사람의 계획은 열리지 않습니다.',
   'travel.write': '내 여행 계획 만들기·수정·기록 연결 (여행 계획 읽기 포함)',
+  'diagnostics.write': '직접 선택한 진단 요약만 계정에 연결해 보냅니다. 원문·AI 답변·인증정보는 제외하고 관리자만 최대 30일 조회합니다. 파일·업무·로그인 권한은 포함하지 않습니다.',
   'assistant.run': '읽기 전용 파일 검색·근거 조회와 내 실행 상태. 다른 범위와 함께 발급하지 않습니다.',
   'session.open': '발급한 접속 주소(IP)에서만 로그인 없이 화면을 엽니다. 다른 PC·서버 연결용으로는 선택하지 마세요.'
 };

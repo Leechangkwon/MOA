@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "policy_version": "2026-10-17",
+  "max_batch": 100,
+  "local_days": 14,
+  "central_max_days": 30,
+  "fields": [
+    "event_id",
+    "installation_id",
+    "run_id",
+    "attempt_id",
+    "event",
+    "stage",
+    "error_code",
+    "status",
+    "cache",
+    "version",
+    "code_id",
+    "at",
+    "elapsed_ms",
+    "attempt_index",
+    "packet_index",
+    "retry_count",
+    "item_count",
+    "request_id",
+    "missing_fields",
+    "attempt_kind"
+  ],
+  "uuids": [
+    "event_id",
+    "installation_id",
+    "run_id",
+    "attempt_id"
+  ],
+  "events": [
+    "cache_reused",
+    "checkpoint_reused",
+    "request_started",
+    "response_received",
+    "result_saved",
+    "run_completed",
+    "run_failed",
+    "run_started",
+    "validation_completed"
+  ],
+  "stages": [
+    "checkpoint",
+    "complete",
+    "prepare",
+    "request",
+    "save",
+    "validate"
+  ],
+  "errors": [
+    "cancelled",
+    "checkpoint_integrity",
+    "checkpoint_storage",
+    "clock_error",
+    "incomplete",
+    "invalid_identity",
+    "model_required",
+    "network_error",
+    "none",
+    "permission_denied",
+    "protocol_error",
+    "reauth_required",
+    "response_group_scope",
+    "response_invalid",
+    "response_reference",
+    "response_scope",
+    "save_failed",
+    "save_unconfirmed",
+    "signature_error",
+    "source_changed",
+    "source_numbers_invalid",
+    "storage_error",
+    "stream_interrupted",
+    "stream_timeout",
+    "unavailable",
+    "unexpected_error",
+    "unsupported",
+    "usage_limit"
+  ],
+  "statuses": [
+    "running",
+    "success",
+    "failure",
+    "waiting"
+  ],
+  "cache": [
+    "none",
+    "verified",
+    "checkpoint"
+  ],
+  "attempt_kinds": [
+    "initial",
+    "resume",
+    "replay"
+  ],
+  "integers": {
+    "at": [
+      0,
+      253402300799
+    ],
+    "elapsed_ms": [
+      0,
+      604800000
+    ],
+    "attempt_index": [
+      1,
+      1000000
+    ],
+    "packet_index": [
+      0,
+      1000000
+    ],
+    "retry_count": [
+      0,
+      1
+    ],
+    "item_count": [
+      0,
+      1000000
+    ]
+  },
+  "missing_fields": [
+    "qty",
+    "supply",
+    "tax",
+    "tot"
+  ]
+}

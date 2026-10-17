@@ -301,10 +301,19 @@ const TBOX_ROUTES = [
     //   재인증 302 는 핸들러가), 그 밖에는 「내 휴지통」(본인이 올리고 본인이 지운 파일)이다.
     ['GET',    '/trash',                    'trash_page.php',    Authz::POLICY_AUTHENTICATED],
     ['GET',    '/settings',                 'settings_page.php', Authz::POLICY_AUTHENTICATED],
+    ['GET', '/api/client/release', 'client_release.php', 'file.read'],
+    ['GET', '/api/client/diagnostics', 'client_diagnostics.php', 'client.diagnostics.write'],
+    ['POST', '/api/client/diagnostics', 'client_diagnostics.php', 'client.diagnostics.write'],
+    ['DELETE', '/api/client/diagnostics', 'client_diagnostics.php', 'client.diagnostics.write'],
+    ['GET', '/admin/client-diagnostics', 'client_diagnostics_admin.php', 'audit.read'],
+    ['GET', '/api/admin/client-diagnostics', 'client_diagnostics_admin.php', 'audit.read'],
+    ['POST', '/api/admin/client-diagnostics', 'client_diagnostics_admin.php', 'audit.read'],
     ['GET', '/programs', 'programs_page.php', 'file.read'],
     ['GET', '/api/programs', 'programs.php', 'file.read'],
     ['POST', '/api/programs', 'programs.php', 'file.upload'],
     ['POST', '/api/programs/{id}/download', 'programs.php', 'file.read'],
+    ['POST', '/api/programs/{id}/restore', 'programs_control.php', 'file.upload'],
+    ['POST', '/api/programs/{id}/withdraw', 'programs_control.php', 'file.upload'],
 
     // 12-3 — 조직·권한 (PRD F-19 · 5.4 · 8장 `/api/org/*` 행, ARCH 5.9).
     //   org.manage : Admin 만 (Authz::canManageOrg). 나머지 역할은 여기서 끝나고
@@ -639,6 +648,8 @@ const TBOX_ASSISTANT_API_ROUTES = [
 ];
 
 const TBOX_API_TOKEN_ROUTES = [
+    'GET /api/client/release', 'GET /api/client/diagnostics',
+    'POST /api/client/diagnostics', 'DELETE /api/client/diagnostics',
     ...TBOX_ASSISTANT_API_ROUTES,
     'POST /api/upload',
     'GET /api/files',
@@ -667,6 +678,7 @@ const TBOX_API_TOKEN_ROUTES = [
  *   판단하고, 삭제 핸들러에는 토큰 종류를 보는 코드가 한 줄도 없다(세션과 같은 코드다).
  */
 const TBOX_API_TOKEN_PERSONAL_ROUTES = [
+    'GET /api/client/diagnostics', 'POST /api/client/diagnostics', 'DELETE /api/client/diagnostics',
     ...TBOX_ASSISTANT_API_ROUTES,
     'DELETE /api/files/{id}',
     'DELETE /api/folders/{num}',

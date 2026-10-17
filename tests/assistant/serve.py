@@ -35,6 +35,7 @@ def main():
     parser.add_argument('--port', type=int, default=8497, choices=(8497, 8498))
     parser.add_argument('--output', type=Path, required=True)
     parser.add_argument('--serve-only', action='store_true')
+    parser.add_argument('--suite', choices=('all','closing','closing-ui'), default='all')
     parser.add_argument('--ttl', type=int, default=7200)
     args = parser.parse_args()
     if not 60 <= args.ttl <= 7200:
@@ -135,6 +136,15 @@ def main():
         files_after = psql_sql("SELECT md5(string_agg((to_jsonb(f)-'program'-'program_version'-'program_current'-'program_published_at')::text,'' ORDER BY id)) FROM files f;")
         if files_before != files_after:
             raise RuntimeError('Program migration changed original file data')
+        tokens_before=psql_sql("SELECT md5(string_agg(to_jsonb(t)::text,'' ORDER BY id)) FROM api_tokens t;")
+        diag_migration=instance/'db/migrations/2026-10-17_client_diagnostics.sql'
+        if diag_migration.exists():
+            psql_file(diag_migration)
+            diag_meta_sql="SELECT conname,pg_get_constraintdef(oid) FROM pg_constraint WHERE conrelid IN ('client_diagnostic_events'::regclass,'api_tokens'::regclass) ORDER BY conname;"
+            diag_meta=psql_sql(diag_meta_sql)
+            psql_file(diag_migration)
+            if diag_meta!=psql_sql(diag_meta_sql) or tokens_before!=psql_sql("SELECT md5(string_agg(to_jsonb(t)::text,'' ORDER BY id)) FROM api_tokens t;"):
+                raise RuntimeError('Diagnostic migration changed existing tokens or repeated schema')
         (args.output / 'program-migration.log').write_text('EXISTING_SYNTHETIC_FILES_UNCHANGED=1; REPEAT_APPLY=1\n')
 
         manifest = dict(base_url=values['APP_URL'] + '/tbox', database=db_name, instance=str(instance),
@@ -157,15 +167,19 @@ def main():
         if not args.serve_only:
             test_env = dict(fixture_env, ASSISTANT_TEST_MANIFEST=str(work / 'manifest.json'),
                             ASSISTANT_TEST_OUTPUT=str(args.output))
-            result = subprocess.run([sys.executable, str(ROOT / 'tests/assistant/integration.py')],
+            result = subprocess.run([sys.executable, str(ROOT / ('tests/assistant/client_diagnostics_ui.py' if args.suite=='closing-ui' else 'tests/assistant/client_diagnostics.py' if args.suite=='closing' else 'tests/assistant/integration.py'))],
                                     env=test_env, cwd=instance)
             # The server log contains no credentials in URI; integration uses headers/stdin only.
             server_log.flush()
             (args.output / 'http.log').write_bytes((work / 'logs/php.log').read_bytes())
             if result.returncode:
                 raise RuntimeError('Integration failed; sanitized report contains checks')
-            subprocess.run([sys.executable, str(ROOT / 'tests/assistant/chat.py')], env=test_env, cwd=instance, check=True)
-            subprocess.run([sys.executable, str(ROOT / 'tests/assistant/programs.py')], env=test_env, cwd=instance, check=True)
+            if args.suite=='all':
+                subprocess.run([sys.executable, str(ROOT / 'tests/assistant/chat.py')], env=test_env, cwd=instance, check=True)
+            if args.suite!='closing-ui':
+                subprocess.run([sys.executable, str(ROOT / 'tests/assistant/programs.py')], env=test_env, cwd=instance, check=True)
+            if args.suite=='closing':
+                subprocess.run([sys.executable, str(ROOT / 'tests/assistant/client_diagnostics_ui.py')], env=test_env, cwd=instance, check=True)
         else:
             private_dir = args.output / 'private'
             private_dir.mkdir(mode=0o700, exist_ok=True)
