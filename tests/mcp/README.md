@@ -108,3 +108,19 @@ The fixture now checks the exact PNG without the private tEXt chunk, keeping
 image bytes and post-upload preservation assertions. No production media code
 was changed. Evidence: `/home/changkwon/qaredi-mcp-activation-results-20261016/`.
 This does not establish the user's actual ChatGPT OAuth connection.
+
+## Desktop loader and loopback callback (2026-10-18)
+
+`php tests/mcp/loopback_unit.php 0`, `1`, and `true` verify explicit opt-in,
+literal host/path, port bounds, client binding, URL-confusion rejection and exact
+HTTPS compatibility without a DB. The isolated remote suite now enables only
+the synthetic instance's loopback option and tests native DCR, variable listener
+ports, consent/state/issuer, exact code-exchange URI, PKCE/client binding, scoped
+work reads and revocation. No test follows a callback or contacts another host.
+
+`python3 tests/mcp/plugin_loader.py` uses the installed Codex app-server's actual
+`plugin/read` parser to compare the original portable server extension shape
+and the native package. It does not call a model, install anything, edit user
+config/cache, or fetch credentials. Native server and skill discovery are required;
+the portable result is recorded as diagnostics for the installed CLI version.
+This is a loader test on this server, not a home Windows or mobile success claim.

@@ -53,6 +53,19 @@ final class McpOAuth
         return array_values(array_unique($list));
     }
 
+    /** RFC8252 desktop callback: literal host/path only, never a URL prefix. */
+    public static function loopbackRedirect(string $uri): bool
+    {
+        if (preg_match('~\Ahttp://127\.0\.0\.1(?::([1-9][0-9]{0,4}))?/callback\z~D', $uri, $match) !== 1) { return false; }
+        return !isset($match[1]) || (int) $match[1] <= 65535;
+    }
+
+    public static function redirectAllowed(string $uri): bool
+    {
+        return in_array($uri, self::redirectAllowlist(), true)
+            || (Env::getOrEmpty('MCP_OAUTH_LOOPBACK_ENABLED') === '1' && self::loopbackRedirect($uri));
+    }
+
     public static function status(): string
     {
         if (Env::getOrEmpty('MCP_REMOTE_ENABLED') !== '1') { return 'disabled'; }
@@ -224,7 +237,7 @@ final class McpOAuth
             || $grants === null
             || ($input['response_types'] ?? ['code']) !== ['code']) { self::fail('invalid_client_metadata'); }
         foreach ($uris as $uri) {
-            if (!is_string($uri) || !in_array($uri, self::redirectAllowlist(), true)) { self::fail('invalid_redirect_uri'); }
+            if (!is_string($uri) || !self::redirectAllowed($uri)) { self::fail('invalid_redirect_uri'); }
         }
         // Ignore inert display metadata, but never fetch URLs or support CIMD/private secret auth.
         $db = Db::instance(); $db->begin();
@@ -252,7 +265,15 @@ final class McpOAuth
     private static function validRedirect(array $client, string $uri): bool
     {
         $uris = json_decode((string) $client['redirect_uris'], true);
-        return is_array($uris) && in_array($uri, $uris, true) && in_array($uri, self::redirectAllowlist(), true);
+        if (!is_array($uris) || !self::redirectAllowed($uri)) { return false; }
+        if (in_array($uri, $uris, true)) { return true; }
+        // Only the port can vary for the one opt-in literal loopback callback.
+        // The authorization code remains bound to the actual requested URI.
+        if (Env::getOrEmpty('MCP_OAUTH_LOOPBACK_ENABLED') !== '1' || !self::loopbackRedirect($uri)) { return false; }
+        foreach ($uris as $registered) {
+            if (is_string($registered) && self::loopbackRedirect($registered)) { return true; }
+        }
+        return false;
     }
 
     public static function startAuthorization(array $query): void

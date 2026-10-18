@@ -1,0 +1,22 @@
+{
+  "name": "moa-community-records",
+  "version": "1.0.1",
+  "description": "모아의 업무 프로젝트와 문서를 조회하고, 사용자가 지정한 문서의 기능 설명과 개발 기록을 갱신합니다. 모아 계정 연결이 필요합니다.",
+  "author": {
+    "name": "Qaredi"
+  },
+  "homepage": "https://changkwon.mso.so",
+  "skills": "./skills",
+  "mcpServers": "./.mcp.json",
+  "interface": {
+    "displayName": "모아 커뮤니티 기록",
+    "shortDescription": "업무 문서와 개발 기록 관리",
+    "longDescription": "모아 계정으로 로그인해 접근 가능한 업무 프로젝트와 문서를 읽습니다. 사용자가 요청하면 기존 그림과 표를 보존하면서 문구를 수정하거나 개발 기록을 덧붙입니다. ChatGPT용 원격 MCP가 활성화된 서버에서 사용할 수 있습니다.",
+    "developerName": "Qaredi",
+    "category": "Productivity",
+    "capabilities": [],
+    "logo": "./assets/icon.png",
+    "composerIcon": "./assets/icon.png",
+    "defaultPrompt": "모아에서 내 업무 프로젝트 목록을 보여 줘. 문서를 선택하면 기능 설명과 개발 기록을 정리하고 싶어."
+  }
+}

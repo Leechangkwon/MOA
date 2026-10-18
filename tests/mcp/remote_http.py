@@ -70,6 +70,8 @@ def guard(manifest, fixture_config, marker):
             raise ValueError('Storage is not disposable')
         if config.get('MCP_REMOTE_ENABLED') != '1' or json.loads(config.get('MCP_OAUTH_REDIRECT_URIS', 'null')) != [CALLBACK]:
             raise ValueError('Explicit isolated MCP configuration required')
+        if config.get('MCP_OAUTH_LOOPBACK_ENABLED') != '1':
+            raise ValueError('Explicit isolated native callback setting required')
     if read_env(Path(fixture_config)).get('DB_USER') != 'tbox_testdb':
         raise ValueError('Dedicated fixture DB role required')
     return instance
@@ -83,7 +85,7 @@ def guard_selftest():
         config = instance / '.stage13-fixture.env'
         values = dict(DB_NAME='tbox_memories_test_8768_1234', DB_HOST='127.0.0.1', DB_PORT='5432',
                       DB_USER='tbox_testdb', APP_URL=ISSUER, STORAGE_DIR=str(work / 'storage'),
-                      MCP_REMOTE_ENABLED='1', MCP_OAUTH_REDIRECT_URIS=json.dumps([CALLBACK]))
+                      MCP_REMOTE_ENABLED='1', MCP_OAUTH_REDIRECT_URIS=json.dumps([CALLBACK]), MCP_OAUTH_LOOPBACK_ENABLED='1')
         def save():
             text = ''.join(key + '=' + value + '\n' for key, value in values.items())
             config.write_text(text)
@@ -108,7 +110,8 @@ def guard_selftest():
                 raise AssertionError('Unsafe target accepted')
         for key, bad_value in (('DB_NAME', 'tbox_re'), ('DB_HOST', 'db.internal'),
                                ('DB_PORT', '5433'), ('DB_USER', 'postgres'),
-                               ('STORAGE_DIR', '/var/lib/tbox-v2'), ('MCP_OAUTH_REDIRECT_URIS', '[]')):
+                               ('STORAGE_DIR', '/var/lib/tbox-v2'), ('MCP_OAUTH_REDIRECT_URIS', '[]'),
+                               ('MCP_OAUTH_LOOPBACK_ENABLED', '0')):
             original = values[key]
             values[key] = bad_value
             save()
@@ -263,7 +266,7 @@ class Acceptance:
         if expected != 200:
             return result
         redirect = urlsplit(result['redirect_url'])
-        self.check(redirect._replace(query='').geturl() == CALLBACK, 'approved redirect matches registered callback exactly')
+        self.check(redirect._replace(query='').geturl() == pending['query']['redirect_uri'], 'approved redirect matches requested callback exactly')
         params = parse_qs(redirect.query)
         self.check(params['state'] == [pending['query']['state']], 'OAuth state preserved')
         self.check(params.get('iss') == [ISSUER], 'authorization success/denial identifies the configured issuer')
@@ -275,7 +278,7 @@ class Acceptance:
 
     def exchange(self, pending, expected=200, **changes):
         data = dict(grant_type='authorization_code', code=pending['code'], code_verifier=pending['verifier'],
-                    client_id=pending['query']['client_id'], redirect_uri=CALLBACK, resource=self.resource)
+                    client_id=pending['query']['client_id'], redirect_uri=pending['query']['redirect_uri'], resource=self.resource)
         data.update(changes)
         response = self.request('POST', '/tbox/oauth/token', data=data, expected=expected)
         self.check('no-store' in response.headers.get('Cache-Control', ''), 'token responses forbid caching')
@@ -341,7 +344,42 @@ def synthetic_png(private_metadata=True):
             chunk(b'IDAT', zlib.compress((b'\x00' + b'\x70\x90\xb0' * 4) * 4)) + chunk(b'IEND', b''))
 
 
+def loopback_acceptance(t):
+    registered = 'http://127.0.0.1:45123/callback'
+    active = 'http://127.0.0.1:45124/callback'
+    for bad in ('http://localhost:45123/callback', 'http://127.0.0.2:45123/callback',
+                registered + '?state=overwrite', registered + '#fragment', registered + '/child',
+                'http://127.0.0.1:0/callback', 'http://127.0.0.1:65536/callback'):
+        r = t.request('POST', '/tbox/oauth/register', expected=400, json={'redirect_uris': [bad]})
+        t.check(r.json().get('error') == 'invalid_redirect_uri', 'native DCR rejects host/path/port confusion')
+    client = t.register(redirect_uris=[registered])
+    web_client = t.register()
+    pending = t.pending(client, 'memories.read work.read', redirect_uri=active)
+    for changes in ({'client_id': web_client}, {'redirect_uri': CALLBACK},
+                    {'redirect_uri': active + '/child'}, {'redirect_uri': active + '?x=1'}):
+        query = dict(pending['query'], **changes)
+        r = t.request('GET', '/tbox/oauth/authorize?' + urlencode(query), expected=400)
+        t.check('Location' not in r.headers, 'native authorization retains client and exact path binding')
+    t.bind(pending)
+    t.consent(pending)
+    for changes in ({'redirect_uri': registered}, {'code_verifier': secrets.token_urlsafe(48)}, {'client_id': web_client}):
+        t.check(t.exchange(pending, expected=400, **changes).get('error') == 'invalid_grant',
+                'native code binds actual port, PKCE and client')
+    pair = t.exchange(pending)
+    t.check(set(pair['scope'].split()) == {'memories.read', 'work.read'}, 'native token contains only approved read scopes')
+    who = t.tool(pair['access_token'], 'qaredi_whoami')
+    t.check(who['username'] == t.sql("SELECT username FROM users WHERE id=CAST(:'id' AS bigint)", id=t.users['employee']['id']),
+            'native grant identity matches consenting account')
+    t.tool(pair['access_token'], 'qaredi_list_work_projects', {'limit': 1})
+    t.request('POST', '/tbox/oauth/revoke', data={'client_id': client, 'token': pair['refresh_token']})
+    t.rpc(pair['access_token'], 'ping', expected=401)
+    denied = t.pending(client, 'memories.read', redirect_uri=active)
+    t.bind(denied)
+    t.consent(denied, approve=False)
+
+
 def run_acceptance(t):
+    loopback_acceptance(t)
     # Discovery is bound to configured APP_URL, regardless of Host supplied by a client.
     for path in ('/.well-known/oauth-protected-resource/mcp', '/.well-known/oauth-protected-resource'):
         metadata = t.request('GET', path, headers={'Host': 'host-header.invalid'}).json()
@@ -351,7 +389,7 @@ def run_acceptance(t):
     t.check(metadata['issuer'] == ISSUER and metadata['code_challenge_methods_supported'] == ['S256'], 'issuer and S256 discovery')
     t.check(metadata.get('authorization_response_iss_parameter_supported') is True, 'RFC9207 issuer response support advertised')
     t.check(metadata['token_endpoint'] == ISSUER + '/tbox/oauth/token', 'configured token endpoint discovery')
-    for uri in ('http://127.0.0.1/callback', CALLBACK + '/child', CALLBACK + '?extra=1',
+    for uri in ('http://127.0.0.2/callback', CALLBACK + '/child', CALLBACK + '?extra=1',
                 'https://attacker.invalid/callback', CALLBACK + '#fragment'):
         result = t.request('POST', '/tbox/oauth/register', expected=400,
                            json={'redirect_uris': [uri]}).json()

@@ -3331,6 +3331,8 @@ PostgreSQL 설정 예시는 `deploy/postgresql/scale-*`, 운영 경로/diff/검�
 
 ## 업무 문서 MCP 부분 갱신 (2026-10-16)
 
+OAuth native loopback 보정(2026-10-18): 기존 HTTPS callback exact allowlist는 유지한다. 별도 기본 닫힘 `MCP_OAUTH_LOOPBACK_ENABLED=1` 설정 때만 정확한 `http://127.0.0.1[:port]/callback`을 추가 허용한다. 등록된 loopback client와 승인 요청 사이에는 RFC8252 포트 차이만 허용하며, code 교환은 실제 승인 URI와 완전 일치해야 한다. issuer/state/resource/PKCE·사용자 동의·범위·client 바인딩은 기존대로 적용한다. 다른 host/path/query/fragment·HTTP URL은 허용하지 않는다. 외부 요청/DB 변경 없음. `docs/work-items/moa-host-compat.md` 참조.
+
 WorkDocuments는 OAuth MCP와 개인 토큰의 업무 전용 창구가 공유한다. 프로젝트/직계 하위 목록은 public_id 커서, 1~100개, 검색 SQL 권한(관리자 우회 제외)+활성 개인/팀 공간+비게시 페이지만. 읽기/쓰기 전 현재 행 권한을 재검사하고, 쓰기는 페이지 행 잠금 뒤 재조회 및 doc_version 검사 → 지정 텍스트 교체/끝 추가 → community_save_doc(force_snapshot)로 저장한다. Doc/첨부/팔레트/파생값/이력/감사 저장은 기존 경로 하나다. 기존 표·그림·블록 ID·자식·수정 대상 밖 서식과 부모/공유/소유권은 보존한다. MCP 호출의 SaveDoc 거부는 일반 JSON 종료 대신 기존 Http::error→McpToolError 경계를 사용한다. 웹 세션 응답 계약은 유지. work.write는 work.read를 함께 승인해야 하고 옛 OAuth 토큰에 소급하지 않는다. 로컬 개인 토큰은 기존 community.write가 새 창구를 허용하므로 해당 권한 안내를 함께 갱신한다. DB/새 패키지/외부 요청/cron 없음.
 
 

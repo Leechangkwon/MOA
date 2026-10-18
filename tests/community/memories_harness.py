@@ -105,7 +105,8 @@ def main():
             # OAuth issuer stays HTTPS; tests connect directly to the owned loopback
             # PHP listener and never resolve/follow this reserved .invalid origin.
             config.update(APP_URL='https://mcp-fixture.invalid', MCP_REMOTE_ENABLED='1',
-                          MCP_OAUTH_REDIRECT_URIS='["https://mcp-fixture.invalid/oauth/callback"]')
+                          MCP_OAUTH_REDIRECT_URIS='["https://mcp-fixture.invalid/oauth/callback"]',
+                          MCP_OAUTH_LOOPBACK_ENABLED='1')
 
         def write_config(path, data):
             private_write(path, ''.join('{}={}\n'.format(k, v) for k, v in data.items()))
