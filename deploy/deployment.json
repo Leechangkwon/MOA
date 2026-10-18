@@ -1,0 +1,114 @@
+{
+  "old": "2f88565cd036996ee43b1c3ff72b84ea11b8b2aa",
+  "new": "c8c7a28275a5d9942166aa894fefb8ea2a52465b",
+  "version": "2.73.2",
+  "migrations": [],
+  "files": [
+    {
+      "path": ".env.example",
+      "sha256": "8ae75f7b0b2a5a2a7b1687a088827fa00b2debf6a4788140ae14c56bfbc32c67"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "sha256": "4a554c814bf0abfb98c6b6ccaed75a12825739a4256287bf83ea95b691ea7fb0"
+    },
+    {
+      "path": "CHANGELOG.json",
+      "sha256": "f6f2e9cf9072f8a6a644d57b11a08eb0990c8541d404135163717315d5908ae9"
+    },
+    {
+      "path": "CHANGELOG.md",
+      "sha256": "e5a7313b5911a5ffd39ae17dd953af30af2f244fb57143dad3d5a53b0c2d989e"
+    },
+    {
+      "path": "SECURITY.md",
+      "sha256": "1419a6724e4f91b75c783785c351ec525a8311be4c36251a9f214dd876c10a04"
+    },
+    {
+      "path": "STAGES.md",
+      "sha256": "c83597dafcdf03b7b2a879f055f9df6ddb4c6dcc8fca9c24461ecfc4efdba452"
+    },
+    {
+      "path": "VERSION",
+      "sha256": "87e46d7f9965258101daf431a840e0459c5729edc0e8686ae3999392cb0df234"
+    },
+    {
+      "path": "clients/plugins/README.md",
+      "sha256": "484c98aeb741cd9cf9d74d8edc8552cd2b4ebafd1998f27dcd5f423e201d4f3f"
+    },
+    {
+      "path": "clients/plugins/build.py",
+      "sha256": "00a1d3520092e2ed6f0f19d9cde99876d052c3f5299890ed3a85a4dcb1a61f48"
+    },
+    {
+      "path": "clients/plugins/moa-community-records/.codex-plugin/plugin.json",
+      "sha256": "29bcfddaf8de0ce94870cd9376927a59b0b67f7bbe704fae4e94de4bb297d990"
+    },
+    {
+      "path": "clients/plugins/moa-community-records/.mcp.json",
+      "sha256": "e7ad567a6a9dc32c626f3a5804ca6067259d040f518c335c33c8ef225b74e5f1"
+    },
+    {
+      "path": "clients/plugins/moa-community-records/assets/icon.png",
+      "sha256": "c64098724a3a4068fa927c92c3e658af0b661ba9125c7efde44c411e534b3d51"
+    },
+    {
+      "path": "clients/plugins/moa-community-records/skills/work-records/SKILL.md",
+      "sha256": "b1bb8211338c43d52d4353a397cbcb4e73cad968980b74b62b460de587032416"
+    },
+    {
+      "path": "docs/chatgpt-remote-mcp.md",
+      "sha256": "89e43a8c6f284f52be69a9572a9a861617b1dfd9e8ad814f99a1ff02b831e5cb"
+    },
+    {
+      "path": "docs/work-items/moa-host-compat.md",
+      "sha256": "246169b640ff09070360a944fec21c0e4b2ae80ea61435c32a233afd5f9f0b3a"
+    },
+    {
+      "path": "public/assets/plugins/moa-community-records-1.0.1.zip",
+      "sha256": "efc46d2cfb1a3dba03391af6e729a6984b6e0deb95fdcd20c3527eaf05baa8f5"
+    },
+    {
+      "path": "src/mcp/McpOAuth.php",
+      "sha256": "b592533cca6d647c7dbd70476b0e8a2eccecf38fcec851f39427875fcb712145"
+    },
+    {
+      "path": "tests/community/memories_harness.py",
+      "sha256": "c5b5bfd84f682138cda9c7b353deedcd4bc7c95da067a459e1e916193ede9f0e"
+    },
+    {
+      "path": "tests/mcp/README.md",
+      "sha256": "300cb75a8cae30273d9543c0565bb209d468926bc7b7d9c33f5b190b439099d9"
+    },
+    {
+      "path": "tests/mcp/loopback_unit.php",
+      "sha256": "63eeac2e3e817e05b0e1a8cfab3917a552430b1c67ab5434b30b22027d785933"
+    },
+    {
+      "path": "tests/mcp/plugin_loader.py",
+      "sha256": "7e3e70199ac6b46270aa4af0c1135a50e4964bd84f928179661fa9a52e2dffce"
+    },
+    {
+      "path": "tests/mcp/remote_http.py",
+      "sha256": "dc00af0a8497cfa1b2f5228fd485be94cdc2770f0be775f957dde5d1efc53288"
+    },
+    {
+      "path": "wiki/qaredi/guide-chatgpt.json",
+      "sha256": "6b1674be6f0645a1e865011e17851fd6b6ae0807e20c77ac1440d6da6534cafd"
+    },
+    {
+      "path": "wiki/qaredi/index.json",
+      "sha256": "3278d16e43f0dcb485ed14c0671d009a1f072dc79fe1cc846b7d75a56ae01e09"
+    }
+  ],
+  "env_before": "5e90a4b17f8b4f0db3d17bab331d2c1d3237978e11eb5449e8a17ccc1f6edb3e",
+  "env_after": "e459350e8494ee9c02c2315c71a5e955ca23bd9512fd7cb388545fd4a1f098fe",
+  "at": "2026-10-18T12:45:20.717614+09:00",
+  "rows_preserved": true,
+  "owners_acl_preserved": true,
+  "files_preserved": true,
+  "metadata_preserved": true,
+  "business_tables": 103,
+  "storage_files": 374,
+  "config_files": 10
+}

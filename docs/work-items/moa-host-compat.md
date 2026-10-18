@@ -23,3 +23,16 @@
 후보 검사: OAuth141 + loopback94×3=423/0, guard24/0, 실제 격리 PHP/PostgreSQL823/0. 실제 Codex 로더는 원본 확장 구성 서버0·native 수정본 서버1/스킬1. 보안 lint0, 자산43개/상대import77개·위키70편/0, Python compile·diff check 통과. 사용자 계정의 실제 소유 개인 플러그인 ID를 조회했으며 설치판은1.0.0이다. 제공된 계정 공유 체크아웃 기능은 이 imported 플러그인을 지원하지 않아 계정 업데이트는 수행하지 않았다. 새 ZIP은 기존 ID의 새 버전 업로드용이며 계정 배포 완료로 보고하지 않는다.
 
 ZIP: native1.0.1, 8,290bytes, SHA256 `efc46d2cfb1a3dba03391af6e729a6984b6e0deb95fdcd20c3527eaf05baa8f5`, 고정4파일·원본아이콘·프롬프트 보존/비밀0. 공개 다운로드는 `/tbox/assets/plugins/moa-community-records-1.0.1.zip`에 포함한다. 암호화 백업 `/var/backups/tbox-v2/moa-host-compat-20261018`: 전체 복호화·DB archive 파싱·tar 일반파일2318개 전체읽기 완료. 실제 배포 결과는 반영 뒤 덧붙인다.
+
+
+## 운영 반영·실제 Codex 결과
+
+운영 v2.73.2 `c8c7a28275a5d9942166aa894fefb8ea2a52465b` 반영 완료. 고정24파일/바이너리 diff 모의 적용, 원격·운영 drift, 전체 복호화·파싱 백업 후 FF·기존 파일 mode/owner 복구·환경에 loopback 옵션 한 줄만 추가·FPM reload. DB migration/새 패키지/nginx 변경0. 반영 전후 기존103업무표의 모든 원래행·ownerACL·374저장파일·10설정파일과 기존 tracked metadata 보존. HTTPS health·공개 ZIP 정확한 바이트2/0.
+
+실제 codex-cli0.160.0 app-server에서 일회성 시험용 서버 설정으로 DCR→PKCE/state/issuer→정상 claude_ 비밀번호·OTP 로그인→동의→실제127.0.0.1 listener→code교환→인증된 업무 도구5개 로딩을 확인했다. 모델 호출0·새 Codex 작업0·시험용 연결 회수 완료. 이는 native OAuth/도구 발견 시험이며 실제 집 Windows나 계정에 업로드한 새 플러그인을 호출한 결과는 아니다. 별도 ChatGPT HTTPS callback의 정상 OAuth/initialize/tools/list/실제 계정·업무 목록 읽기/회수/비밀로그 검사48/0도 확인했다. native 시험 정리에서 Linux keyring 삭제가 실패했으나 지원되는 file-store logout으로 해당 시험 자격만 정리하고 항목/파일 부재를 확인했다. 동일 로그인 수락을 증거 보강 때문에 재실행하지 않았다. native 원문별 로그 검사는 그 초기 finally 중단으로 미수행이며, 최근 로그의 OAuth query/Bearer 구조 검사와 별도 HTTPS 흐름의 실제 비밀값 검사를 구분한다.
+
+개인 계정에 설치된 기존 imported 플러그인은 계속1.0.0이다. 계정 도구는 해당 플러그인의 공유 체크아웃/갱신을 지원하지 않아 접근을 우회하거나 새 중복 플러그인을 만들지 않았다. 사용자가 기존 개인 플러그인에1.0.1 ZIP을 새 버전으로 업로드해야 한다. 실제 집 PC에서 새 판 로딩·로그인·업무 조회/요청한 저장은 최종 사용자 확인 대기다. 모바일 목표는 Desktop only 제한 때문에 별도 등록 앱 연결이 필요하며 미완료다. 별도 독립 문맥 검토도 미수행.
+
+비례 회귀 `community.work_document_mcp`, `community.work_document_create`를 2026-10-18 밤 대기열에 넣었다. remote823은 최종 수락으로 실행했으므로 반복하지 않았고, 무관한 검색·파일·게시판은 제외했다. 모아의 기존 MOA-023에도 결과5블록 저장/판6 재조회·원래38블록 정확 보존을 확인했다. Qaredi 로컬 도구를 통한 저장이며 집 PC 연결 성공과 구분한다.
+
+증거: `/home/changkwon/qaredi-moa-loader-20261018/`의 `isolated/remote-mcp-results.json`, `native-acceptance-summary.json`, `native-log-structure.json`, `deploy/https-oauth.json`, `deploy/deployment.json`, `deploy/backup-parse.json`.

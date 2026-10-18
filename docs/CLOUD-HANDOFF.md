@@ -1,3 +1,5 @@
+> 최신 운영 v2.73.2: 집 PC ChatGPT Codex·Work의 모아 도구 로딩/로그인 호환 보정. 수정ZIP1.0.1 공개다운로드·실제nativeOAuth/도구5개·HTTPS읽기48/0. 계정 업로드/집Windows/모바일은 별도 대기. `docs/work-items/moa-host-compat.md`.
+
 # 휴가 중 클라우드 작업 인계 — 2026-10-03
 
 > 최신 운영 v2.71.0: 기본 프로젝트 섹션 이름·삭제와 본문 바로 열기. 격리64/0·실제HTTPS자산11/0·화면22/0, 사용자 프로젝트 기획 기록 저장 완료. `docs/work-items/project-sections-and-moa-record.md`.

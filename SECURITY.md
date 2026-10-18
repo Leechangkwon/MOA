@@ -1314,3 +1314,5 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 ③ 미검증: 실제 집 Windows/사용자 계정 인증, 웹·모바일 등록 앱 연결, 별도 문맥 독립 검토, 앞단 프록시의 외부 로그. 서버의 로더/검토 계정 시험과 사용자 호스트 성공을 구분한다.
 
 ④ 후속: 암호화 백업 전체 복호화·DB/tar 파싱 통과 후 고정 후보 모의 적용·드리프트/원래행/ownerACL/파일 보존→반영→정상 claude_ 계정의 실제 native OAuth와 읽기→검토 grant 회수. 비례 회귀는 밤 대기열. `docs/work-items/moa-host-compat.md`.
+
+운영 확인: v2.73.2/c8c7a28, code/config/DB 암호화 백업 전체 파싱2318일반파일, 고정24파일 모의 적용·drift/원래행/ownerACL/파일 메타데이터 보존 통과. 실제 native Codex OAuth와 업무 도구5개 로딩, 별도 기존 ChatGPT OAuth·계정/업무 읽기48/0·검토 grant 회수, 시험 자격 정리 확인. native Linux keyring 정리 실패는 file-store logout으로 해당 시험 항목만 정리했다. native 개별비밀값 로그검사는 초기finally중단으로 미수행, 구조 검사/별도HTTPS 실제비밀값 검사는 통과로 구분. 실제 집PC/계정업로드/모바일/독립 문맥 검토는 미검증. 밤 회귀2개 등록.

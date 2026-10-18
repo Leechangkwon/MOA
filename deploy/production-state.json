@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "version": "2.73.1",
-  "verified_runtime_commit": "9ce41657dde002c4237df60bd00ff3c2701acfba",
-  "verified_checkout_commit": "9ce41657dde002c4237df60bd00ff3c2701acfba",
-  "verified_tree": "3cd2bfa50dff1d716bdd025e613b8247ea70ef52",
-  "verified_at": "2026-10-17T21:48:18.503813+09:00",
+  "version": "2.73.2",
+  "verified_runtime_commit": "c8c7a28275a5d9942166aa894fefb8ea2a52465b",
+  "verified_checkout_commit": "c8c7a28275a5d9942166aa894fefb8ea2a52465b",
+  "verified_tree": "4bacc88c1203174acc7abc028de9ca76b01d59b9",
+  "verified_at": "2026-10-18T12:45:20.717614+09:00",
   "record_type": "last_verified_server_snapshot_not_live_status",
-  "release_commit": "9ce41657dde002c4237df60bd00ff3c2701acfba",
+  "release_commit": "c8c7a28275a5d9942166aa894fefb8ea2a52465b",
   "automatic_deployment": false,
   "server_only": [
     "database",
@@ -15,75 +15,65 @@
     "service_configuration"
   ],
   "verification": {
-    "scope": "PC 검토 안전 재개·선택 진단·일별/주간 개선·검증 배포",
-    "pc_offline_pass": 58,
-    "pc_package_pass": 14,
-    "diagnostics_http_pass": 55,
-    "program_http_pass": 64,
-    "admin_browser_pass": 8,
-    "backup_grants_pass": 7,
-    "https_pass": 7,
-    "publish_download_pass": 29,
-    "mcp_https_oauth_pass": 48,
+    "scope": "집 PC ChatGPT Codex·Work의 모아 로더·native OAuth 호환",
+    "oauth_unit_pass": 423,
+    "guard_pass": 24,
+    "isolated_http_pass": 823,
+    "actual_codex_native_oauth": true,
+    "actual_codex_work_tool_discovery_count": 5,
+    "https_oauth_read_revoke_pass": 48,
+    "https_health_download_pass": 2,
+    "review_grants_revoked": true,
+    "test_credential_removed": true,
+    "business_tables_checked": 103,
     "rows_preserved": true,
-    "business_tables_checked": 100,
-    "storage_files_preserved": 378,
-    "config_files_preserved": 10,
     "old_owner_acl_preserved": true,
+    "storage_files_preserved": 374,
+    "config_files_preserved": 10,
     "tracked_file_metadata_preserved": true,
-    "migrations": [
-      "db/migrations/2026-10-17_client_diagnostics.sql"
-    ],
+    "migrations": [],
     "server_configuration_changes": [
-      "cron:client_diagnostics_rollup hourly/policy-gated",
-      "logrotate:client-diagnostics status"
+      "MCP_OAUTH_LOOPBACK_ENABLED=1; existing exact HTTPS allowlist unchanged"
     ],
     "security_lint_violations": 0,
     "wiki_articles": 70,
-    "central_diagnostic_event_count": 0,
     "unverified": [
-      "home PC actual AI9/9",
-      "actual Windows DPAPI/install/update",
-      "user other-host/mobile OAuth and tools",
+      "home actual Windows/user OAuth and tools",
+      "account plugin upgrade remains 1.0.0",
+      "web/mobile registered App connection",
       "separate-context independent review",
+      "native per-secret log scan stopped during initial cleanup; separate HTTPS per-secret scan passed",
       "nightly proportional regression"
     ],
     "nightly_regression": [
-      "core.qf8_token_write",
-      "core.qf10_multi_scope"
+      "community.work_document_mcp",
+      "community.work_document_create"
     ],
     "runtime_sha256": {
-      "CHANGELOG.json": "b1f6585b670ee9f2b3e44a1a67bed6c4b6eee5176639538f6f80a694b2b91576",
-      "VERSION": "27382dc91b7e0755f5c351a264180349004c51fb1cf6b428d52a0f6de2a61d52",
-      "db/grants.sql": "0caac8708fbaf3c05c43682a594d42bd0fef63705b41faecd0c353305251301c",
-      "db/migrations/2026-10-17_client_diagnostics.sql": "7350590864a7ed93c7bbaa87a0e6c1b48d2b05e349d54fa5da5c1e142cc6a507",
-      "db/schema.sql": "34bd6352b378d5171cccc7321fd15001f6507d5420c4a41481652614b772d812",
-      "deploy/cron.d/tbox-v2": "05a3508051c3e4ad5893dd40b1a3ab6c383301196f5cae48db99cb8713a0dbcf",
-      "deploy/logrotate.d/tbox-v2": "752b02162aab4b1bcfd5f8201d5bd30fddb577e689bdeaeb7861e79fc584c281",
-      "protocols/client-diagnostics.json": "2dd1ea42fd0e3b3dba0008c7b9bc24dc38dabf69456195ba7e652b53edf6f1de",
-      "public/assets/app.js": "e96b27b5727038960cd9eb04dd4afb4f8e9bd5eadfd587a2af632b46a2b838cd",
-      "public/assets/client-diagnostics.js": "1661f0fd5fc086b2d647c8d2ffb8f0cc29fb833b3348ec819728775f41906850",
-      "public/assets/programs.js": "d809d4c3e66a31796963c6c655b1b7576459da1ae36cc769ed8827d51041ea92",
-      "public/index.php": "9abdea750f896f946ecb961d5d77058d5ac89181576b379d3b6f0c39c7d728e4",
-      "scripts/client_diagnostics_rollup.php": "9c21f840ce7ef9231e9eadeebfbd5f80f7fabd49a8c4e8f206abd7b55d68ee50",
-      "src/Audit.php": "27bce8da2284a0a6fd27da6cc3202ebae55549cf4455a91542102cb3df588f4b",
-      "src/Authz.php": "459e28b0dbfd548e8627c43748efe21f6e00574d4e3eeb674b66fa4d1e01e5b0",
-      "src/ClientDiagnostics.php": "3215155f60c602cfd5b3cf29337e8a890967714e3ed107cbc836c7e30f62abee",
-      "src/Programs.php": "75d126b6d24145a2454b2cc4b60f249b858cbd74d9f8bfe8aec9d58de1ca7f22",
-      "src/handlers/client_diagnostics.php": "4bad8ac051ccb844a9d46357e19acc1df3e1208452f0a43f8250f30790bf2c7c",
-      "src/handlers/client_diagnostics_admin.php": "49b36ba4d7641275d0df4f810cdba7f83a0ba6ba5183d1f0363b6281df85db70",
-      "src/handlers/client_release.php": "d9b78a0c251ef0ce7e450258cc7cd14c88e9979a88bc3d61d90d558e373156ba",
-      "src/handlers/programs_control.php": "70f7acf31e77353fb4c7a204dbe7d55ee6f664135ad7926ba772691887f4d6d0",
-      "src/handlers/programs_page.php": "28bacf29aa56bb7faf4149aa5e68ef8f77f2097c8331ae9fd6febf8281cab690",
-      "wiki/tbox/index.json": "269d3ece7f996acd037279da5392d6dfbda06b45f852635b7608a6ca869bad40",
-      "wiki/tbox/stage-28.json": "5c9acec4b4cc74439cd75ad4818c4ec2d0523f67a0ebd574499a2c0f3a121b88"
-    },
-    "user_requested_record_saved": {
-      "page_id": "dcbaac16-d150-44db-9f4f-35421b10e626",
-      "doc_version": 5,
-      "existing_blocks_preserved": 31,
-      "appended_blocks": 7,
-      "readback_verified": true
+      ".env.example": "8ae75f7b0b2a5a2a7b1687a088827fa00b2debf6a4788140ae14c56bfbc32c67",
+      "ARCHITECTURE.md": "4a554c814bf0abfb98c6b6ccaed75a12825739a4256287bf83ea95b691ea7fb0",
+      "CHANGELOG.json": "f6f2e9cf9072f8a6a644d57b11a08eb0990c8541d404135163717315d5908ae9",
+      "CHANGELOG.md": "e5a7313b5911a5ffd39ae17dd953af30af2f244fb57143dad3d5a53b0c2d989e",
+      "SECURITY.md": "1419a6724e4f91b75c783785c351ec525a8311be4c36251a9f214dd876c10a04",
+      "STAGES.md": "c83597dafcdf03b7b2a879f055f9df6ddb4c6dcc8fca9c24461ecfc4efdba452",
+      "VERSION": "87e46d7f9965258101daf431a840e0459c5729edc0e8686ae3999392cb0df234",
+      "clients/plugins/README.md": "484c98aeb741cd9cf9d74d8edc8552cd2b4ebafd1998f27dcd5f423e201d4f3f",
+      "clients/plugins/build.py": "00a1d3520092e2ed6f0f19d9cde99876d052c3f5299890ed3a85a4dcb1a61f48",
+      "clients/plugins/moa-community-records/.codex-plugin/plugin.json": "29bcfddaf8de0ce94870cd9376927a59b0b67f7bbe704fae4e94de4bb297d990",
+      "clients/plugins/moa-community-records/.mcp.json": "e7ad567a6a9dc32c626f3a5804ca6067259d040f518c335c33c8ef225b74e5f1",
+      "clients/plugins/moa-community-records/assets/icon.png": "c64098724a3a4068fa927c92c3e658af0b661ba9125c7efde44c411e534b3d51",
+      "clients/plugins/moa-community-records/skills/work-records/SKILL.md": "b1bb8211338c43d52d4353a397cbcb4e73cad968980b74b62b460de587032416",
+      "docs/chatgpt-remote-mcp.md": "89e43a8c6f284f52be69a9572a9a861617b1dfd9e8ad814f99a1ff02b831e5cb",
+      "docs/work-items/moa-host-compat.md": "246169b640ff09070360a944fec21c0e4b2ae80ea61435c32a233afd5f9f0b3a",
+      "public/assets/plugins/moa-community-records-1.0.1.zip": "efc46d2cfb1a3dba03391af6e729a6984b6e0deb95fdcd20c3527eaf05baa8f5",
+      "src/mcp/McpOAuth.php": "b592533cca6d647c7dbd70476b0e8a2eccecf38fcec851f39427875fcb712145",
+      "tests/community/memories_harness.py": "c5b5bfd84f682138cda9c7b353deedcd4bc7c95da067a459e1e916193ede9f0e",
+      "tests/mcp/README.md": "300cb75a8cae30273d9543c0565bb209d468926bc7b7d9c33f5b190b439099d9",
+      "tests/mcp/loopback_unit.php": "63eeac2e3e817e05b0e1a8cfab3917a552430b1c67ab5434b30b22027d785933",
+      "tests/mcp/plugin_loader.py": "7e3e70199ac6b46270aa4af0c1135a50e4964bd84f928179661fa9a52e2dffce",
+      "tests/mcp/remote_http.py": "dc00af0a8497cfa1b2f5228fd485be94cdc2770f0be775f957dde5d1efc53288",
+      "wiki/qaredi/guide-chatgpt.json": "6b1674be6f0645a1e865011e17851fd6b6ae0807e20c77ac1440d6da6534cafd",
+      "wiki/qaredi/index.json": "3278d16e43f0dcb485ed14c0671d009a1f072dc79fe1cc846b7d75a56ae01e09"
     }
   },
   "previous_verification": {
@@ -260,16 +250,14 @@
     }
   },
   "evidence": {
-    "work_item": "docs/work-items/closing-review-recovery.md",
-    "root": "/home/changkwon/qaredi-closing-review-results-20261017",
-    "backup": "/var/backups/tbox-v2/closing-diagnostics-20261017",
-    "deployment": "deploy/deployment.json",
-    "publication": "publication/final/result.json"
+    "work_item": "docs/work-items/moa-host-compat.md",
+    "root": "/home/changkwon/qaredi-moa-loader-20261018",
+    "backup": "/var/backups/tbox-v2/moa-host-compat-20261018",
+    "deployment": "deploy/deployment.json"
   },
   "git_sync": {
-    "verified_remote_main": "9ce41657dde002c4237df60bd00ff3c2701acfba",
-    "pc_source_branch_pushed": true,
-    "snapshot_note": "마지막 서버 확인 시점. 이후 기록 전용 커밋은 런타임을 바꾸지 않음"
+    "verified_remote_main": "c8c7a28275a5d9942166aa894fefb8ea2a52465b",
+    "snapshot_note": "runtime reflection pushed; later documentation-only commits do not change the verified runtime"
   },
   "targeted_hotfixes": [
     {
@@ -310,5 +298,97 @@
     "source_branch": "codex/closing-review-recovery",
     "update_policy": "user_selected_when_idle",
     "windows_live_test": false
+  },
+  "previous_verified_snapshot": {
+    "version": "2.73.1",
+    "verified_runtime_commit": "9ce41657dde002c4237df60bd00ff3c2701acfba",
+    "verified_at": "2026-10-17T21:48:18.503813+09:00",
+    "verification": {
+      "scope": "PC 검토 안전 재개·선택 진단·일별/주간 개선·검증 배포",
+      "pc_offline_pass": 58,
+      "pc_package_pass": 14,
+      "diagnostics_http_pass": 55,
+      "program_http_pass": 64,
+      "admin_browser_pass": 8,
+      "backup_grants_pass": 7,
+      "https_pass": 7,
+      "publish_download_pass": 29,
+      "mcp_https_oauth_pass": 48,
+      "rows_preserved": true,
+      "business_tables_checked": 100,
+      "storage_files_preserved": 378,
+      "config_files_preserved": 10,
+      "old_owner_acl_preserved": true,
+      "tracked_file_metadata_preserved": true,
+      "migrations": [
+        "db/migrations/2026-10-17_client_diagnostics.sql"
+      ],
+      "server_configuration_changes": [
+        "cron:client_diagnostics_rollup hourly/policy-gated",
+        "logrotate:client-diagnostics status"
+      ],
+      "security_lint_violations": 0,
+      "wiki_articles": 70,
+      "central_diagnostic_event_count": 0,
+      "unverified": [
+        "home PC actual AI9/9",
+        "actual Windows DPAPI/install/update",
+        "user other-host/mobile OAuth and tools",
+        "separate-context independent review",
+        "nightly proportional regression"
+      ],
+      "nightly_regression": [
+        "core.qf8_token_write",
+        "core.qf10_multi_scope"
+      ],
+      "runtime_sha256": {
+        "CHANGELOG.json": "b1f6585b670ee9f2b3e44a1a67bed6c4b6eee5176639538f6f80a694b2b91576",
+        "VERSION": "27382dc91b7e0755f5c351a264180349004c51fb1cf6b428d52a0f6de2a61d52",
+        "db/grants.sql": "0caac8708fbaf3c05c43682a594d42bd0fef63705b41faecd0c353305251301c",
+        "db/migrations/2026-10-17_client_diagnostics.sql": "7350590864a7ed93c7bbaa87a0e6c1b48d2b05e349d54fa5da5c1e142cc6a507",
+        "db/schema.sql": "34bd6352b378d5171cccc7321fd15001f6507d5420c4a41481652614b772d812",
+        "deploy/cron.d/tbox-v2": "05a3508051c3e4ad5893dd40b1a3ab6c383301196f5cae48db99cb8713a0dbcf",
+        "deploy/logrotate.d/tbox-v2": "752b02162aab4b1bcfd5f8201d5bd30fddb577e689bdeaeb7861e79fc584c281",
+        "protocols/client-diagnostics.json": "2dd1ea42fd0e3b3dba0008c7b9bc24dc38dabf69456195ba7e652b53edf6f1de",
+        "public/assets/app.js": "e96b27b5727038960cd9eb04dd4afb4f8e9bd5eadfd587a2af632b46a2b838cd",
+        "public/assets/client-diagnostics.js": "1661f0fd5fc086b2d647c8d2ffb8f0cc29fb833b3348ec819728775f41906850",
+        "public/assets/programs.js": "d809d4c3e66a31796963c6c655b1b7576459da1ae36cc769ed8827d51041ea92",
+        "public/index.php": "9abdea750f896f946ecb961d5d77058d5ac89181576b379d3b6f0c39c7d728e4",
+        "scripts/client_diagnostics_rollup.php": "9c21f840ce7ef9231e9eadeebfbd5f80f7fabd49a8c4e8f206abd7b55d68ee50",
+        "src/Audit.php": "27bce8da2284a0a6fd27da6cc3202ebae55549cf4455a91542102cb3df588f4b",
+        "src/Authz.php": "459e28b0dbfd548e8627c43748efe21f6e00574d4e3eeb674b66fa4d1e01e5b0",
+        "src/ClientDiagnostics.php": "3215155f60c602cfd5b3cf29337e8a890967714e3ed107cbc836c7e30f62abee",
+        "src/Programs.php": "75d126b6d24145a2454b2cc4b60f249b858cbd74d9f8bfe8aec9d58de1ca7f22",
+        "src/handlers/client_diagnostics.php": "4bad8ac051ccb844a9d46357e19acc1df3e1208452f0a43f8250f30790bf2c7c",
+        "src/handlers/client_diagnostics_admin.php": "49b36ba4d7641275d0df4f810cdba7f83a0ba6ba5183d1f0363b6281df85db70",
+        "src/handlers/client_release.php": "d9b78a0c251ef0ce7e450258cc7cd14c88e9979a88bc3d61d90d558e373156ba",
+        "src/handlers/programs_control.php": "70f7acf31e77353fb4c7a204dbe7d55ee6f664135ad7926ba772691887f4d6d0",
+        "src/handlers/programs_page.php": "28bacf29aa56bb7faf4149aa5e68ef8f77f2097c8331ae9fd6febf8281cab690",
+        "wiki/tbox/index.json": "269d3ece7f996acd037279da5392d6dfbda06b45f852635b7608a6ca869bad40",
+        "wiki/tbox/stage-28.json": "5c9acec4b4cc74439cd75ad4818c4ec2d0523f67a0ebd574499a2c0f3a121b88"
+      },
+      "user_requested_record_saved": {
+        "page_id": "dcbaac16-d150-44db-9f4f-35421b10e626",
+        "doc_version": 5,
+        "existing_blocks_preserved": 31,
+        "appended_blocks": 7,
+        "readback_verified": true
+      }
+    },
+    "evidence": {
+      "work_item": "docs/work-items/closing-review-recovery.md",
+      "root": "/home/changkwon/qaredi-closing-review-results-20261017",
+      "backup": "/var/backups/tbox-v2/closing-diagnostics-20261017",
+      "deployment": "deploy/deployment.json",
+      "publication": "publication/final/result.json"
+    }
+  },
+  "plugin_release": {
+    "name": "moa-community-records",
+    "version": "1.0.1",
+    "url": "https://changkwon.mso.so/tbox/assets/plugins/moa-community-records-1.0.1.zip",
+    "sha256": "efc46d2cfb1a3dba03391af6e729a6984b6e0deb95fdcd20c3527eaf05baa8f5",
+    "bytes": 8290,
+    "account_upgrade_completed": false
   }
 }
