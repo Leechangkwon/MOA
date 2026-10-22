@@ -390,5 +390,35 @@
     "sha256": "efc46d2cfb1a3dba03391af6e729a6984b6e0deb95fdcd20c3527eaf05baa8f5",
     "bytes": 8290,
     "account_upgrade_completed": false
+  },
+  "security_audits": {
+    "php_cve_2026_109618_109619": {
+      "checked_at": "2026-10-22T14:47:32.646778+09:00",
+      "cves": [
+        "CVE-2026-109618",
+        "CVE-2026-109619"
+      ],
+      "os": "Ubuntu 22.04.5 LTS",
+      "fixed_vendor_version": "8.1.2-1ubuntu2.28",
+      "installed_version": "8.1.2-1ubuntu2.28",
+      "prior_auto_update_at_kst": "2026-10-22 06:21:16–06:21:19",
+      "fpm_active_since_kst": "2026-10-22 06:21:51",
+      "live_fpm_process_count_checked": 7,
+      "live_binaries_match_patched_disk": true,
+      "deleted_php_executable_or_extension_mappings": 0,
+      "assessment": "both CVEs fixed by already-installed vendor backport and active patched workers",
+      "additional_package_installs": 0,
+      "additional_restarts": 0,
+      "unverified": [
+        "other hosts not inspected",
+        "historical exploitation or compromise not assessed",
+        "malicious OOM/RCE reproduction intentionally not executed against production"
+      ],
+      "evidence": "docs/work-items/php-cve-2026-109618-109619.md",
+      "application_code_or_configuration_changes": 0,
+      "business_data_changes": 0,
+      "direct_database_mutations": 0,
+      "normal_operational_logs_may_be_written": true
+    }
   }
 }

@@ -1316,3 +1316,8 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 ④ 후속: 암호화 백업 전체 복호화·DB/tar 파싱 통과 후 고정 후보 모의 적용·드리프트/원래행/ownerACL/파일 보존→반영→정상 claude_ 계정의 실제 native OAuth와 읽기→검토 grant 회수. 비례 회귀는 밤 대기열. `docs/work-items/moa-host-compat.md`.
 
 운영 확인: v2.73.2/c8c7a28, code/config/DB 암호화 백업 전체 파싱2318일반파일, 고정24파일 모의 적용·drift/원래행/ownerACL/파일 메타데이터 보존 통과. 실제 native Codex OAuth와 업무 도구5개 로딩, 별도 기존 ChatGPT OAuth·계정/업무 읽기48/0·검토 grant 회수, 시험 자격 정리 확인. native Linux keyring 정리 실패는 file-store logout으로 해당 시험 항목만 정리했다. native 개별비밀값 로그검사는 초기finally중단으로 미수행, 구조 검사/별도HTTPS 실제비밀값 검사는 통과로 구분. 실제 집PC/계정업로드/모바일/독립 문맥 검토는 미검증. 밤 회귀2개 등록.
+
+
+### 2026-10-22 PHP CVE-2026-109618·109619 점검 (R-15/R-21)
+
+① 증거: PHP 공식 advisory와 Ubuntu USN-8948-1/각 CVE의 Jammy 수정판을 대조했다. 현재9패키지 모두8.1.2-1ubuntu2.28, 설치 changelog에 두CVE. 오늘06:21 unattended-upgrades·06:21:51 FPM 시작과 실제7프로세스의 수정바이너리 해시 일치, PHP deleted 매핑0·dpkg검증0·FPM/nginx 설정검사·HTTPS5개 통과. 두CVE는 현재 수정 적용 상태. ② 잔여: 상류PHP8.1 EOL이라는 R-21의 장기 위험은 유지한다. 두CVE 패치 확인을 서버 전체 무결성/안전성 보증으로 확대하지 않는다. ③ 미검증: 업데이트 전 침해 여부·다른호스트·실제 악성 RCE/OOM 공격 재현. ④ 조치: 추가설치/설정변경/재시작/업무자료수정0. 기존 자동보안업데이트를 유지하고 기록만 보충. `docs/work-items/php-cve-2026-109618-109619.md`.

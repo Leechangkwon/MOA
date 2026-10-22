@@ -8,7 +8,7 @@
 | 구성요소 | 버전 (실측) | 확인 명령 |
 |---|---|---|
 | OS | Ubuntu 22.04.5 LTS | `lsb_release -ds` |
-| PHP (FPM/CLI) | 8.1.2-1ubuntu2.25 | `php -v` |
+| PHP (FPM/CLI) | 8.1.2-1ubuntu2.28 (2026-10-22 재확인) | `php -v` · `dpkg-query` · 실행 FPM 바이너리 해시 |
 | PostgreSQL | 14.24 (Ubuntu 14.24-0ubuntu0.22.04.1) | `psql --version` |
 | nginx | 1.18.0 (Ubuntu) | `nginx -v` |
 | GnuPG (`gpg`) | 2.2.27 (libgcrypt 1.9.4) | `gpg --version` |
@@ -242,3 +242,8 @@ Ubuntu 배포판 php8.1-gd 8.1.2-1ubuntu2.26 / libgd3 2.3.0-2ubuntu2.3를 사용
 ### 규모 A — PostgreSQL 통계 확장 (2026-10-12)
 
 `/usr/lib/postgresql/14/lib/pg_stat_statements.so`는 현재 설치된 `postgresql-14` 배포판 패키지 소유(`dpkg -S` 확인), extension1.9. 별도 다운로드/런타임라이브러리 추가0. `shared_preload_libraries`에 기존 항목을 보존하고 pg_stat_statements를 추가한 뒤 한 번 재시작; DB CREATE EXTENSION과 PUBLIC 뷰/함수권한 회수. 설정 원본 `deploy/postgresql/scale-observability.conf`, 역할/표 `scale-role-tables.sql`. PG14 지원종료2026-11-12 위험은 기존 R-21이며 업그레이드는 별도 작업이다. 공식: https://www.postgresql.org/docs/14/pgstatstatements.html · https://www.postgresql.org/support/versioning/
+
+
+## 2026-10-22 PHP 보안 패치 실측 보충
+
+PHP CLI/FPM/common/curl/gd/opcache/pgsql/readline/zip 총9패키지가 모두 Ubuntu `8.1.2-1ubuntu2.28`이다. Ubuntu USN-8948-1이 CVE-2026-109618·109619의 수정판으로 명시하고 설치 changelog도 두 CVE를 포함한다. 오늘06:21 자동 업데이트와06:21:51 FPM 재시작, 실행 중7프로세스의 수정본 일치·PHP deleted 모듈0·dpkg 무결성을 확인했다. 위의 예전 단계별 설치판/해시는 그때의 이력이며 현재판 보증값으로 사용하지 않는다. PHP 이외의 구성요소 버전은 이번에 재측정하지 않았다. 추가 설치·재시작0, 상세 `docs/work-items/php-cve-2026-109618-109619.md`.
