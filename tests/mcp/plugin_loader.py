@@ -1,7 +1,7 @@
-"""Compare portable and native Moa packages with the actual Codex loader, no model calls.
+"""Compare old server extensions and the fixed portable package in the real Codex loader.
 
 Does not install a plugin, edit user config/cache, call MCP, or load a token.
-The original-format result is diagnostic; native server/skill discovery is required.
+The original-format result is diagnostic; fixed server/skill discovery is required.
 """
 import json
 from pathlib import Path
@@ -14,11 +14,11 @@ import threading
 SOURCE = Path(__file__).resolve().parents[2] / 'clients/plugins/moa-community-records'
 with tempfile.TemporaryDirectory(prefix='moa-plugin-loader-') as directory:
     root = Path(directory)
-    native = root/'plugins/native'
-    shutil.copytree(SOURCE, native)
+    fixed = root/'plugins/fixed'
+    shutil.copytree(SOURCE, fixed)
     portable = root/'plugins/portable'
     shutil.copytree(SOURCE, portable)
-    manifest = json.loads((native/'.codex-plugin/plugin.json').read_text())
+    manifest = json.loads((fixed/'.codex-plugin/plugin.json').read_text())
     original = {k:v for k,v in manifest.items() if k not in ['skills','mcpServers','interface']}
     original['$schema'] = 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json'
     original['extensions'] = {'com.openai': {'interface':manifest['interface']}}
@@ -37,7 +37,7 @@ with tempfile.TemporaryDirectory(prefix='moa-plugin-loader-') as directory:
     market.write_text(json.dumps({'name':'moa-loader-test','plugins':[
         {'name':name,'source':{'source':'local','path':'./plugins/'+name},
          'policy':{'installation':'AVAILABLE','authentication':'ON_USE'},'category':'Productivity'}
-        for name in ['portable','native']]}))
+        for name in ['portable','fixed']]}))
     process = subprocess.Popen(['codex','app-server','--stdio'],stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,bufsize=1)
     messages = queue.Queue()
@@ -58,20 +58,20 @@ with tempfile.TemporaryDirectory(prefix='moa-plugin-loader-') as directory:
                 if 'error' in response:raise RuntimeError('Codex loader request failed')
                 return response['result']
     try:
-        request('initialize',{'clientInfo':{'name':'moa-loader-test','version':'1.0.1'},
+        request('initialize',{'clientInfo':{'name':'moa-loader-test','version':manifest['version']},
                               'capabilities':{'experimentalApi':True}})
         process.stdin.write('{"method":"initialized"}\n');process.stdin.flush()
-        for name in ['portable','native']:
+        for name in ['portable','fixed']:
             plugin=request('plugin/read',{'pluginName':name,'marketplacePath':str(market)})['plugin']
             servers=plugin['mcpServers']
             skills=[x['name'] for x in plugin['skills']]
             print(json.dumps({'format':name,'mcp_servers':servers,'skills':skills}))
-            if name=='native':
-                assert servers == ['moa'], 'Native MCP server missing'
+            if name=='fixed':
+                assert servers == ['moa'], 'Fixed MCP server missing'
                 assert skills == ['moa-community-records:work-records'], 'Workflow missing'
                 assert plugin['summary']['name'] == name, 'Marketplace entry changed'
                 assert manifest['name'] == 'moa-community-records', 'Package identity changed'
-        print('PASS: actual Codex native loader discovers Moa server and workflow')
+        print('PASS: actual Codex loader discovers fixed Moa server and workflow')
     finally:
         process.terminate()
         try:process.wait(timeout=5)

@@ -120,7 +120,7 @@ work reads and revocation. No test follows a callback or contacts another host.
 
 `python3 tests/mcp/plugin_loader.py` uses the installed Codex app-server's actual
 `plugin/read` parser to compare the original portable server extension shape
-and the native package. It does not call a model, install anything, edit user
-config/cache, or fetch credentials. Native server and skill discovery are required;
+and the fixed minimal portable package (1.0.2, updated 2026-10-23). It does not call a model, install anything, edit user
+config/cache, or fetch credentials. Fixed server and skill discovery are required;
 the portable result is recorded as diagnostics for the installed CLI version.
 This is a loader test on this server, not a home Windows or mobile success claim.

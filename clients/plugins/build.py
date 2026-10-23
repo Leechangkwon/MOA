@@ -1,4 +1,4 @@
-"""Build the native Moa plugin archive; includes only the four intended files."""
+"""Build the verified portable Moa package and its generated Codex compatibility files."""
 import hashlib
 import json
 from pathlib import Path
@@ -6,13 +6,19 @@ import sys
 import zipfile
 
 source = Path(__file__).resolve().parent / 'moa-community-records'
-files = ['.codex-plugin/plugin.json', '.mcp.json', 'skills/work-records/SKILL.md', 'assets/icon.png']
-manifest = json.loads((source / files[0]).read_text())
+files = ['plugin.json', 'mcp.json', '.codex-plugin/plugin.json', '.mcp.json', 'skills/work-records/SKILL.md', 'assets/icon.png']
+manifest = json.loads((source / 'plugin.json').read_text())
+overlay = json.loads((source / '.codex-plugin/plugin.json').read_text())
 assert manifest['name'] == 'moa-community-records'
-assert manifest['mcpServers'] == './.mcp.json' and manifest['skills'] == './skills'
-assert not (source / 'plugin.json').exists() and not (source / 'mcp.json').exists()
+assert manifest['$schema'] == 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json'
+assert overlay['mcpServers'] == './.mcp.json' and overlay['skills'] == './skills'
+assert all(manifest[key] == overlay[key] for key in ['name', 'version', 'description', 'author', 'homepage'])
+assert manifest['extensions']['com.openai']['interface'] == overlay['interface']
+assert json.loads((source / 'mcp.json').read_text()) == {
+    '$schema': 'https://agent-plugins.org/schemas/1.0.0/mcp.schema.json',
+    'mcpServers': {'moa': {'type': 'streamable-http', 'url': 'https://changkwon.mso.so/mcp'}}}
 assert json.loads((source / '.mcp.json').read_text()) == {
-    'mcpServers': {'moa': {'type': 'http', 'url': 'https://changkwon.mso.so/mcp'}}}
+    'mcpServers': {'moa': {'type': 'streamable-http', 'url': 'https://changkwon.mso.so/mcp', 'headers': {}}}}
 target = Path(sys.argv[1]).resolve()
 if target.is_relative_to(source):
     raise SystemExit('Archive must be outside the plugin source')
