@@ -3210,3 +3210,8 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 집PC 사용자 화면은 이제 moa/사용함/인증되지않음으로 확인됐다. 서버미등록 해소와 사용자로그인 대기를 구분한다. 설정→MCP서버→기존moa→인증(Authenticate), memories.read/work.read/work.write 세범위 승인과 원문읽기 요청을 안내했다. 웹런타임/DBmigration/패키지/서버설정/서비스재시작0, 기존계정/ACL/본문쓰기0. 집Windows 사용자로그인/원문실호출·모바일·독립문맥검토 미검증. docs/work-items/moa-mcp-recovery-20261023.md.
 
 후속 실제Codex 도구호출 수락78/0: 계정판1.0.2의moa를 ephemeral thread의 mcpServer/tool/call로 직접읽기·갱신·재조회·409 검증. 모델호출0·새검토문서만수정, 시험자료/자격정리완료. 집PC 사용자도 본인계정의정상Codex동의화면에진입했으며 업무갱신/읽기+기본내글읽기만승인하도록안내했다. 승인후사용자문서실조회는대기. 정적lint0·자산43/import77변경0·위키70/0·diffcheck통과.
+
+
+## Codex 승인 후 웹 복귀 차단 — 2026-10-23
+
+사용자실제승인후이동주소오류·code미교환을확인했다. 기존서버/native직접콜백시험이브라우저검사를건너뛰어놓친결함이다. 서버가검증한HTTPS 또는literal127.0.0.1[:port]/callback만웹에서복귀허용, 실제UI81/0·실제Chromium승인클릭→Codexloopback→토큰교환/도구조회46/0후보확인. 임의HTTP·다른IP/표기/경로/포트·사용자정보/fragment/공백거부. 인증/권한/DB변경0. 운영반영·사용자최종결과는 docs/work-items/moa-oauth-browser-return-20261023.md에후속기록.

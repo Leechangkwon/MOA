@@ -65,7 +65,7 @@ def payload(pending=False):
 
 
 with sync_playwright() as pw:
-    browser = pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE', '/usr/bin/chromium'), args=['--no-sandbox'])
+    browser = pw.chromium.launch(executable_path=os.environ.get('CHROMIUM_EXECUTABLE'), args=['--no-sandbox'])
 
     def setup(data=None, pending=False, width=390, theme='dark', get_status=200,
               get_error=None, delete_status=200, post_status=200, redirect=None, clipboard=True, me_status=200, stall=None):
@@ -109,7 +109,7 @@ with sync_playwright() as pw:
                     stalled_routes[ctx].append(request)
                     return
                 request.fulfill(status=post_status, json={'redirect_url': redirect or 'https://chatgpt.test/callback?code=synthetic-single-use-code&state=synthetic'} if post_status == 200 else {'error': '승인 요청이 만료되었습니다.'})
-            elif url.hostname == 'chatgpt.test':
+            elif url.hostname == 'chatgpt.test' or (url.scheme == 'http' and url.hostname == '127.0.0.1' and url.path == '/callback'):
                 request.fulfill(content_type='text/html', body='Synthetic callback received')
             else:
                 raise AssertionError('Unexpected request: ' + path)
@@ -198,6 +198,42 @@ with sync_playwright() as pw:
     page.wait_for_url('https://chatgpt.test/**')
     check('Default approval grants only reading', writes[0]['body']['scopes'] == ['memories.read'])
     close_context(ctx)
+
+    for approve, port in [(True, ':65203'), (False, ':55241'), (True, '')]:
+        query = 'code=synthetic-code' if approve else 'error=access_denied'
+        callback = f'http://127.0.0.1{port}/callback?{query}&state=synthetic-state&iss=https%3A%2F%2Fmoa.test'
+        ctx, page, writes, _ = setup(pending=True, redirect=callback)
+        if approve:
+            page.locator('#mcp-scope-work-write').check()
+        page.locator('#mcp-approve' if approve else '#mcp-deny').click()
+        page.wait_for_url(callback)
+        check('Native callback preserves code/error, state and issuer: ' + str(approve) + port,
+              page.url == callback and len(writes) == 1)
+        check('Native work consent remains explicit and narrow: ' + str(approve) + port,
+              writes[0]['body']['scopes'] == (['memories.read', 'work.read', 'work.write'] if approve else []))
+        close_context(ctx)
+
+    unsafe_callbacks = [
+        'http://localhost:65203/callback', 'http://127.0.0.2:65203/callback',
+        'http://192.168.0.1/callback', 'http://[::1]:65203/callback',
+        'http://2130706433/callback', 'http://0x7f000001/callback',
+        'http://127.1/callback', 'http://127.000.000.001/callback',
+        'http://%31%32%37.0.0.1/callback', 'http://127.0.0.1:0/callback',
+        'http://127.0.0.1:065203/callback', 'http://127.0.0.1:65536/callback',
+        'http://127.0.0.1:65203/other', 'http://127.0.0.1:65203/a/../callback',
+        'http://127.0.0.1:65203/%63allback', 'http://user@127.0.0.1:65203/callback',
+        'http://127.0.0.1:65203/callback#', 'http://127.0.0.1:65203/callback#fragment',
+        'http://127.0.0.1:65203/callback/extra', 'http://127.0.0.1:65203/callback\\extra',
+        ' http://127.0.0.1:65203/callback', 'http://127.0.0.1:65203/callback\n',
+        'javascript:alert(1)', 'data:text/html,unsafe', 'http://attacker.invalid/callback',
+    ]
+    for index, callback in enumerate(unsafe_callbacks):
+        ctx, page, writes, _ = setup(pending=True, redirect=callback)
+        page.locator('#mcp-approve').click()
+        expect(page.locator('#mcp-error')).to_contain_text('이동 주소')
+        check('Unsafe callback stays on consent screen, vector ' + str(index),
+              page.url.startswith(ORIGIN) and len(writes) == 1)
+        close_context(ctx)
 
     ctx, page, writes, reads = setup(me_status=401)
     expect(page.locator('#mcp-login-help')).to_be_visible()

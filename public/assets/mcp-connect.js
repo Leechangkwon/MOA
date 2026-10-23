@@ -47,6 +47,17 @@
       return url.protocol === 'https:' && !url.username && !url.password && !url.search && !url.hash ? url : null;
     } catch (_) { return null; }
   }
+  function oauthReturnUrl(value) {
+    if (typeof value !== 'string' || /[\u0000-\u0020\u007f\\]/.test(value)) return null;
+    let url;
+    try { url = new URL(value); } catch (_) { return null; }
+    if (url.username || url.password || url.hash) return null;
+    if (url.protocol === 'https:') return url;
+    // The server validates the registered URI. Match its literal native callback,
+    // before URL normalization can turn other IP/path spellings into loopback.
+    const loopback = value.match(/^http:\/\/127\.0\.0\.1(?::([1-9][0-9]{0,4}))?\/callback(?:\?[^#]*)?$/);
+    return loopback && (!loopback[1] || Number(loopback[1]) <= 65535) ? url : null;
+  }
   let initialized = false;
   window.MoaMcpConnect = Object.freeze({failure: value => {
     say('로그인과 연결 정보를 불러오지 못했습니다.');
@@ -242,12 +253,10 @@
       try {
         const scopes = approve ? [...inputs].filter(([, input]) => input.checked).map(([scope]) => scope) : [];
         const data = await api('/oauth/authorize', 'POST', {pending: pending.id, approve, scopes});
-        // The server validates the registered callback. Never navigate non-HTTPS schemes.
+        // Navigate only a server-validated HTTPS or exact native loopback callback.
         if (typeof data.redirect_url !== 'string') throw Error('승인 결과를 확인하지 못했습니다. ChatGPT에서 다시 시작해 주세요.');
-        let target;
-        try { target = new URL(data.redirect_url); }
-        catch (_) { throw Error('승인 결과의 이동 주소를 확인하지 못했습니다. ChatGPT에서 다시 시작해 주세요.'); }
-        if (target.protocol !== 'https:' || target.username || target.password || target.hash) throw Error('승인 결과의 이동 주소를 확인하지 못했습니다. ChatGPT에서 다시 시작해 주세요.');
+        const target = oauthReturnUrl(data.redirect_url);
+        if (!target) throw Error('승인 결과의 이동 주소를 확인하지 못했습니다. ChatGPT에서 다시 시작해 주세요.');
         pending = null;
         if (expiresTimer !== null) clearTimeout(expiresTimer);
         say(approve ? '승인했습니다. 연결을 요청한 앱으로 돌아갑니다…' : '허용하지 않았습니다. 연결을 요청한 앱으로 돌아갑니다…');

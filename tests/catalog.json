@@ -6915,6 +6915,21 @@
       "notes": "빈 합성 DB와 별도 PHP 서버만 사용. 운영 checkout 직접 실행 거부. 기존 데이터/원본/서비스 변경 없음. 실제 ChatGPT 앱 연결 검증과 구분."
     },
     {
+      "id": "community.remote_mcp_connect_browser",
+      "cmd": "python3 tests/mcp/connect_browser.py",
+      "module": "community",
+      "env": "static",
+      "status": "required",
+      "needs": ["browser"],
+      "writes_prod": false,
+      "covers": ["public/assets/mcp-connect.js", "public/assets/member.js", "src/mcp/handlers/connect_page.php"],
+      "requirements": [],
+      "risks": ["R-115"],
+      "est_sec": 30,
+      "timeout_sec": 180,
+      "notes": "실제 JS/화면과 합성 API만. HTTP/HTTPS callback의 실제 브라우저 이동·literal127.0.0.1 제한·URL혼동거부·범위/CSRF/재전송방지. 운영 네트워크/DB/자격 접근0. 실제 OAuth는 별도 수락."
+    },
+    {
       "id": "tbox.client_diagnostics",
       "cmd": "bash tests/assistant/closing.sh",
       "module": "tbox",
