@@ -1,3 +1,5 @@
+> 최신 운영 v2.73.3: Codex 승인 후 브라우저의 HTTP loopback 복귀 차단 수정. 실제브라우저 승인클릭→Codex code교환→8도구/읽기 운영46/0, 합성UI81/0. 기존103표/201원본/10설정/ACL보존, 설정/DBmigration/서비스reload0. 집Windows 새인증/원문조회는별도대기. docs/work-items/moa-oauth-browser-return-20261023.md.
+
 > 2026-10-23: 기존 개인 모아 플러그인을 같은 ID의1.0.2로 계정 갱신·재조회했다. 실제 Codex 계정 로더가 서버moa/스킬1을 인식하며 집 PC 사용자 화면도 이제 moa/인증되지않음을 표시한다. 사용자 로그인·원문 도구 호출은 대기. 운영 MCP94/0·격리 업무204/0, 원문 판23/블록31 보존. 웹 실행코드 v2.73.2는 변경하지 않았다. `docs/work-items/moa-mcp-recovery-20261023.md`.
 
 > 이전 운영 v2.73.2: 집 PC ChatGPT Codex·Work의 모아 도구 로딩/로그인 호환 보정. 수정ZIP1.0.1 공개다운로드·실제nativeOAuth/도구5개·HTTPS읽기48/0. 아래 계정 업로드 대기는2026-10-23 해소. `docs/work-items/moa-host-compat.md`.

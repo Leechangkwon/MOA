@@ -3215,3 +3215,5 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 ## Codex 승인 후 웹 복귀 차단 — 2026-10-23
 
 사용자실제승인후이동주소오류·code미교환을확인했다. 기존서버/native직접콜백시험이브라우저검사를건너뛰어놓친결함이다. 서버가검증한HTTPS 또는literal127.0.0.1[:port]/callback만웹에서복귀허용, 실제UI81/0·실제Chromium승인클릭→Codexloopback→토큰교환/도구조회46/0후보확인. 임의HTTP·다른IP/표기/경로/포트·사용자정보/fragment/공백거부. 인증/권한/DB변경0. 운영반영·사용자최종결과는 docs/work-items/moa-oauth-browser-return-20261023.md에후속기록.
+
+운영 v2.73.3/407fda9: 고정10파일모의/백업전체파싱2333파일·fresh drift후FF, 기존103표/201원본/10설정/ownerACL/mode보존. 운영실제브라우저승인→Codex복귀/토큰교환/8도구·읽기46/0, HTTPShealth/JS정확바이트2/0. DBmigration/설정/서비스reload/사용자본문쓰기0, 검토grant/자격정리완료. 집PC사용자새인증/원문조회·모바일·독립문맥은대기. UI회귀1개밤대기열.

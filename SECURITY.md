@@ -1340,3 +1340,5 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 ### 2026-10-23 Codex 승인 후 브라우저 loopback 복귀
 
 ① 증거: 사용자승인기록/미교환code와실제화면의이동주소거부일치. UI81/0에서literal127.0.0.1 callback성공/거부응답·state/iss보존및25URL혼동거부. 실제Chromium의정상동의클릭→실제Codexlistener→code교환/8도구/계정·업무목록46/0후보통과. 앞선직접HTTPcallback시험은이웹단계의증거가아니었다. ② 잔여: 로컬callback포트선점은기존PKCE/state로방어,웹은서버검증URI중정확한loopback만추가허용한다. 다른host/경로/사용자정보/fragment/공백·IP정규화우회거부. ③ 미검증: 수정운영반영후실제집Windows·별도독립문맥·실물모바일. ④ 조치: 암호화백업전체복호화·DB파싱·tar2333파일확인,고정후보/모의반영/drift/자료·ACL·설정보존후운영확인. DB복원/시드/사용자grant변경금지. 비례회귀는새UI카탈로그항목만밤대기열.
+
+운영 v2.73.3/407fda9: 고정10파일모의/백업전체파싱2333파일·fresh drift후FF, 기존103표/201원본/10설정/ownerACL/mode보존. 운영실제브라우저승인→Codex복귀/토큰교환/8도구·읽기46/0, HTTPShealth/JS정확바이트2/0. DBmigration/설정/서비스reload/사용자본문쓰기0, 검토grant/자격정리완료. 집PC사용자새인증/원문조회·모바일·독립문맥은대기. UI회귀1개밤대기열.

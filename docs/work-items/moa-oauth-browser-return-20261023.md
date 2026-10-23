@@ -1,6 +1,6 @@
 # Codex 승인 후 브라우저 복귀 차단 수정 — 2026-10-23
 
-- 상태: 후보 검증 완료·운영 반영 준비
+- 상태: 운영 v2.73.3 반영·실제 브라우저 검증 완료, 집Windows 사용자 재인증 확인 대기
 - 기준 main: `d0fc2d2a8471`
 - 브랜치: `cloud/moa-oauth-browser-return-20261023`
 - 현재 운영: v2.73.2. 개인 플러그인1.0.2는 유지한다.
@@ -28,3 +28,11 @@
 - 새회귀항목 `community.remote_mcp_connect_browser`를카탈로그에등록했다. 이번수락81을반영전전체회귀로반복하지않으며밤대기열로보낸다. 백엔드OAuth/문서저장코드는변하지않아remote_mcp_http와업무수락묶음 재실행은 제외한다.
 
 증거 디렉터리: `/home/changkwon/qaredi-oauth-browser-results-20261023/`. 별도독립문맥검토는미수행으로유지한다.
+
+## 운영 결과
+
+운영 v2.73.3 `407fda99567e64a861398dc8aee60e0db60f8c3b` / 2026-10-23T15:02:45.167538+09:00. 고정10파일 모의반영·원격/운영drift·백업전체복호화/파싱 후FF. 실제기존103업무표의원래행(제외표 이외 비교항목 모두)·ownerACL·201저장원본·10설정·기존파일owner/mode보존. SQL직접쓰기/DBmigration/설정변경/서비스reload0. HTTPShealth/DB·수정JS정확바이트2/0.
+
+실제 운영JS로 Chromium승인클릭→실제Codexcallback→code교환/8도구·계정/업무목록 호출 **46/0**(`browser-e2e-production.json`), 후보JS응답대체0. 실제callback은 `http://127.0.0.1:40669/callback`. 신규검토grant정상회수·로그아웃·시험Codex자격삭제·기존자격보존·nginx/app신규비밀노출0, 모델/본문쓰기0. 테스트를HTTP직접callback이나성공표시만으로대체하지않았다.
+
+집PC에는기존승인화면이이미소비됐으므로닫고설정→MCP서버→기존moa→인증을다시시작하도록안내했다. 원래사용자승인목록/계정/문서를변경·회수하지않았다. 실제집Windows재인증과원문읽기는여전히확인대기이며서버Chromium통과와구분한다. 독립문맥검토/모바일도미검증이다.
