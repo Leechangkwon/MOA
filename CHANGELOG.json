@@ -1,5 +1,14 @@
 [
     {
+        "version": "2.73.3",
+        "level": "patch",
+        "released_at": "2026-10-23 15:00",
+        "title": "Codex 연결 승인 후 앱으로 돌아가기",
+        "changes": [
+            "모아에서 연결을 승인한 뒤 Codex로 돌아가지 못하던 문제를 고쳤어요."
+        ]
+    },
+    {
         "version": "2.73.2",
         "level": "patch",
         "released_at": "2026-10-18 12:43",
