@@ -1342,3 +1342,13 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 ① 증거: 사용자승인기록/미교환code와실제화면의이동주소거부일치. UI81/0에서literal127.0.0.1 callback성공/거부응답·state/iss보존및25URL혼동거부. 실제Chromium의정상동의클릭→실제Codexlistener→code교환/8도구/계정·업무목록46/0후보통과. 앞선직접HTTPcallback시험은이웹단계의증거가아니었다. ② 잔여: 로컬callback포트선점은기존PKCE/state로방어,웹은서버검증URI중정확한loopback만추가허용한다. 다른host/경로/사용자정보/fragment/공백·IP정규화우회거부. ③ 미검증: 수정운영반영후실제집Windows·별도독립문맥·실물모바일. ④ 조치: 암호화백업전체복호화·DB파싱·tar2333파일확인,고정후보/모의반영/drift/자료·ACL·설정보존후운영확인. DB복원/시드/사용자grant변경금지. 비례회귀는새UI카탈로그항목만밤대기열.
 
 운영 v2.73.3/407fda9: 고정10파일모의/백업전체파싱2333파일·fresh drift후FF, 기존103표/201원본/10설정/ownerACL/mode보존. 운영실제브라우저승인→Codex복귀/토큰교환/8도구·읽기46/0, HTTPShealth/JS정확바이트2/0. DBmigration/설정/서비스reload/사용자본문쓰기0, 검토grant/자격정리완료. 집PC사용자새인증/원문조회·모바일·독립문맥은대기. UI회귀1개밤대기열.
+
+### 2026-10-23 Qaredi 원격 Codex와 Windows callback 경로
+
+① 증거: 실제 사용자 callback39381의 listener가 Qaredi Codex에 있고 Edge는 Windows에서 localhost에 접속했다. 사용자 grant의 code 미교환/토큰0·2분 만료 확인. Qaredi 계정의 기존 config를0600 비공개 백업하고 callback43173 한 설정만 추가, 기존 바이트·owner/mode 보존. 새 실제 Codex 계정 플러그인/server 인식과 OAuth 요청의 정확한43173 callback을 확인했으며 동의/토큰발급/사용자문서쓰기0이다.
+
+② 잔여: Windows loopback은 SSH의 `-L 127.0.0.1:43173:127.0.0.1:43173`로만 전달한다. 공개 listener/방화벽 변경/공개 relay/인증 또는 PKCE/state 완화는 없다. 포트가 선점되면 ExitOnForwardFailure로 중단하며 만료된 코드는 재사용하지 않는다. 콜백 query와 비공개 config 백업은 Git·채팅·로그에 싣지 않는다.
+
+③ 미검증: 기존 장기 실행 프로세스의 설정 재로딩, 실제 Windows 포워딩·사용자 토큰 교환·원문 읽기, 모바일. 서버 내 Chromium 시험을 교차호스트 성공으로 확대하지 않는다.
+
+④ 조치: Windows PowerShell 명령과 새 설정 재로딩/새 인증 순서 기록. 기존 장기 Codex 종료/사용자 grant 회수/업무자료 수정/운영 웹 재배포0. 설정 원복은 추가 한 줄만 제거하여 나중의 다른 설정을 보존한다. docs/work-items/moa-oauth-browser-return-20261023.md.

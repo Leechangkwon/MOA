@@ -3217,3 +3217,6 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 사용자실제승인후이동주소오류·code미교환을확인했다. 기존서버/native직접콜백시험이브라우저검사를건너뛰어놓친결함이다. 서버가검증한HTTPS 또는literal127.0.0.1[:port]/callback만웹에서복귀허용, 실제UI81/0·실제Chromium승인클릭→Codexloopback→토큰교환/도구조회46/0후보확인. 임의HTTP·다른IP/표기/경로/포트·사용자정보/fragment/공백거부. 인증/권한/DB변경0. 운영반영·사용자최종결과는 docs/work-items/moa-oauth-browser-return-20261023.md에후속기록.
 
 운영 v2.73.3/407fda9: 고정10파일모의/백업전체파싱2333파일·fresh drift후FF, 기존103표/201원본/10설정/ownerACL/mode보존. 운영실제브라우저승인→Codex복귀/토큰교환/8도구·읽기46/0, HTTPShealth/JS정확바이트2/0. DBmigration/설정/서비스reload/사용자본문쓰기0, 검토grant/자격정리완료. 집PC사용자새인증/원문조회·모바일·독립문맥은대기. UI회귀1개밤대기열.
+
+| 2026-10-23 | 어려움·원인 | 승인 후 Windows Edge localhost 연결 거부 | 실제 callback39381은 Qaredi의 Codex가 listen. Windows와 원격서버의 localhost 불일치·사용자 code 미교환/토큰0 확인. 기존 서버 Chromium 시험의 교차호스트 미검증을 명시했다. |
+| 2026-10-23 | 보정·확인 대기 | Qaredi Codex callback43173 고정·SSH 전달 안내 | 기존 설정 비공개 백업/바이트·0600 보존. 새 실제 프로세스 callback43173 확인, 동의/토큰발급0. Windows 전달·기존 프로세스 설정 재로딩·사용자 인증/원문 조회는 대기. 웹 배포/DB/계정/문서 변경0. docs/work-items/moa-oauth-browser-return-20261023.md. |

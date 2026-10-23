@@ -23,6 +23,20 @@ ChatGPT가 모아의 허용한 도구를 호출해 내 기록을 읽고 저장�
 
 프로그램 토큰을 이 연결에 복사할 필요는 없습니다. 1.0.2 적용 후에도 실제 도구가 없다면 호스트의 로더 상태를 확인합니다. `unknown MCP server 'moa'`는 해당 호스트가 그 이름을 등록하지 않았다는 뜻이며 서버 장애나 토큰 오류를 확정하지 않습니다. 무인증401도 기존 사용자 토큰 만료의 증거가 아닙니다. 도구의 실제 이름에는 호스트가 붙인 접두사가 있을 수 있습니다. `qaredi_2`의 페이지 생성 도구는 기존 업무 문서 갱신을 대체하지 않습니다. 설정 주소만 있고 계정 조회가 실패하면 아직 연결 완료가 아닙니다. 검증 범위와 원문 보존 결과: `docs/work-items/moa-mcp-recovery-20261023.md`.
 
+## Windows에서 Qaredi 원격 Codex를 사용한다면
+
+승인 뒤 `127.0.0.1:포트/callback`에 연결 거부가 뜨면, 인증을 시작한 Codex와 브라우저가 같은 컴퓨터인지 확인합니다. 2026-10-23 사용자 요청에서는 callback listener가 Qaredi에 있고 Edge는 Windows에 있어 서로 다른 localhost를 사용했습니다. 모아의 승인 목록만으로 인증 완료를 판단하지 않습니다.
+
+이 Qaredi 계정은 새 Codex 프로세스가 `43173`을 사용하도록 설정·검증했습니다. **Windows PowerShell**에서 아래 명령을 실행하고 창을 열어 둡니다. `changkwon@eric` 서버 셸에 입력하는 명령이 아닙니다.
+
+```powershell
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:43173:127.0.0.1:43173 qaredi
+```
+
+Qaredi 호스트의 Codex에서 MCP 설정을 새로 읽고 기존 moa 인증을 다시 시작합니다. 기존 프로세스가 설정을 재로딩했는지는 별도 확인해야 하며, 필요하면 원격 호스트를 재연결합니다. 새 callback 포트가43173인지 확인하고 기본 내 글 읽기·업무 읽기·업무 갱신을 승인합니다. 오래된 승인창이나 만료된 callback을 재사용하지 않습니다. 마지막에는 Codex의 실제 계정 조회와 업무 문서 읽기를 확인합니다. 포트 전달 창은 Ctrl+C로 닫습니다. 공개 포트 개방은 필요하지 않습니다.
+
+서버의 새 프로세스 고정 포트 확인은 완료됐으나 Windows SSH 전달과 사용자 인증 완료는 아직 확인 대기입니다. 이 절차는 원격 Codex의 PC 브라우저 인증용이며 모바일 앱 지원 검증을 대신하지 않습니다. [공식 callback 설정](https://learn.chatgpt.com/docs/extend/mcp), [원격 호스트 설정](https://learn.chatgpt.com/docs/remote-connections).
+
 ## 처음 등록한다면
 
 ChatGPT 플러그인의 **사용자 지정 MCP 서버 추가**에서 위 HTTPS 주소와 OAuth 인증을 사용합니다. 계정·조직 정책에 따라 사용자 지정 연결 권한이 필요할 수 있습니다. 서버 준비 중(503)이면 운영자가 먼저 활성화해야 합니다. 플러그인이 만들어지면 위의 계정 연결·조회 순서로 확인합니다. 공식 절차: https://developers.openai.com/plugins/deploy/connect-chatgpt

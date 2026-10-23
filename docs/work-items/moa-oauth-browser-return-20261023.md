@@ -3,7 +3,7 @@
 - 상태: 운영 v2.73.3 반영·실제 브라우저 검증 완료, 집Windows 사용자 재인증 확인 대기
 - 기준 main: `d0fc2d2a8471`
 - 브랜치: `cloud/moa-oauth-browser-return-20261023`
-- 현재 운영: v2.73.2. 개인 플러그인1.0.2는 유지한다.
+- 작업 시작 시 운영: v2.73.2. 현재 운영은 v2.73.3이며 개인 플러그인1.0.2는 유지한다.
 
 ## 원인과 범위
 
@@ -36,3 +36,23 @@
 실제 운영JS로 Chromium승인클릭→실제Codexcallback→code교환/8도구·계정/업무목록 호출 **46/0**(`browser-e2e-production.json`), 후보JS응답대체0. 실제callback은 `http://127.0.0.1:40669/callback`. 신규검토grant정상회수·로그아웃·시험Codex자격삭제·기존자격보존·nginx/app신규비밀노출0, 모델/본문쓰기0. 테스트를HTTP직접callback이나성공표시만으로대체하지않았다.
 
 집PC에는기존승인화면이이미소비됐으므로닫고설정→MCP서버→기존moa→인증을다시시작하도록안내했다. 원래사용자승인목록/계정/문서를변경·회수하지않았다. 실제집Windows재인증과원문읽기는여전히확인대기이며서버Chromium통과와구분한다. 독립문맥검토/모바일도미검증이다.
+
+## 후속: Windows 브라우저와 Qaredi의 localhost 불일치
+
+새 사용자 화면은 이동 주소 거부 대신 `127.0.0.1:39381/callback`의 ERR_CONNECTION_REFUSED였다. 실제 요청의 callback과 `ss -ltnp`를 대조하여 Qaredi의 기존 Codex 프로세스가 그 포트를 듣고 있음을 확인했다. Windows 브라우저의 localhost는 Windows이므로 원격 Qaredi listener에 닿지 않는다. 2026-10-23 16:36:25 KST 승인은 memories.read/work.read/work.write였지만 code 미교환·access token 0·미사용이며 2분 만료를 확인했다. 이는 사용자 토큰 만료를 추정한 진단이 아니다. 앞선 서버 Chromium 수락은 같은 호스트 안의 이동이며 이 교차 호스트 경로를 검증하지 않았다.
+
+운영 웹 코드·DB·기존 승인·사용자 문서는 그대로 두고 Qaredi의 `/home/changkwon/.codex/config.toml`에 공식 설정 `mcp_oauth_callback_port = 43173`만 추가했다. 포트가 비어 있음을 먼저 확인하고 기존 설정 전체를 비공개 0600 백업한 뒤 기존 바이트·owner/mode를 보존해 원자 저장했다. 비공개 증거는 `/home/changkwon/.local/state/qaredi-mcp-remote-auth-20261023/`(0700)에 있으며 설정 백업은 Git에 넣지 않는다. 새 실제 Codex app-server의 같은 계정 플러그인 읽기(installed/enabled, moa1/skill1)와 OAuth 요청의 실제 callback `http://127.0.0.1:43173/callback`을 확인했다. 동의/토큰 발급 없이 그 시험 프로세스만 종료했다. 기존 장기 실행 Codex는 종료하지 않았다.
+
+Windows PowerShell에서 다음 명령으로 loopback만 SSH 전달하고 창을 유지한다.
+
+```powershell
+ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:43173:127.0.0.1:43173 qaredi
+```
+
+그 뒤 Qaredi 호스트 Codex가 새 설정을 읽도록 MCP 설정 새로고침/필요 시 원격 호스트 재연결 후 기존 moa 인증을 새로 시작한다. 새 프로세스의 고정 포트 적용만 검증했으므로 기존 장기 실행 프로세스의 재로딩은 완료로 가정하지 않는다. 실제 새 callback이43173인지 확인해야 한다. 포트가 다르면 오래된 코드 URL을 고쳐 쓰거나 인증을 우회하지 말고 현재 인증 요청부터 다시 확인한다. 승인 범위는 위 세 개로 유지한다. 만료된 callback은 재사용하지 않는다. Windows 포트 선점·SSH 전달 성공·사용자 토큰 교환·기존 문서 실제 읽기는 아직 확인 대기다.
+
+원복은 이번 설정 한 줄만 제거하며 이후 사용자 설정 변경을 전체 백업으로 덮어쓰지 않는다. 포워딩은 PowerShell에서 Ctrl+C로 종료한다. 공개 포트/방화벽 개방·callback relay·인증/PKCE/state 완화·계정/권한 변경은 없다. 웹 런타임은 v2.73.3 유지, 웹 배포/서비스 재시작/회귀 추가0. 문서 diff/보안 린트/위키 검사를 수행한다.
+
+공식 근거: [MCP callback 포트 설정](https://learn.chatgpt.com/docs/extend/mcp), [원격 호스트별 설정과 자격](https://learn.chatgpt.com/docs/remote-connections), [SSH localhost 전달 방식](https://learn.chatgpt.com/docs/auth). auth 문서의 OpenAI 로그인 예시 포트는 모아의 실제 포트를 대신하지 않는다.
+
+문서 보충 검증: security_lint 금지패턴0, wiki_check 70편/구조·누락0, git diff --check 통과. 최종 읽기 전용 재조회에서도 위 사용자 승인 code 미교환·활성 access0을 확인했다. 이번 문서/호스트 설정 조치를 사용자 연결 완료로 보고하지 않는다.
