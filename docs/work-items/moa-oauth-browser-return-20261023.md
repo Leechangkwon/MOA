@@ -56,3 +56,9 @@ ssh -N -o ExitOnForwardFailure=yes -L 127.0.0.1:43173:127.0.0.1:43173 qaredi
 공식 근거: [MCP callback 포트 설정](https://learn.chatgpt.com/docs/extend/mcp), [원격 호스트별 설정과 자격](https://learn.chatgpt.com/docs/remote-connections), [SSH localhost 전달 방식](https://learn.chatgpt.com/docs/auth). auth 문서의 OpenAI 로그인 예시 포트는 모아의 실제 포트를 대신하지 않는다.
 
 문서 보충 검증: security_lint 금지패턴0, wiki_check 70편/구조·누락0, git diff --check 통과. 최종 읽기 전용 재조회에서도 위 사용자 승인 code 미교환·활성 access0을 확인했다. 이번 문서/호스트 설정 조치를 사용자 연결 완료로 보고하지 않는다.
+
+## 사용자 OAuth 완료 확인 — 2026-10-23 20:03 KST
+
+사용자가 Authentication complete 화면을 보고했다. 읽기 전용 서버 조회로 20:03:59 승인(Codex, pkdkak1)의 code 교환 완료·활성 access1·memories.read/work.read/work.write를 확인했다. 실제 callback은 `http://127.0.0.1:50539/callback`이며 앞서 준비한43173과 다르므로 이번 성공을 고정 포트/SSH 전달 검증으로 간주하지 않는다. 아직 grant.last_used_at은 없었다.
+
+같은 Qaredi 계정의 새 실제 Codex app-server에서 계정 플러그인1.0.2의 moa를 확인했지만 authStatus=notLoggedIn·tools0이었다. 로그인한 클라이언트의 자격이 이 Qaredi 실행 환경에 연결됐다는 증거는 없으며 현재 도구의 기존 qaredi STDIO 성공으로 대체하지 않는다. 사용자 로그인/코드 교환 성공은 확인됐지만 인증을 시작했던 Codex에서 업무 목록·지정 원문 실제 조회는 아직 대기다. 재인증/토큰 재발급은 요구하지 않고 같은 Codex 대화에서 업무 프로젝트 목록 조회로 이어가도록 안내한다. 기존 계정/권한/자격/문서 수정0, 추가 모델 호출0. 비공개 안전 요약은 user-auth-read-status.json에 저장했다.

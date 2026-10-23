@@ -1,3 +1,5 @@
+> 2026-10-23 20:03: 사용자 Codex의 OAuth code 교환·활성 access1·세 범위 승인 성공 확인. 실제 callback50539이며43173 전달 검증과 구분한다. Qaredi 새 실제 Codex는 여전히 moa/notLoggedIn/tools0이므로 인증을 시작했던 Codex의 업무 목록/원문 조회는 대기. 사용자 자격 공유·재인증·문서 수정0. docs/work-items/moa-oauth-browser-return-20261023.md 후속 기록.
+
 > 2026-10-23 후속: Windows 승인 후 localhost 연결 거부는 실제 listener가 Qaredi Codex에 있어 발생했다. 사용자 code 미교환/토큰0 확인. Qaredi Codex 계정 설정만 callback43173로 고정·비공개 백업/기존 바이트·권한 보존, 새 실제 프로세스에서 정확한 callback 확인. Windows PowerShell SSH loopback 전달·기존 프로세스 설정 재로딩·새 사용자 인증/문서 읽기는 대기. 기존 장기 Codex 종료/웹 배포/DB·계정·본문 변경0. docs/work-items/moa-oauth-browser-return-20261023.md 및 docs/chatgpt-remote-mcp.md.
 
 > 최신 운영 v2.73.3: Codex 승인 후 브라우저의 HTTP loopback 복귀 차단 수정. 실제브라우저 승인클릭→Codex code교환→8도구/읽기 운영46/0, 합성UI81/0. 기존103표/201원본/10설정/ACL보존, 설정/DBmigration/서비스reload0. 집Windows 새인증/원문조회는별도대기. docs/work-items/moa-oauth-browser-return-20261023.md.

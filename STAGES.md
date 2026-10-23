@@ -3220,3 +3220,5 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 
 | 2026-10-23 | 어려움·원인 | 승인 후 Windows Edge localhost 연결 거부 | 실제 callback39381은 Qaredi의 Codex가 listen. Windows와 원격서버의 localhost 불일치·사용자 code 미교환/토큰0 확인. 기존 서버 Chromium 시험의 교차호스트 미검증을 명시했다. |
 | 2026-10-23 | 보정·확인 대기 | Qaredi Codex callback43173 고정·SSH 전달 안내 | 기존 설정 비공개 백업/바이트·0600 보존. 새 실제 프로세스 callback43173 확인, 동의/토큰발급0. Windows 전달·기존 프로세스 설정 재로딩·사용자 인증/원문 조회는 대기. 웹 배포/DB/계정/문서 변경0. docs/work-items/moa-oauth-browser-return-20261023.md. |
+
+| 2026-10-23 | 사용자 OAuth 성공·호스트 구분 | 20:03:59 본인 Codex 승인 code 교환·access1·세 범위 확인 | 실제 callback50539이며43173 전달 성공으로 확대하지 않는다. Qaredi 새 프로세스는 여전히 moa/notLoggedIn/tools0, 인증을 시작했던 Codex의 목록·원문 조회 대기. 재인증·자격 공유·문서 수정0. 같은 work-item 후속 기록. |
