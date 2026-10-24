@@ -4,6 +4,7 @@
   python3 tests/community/memories_harness.py --port 8768 --suite brand_words_browser.py --output <결과 폴더>/accept
 
 지시서 docs/qf15-s1-words-directive.md 「수락 시험」 · DESIGN 5장 낱말 표(Q:F-15) · 「브랜드 이름 3층」 · 2.33 D.
+S1b 보충(docs/qf15-s1b-words-directive.md 「수락 시험」) — S1 제외 셋을 풂(EXCLUDE 'home' · 'messages' · LEGAL_NO_ICON) · [static] ⑥ ⑦ · [pages] 더함(아래).
 합성 DB · 임시 복사본 · 로컬 php -S 만(운영 8082 · 운영 DB · 시드 계정 0) · fixture claude_ 계정 · UA tbox-review/<날짜>.
 결과 파일에는 단언 이름 · 참/거짓 · 측정값(글자 조각 · 수 · 대비)만 — 세션 · CSRF · 비밀번호 0.
 
@@ -15,11 +16,19 @@
     ④ usage-guide.js step 선택자 · modalContexts 키의 id 가 src · public(usage-guide.js 제외)에 정의돼 있다(죽은 선택자 0) ·
        「왼쪽 아이콘 줄」 「세 칸에 모아요」 「일상 기록뿐 아니라」 0
     ⑤ qaredi-icon-192/512.png 크기 그대로 · RGB · 네 귀퉁이 ≈ #6d28d9(±8) · moa-favicon.svg 에 script · href · 외부 주소 0 · 색은 2.33 값만
+    ⑥ (S1b) moa.js · member-assist.js · home-dashboard.js · member_messages_page.php · member_invites.php · legal_page.php 의 문자열과
+       routes.php community_not_ready() 몸통에 S1b 옛 글자(STATIC6_WORDS) 0(주석 제외) · 지시서 표의 「바꿀 글자」가 각 파일에 있다 · 그대로 둘 셋도 그대로
+    ⑦ (S1b) community_not_ready() 몸통: h1 「업무」 · moa-favicon.svg <link> 한 줄 · http_response_code(503) · Http::error(503, …) · exit 있음 ·
+       S1b 기준 판(S1B_BASE)과 견준 그 함수의 바뀐 줄이 문자열 셋 + <link> 한 줄뿐(갈래 · 헤더 · exit 무변경). 업무 준비 중 화면은 격리 틀에서 띄우지 않는다 — 이 ⑦ 로 갈음
   [pages]  1280 · 412 × 밝게 · 어둡게 × 직원 · 관리자 · 손님 · 로그인 전 — 화면마다 document.title · body innerText · [aria-label] ·
            [placeholder] · [data-tip] 에 금지 낱말 0 · 머리글 자리 영어 대문자 6자 이상 0 · link[rel=icon] = 모아 파비콘 · 넘침 0 · 콘솔 0
            (런처는 <details> 를 모두 펼친 뒤 한 번 더 · 문서는 편집 모드 「파일」 블록 창도)
   [must]   있어야 할 것 — 업무 사이드바 「업무 홈」 · 카페 사이드바 「우리 공간」 · 앱 판 「모아 홈 — 검색과 바로가기」 · 자료실 사이드바 「PC 비서 받기」 ·
            메신저 「모아 AI」 부제 · 로그인 title · 로그인 전 h1 · 파비콘 200 image/svg+xml · /tbox/app.webmanifest description · 경보 매니페스트 이름
+           (S1b) /tbox/users(관리자) 「공급자: Google Gemini」 · /tbox/messages 「모아 AI」 부제 · / 대시보드 시작 안내 「모아 홈 시작 안내」 ·
+           「홈 편집」 캔버스 제목 「내 대시보드 편집」(취소 — 저장 요청 0) · 「게시판 새 글」 묶음 글 있을 때 · 없을 때 「이야기」 「커뮤니티」 0
+           (그 묶음이 보이는 홈 = 둘째 직원 claude_employee02 의 구성에 legacy_stories 위젯을 창구로 더한 화면 'home-feed') ·
+           /tbox/privacy · /tbox/terms 파비콘 · 머리 note 한 줄 소개
   [contrast] 바뀐 글자 자리 대비 ≥ 4.5(밝게 · 어둡게 — 사진 · 그라데이션 바탕은 값만 기록)
   [shots]  로그인 전 1280 · 로그인 화면 412 다크 · 자료실 사이드바 1280 · 설치 아이콘 두 장 전후 · 파비콘
 
@@ -51,16 +60,20 @@ EXCLUDE = {
     'memories': [('#compose-dialog', '작성 창 — 지시서 수락 시험 「단 /community/memories 의 공개 범위 고르개 · 작성 창은 제외」'),
                  ('#privacy-dialog', '공개 범위 고르개(기본 공개 범위) — 「바꾸지 않는 것」 이야기 공개 범위 낱말'),
                  ('.privacy-badge', '글의 공개 범위 표시(memories.js:23 labels) — 「바꾸지 않는 것」')],
-    # 수정 파일 목록 밖 — 모아 홈 대시보드(펼침)의 시작 안내 머리 「내 홈 시작 안내」는 public/assets/home-dashboard.js:51 이 그린다
-    'home': [('.dashboard-guide > summary', 'public/assets/home-dashboard.js:51 「내 홈 시작 안내」 — 표에 없는 파일(수정 파일 밖) · 보고서 「못 한 것」')],
+    # (S1b — 'home' 의 .dashboard-guide > summary 제외를 풂: home-dashboard.js 「모아 홈 시작 안내」)
     # 법적 문서 본문(privacy-*.html · terms-*.html)은 손대지 않는다 — 머리 · 제목 · 바닥만 본다
     'privacy': [('article.wiki-article > :not(header.wiki-head):not(p.wiki-meta)', '법적 문서 본문 — 지시서 금지 패턴 「법적 문서 본문 손대기」')],
     'terms': [('article.wiki-article > :not(header.wiki-head):not(p.wiki-meta)', '법적 문서 본문 — 지시서 금지 패턴 「법적 문서 본문 손대기」')],
-    # 수정 파일 목록 밖(지시서 표 D 는 떠 있는 창 messenger_window.php:39 만) — 전체 화면 /tbox/messages 의 같은 줄은 member_messages_page.php:25
-    'messages': [('#message-ai > small', 'src/handlers/member_messages_page.php:25 「공용 Gemini · 나만의 대화 기록」 — 표 D 에 없는 파일(수정 파일 밖) · 보고서 「못 한 것」')],
+    # (S1b — 'messages' 의 #message-ai > small 제외를 풂: member_messages_page.php 「회사 공용 AI · 내 대화는 나만 봐요」)
 }
-# 파비콘 <link> 를 넣는 파일 목록(표 H) 밖 — 법적 문서 화면은 src/handlers/legal_page.php(수정 파일 밖)
-LEGAL_NO_ICON = {'privacy', 'terms'}
+# (S1b — 법적 문서 화면도 파비콘을 단다: legal_page.php · 빈 집합 = 모든 화면이 link[rel=icon] 단언)
+LEGAL_NO_ICON = set()
+# S1b [static] ⑥ — 일곱 자리 파일에 남으면 안 되는 옛 글자 · ⑦ 의 기준 판(S1b 지시서 「main 8a3977b 기준」)
+STATIC6_WORDS = ['커뮤니티', '공용 Gemini', 'Gemini 3.5', '내 홈', '이야기를 불러오', '제목 없는 이야기', '첫 이야기', '우리의 이야기가 모이는 곳', '개인 업무 공간']
+S1B_BASE = '8a3977b'
+FAVICON_PHP = "<link rel=\"icon\" type=\"image/svg+xml\" href=\"<?= Http::url('/assets/moa-favicon.svg') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/moa-favicon.svg') ?>\">"
+FAVICON_ECHO = ("       . '<link rel=\"icon\" type=\"image/svg+xml\" href=\"' . htmlspecialchars(Http::url('/assets/moa-favicon.svg'), ENT_QUOTES, 'UTF-8') . '?v=' . "
+                "(int) filemtime(__DIR__ . '/../../public/assets/moa-favicon.svg') . '\">'")
 
 
 def check(ok, name):
@@ -171,7 +184,14 @@ CONTRAST_JS = r"""(sels) => {
 CHANGED = ['#nav-work-home > span:not(.icon)', '#nav-cafe-home > span:not(.icon)', '#nav-programs > span:not(.icon)', '.app-menu__desc', '.moa-logo-note',
            '#landing-title', '.moa-kicker', '.q-eyebrow', '.eyebrow', '.moa-footer p:not(.legal-links)', '.login__brand-sub', '.login__lead', '.moa-service-label',
            '.moa-home-tools strong', '.moa-home-tools span', '#moa-feed-title', '.moa-story-meta', '.page-head__title', '#message-ai > small',
-           '#moa-hero-title', '.moa-home-extra > summary', '.moa-community-feed .moa-section-head a', '.q-start-kind', '.moa-purpose-step']
+           '#moa-hero-title', '.moa-home-extra > summary', '.moa-community-feed .moa-section-head a', '.q-start-kind', '.moa-purpose-step',
+           '.dashboard-guide > summary', '#member-ai-settings label.field:has(#ai-settings-enabled) > small']   # S1b — 시작 안내 머리 · 관리자 AI 설정 칸 아래 글
+FEED_CHANGED = ['#moa-feed-status', '.moa-feed-row h3', '.moa-feed-row p']   # S1b — 「게시판 새 글」 묶음(게시판마다 잰다)
+FEED_JS = r"""() => { const sec = document.querySelector('section.moa-community-feed'); if (!sec) return null;
+  const s = document.getElementById('moa-feed-status');
+  return {text: sec.innerText, attrs: [...sec.querySelectorAll('[aria-label]')].map(e => e.getAttribute('aria-label')),
+          status: s ? s.textContent : null, rows: document.querySelectorAll('#moa-feed .moa-feed-row').length,
+          cards: [...document.querySelectorAll('#moa-feed .moa-feed-row')].map(a => a.innerText.replace(/\s+/g, ' ').trim().slice(0, 120))}; }"""
 
 try:
     for u in users:
@@ -193,6 +213,29 @@ try:
     QA = int(sql("SELECT id FROM community.spaces WHERE kind='board' AND name='질문과 답변'"))
     POST = call('POST', '/api/boards/' + str(FREE) + '/pages', {'title': 'Q:F-15 합성 게시판 글'}, user='employee', expected=201)['page']['id']
     DOC = call('POST', '/api/pages', {'title': 'Q:F-15 합성 문서'}, user='employee', expected=201)['page']['id']
+
+    # S1b — 「게시판 새 글」 묶음이 보이는 모아 홈: 기본 구성(v3)에는 그 위젯이 없다(#home-stories hidden). 둘째 직원(claude_employee02)의 홈 구성에만
+    # 옛 「이야기와 읽을거리」 위젯(legacy_stories — v1 → v3 올림이 만드는 모양 · dashboard-canvas.js upgrade)을 창구(PATCH)로 하나 더한다. 첫째 직원은 기본 그대로
+    def tbox_api(method, path, user, body=None):
+        h = {'User-Agent': UA, 'Cookie': '__Host-tbox_session=' + users[user]['session']}
+        if method != 'GET':
+            h['X-CSRF-Token'] = users[user]['csrf']
+        return requests.request(method, site + '/tbox' + path, json=body, headers=h, timeout=35)
+
+    def feed_layout():
+        r = tbox_api('GET', '/api/me/home-dashboard', 'other')
+        d = r.json() if r.status_code == 200 else {}
+        lay = d.get('layout') or {}
+        ws = lay.get('widgets') or []
+        bottom = {k: max([w[k]['y'] + w[k]['h'] for w in ws] or [0]) for k in ('desktop', 'mobile')}
+        ws.append({'id': 'widget-qf15-s1b-stories', 'type': 'legacy_stories', 'source': {}, 'visible': True, 'locked': False,
+                   'desktop': {'x': 0, 'y': bottom['desktop'] + 24, 'w': 1200, 'h': 2000, 'size': 'l'},
+                   'mobile': {'x': 0, 'y': bottom['mobile'] + 16, 'w': 360, 'h': 2000, 'size': 'l'}})
+        r2 = tbox_api('PATCH', '/api/me/home-dashboard', 'other', {'layout': lay, 'revision': d.get('revision')})
+        got = (r2.json().get('layout') or {}) if r2.status_code == 200 else {}
+        check(r.status_code == 200 and lay.get('version') == 3 and r2.status_code == 200 and any(w.get('type') == 'legacy_stories' for w in got.get('widgets', [])),
+              'setup: claude_employee02 home layout + legacy_stories widget (GET %s · v%s · PATCH %s)' % (r.status_code, lay.get('version'), r2.status_code))
+    guard('setup feed layout', feed_layout)
 
     # ═══ [static] ═══════════════════════════════════════════════════════════════════
     if want('static'):
@@ -314,6 +357,66 @@ try:
             check(colors == ['#6d28d9', '#f59e0b', '#ffffff'], '⑤ moa-favicon.svg colors = 2.33 D only (--wm-d · --wm-d-dot · --wm-on) %s' % colors)
         guard('static ⑤', static_icons)
 
+        # ── S1b ⑥ ⑦ ───────────────────────────────────────────────────────────────
+        def not_ready_body(text):
+            i = text.index('function community_not_ready(bool $isApi): void')
+            return text[i:text.index('\n}\n', i) + 2]
+
+        def static_s1b_words():
+            # 파일 → 주석 뺀 코드에 있어야 할 「바꿀 글자」(+ 그대로 둘 글자) — S1b 지시서 「바꿀 글자 표」 #1~#7c 와 「그대로」 셋
+            want_new = {
+                'src/handlers/member_messages_page.php': ['<small>회사 공용 AI · 내 대화는 나만 봐요</small>'],
+                'public/assets/home-dashboard.js': ["pending?'모아 홈 시작 안내':'시작 안내'", "title:'내 대시보드 편집'"],
+                'public/assets/moa.js': ['오늘 발견한 작은 초록을 우리 공간에 남겨 보는 건 어떨까요?', "'계정 설정을 마치면 게시판 새 글을 볼 수 있어요.'",
+                                         "'게시판 새 글을 불러오지 못했어요. 우리 공간에서 다시 확인해 주세요.'", "status.textContent='게시판 새 글을 불러오고 있어요.'",
+                                         "p.title||'제목 없는 글'", "p.excerpt||'글을 열어 보세요.'", "'아직 새 글이 없어요. 우리 공간에서 첫 글을 남겨 보세요.'",
+                                         "'아직 열린 게시판이 없어요. 내 공간에서 기록을 시작해 보세요.'"],
+                'public/assets/member-assist.js': ["'모아 AI 결과'", "tell('모아 AI 설정을 확인하고 있어요…')", "'관리자가 Gemini 키를 등록하고 AI 사용을 켜면 이용할 수 있습니다.'"],
+                'src/views/member_invites.php': ['<small>공급자: Google Gemini</small>', 'Gemini 3.1 Flash Lite Image로 이미지를 만들고'],
+                'src/handlers/legal_page.php': [FAVICON_PHP, '<span class="moa-logo-note">우리 회사의 일과 자료를 한곳에 모아.</span>'],
+            }
+            res = {}
+            for rel, needles in want_new.items():
+                code = strip_code((root / rel).read_text(encoding='utf-8'), html=rel.endswith('.php'))
+                res[rel] = {'old': [w for w in STATIC6_WORDS if w in code], 'missing': [n[:40] for n in needles if n not in code]}
+            code = strip_code(not_ready_body((root / 'src/community/routes.php').read_text(encoding='utf-8')))
+            res['routes.php community_not_ready()'] = {'old': [w for w in STATIC6_WORDS if w in code],
+                                                       'missing': [n[:40] for n in ("Http::error(503, '업무는 아직 준비 중입니다');", "'<h1 class=\"page-head__title\">업무</h1>'",
+                                                                                    "'<p class=\"page-head__sub\">작업 · 프로젝트 · 문서</p></div></header>'") if n not in code]}
+            # 법적 문서 화면: 파비콘 줄은 app.css 줄 바로 위(member_top.php 와 같은 꼴)
+            legal = (root / 'src/handlers/legal_page.php').read_text(encoding='utf-8').splitlines()
+            at = [i for i, l in enumerate(legal) if l == FAVICON_PHP]
+            ordered = len(at) == 1 and legal[at[0] + 1].startswith('<link rel="stylesheet" href="<?= Http::url(\'/assets/app.css\') ?>')
+            res['legal_page.php favicon order'] = {'old': [], 'missing': [] if ordered else ['favicon line right above app.css']}
+            metrics['static6'] = res
+            bad = {k: v for k, v in res.items() if v['old'] or v['missing']}
+            check(bad == {}, '⑥ S1b seven spots: old words %s 0 (comments stripped) · new words present in each file · kept lines kept %s'
+                  % ('/'.join(STATIC6_WORDS), json.dumps(bad, ensure_ascii=False)))
+        guard('static ⑥', static_s1b_words)
+
+        def static_not_ready():
+            import difflib
+            lines = not_ready_body((root / 'src/community/routes.php').read_text(encoding='utf-8')).splitlines()
+            need = {'h1 업무': "       . '<h1 class=\"page-head__title\">업무</h1>'", 'favicon <link>': FAVICON_ECHO,
+                    'http_response_code(503)': '        http_response_code(503);', 'Http::error(503, …)': "        Http::error(503, '업무는 아직 준비 중입니다');", 'exit': '    exit;'}
+            missing = [k for k, v in need.items() if lines.count(v) != 1]
+            check(missing == [], '⑦ community_not_ready(): h1 「업무」 · moa-favicon <link> line · http_response_code(503) · Http::error(503, …) · exit present (missing %s)' % missing)
+            old_src = subprocess.run(['git', '-C', str(REPO), 'show', S1B_BASE + ':src/community/routes.php'], capture_output=True, text=True)
+            before = not_ready_body(old_src.stdout).splitlines() if old_src.returncode == 0 else []
+            minus, plus = [], []
+            for op, a0, a1, b0, b1 in difflib.SequenceMatcher(a=before, b=lines, autojunk=False).get_opcodes():
+                if op != 'equal':
+                    minus += before[a0:a1]
+                    plus += lines[b0:b1]
+            want_minus = ["        Http::error(503, '커뮤니티는 아직 준비 중입니다');", "       . '<h1 class=\"page-head__title\">커뮤니티</h1>'",
+                          "       . '<p class=\"page-head__sub\">개인 업무 공간</p></div></header>'"]
+            want_plus = ["        Http::error(503, '업무는 아직 준비 중입니다');", FAVICON_ECHO, "       . '<h1 class=\"page-head__title\">업무</h1>'",
+                         "       . '<p class=\"page-head__sub\">작업 · 프로젝트 · 문서</p></div></header>'"]
+            metrics['not_ready_diff'] = {'base': S1B_BASE, 'base_found': bool(before), 'minus': minus, 'plus': plus}
+            check(bool(before) and sorted(minus) == sorted(want_minus) and sorted(plus) == sorted(want_plus),
+                  '⑦ community_not_ready() vs %s: changed lines = 3 strings + 1 favicon <link> only (−%d / +%d · branch · headers · exit unchanged)' % (S1B_BASE, len(minus), len(plus)))
+        guard('static ⑦', static_not_ready)
+
     # ═══ [must] HTTP — 파비콘 · 매니페스트 ═══════════════════════════════════════════════
     if want('must'):
         def must_http():
@@ -356,11 +459,13 @@ try:
                    ('files', 'employee', '/tbox/'), ('files-admin', 'admin', '/tbox/'), ('files-guest', 'guest', '/tbox/'), ('settings', 'employee', '/tbox/settings'),
                    ('welcome', 'employee', '/tbox/welcome'), ('welcome-pc', 'employee', '/tbox/welcome?section=pc-assistant'), ('programs', 'employee', '/tbox/programs'),
                    ('messages', 'employee', '/tbox/messages'), ('alerts-app', 'admin', '/tbox/alerts-app'), ('not-found', 'employee', '/tbox/qf15-no-such-screen'),
+                   ('users', 'admin', '/tbox/users'),   # S1b — 관리자 「모아 AI 설정」(member_invites.php)
                    ('not-found-out', None, '/tbox/qf15-no-such-screen'),
                    ('work-home', 'employee', '/community/'), ('work-home-guest', 'guest', '/community/'), ('my-tasks', 'employee', '/community/my-tasks'),
                    ('workspace', 'employee', '/community/workspace'), ('cafe', 'employee', '/community/cafe'), ('cafe-guest', 'guest', '/community/cafe'),
                    ('board', 'employee', '/community/b/' + str(QA)), ('cafe-board', 'employee', '/community/b/' + str(FREE)),
-                   ('post', 'employee', '/community/p/' + POST), ('doc', 'employee', '/community/p/' + DOC), ('memories', 'employee', '/community/memories')]
+                   ('post', 'employee', '/community/p/' + POST), ('doc', 'employee', '/community/p/' + DOC), ('memories', 'employee', '/community/memories'),
+                   ('home-feed', 'other', '/')]   # S1b — 「게시판 새 글」 묶음(legacy_stories 위젯이 보이는 홈 · 둘째 직원)
 
         def excl_for(name):
             return EXCLUDE.get(name.split('-')[0] if name.split('-')[0] in EXCLUDE else name, [])
@@ -386,7 +491,7 @@ try:
                     for theme in (('light',) if QUICK else ('light', 'dark')):
                         for name, who, path in SCREENS:
                             tag = '%s-%d-%s' % (name, width, theme)
-                            ctx = context(who, width, theme, reauth=(name == 'alerts-app'))
+                            ctx = context(who, width, theme, reauth=(name in ('alerts-app', 'users')))   # S1b — /tbox/users 도 비밀번호 다시 확인 뒤 화면
                             t = Tab(ctx)
                             p = t.page
                             resp = p.goto(site + path, wait_until='networkidle')
@@ -407,7 +512,7 @@ try:
                                                         ('work-home', 1280, 'light'), ('cafe', 1280, 'light'), ('login-tbox', 1280, 'light')):
                                 p.screenshot(path=str(shots / ('%s-%d-%s.png' % (name, width, theme))), full_page=(name == 'landing'))
                             # 펼침 — 런처의 <details>(대시보드 · 읽을거리 · 게시판 새 글) · 문서의 편집 모드 「파일」 블록 창
-                            if name in ('landing', 'home', 'consent-launcher'):
+                            if name in ('landing', 'home', 'consent-launcher', 'home-feed'):
                                 p.evaluate("() => document.querySelectorAll('details').forEach(d => { d.open = true; })")
                                 p.wait_for_timeout(600)
                                 # 게시판 새 글(moa.js)이 다 불러올 때까지 — 「…불러오고 있어요」가 남아 있으면 기다린다(최대 8초 · CSP 라 evaluate 되풀이)
@@ -417,6 +522,64 @@ try:
                                     p.wait_for_timeout(100)
                                 metrics.setdefault('feed_status', {})[tag] = p.evaluate("(() => { const s = document.getElementById('moa-feed-status'); return s ? s.textContent : null; })()")
                                 look(p, name, tag, ' (details open)')
+                            if name == 'home-feed':
+                                # ── S1b 「게시판 새 글」 묶음 — 게시판(탭)마다 눌러 글 있을 때 · 없을 때 둘 다 본다(상태 · 카드 · aria-label) ──
+                                def feed_settle():
+                                    for _ in range(80):
+                                        if not p.evaluate("(() => { const s = document.getElementById('moa-feed-status'); return !!s && /불러오고/.test(s.textContent); })()"):
+                                            return
+                                        p.wait_for_timeout(100)
+                                seen = []
+                                tabs = p.locator('#moa-board-tabs > button')
+                                for i in range(tabs.count()):
+                                    b = tabs.nth(i)
+                                    b.click()
+                                    loading = p.evaluate("(() => { const s = document.getElementById('moa-feed-status'); return s ? s.textContent : null; })()")
+                                    p.wait_for_timeout(150)
+                                    feed_settle()
+                                    f = p.evaluate(FEED_JS) or {'text': '', 'attrs': [], 'status': None, 'rows': -1, 'cards': []}
+                                    blob = '\n'.join([f['text'] or '', loading or ''] + f['attrs'])
+                                    fc = [c for c in p.evaluate(CONTRAST_JS, FEED_CHANGED) if not c['image']]
+                                    seen.append({'board': b.inner_text().strip(), 'loading': loading, 'status': f['status'], 'rows': f['rows'], 'cards': f['cards'][:3],
+                                                 'words': [w for w in ('이야기', '커뮤니티') if w in blob], 'low': [(c['text'], c['ratio']) for c in fc if c['ratio'] < 4.5], 'rated': len(fc)})
+                                metrics.setdefault('feed_boards', {})[tag] = seen
+                                brief = json.dumps([(x['board'], x['rows'], (x['status'] or '')[:30], x['words']) for x in seen], ensure_ascii=False)
+                                check(len(seen) >= 2 and all(not x['words'] for x in seen), '[pages] %s: 「게시판 새 글」 every board — loading · status · cards · aria-label 「이야기」 「커뮤니티」 0 %s' % (tag, brief))
+                                check(any(x['rows'] > 0 and x['status'] == '' and any('Q:F-15 합성 게시판 글' in c for c in x['cards']) for x in seen),
+                                      '[pages] %s: 「게시판 새 글」 board with posts — card 「Q:F-15 합성 게시판 글」 shown' % tag)
+                                check(any(x['rows'] == 0 and x['status'] == '아직 새 글이 없어요. 우리 공간에서 첫 글을 남겨 보세요.' for x in seen),
+                                      '[pages] %s: 「게시판 새 글」 board without posts — 「아직 새 글이 없어요. 우리 공간에서 첫 글을 남겨 보세요.」' % tag)
+                                check(all(not x['low'] for x in seen), '[contrast] %s: 「게시판 새 글」 status · cards ≥ 4.5 (low %s)' % (tag, json.dumps([x['low'] for x in seen if x['low']][:2], ensure_ascii=False)))
+                                if (width, theme) == (1280, 'light'):
+                                    p.locator('section.moa-community-feed').screenshot(path=str(shots / 'home-feed-1280-light.png'))
+                            if name == 'home':
+                                # ── S1b 대시보드 시작 안내 · 「홈 편집」 캔버스 제목 — 취소로 닫는다(저장 요청 0) ──
+                                p.wait_for_selector('.dashboard-guide > summary', timeout=10000)
+                                g = p.evaluate("(() => [...document.querySelectorAll('.dashboard-guide > summary')].map(x => x.textContent))()")
+                                check(g == ['모아 홈 시작 안내'], '[must] %s: dashboard start guide summary 「모아 홈 시작 안내」 · 「내 홈」 0 (%s)' % (tag, g))
+                                writes = []
+
+                                def on_request(r):
+                                    if r.method not in ('GET', 'HEAD'):
+                                        writes.append(r.method + ' ' + urlsplit(r.url).path)
+                                p.on('request', on_request)
+                                p.wait_for_selector('#home-edit:not([disabled])', timeout=10000)
+                                p.locator('#home-edit').click()
+                                p.wait_for_selector('.dashboard-editor > h2', timeout=10000)
+                                p.wait_for_timeout(200)
+                                ed = p.evaluate("(() => [...document.querySelectorAll('.dashboard-editor')].map(s => ({h2: s.querySelector('h2').textContent, label: s.getAttribute('aria-label')})))()")
+                                look(p, name, tag, ' (home edit)')
+                                check(ed == [{'h2': '내 대시보드 편집', 'label': '내 대시보드 편집'}], '[must] %s: home edit canvas title 「내 대시보드 편집」 (h2 · aria-label) (%s)' % (tag, ed))
+                                ec = [c for c in p.evaluate(CONTRAST_JS, ['.dashboard-editor > h2']) if not c['image']]
+                                check(ec != [] and all(c['ratio'] >= 4.5 for c in ec), '[contrast] %s: home edit canvas title ≥ 4.5 %s' % (tag, [(c['text'], c['ratio']) for c in ec]))
+                                if (width, theme) == (1280, 'light'):
+                                    p.screenshot(path=str(shots / 'home-edit-1280-light.png'))
+                                p.locator('.dashboard-editor').get_by_role('button', name='취소', exact=True).click()
+                                p.wait_for_timeout(400)
+                                closed = p.evaluate("(() => !document.querySelector('.dashboard-editor'))()")
+                                p.remove_listener('request', on_request)
+                                check(closed and not [w for w in writes if '/api/me/home-dashboard' in w],
+                                      '[pages] %s: home edit closed with 「취소」 — home-dashboard save requests 0 (non-GET %s)' % (tag, writes))
                             if name == 'doc' and width == 1280:
                                 p.locator('#page-edit').click()
                                 p.wait_for_selector('#page-editor .ProseMirror', timeout=10000)
@@ -463,6 +626,17 @@ try:
                             if name == 'landing':
                                 h = p.evaluate("(() => { const h = document.getElementById('landing-title'); return h ? h.textContent : null; })()")
                                 check(h == SLOGAN, '[must] %s: signed-out h1 「%s」 (%s)' % (tag, SLOGAN, h))
+                            # ── S1b 있어야 할 것 ──
+                            if name == 'users':
+                                u = p.evaluate("(() => { const s = [...document.querySelectorAll('#member-ai-settings label.field:has(#ai-settings-enabled) > small')]; return s.length === 1 ? {t: s[0].textContent, shown: s[0].getClientRects().length > 0} : s.length; })()")
+                                check(u == {'t': '공급자: Google Gemini', 'shown': True} and 'Gemini 3.5' not in st['text'] and 'Gemini 3.5' not in p.content(),
+                                      '[must] %s: admin AI settings 「공급자: Google Gemini」 shown · 「Gemini 3.5」 0 (%s)' % (tag, u))
+                            if name == 'messages':
+                                m = p.evaluate("(() => { const s = [...document.querySelectorAll('#message-ai > small')]; return s.map(x => x.textContent); })()")
+                                check(m == ['회사 공용 AI · 내 대화는 나만 봐요'], '[must] %s: full-screen messenger 「모아 AI」 subtitle 「회사 공용 AI · 내 대화는 나만 봐요」 (%s)' % (tag, m))
+                            if name in ('privacy', 'terms'):
+                                n = p.evaluate("(() => [...document.querySelectorAll('.moa-logo-note')].map(x => x.textContent))()")
+                                check(n == [SLOGAN], '[must] %s: header note 「%s」 (%s)' % (tag, SLOGAN, n))
                             # 대비 — 바뀐 글자 자리
                             cs = p.evaluate(CONTRAST_JS, CHANGED)
                             rated = [c for c in cs if not c['image']]

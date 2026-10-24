@@ -6759,6 +6759,12 @@
         "public/assets/qaredi-icon-192.png",
         "public/assets/qaredi-icon-512.png",
         "scripts/brand_icons.php",
+        "src/handlers/member_messages_page.php",
+        "src/handlers/legal_page.php",
+        "src/views/member_invites.php",
+        "public/assets/home-dashboard.js",
+        "public/assets/moa.js",
+        "public/assets/member-assist.js",
         "tests/community/brand_words_browser.py",
         "tests/community/memories_harness.py",
         "tests/community/memories_http.py",
@@ -6769,7 +6775,7 @@
       "risks": [],
       "est_sec": 600,
       "writes_prod": false,
-      "notes": "사이트 Q:F-15 S1 낱말 · 브랜드 맞추기(지시서 docs/qf15-s1-words-directive.md · DESIGN 5장 낱말 표 · 브랜드 이름 3층 · 2.33 D) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [static] otpauth issuer 모아 · 32자 아이디 QR · 패스키 rp name 모아 · rp id 식 무변경(git diff) · 매니페스트 · 경보 SW · 2단계 코드 생성기 · Legal::TITLES · 검색 출처 · zip 이름에 Qaredi · t-box 0 · 사용 안내 죽은 선택자 0 · 설치 아이콘 크기 · RGB · 귀퉁이 #6d28d9 · 파비콘 SVG(script · href · 외부 주소 0 · 색 2.33 값만). [must] 파비콘 200 image/svg+xml · app.webmanifest 한 줄 소개 · 경보 매니페스트 「모아 관리자 경보」. [pages] 화면 34 × 1280 · 412 × 밝게 · 어둡게(직원 · 관리자 · 손님 · 로그인 전): 제목 · 본문 · aria-label · placeholder · data-tip 금지 낱말 0 · 영어 대문자 머리글 0 · 파비콘 링크 · 넘침 0 · 콘솔 0 · 있어야 할 글자 · 바뀐 자리 대비 4.5. 제외(근거 표 EXCLUDE): 이야기 공개 범위 고르개 · 작성 창 · 법적 문서 본문 · 수정 파일 밖 두 자리(member_messages_page.php:25 · home-dashboard.js:51) · 법적 문서 화면 파비콘(legal_page.php)."
+      "notes": "사이트 Q:F-15 S1 낱말 · 브랜드 맞추기(지시서 docs/qf15-s1-words-directive.md · DESIGN 5장 낱말 표 · 브랜드 이름 3층 · 2.33 D) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [static] otpauth issuer 모아 · 32자 아이디 QR · 패스키 rp name 모아 · rp id 식 무변경(git diff) · 매니페스트 · 경보 SW · 2단계 코드 생성기 · Legal::TITLES · 검색 출처 · zip 이름에 Qaredi · t-box 0 · 사용 안내 죽은 선택자 0 · 설치 아이콘 크기 · RGB · 귀퉁이 #6d28d9 · 파비콘 SVG(script · href · 외부 주소 0 · 색 2.33 값만). [must] 파비콘 200 image/svg+xml · app.webmanifest 한 줄 소개 · 경보 매니페스트 「모아 관리자 경보」. [pages] 화면 34 × 1280 · 412 × 밝게 · 어둡게(직원 · 관리자 · 손님 · 로그인 전): 제목 · 본문 · aria-label · placeholder · data-tip 금지 낱말 0 · 영어 대문자 머리글 0 · 파비콘 링크 · 넘침 0 · 콘솔 0 · 있어야 할 글자 · 바뀐 자리 대비 4.5. 제외(근거 표 EXCLUDE): 이야기 공개 범위 고르개 · 작성 창 · 법적 문서 본문 · 수정 파일 밖 두 자리(member_messages_page.php:25 · home-dashboard.js:51) · 법적 문서 화면 파비콘(legal_page.php). S1b(docs/qf15-s1b-words-directive.md) — 제외 셋 풂(위 두 자리 · 법적 문서 파비콘) · [static] ⑥ 일곱 자리 옛 글자 0 · ⑦ community_not_ready() 바뀐 줄 = 문자열 셋 + 파비콘 한 줄 · [pages] /tbox/users 「공급자: Google Gemini」 · 시작 안내 「모아 홈 시작 안내」 · 「홈 편집」 제목 「내 대시보드 편집」(취소 · 저장 0) · 「게시판 새 글」 글 있을 때 · 없을 때 · 법적 문서 머리 note."
     },
     {
       "id": "core.scale_d1",

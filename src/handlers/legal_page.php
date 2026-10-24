@@ -44,12 +44,13 @@ if (!headers_sent()) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
 <title><?= $e(Legal::LABELS[$legalDoc]) ?> · 모아</title>
+<link rel="icon" type="image/svg+xml" href="<?= Http::url('/assets/moa-favicon.svg') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/moa-favicon.svg') ?>">
 <link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/app.css') ?>">
 <?= Design::assets(false) ?>
 </head>
 <body class="moa-site" data-legal-doc="<?= $e($legalDoc) ?>">
 <a class="skip" href="#legal-main">본문으로 건너뛰기</a>
-<header class="moa-nav"><a class="moa-logo" href="/"><?php $moaWordmarkLogo=true; require __DIR__.'/../views/moa_wordmark.php'; /* H4 (DESIGN 2.33) */ ?><span class="moa-logo-note">우리의 이야기가 모이는 곳</span></a><nav aria-label="약관과 방침"><a href="<?= $e($legalHref('privacy')) ?>"<?= $legalDoc === 'privacy' ? ' aria-current="page"' : '' ?>><strong>개인정보 처리방침</strong></a><a href="<?= $e($legalHref('terms')) ?>"<?= $legalDoc === 'terms' ? ' aria-current="page"' : '' ?>>이용약관</a><a href="/">모아 홈</a></nav></header>
+<header class="moa-nav"><a class="moa-logo" href="/"><?php $moaWordmarkLogo=true; require __DIR__.'/../views/moa_wordmark.php'; /* H4 (DESIGN 2.33) */ ?><span class="moa-logo-note">우리 회사의 일과 자료를 한곳에 모아.</span></a><nav aria-label="약관과 방침"><a href="<?= $e($legalHref('privacy')) ?>"<?= $legalDoc === 'privacy' ? ' aria-current="page"' : '' ?>><strong>개인정보 처리방침</strong></a><a href="<?= $e($legalHref('terms')) ?>"<?= $legalDoc === 'terms' ? ' aria-current="page"' : '' ?>>이용약관</a><a href="/">모아 홈</a></nav></header>
 <main id="legal-main" class="moa-member-main">
 <article class="wiki-article" aria-labelledby="legal-title">
 <header class="wiki-head">

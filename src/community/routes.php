@@ -570,7 +570,7 @@ function community_schema_ready(): bool
 function community_not_ready(bool $isApi): void
 {
     if ($isApi) {
-        Http::error(503, '커뮤니티는 아직 준비 중입니다');
+        Http::error(503, '업무는 아직 준비 중입니다');
     }
 
     if (!headers_sent()) {
@@ -585,11 +585,12 @@ function community_not_ready(bool $isApi): void
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="color-scheme" content="light dark">'
        . '<title>모아 업무</title>'
+       . '<link rel="icon" type="image/svg+xml" href="' . htmlspecialchars(Http::url('/assets/moa-favicon.svg'), ENT_QUOTES, 'UTF-8') . '?v=' . (int) filemtime(__DIR__ . '/../../public/assets/moa-favicon.svg') . '">'
        . '<link rel="stylesheet" href="' . $css . '">' . Design::assets(false) . '</head>' . "\n"
        . '<body><div class="app"><main class="main">'
        . '<header class="page-head"><div class="page-head__text">'
-       . '<h1 class="page-head__title">커뮤니티</h1>'
-       . '<p class="page-head__sub">개인 업무 공간</p></div></header>'
+       . '<h1 class="page-head__title">업무</h1>'
+       . '<p class="page-head__sub">작업 · 프로젝트 · 문서</p></div></header>'
        . '<div class="notice" role="status">'
        . '<p class="notice__title">아직 준비 중입니다</p>'
        . '<p>잠시 뒤에 다시 열어 보세요. 계속 이 화면이면 관리자에게 알려 주세요.</p>'

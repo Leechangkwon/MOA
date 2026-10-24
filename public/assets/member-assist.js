@@ -108,7 +108,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     result = job; clearTimeout(timer); waiting = job.state === 'pending';
     $('assist-result').hidden = job.state !== 'complete';
     if (job.state === 'complete') {
-      $('assist-result-origin').textContent = job.local ? '내 PC의 ChatGPT 완료 결과 · 확인 후 작성란에 넣어 주세요.' : job.manual ? '직접 붙여 넣은 결과 · 생성 출처와 처리 완료 여부는 작업한 앱에서 확인해 주세요.' : '모아 공용 Gemini 결과';
+      $('assist-result-origin').textContent = job.local ? '내 PC의 ChatGPT 완료 결과 · 확인 후 작성란에 넣어 주세요.' : job.manual ? '직접 붙여 넣은 결과 · 생성 출처와 처리 완료 여부는 작업한 앱에서 확인해 주세요.' : '모아 AI 결과';
       const image = Boolean(job.image_url && safeImage(job.image_url));
       $('assist-image').hidden = !image; $('assist-text-result').hidden = image; $('assist-copy').hidden = image;
       if (image) $('assist-image').src = job.image_url;
@@ -169,7 +169,7 @@ window.MoaMessageAssist = function ({api, node, context, say, changed}) {
     $('assist-input').value = message ? sourceText : draftAtOpen;
     originalAtOpen = $('assist-input').value; $('assist-manual-input').value = ''; $('assist-external').open = true;
     $('assist-history').replaceChildren(); $('assist-recipient').textContent = current.name + ' 님과의 대화를 돕습니다.';
-    ready = false; running = false; waiting = false; attempt = null; clearResult(); buttons(); tell('모아 공용 Gemini 설정을 확인하고 있어요…');
+    ready = false; running = false; waiting = false; attempt = null; clearResult(); buttons(); tell('모아 AI 설정을 확인하고 있어요…');
     if (!dialog.open) dialog.showModal();
     clearInterval(connectionTimer);
     // No network probe: expire the UI using the existing tab credential's clock.
