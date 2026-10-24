@@ -708,7 +708,7 @@ def browser_suite(site, TB, CB, users, sql, make_user, make_session, storage, pr
         page.wait_for_timeout(300)
         check(posted == [] and page.evaluate("document.getElementById('join-terms').validity.valueMissing"), 'UI join without the two checks: browser blocks the submit (server enforcement tested above)')
         page.goto(TB + '/privacy'); legal_ok(page, 'footer.moa-footer', 'public privacy page footer')
-        check(page.locator('h1.wiki-title').inner_text() == '모아(Qaredi) 개인정보 처리방침' and page.locator('#privacy-7').count() == 1, 'UI public privacy page renders the document (title · 제7조 anchor)')
+        check(page.locator('h1.wiki-title').inner_text() == '모아 개인정보 처리방침' and page.locator('#privacy-7').count() == 1, 'UI public privacy page renders the document (title · 제7조 anchor)')
         anon.close()
         mctx = browser.new_context(viewport={'width': 1280, 'height': 900}, user_agent=UA)
         mctx.add_cookies(cookie(users['employee']))

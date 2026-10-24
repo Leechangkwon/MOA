@@ -1,6 +1,6 @@
 {
-  "name": "t-box 2단계 코드",
-  "short_name": "t-box 코드",
+  "name": "모아 2단계 코드",
+  "short_name": "모아 코드",
   "start_url": "/tbox/assets/totp-generator.html",
   "scope": "/tbox/assets/",
   "display": "standalone",

@@ -1,5 +1,5 @@
 <div class="moa-setup-heading">
-  <p class="moa-kicker">PC ASSISTANT</p>
+  <p class="moa-kicker">PC 비서</p>
   <h1>PC 비서 연결하기</h1>
   <p>설치했다면 아래에서 사용할 기능을 고르세요. 기본 AI부터 연결할 수 있어요.</p>
 </div>
@@ -63,7 +63,7 @@
 <section class="moa-setup-card" id="pc-install">
   <span class="moa-step-number">01</span><h2>PC 비서를 준비하세요</h2>
   <p>배포함에서 <strong>update.4 이상</strong> ZIP을 받으세요. 다운로드 확인란을 체크한 뒤 다운로드 버튼을 누릅니다.</p>
-  <p><a class="btn" href="<?= Http::url('/programs') ?>" target="_blank" rel="noopener noreferrer">AI 비서 다운로드 · 새 탭</a></p>
+  <p><a class="btn" href="<?= Http::url('/programs') ?>" target="_blank" rel="noopener noreferrer">PC 비서 받기 · 새 탭</a></p>
   <p><strong>ZIP 파일을 우클릭해 ‘압축 풀기’ 또는 ‘모두 추출’을 먼저 하세요.</strong> 압축 파일 안에서 바로 실행하면 필요한 파일을 찾지 못할 수 있어요.</p>
   <details><summary>이미 쓰던 PC 비서가 있어요 — 업데이트</summary>
     <ol>

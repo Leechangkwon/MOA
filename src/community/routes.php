@@ -584,7 +584,7 @@ function community_not_ready(bool $isApi): void
        . '<head><meta charset="utf-8">'
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="color-scheme" content="light dark">'
-       . '<title>커뮤니티 · Qaredi</title>'
+       . '<title>모아 업무</title>'
        . '<link rel="stylesheet" href="' . $css . '">' . Design::assets(false) . '</head>' . "\n"
        . '<body><div class="app"><main class="main">'
        . '<header class="page-head"><div class="page-head__text">'
@@ -593,8 +593,8 @@ function community_not_ready(bool $isApi): void
        . '<div class="notice" role="status">'
        . '<p class="notice__title">아직 준비 중입니다</p>'
        . '<p>잠시 뒤에 다시 열어 보세요. 계속 이 화면이면 관리자에게 알려 주세요.</p>'
-       . '<p><a href="' . htmlspecialchars(Http::url('/'), ENT_QUOTES, 'UTF-8') . '">t-box 로 가기</a>'
-       . ' · <a href="/">Qaredi 홈</a></p>'
+       . '<p><a href="' . htmlspecialchars(Http::url('/'), ENT_QUOTES, 'UTF-8') . '">자료실로 가기</a>'
+       . ' · <a href="/">모아 홈</a></p>'
        . '</div></main></div></body></html>' . "\n";
     exit;
 }
@@ -3496,7 +3496,7 @@ function community_file_refs_private_readable(array $fileIds, array $u): bool
 }
 
 /** G-0 — 개인 파일을 비공개 페이지 밖에 붙이려 할 때의 400 문장(창구 넷이 같은 글자) */
-const COMMUNITY_PRIVATE_FILE_REFUSED = 't-box 의 「개인」 파일은 지금은 내 비공개 페이지에만 붙일 수 있습니다. 다른 사람이 보는 페이지에 붙이려면 t-box 에서 그 파일의 등급을 넓히세요';
+const COMMUNITY_PRIVATE_FILE_REFUSED = '자료실의 「개인」 파일은 지금은 내 비공개 페이지에만 붙일 수 있습니다. 다른 사람이 보는 페이지에 붙이려면 자료실에서 그 파일의 등급을 넓히세요';
 
 /**
  * 본문의 그림·파일 카드에 쓸 **파일 지도** — 보는 사람이 t-box 에서 볼 수 있는 파일만(`Authz::visibleFilesWhere`).

@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=0fbd087e9d32';
-import { hydrateDashboard } from './dashboard.js?v=0fbd087e9d32';
+import { createTableEditor } from './table-editor.js?v=b76472e6847d';
+import { hydrateDashboard } from './dashboard.js?v=b76472e6847d';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=0fbd087e9d32';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=0fbd087e9d32';
-import { createMentionInput, mentionTokens } from './mention-input.js?v=0fbd087e9d32';
-import { createDatabaseView } from './database.js?v=0fbd087e9d32';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=0fbd087e9d32';
-import { bindEmbedAdmin } from './embeds.js?v=0fbd087e9d32';
-import { bindPopular } from './popular.js?v=0fbd087e9d32';
-import { bindPalettes } from './palettes.js?v=0fbd087e9d32';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=0fbd087e9d32';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=0fbd087e9d32';
-import { drawTrust, bindProcedures } from './procedures.js?v=0fbd087e9d32';
-import { createPageExport } from './export.js?v=0fbd087e9d32';
-import { createDrafts } from './drafts.js?v=0fbd087e9d32';
-import { drawPageAi, bindAiCenter } from './ai.js?v=0fbd087e9d32';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=0fbd087e9d32';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=b76472e6847d';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=b76472e6847d';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=b76472e6847d';
+import { createDatabaseView } from './database.js?v=b76472e6847d';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=b76472e6847d';
+import { bindEmbedAdmin } from './embeds.js?v=b76472e6847d';
+import { bindPopular } from './popular.js?v=b76472e6847d';
+import { bindPalettes } from './palettes.js?v=b76472e6847d';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=b76472e6847d';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=b76472e6847d';
+import { drawTrust, bindProcedures } from './procedures.js?v=b76472e6847d';
+import { createPageExport } from './export.js?v=b76472e6847d';
+import { createDrafts } from './drafts.js?v=b76472e6847d';
+import { drawPageAi, bindAiCenter } from './ai.js?v=b76472e6847d';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=b76472e6847d';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=0fbd087e9d32';
-import { createCafe, personInto, isAnon } from './cafe.js?v=0fbd087e9d32';
+import { createWork } from './work.js?v=b76472e6847d';
+import { createCafe, personInto, isAnon } from './cafe.js?v=b76472e6847d';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -1829,7 +1829,7 @@ function initHome() {
       : (meCanWrite
         ? '메모·업무 방법·인수인계를 문서로 남기세요. 개인 문서는 비공개로 시작하고, 문서마다 공개 범위를 고를 수 있어요.'
         : GUEST_SPACE_SUB));
-    document.title = (space.kind === 'team' ? space.name : '내 문서') + ' · 모아 커뮤니티';
+    document.title = (space.kind === 'team' ? space.name : '내 문서') + ' · 모아 업무';
   }
 
   // 지금 보고 있는 공간의 종류. 창구가 준 값이고 화면이 정하지 않는다.
@@ -2973,7 +2973,7 @@ function initBoard() {
   function drawHead(b) {
     board = b;
     setText(titleEl, b.name);
-    document.title = b.name + ' · 커뮤니티';
+    document.title = b.name + ' · 모아';
     setText(subEl, b.description);
     const level = BOARD_LEVEL_LABELS[b.access_level];
     if (levelEl && level) {
@@ -4720,10 +4720,10 @@ function ensureEditorDialogs() {
           field('설명 (선택)', elt('input', { id: 'atom-embed-caption', class: 'input', type: 'text', maxlength: '2000', autocomplete: 'off' }))
         ]),
         elt('div', { id: 'atom-file', class: 'atom-pane', hidden: true }, [
-          field('내 t-box 파일에서 고르기', elt('input', { id: 'atom-file-q', type: 'search', maxlength: '200', autocomplete: 'off', spellcheck: 'false', placeholder: '파일 이름 (비우면 맨 위 폴더)' })),
+          field('내 자료실 파일에서 고르기', elt('input', { id: 'atom-file-q', type: 'search', maxlength: '200', autocomplete: 'off', spellcheck: 'false', placeholder: '파일 이름 (비우면 맨 위 폴더)' })),
           elt('p', { id: 'atom-file-chosen', class: 'help' }), elt('ul', { id: 'atom-file-list', class: 'list', 'aria-label': '고를 수 있는 파일' }),
           elt('div', { class: 'toolbar' }, [
-            elt('a', { id: 'atom-file-upload', class: 'btn btn--quiet btn--small', href: '#', target: '_blank', rel: 'noopener', text: 't-box 에 올리기' }),
+            elt('a', { id: 'atom-file-upload', class: 'btn btn--quiet btn--small', href: '#', target: '_blank', rel: 'noopener', text: '자료실에 올리기' }),
             small('atom-file-refresh', '목록 새로 고침')
           ]),
           elt('p', { class: 'help', text: '페이지를 읽는 사람이 모두 볼 수 있는 등급의 파일만 붙습니다. 좁으면 저장할 때 알려 드립니다.' }),
@@ -6244,7 +6244,7 @@ function initPage() {
       commentsLoaded = loadComments();   // B1-2 — 답글 사본을 되살릴 때 대상 댓글이 그려진 뒤에 찾는다
       loadReads();
       setText(titleEl, page.title);
-      document.title = page.title + ' · 커뮤니티';
+      document.title = page.title + ' · 모아';
       setText(subEl, result.data.form_response && result.data.form_response.hidden ? '익명 응답' : (page.parent ? '상위: ' + page.parent.title : ''));
       documentAncestorIds = new Set([pageId, ...(Array.isArray(result.data.breadcrumb) ? result.data.breadcrumb.map(item => item.id) : [])]);
       drawCrumb(result.data.breadcrumb);
@@ -7418,7 +7418,7 @@ function initPage() {
             }
             handoverArm();
             if (result.data && result.data.next === 'reauth') {
-              setText(handoverMsg, '관리자 권한으로 넘기려면 비밀번호를 다시 확인해야 합니다. t-box 관리 화면에서 확인한 뒤 다시 누르세요.');
+              setText(handoverMsg, '관리자 권한으로 넘기려면 비밀번호를 다시 확인해야 합니다. 관리자 페이지에서 확인한 뒤 다시 누르세요.');
               return null;
             }
             const reason = result.data && typeof result.data.reason === 'string' ? result.data.reason : '';

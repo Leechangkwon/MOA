@@ -118,8 +118,8 @@ TITLE=$(sed -n 's:.*<title>\(.*\)</title>.*:\1:p' "$OUT/a-generator.html")
 H1=$(sed -n 's:.*<h1>\(.*\)</h1>.*:\1:p' "$OUT/a-generator.html")
 echo "    <title> = $TITLE"
 echo "    <h1>    = $H1"
-expect "title 이 「t-box 2단계 코드 생성기」" "t-box 2단계 코드 생성기" "$TITLE"
-expect "h1 이 「t-box 2단계 코드 생성기」"    "t-box 2단계 코드 생성기" "$H1"
+expect "title 이 「t-box 2단계 코드 생성기」" "모아 2단계 코드 생성기" "$TITLE"
+expect "h1 이 「t-box 2단계 코드 생성기」"    "모아 2단계 코드 생성기" "$H1"
 expect "title 에 「오프라인」 0회" 0 "$(printf '%s' "$TITLE" | grep -c '오프라인')"
 expect "h1 에 「오프라인」 0회"    0 "$(printf '%s' "$H1"    | grep -c '오프라인')"
 

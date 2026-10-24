@@ -204,7 +204,7 @@ with sync_playwright() as p:
     target = os.path.join(SHOTS, "downloaded-" + TAG + ".zip")
     dl.save_as(target)
     page.unroute("**/tbox/api/files/zip")
-    step("② 내려받은 이름 t-box-YYYYMMDD-HHMMSS.zip", re.match(r"^t-box-\d{8}-\d{6}\.zip$", dl.suggested_filename or "") is not None, dl.suggested_filename)
+    step("② 내려받은 이름 t-box-YYYYMMDD-HHMMSS.zip", re.match(r"^moa-\d{8}-\d{6}\.zip$", dl.suggested_filename or "") is not None, dl.suggested_filename)
     got = zip_names(target) if os.path.exists(target) else []
     want = [("qf3c-ui-%s-%d.txt" % (TAG, i), files[i][1]) for i in (2, 0, 1)]
     step("② zip 안 = 고른 순서의 clean 셋(검사 중 하나는 빠짐) · sha256 = 올린 바이트", got == want, (got, want))
@@ -256,7 +256,7 @@ with sync_playwright() as p:
             with page.expect_download(timeout=30000) as dl_info:
                 page.locator("#files-bulk-zip").click()
             dl = dl_info.value
-            step("⑤ %s — 내려받기 한 건(%s)" % (tagw, dl.suggested_filename), re.match(r"^t-box-\d{8}-\d{6}\.zip$", dl.suggested_filename or "") is not None)
+            step("⑤ %s — 내려받기 한 건(%s)" % (tagw, dl.suggested_filename), re.match(r"^moa-\d{8}-\d{6}\.zip$", dl.suggested_filename or "") is not None)
             step("⑤ %s — 결과 한 줄 「2개를 … 1개는 …」 보임" % tagw,
                  wait_until(lambda: page.locator("#files-ok").is_visible() and (page.locator("#files-ok").text_content() or "").startswith("2개를 zip 으로 받았습니다. 1개는")))
             page.wait_for_timeout(300)

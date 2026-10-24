@@ -57,7 +57,7 @@
     }
     for (const page of pages.status === 200 && Array.isArray(pages.data?.pages) ? pages.data.pages : []) {
       if (!page || !uuid.test(page.id) || typeof page.title !== 'string') continue;
-      items.push({kind:'커뮤니티',title:page.title || '제목 없는 페이지',href:communityBase+'/p/'+page.id,time:Date.parse(page.last_viewed_at)||0});
+      items.push({kind:'업무',title:page.title || '제목 없는 페이지',href:communityBase+'/p/'+page.id,time:Date.parse(page.last_viewed_at)||0});
     }
     if (view === 'recent') items.sort((a,b) => b.time-a.time);
     render(items);

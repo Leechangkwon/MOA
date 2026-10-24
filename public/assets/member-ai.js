@@ -29,19 +29,19 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate, drafts
   }
   function bubble(mine, text, time, state) {
     const box = node('article', undefined, 'moa-bubble' + (mine ? ' moa-bubble--mine' : ' moa-bubble--ai'));
-    box.append(node('strong', mine ? '나 · ' + me.username : '✦ 모아 AI · Gemini 3.5', 'moa-message-author'));
+    box.append(node('strong', mine ? '나 · ' + me.username : '✦ 모아 AI', 'moa-message-author'));
     box.append(node('p', text));
     if (time) box.append(node('small', date(time) + (state ? ' · ' + state : '')));
     return box;
   }
   function empty() {
     const box = node('div', undefined, 'moa-empty moa-ai-welcome');
-    box.append(node('span', '✦', 'moa-ai-orb'), node('p', 'YOUR LITTLE THINKING PARTNER', 'moa-kicker'));
+    box.append(node('span', '✦', 'moa-ai-orb'), node('p', '회사 공용 AI', 'moa-kicker'));
     box.append(node('h3', '같이 생각하면, 조금 더 쉬워요.'), node('p', ready ? '생각을 정리하거나 문장을 다듬고 싶을 때, 편하게 물어보세요.' : '관리자가 Gemini 연결을 마치면 여기서 바로 대화할 수 있어요.'));
     const choices = node('div', undefined, 'moa-ai-prompts');
     for (const [title, prompt] of [
       ['✎ 문장 다듬기', '문장을 자연스럽고 친절하게 다듬고 싶어. 원문을 보내면 도와줄래?'],
-      ['☀ 작은 아이디어', '오늘 커뮤니티에 올릴 가볍고 기분 좋은 대화 주제 5개를 제안해 줘.'],
+      ['☀ 작은 아이디어', '오늘 우리 공간에 올릴 가볍고 기분 좋은 대화 주제 5개를 제안해 줘.'],
       ['☷ 생각 정리하기', '머릿속 생각을 정리하고 싶어. 하나씩 질문하면서 정리를 도와줘.']
     ]) {
       const button = node('button', title, 'btn btn--quiet');
@@ -132,7 +132,7 @@ window.MoaAiConversation = function ({api, me, say, node, date, activate, drafts
     $('message-ai').setAttribute('aria-pressed', 'true');
     $('message-ai-new').hidden = false; $('message-ai-tools').hidden = false; $('message-ai-notice').hidden = false;
     $('message-peer-name').textContent = '모아 AI';
-    $('message-peer-meta').textContent = 'Gemini 3.5 Flash · 내 계정의 AI 대화';
+    $('message-peer-meta').textContent = '회사 공용 AI · 내 대화는 나만 봐요';
     $('message-older').hidden = true;
     $('message-text').value = ''; $('message-text').placeholder = '모아 AI에게 물어보세요. Enter로 전송, Shift+Enter로 줄바꿈';
     $('message-list').replaceChildren(node('p', 'AI 대화를 불러오는 중…', 'moa-empty'));

@@ -153,7 +153,7 @@ require __DIR__ . '/../views/shell_top.php';
       </aside>
 
       <div class="workspace__main">
-        <div class="q-location" aria-label="현재 파일 위치"><div><p class="q-eyebrow">FILE SPACE</p><h2 id="q-location-title">맨 위</h2></div><p id="q-location-count" class="muted" role="status"></p></div>
+        <div class="q-location" aria-label="현재 파일 위치"><div><p class="q-eyebrow">자료실</p><h2 id="q-location-title">맨 위</h2></div><p id="q-location-count" class="muted" role="status"></p></div>
     <!-- 개발 대기열 6 (Q:F-3a 라운드 A · 지시서 1.1 · 1.2) — 목록 위 보기 셋: 「파일」(폴더·검색) · 「즐겨찾기」 · 「최근」.
          새 클래스 0 — 고른 것은 outline 작은 단추(`.btn--quiet.btn--small`), 나머지는 테두리를 걷은 같은 단추(`.btn--plain`) ·
          `aria-pressed` 로 화면 읽기에도 알린다(DESIGN 2.1 · 커뮤니티 DB 보기 단추와 같은 모양). 무엇이 나오나는 서버가 정한다 —
@@ -359,7 +359,7 @@ require __DIR__ . '/../views/shell_top.php';
     </div>
 
     <dialog id="q-file-actions-dialog" class="modal modal--form q-file-actions-dialog" aria-labelledby="q-file-actions-title">
-      <div class="modal__head"><div><p class="q-eyebrow">FILE ACTIONS</p><h2 id="q-file-actions-title" class="modal__title"></h2></div><button type="button" class="btn btn--quiet" id="q-file-actions-close">닫기</button></div>
+      <div class="modal__head"><div><p class="q-eyebrow">파일</p><h2 id="q-file-actions-title" class="modal__title"></h2></div><button type="button" class="btn btn--quiet" id="q-file-actions-close">닫기</button></div>
       <p class="help">이 파일에서 할 수 있는 작업을 고르세요.</p><div id="q-file-actions-list" class="q-file-actions-list"></div>
     </dialog>
 

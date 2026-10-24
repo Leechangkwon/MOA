@@ -29,7 +29,7 @@ final class Legal
     public const DOCS = ['privacy', 'terms'];
 
     /** 문서 제목(기획 부록 A·B 머리 글자 그대로) */
-    public const TITLES = ['privacy' => '모아(Qaredi) 개인정보 처리방침', 'terms' => '모아(Qaredi) 이용약관'];
+    public const TITLES = ['privacy' => '모아 개인정보 처리방침', 'terms' => '모아 이용약관'];
 
     /** 링크·화면에 쓰는 짧은 이름 */
     public const LABELS = ['privacy' => '개인정보 처리방침', 'terms' => '이용약관'];

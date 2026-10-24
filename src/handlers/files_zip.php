@@ -199,7 +199,7 @@ foreach ($rawIds as $one) {
 }
 $ids = array_keys($ids);
 
-$zipName = 't-box-' . date('Ymd-His') . '.zip';   // 서버가 만든 이름 — 요청 글자가 한 자도 들어가지 않는다
+$zipName = 'moa-' . date('Ymd-His') . '.zip';   // 서버가 만든 이름 — 요청 글자가 한 자도 들어가지 않는다
 $bundle = static function (array $detail) use ($zipName): array {
     return [
         'target_type' => 'file',

@@ -39,7 +39,8 @@ $threadsMessenger = !$isShared && isset($user) && is_array($user) && Authz::canC
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#f7f6f2">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>공유 스레드 · 커뮤니티</title>
+<title>공유 이야기 · 모아</title>
+<link rel="icon" type="image/svg+xml" href="<?= Http::url('/assets/moa-favicon.svg') ?>?v=<?= (int) filemtime(__DIR__ . '/../../../public/assets/moa-favicon.svg') ?>">
 <link rel="manifest" href="<?= Http::url('/app.webmanifest') ?>">
 <link rel="apple-touch-icon" href="<?= Http::url('/assets/qaredi-icon-192.png') ?>">
 <link rel="stylesheet" href="<?= Http::url('/assets/community/memories.css') ?>?v=<?= $cssVersion ?>">
@@ -47,7 +48,7 @@ $threadsMessenger = !$isShared && isset($user) && is_array($user) && Authz::canC
 </head>
 <body class="threads-public">
 <?php else: require __DIR__ . '/../../views/shell_top.php'; endif; ?>
-<section id="community-threads" class="community-threads" data-base="<?= $e(rtrim(Http::communityUrl('/'), '/')) ?>" data-shared="<?= $e($sharedToken) ?>" data-profile="<?= $e($profileName) ?>" data-post="<?= $e($postId) ?>" aria-label="커뮤니티 스레드">
+<section id="community-threads" class="community-threads" data-base="<?= $e(rtrim(Http::communityUrl('/'), '/')) ?>" data-shared="<?= $e($sharedToken) ?>" data-profile="<?= $e($profileName) ?>" data-post="<?= $e($postId) ?>" aria-label="이야기 스레드">
 <svg class="symbol-library" xmlns="http://www.w3.org/2000/svg" aria-hidden="true"><defs>
 <symbol id="i-spark" viewBox="0 0 24 24"><path d="m12 3 2.5 6.5L21 12l-6.5 2.5L12 21l-2.5-6.5L3 12l6.5-2.5L12 3Z"/></symbol>
 <symbol id="i-camera" viewBox="0 0 24 24"><path d="M4 6h4l2-3h4l2 3h4v15H4Z"/><circle cx="12" cy="13" r="4"/></symbol>
@@ -70,7 +71,7 @@ $threadsMessenger = !$isShared && isset($user) && is_array($user) && Authz::canC
 <nav class="threads-tabs" aria-label="스레드 메뉴"><button data-view="feed" class="active">팔로잉</button><button data-view="mine" data-member>나의 스레드</button><button data-view="discover">발견</button></nav>
 <div class="threads-quick" data-member><button class="threads-write" data-compose data-writer hidden><span class="avatar" data-my-initial>나</span><span>지금 어떤 이야기를 남기고 싶나요?</span><svg><use href="#i-camera"/></svg></button><?php if ($threadsMessenger): ?><button class="secondary" type="button" data-messenger-open aria-haspopup="dialog" aria-controls="messenger-window" aria-expanded="false">메신저</button><?php endif; ?></div>
 <section class="profile-panel" id="profile-panel" hidden><div class="profile-content"><span class="avatar profile-avatar" id="profile-avatar">나</span><div><h1 id="profile-title">나의 스레드</h1><p class="muted" id="profile-description">평범한 하루도, 낯선 여행도. 내가 사랑한 순간들.</p></div><div class="profile-actions"><button class="secondary" id="follow-profile" hidden>팔로우</button><button class="secondary" id="profile-settings" data-writer hidden>공개 범위 설정</button><button class="secondary" type="button" data-travel-open data-writer hidden>여행 계획</button></div></div><div class="profile-stats" id="profile-stats"></div></section>
-<div class="main-columns"><section class="feed-column" aria-label="커뮤니티 스레드">
+<div class="main-columns"><section class="feed-column" aria-label="이야기 스레드">
 <div class="feed-head"><div><h2 id="feed-title">함께 나누는 순간</h2></div><div class="view-toggle" aria-label="기록 보기 방식"><button id="list-view" class="icon-button selected" aria-label="피드로 보기" aria-pressed="true"><svg><use href="#i-home"/></svg></button><button id="grid-view" class="icon-button" aria-label="앨범으로 보기" aria-pressed="false"><svg><use href="#i-grid"/></svg></button></div></div>
 <div class="feed-tools"><button class="chip" id="find-people" data-member>사람 찾기</button><label class="search-label"><span class="sr-only">스레드 검색</span><input type="search" id="search" placeholder="여행, 장소, 한 줄의 기억 찾기" maxlength="100"></label><button class="chip" id="refresh">새로 보기</button></div>
 <button class="draft-banner" id="resume-draft" hidden>쓰다 만 순간이 있어요 <span>이어서 쓰기 →</span></button>
@@ -83,7 +84,7 @@ $threadsMessenger = !$isShared && isset($user) && is_array($user) && Authz::canC
 
 </div><div class="toast" id="memory-toast" role="status" hidden></div>
 <dialog id="compose-dialog" class="compose-dialog" aria-labelledby="compose-title">
-<form id="compose-form"><header class="dialog-head"><div><p class="eyebrow">KEEP THIS MOMENT</p><h2 id="compose-title">새로운 순간</h2></div><button type="button" class="icon-button" data-close="compose-dialog" aria-label="작성창 닫기"><svg><use href="#i-close"/></svg></button></header>
+<form id="compose-form"><header class="dialog-head"><div><p class="eyebrow">새 이야기</p><h2 id="compose-title">새로운 순간</h2></div><button type="button" class="icon-button" data-close="compose-dialog" aria-label="작성창 닫기"><svg><use href="#i-close"/></svg></button></header>
 <div class="dialog-body"><div class="capture-actions"><button type="button" class="capture-button" id="take-photo"><svg><use href="#i-camera"/></svg><strong>사진 찍기</strong><span>지금, 이 순간</span></button><button type="button" class="capture-button" id="pick-media"><svg><use href="#i-photo"/></svg><strong>앨범에서</strong><span>사진과 영상</span></button><button type="button" class="capture-button" id="take-video"><svg><use href="#i-video"/></svg><strong>영상 찍기</strong><span>움직이는 기억</span></button></div>
 <input id="camera-input" type="file" accept="image/*" capture="environment" hidden><input id="video-input" type="file" accept="video/*" capture="environment" hidden><input id="media-input" type="file" accept="image/*,video/mp4,video/webm,video/quicktime" multiple hidden>
 <p id="media-selection-status" class="field-hint" role="status">선택된 사진·영상이 없어요</p>
@@ -96,7 +97,7 @@ $threadsMessenger = !$isShared && isset($user) && is_array($user) && Authz::canC
 <p id="compose-error" class="form-error" role="alert"></p><p id="draft-status" class="field-hint" aria-live="polite"></p><progress id="upload-progress" max="100" value="0" hidden></progress></div>
 <footer class="dialog-footer"><button type="button" class="text-button danger" id="discard-draft">작성 내용 버리기</button><button class="primary" id="publish" type="submit"><svg><use href="#i-plus"/></svg><span>순간 저장하기</span></button></footer></form></dialog>
 <dialog id="studio-dialog" class="studio-dialog" aria-labelledby="studio-title">
-<header class="dialog-head"><div><p class="eyebrow">MEMORY STUDIO</p><h2 id="studio-title">사진으로 이야기 만들기</h2></div><button type="button" class="icon-button" data-close="studio-dialog" aria-label="꾸미기 닫기"><svg><use href="#i-close"/></svg></button></header>
+<header class="dialog-head"><div><p class="eyebrow">AI 로 꾸미기</p><h2 id="studio-title">사진으로 이야기 만들기</h2></div><button type="button" class="icon-button" data-close="studio-dialog" aria-label="꾸미기 닫기"><svg><use href="#i-close"/></svg></button></header>
 <div class="dialog-body"><p class="studio-intro">사진의 흐름을 잡고, 장면 사이에 짧은 글을 더해 보세요.</p>
 <section aria-labelledby="gemini-title"><h3 id="gemini-title">사진을 보고 Gemini로 글쓰기</h3>
 <p id="gemini-status" class="field-hint" role="status"></p><div id="gemini-photos" class="original-files"></div>

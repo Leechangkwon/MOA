@@ -11,7 +11,7 @@ declare(strict_types=1);
  * 강제 절차(F-16) 중에는 라우터 관문 [3-1] 이 이 창구를 막는다(허용 목록 불변).
  *
  * 응답 `{publicKey:{…}, name}` — 브라우저 `navigator.credentials.create` 에 그대로 넣을 값(바이트는 base64url 글자):
- *   rp {id(APP_URL 호스트), name "Qaredi"} · user {id(user_handle), name(아이디), displayName(표시 이름 또는 아이디)} ·
+ *   rp {id(APP_URL 호스트), name "모아"} · user {id(user_handle), name(아이디), displayName(표시 이름 또는 아이디)} ·
  *   pubKeyCredParams [ES256] · timeout 120000 · attestation "none" ·
  *   authenticatorSelection {authenticatorAttachment "platform", residentKey "required", requireResidentKey true, userVerification "required"} ·
  *   excludeCredentials = 내 살아 있는 열쇠(같은 휴대폰 두 번 등록 막기 — 90일 꺼진 열쇠는 빼서 그 휴대폰을 다시 등록할 수 있게)
@@ -117,7 +117,7 @@ Http::json([
     'name'      => $name,
     'publicKey' => [
         'challenge'              => WebPush::b64uEncode($challenge),
-        'rp'                     => ['id' => $cfg['rp_id'], 'name' => 'Qaredi'],
+        'rp'                     => ['id' => $cfg['rp_id'], 'name' => '모아'],
         'user'                   => [
             'id'          => WebPush::b64uEncode($handle),
             'name'        => (string) $user['username'],

@@ -1288,7 +1288,7 @@ else
   expect "제목 5 「[경보] 지난 한 시간 외 4건」" "[경보] 지난 한 시간 외 4건" "$(tq "d['sw_sim']['titles'][4]")"
   contains "제목 6 시험" "[시험]" "$(tq "d['sw_sim']['titles'][5]")"
   expect "모양 밖 내용 — 규칙 번호는 「경보」, 출처는 사람, 이름은 40자에서 자름(글자 그대로)" "[사람] 경보 $(python3 -c 'print(("<img src=x onerror=1>" + "x" * 60)[:40])')" "$(tq "d['sw_sim']['titles'][6]")"
-  expect "깨진 내용 → 고정 제목 하나(알림은 띄운다)" "[경보] Qaredi" "$(tq "d['sw_sim']['titles'][7]")"
+  expect "깨진 내용 → 고정 제목 하나(알림은 띄운다)" "[경보] 모아" "$(tq "d['sw_sim']['titles'][7]")"
   contains "본문 — 짧은 시각 · 로그인 안내" "09-24 14:05 · 눌러서 관리자 페이지에서 확인하세요" "$(tq "d['sw_sim']['bodies'][0]")"
   expect "누르면 고정 주소 /tbox/admin (data.url 무시)" "/tbox/admin" "$(tq "','.join(d['sw_sim']['opened'])")"
   note "스크린샷(직접 본다): $OUT/f70-light.png · $OUT/f70-dark.png · $OUT/f70-390.png"

@@ -59,7 +59,8 @@ function qaredi_not_found(bool $isApi): void
        . '<meta name="viewport" content="width=device-width, initial-scale=1">'
        . '<meta name="color-scheme" content="light dark">'
        . '<meta name="robots" content="noindex">'
-       . '<title>찾을 수 없는 페이지 · Qaredi</title>'
+       . '<title>찾을 수 없는 페이지 · 모아</title>'
+       . '<link rel="icon" type="image/svg+xml" href="' . htmlspecialchars(Http::url('/assets/moa-favicon.svg'), ENT_QUOTES, 'UTF-8') . '?v=' . (int) filemtime(__DIR__ . '/../../public/assets/moa-favicon.svg') . '">'
        . '<link rel="stylesheet" href="' . $css . '?v=' . $ver . '">' . Design::assets(false) . '</head>' . "\n"
        . '<body><div class="app"><main class="main" id="not-found">'
        . '<header class="page-head"><div class="page-head__text">'

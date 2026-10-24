@@ -1,6 +1,6 @@
 <?php declare(strict_types=1); ?>
 <dialog id="travel-dialog" class="travel-dialog" aria-labelledby="travel-heading">
-<header class="dialog-head"><div><p class="eyebrow">MY JOURNEY</p><h2 id="travel-heading">여행 계획과 기록</h2></div><button type="button" class="icon-button" data-travel-close aria-label="여행 계획 닫기">×</button></header>
+<header class="dialog-head"><div><p class="eyebrow">여행 계획</p><h2 id="travel-heading">여행 계획과 기록</h2></div><button type="button" class="icon-button" data-travel-close aria-label="여행 계획 닫기">×</button></header>
 <div class="dialog-body">
 <p class="field-hint">계획은 나만 볼 수 있어요. 일정이 바뀌거나 계획에 없던 순간을 만나도 자유롭게 기록하세요. 연결한 게시글의 공개 범위는 그대로 유지됩니다.</p>
 <div class="travel-toolbar"><button type="button" class="primary" id="travel-new">새 여행 계획</button><button type="button" class="secondary" id="travel-refresh">새로 보기</button></div>

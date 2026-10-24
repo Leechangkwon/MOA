@@ -32,7 +32,7 @@ $consentWhen = static function (?array $row): string {
     return $at === false ? '—' : date('Y-m-d H:i', $at);
 };
 ?>
-<div class="moa-setup-heading"><p class="moa-kicker">TERMS &amp; PRIVACY</p><h1>약관과 개인정보 처리방침</h1><p><?= $consentNeeded ? '모아를 계속 쓰려면 한 번만 확인해 주세요.' : '동의한 내용과 AI 국외 전송 동의를 여기서 확인하고 바꿀 수 있어요.' ?></p></div>
+<div class="moa-setup-heading"><p class="moa-kicker">약관 · 개인정보</p><h1>약관과 개인정보 처리방침</h1><p><?= $consentNeeded ? '모아를 계속 쓰려면 한 번만 확인해 주세요.' : '동의한 내용과 AI 국외 전송 동의를 여기서 확인하고 바꿀 수 있어요.' ?></p></div>
 <p id="member-status" role="status" aria-live="polite"></p>
 <?php if ($consentNeeded): ?>
 <section class="moa-setup-card" id="consent-required" aria-labelledby="consent-required-title">

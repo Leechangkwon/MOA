@@ -10,7 +10,7 @@ $moaMayWrite = Authz::canCommunityWrite($user);
   </div>
   <div class="moa-purpose-grid">
   <?php if ($moaIsCommunity): ?>
-    <article class="moa-purpose-card"><span class="moa-purpose-step">01 · 이야기 나누기</span><h3>소식 읽고, 궁금한 것 묻기</h3><p>공지, 일상의 발견, 동료에게 묻고 싶은 질문까지. 게시판에서 함께 이야기해요.</p><div id="moa-board-doors" class="moa-board-doors" aria-label="볼 수 있는 게시판"><span class="moa-muted">게시판을 불러오는 중…</span></div></article>
+    <article class="moa-purpose-card"><span class="moa-purpose-step">01 · 게시판에 글 올리기</span><h3>소식 읽고, 궁금한 것 묻기</h3><p>공지, 일상의 발견, 동료에게 묻고 싶은 질문까지. 게시판에서 함께 이야기해요.</p><div id="moa-board-doors" class="moa-board-doors" aria-label="볼 수 있는 게시판"><span class="moa-muted">게시판을 불러오는 중…</span></div></article>
     <article class="moa-purpose-card"><span class="moa-purpose-step">02 · 기록 남기기</span><h3>메모를 쓸모 있는 문서로</h3><p>회의 메모, 업무 방법, 인수인계를 남겨요. 내 문서에서 시작하고 공개 범위를 정해 함께 보세요.</p><div class="moa-purpose-actions"><?php if ($moaMayWrite): ?><button class="btn btn--small" type="button" data-moa-action="community-new">새 문서 작성 ↗</button><button class="btn btn--quiet btn--small" type="button" data-moa-action="community-template-new">양식으로 시작</button><?php else: ?><a class="btn btn--quiet btn--small" href="#moa-my-documents">볼 수 있는 문서로 ↓</a><?php endif; ?></div></article>
     <article class="moa-purpose-card"><span class="moa-purpose-step">03 · 함께 진행하기</span><h3>할 일과 진행 상황 챙기기</h3><p>문서에 할 일을 적고, 담당자·기한·진행 상태를 정하세요. 「내 작업」에서 다시 모아 볼 수 있어요.</p><a class="btn btn--quiet btn--small" href="<?= Http::communityUrl('/my-tasks') ?>">내 작업 보기 ↗</a></article>
   <?php else: ?>

@@ -20,8 +20,8 @@
   const tours = {
     // Q:F-12 D — 업무 홈(첫 화면 `/community/`). 옛 둘러보기 안내를 잇는다 — 맥락 이름(overview)은 저장된 진행 상태와 맞추려고 그대로 둔다
     overview: [
-      step('#work-home-welcome','업무 홈','오늘 할 일과 맡은 작업, 내 프로젝트를 한눈에 봐요. 이야기와 자료실은 왼쪽 아이콘 줄이나 앱 이름 메뉴에서 옮겨 가요.'),
-      step('#work-home-tasks','내 작업 요약','기한이 지난 작업 · 오늘 · 이번 주 작업을 세 칸에 모아요. 동그라미를 누르면 완료, 이름을 누르면 상세가 열려요.'),
+      step('#work-home-welcome','업무 홈','오늘 할 일과 맡은 작업, 내 프로젝트를 한눈에 봐요. 자료실 · 메신저 · 우리 공간은 오른쪽 위 「앱」에서 옮겨 가요.'),
+      step('#work-home-tasks','내 작업 요약','중요한 순서로 모은 내 작업이에요. 동그라미를 누르면 완료, 이름을 누르면 상세가 열려요.'),
       step('#work-projects','내 프로젝트','볼 수 있는 프로젝트와 진행률이에요. 진행률은 내가 볼 수 있는 작업만 세어서 사람마다 숫자가 다를 수 있어요.'),
       step('#nav-new-menu','새로 만들기','작업 · 프로젝트 · 문서를 여기서 만들어요. 프로젝트는 섹션과 목록 · 보드 · 타임라인 · 달력 보기를 갖춰 만들어져요.'),
       step('#nav-work-my-tasks','내 작업','나에게 맡겨진 작업과 내 할 일을 기한별로 모아 봐요. 맡긴 사람이 있는 작업에는 「○○ 님이 맡김」이 붙어요.'),
@@ -47,16 +47,16 @@
       step('#taken-on','기록한 날짜','사진 속 하루의 날짜를 선택해요. 지난 여행의 기록도 원하는 날짜로 남길 수 있어요.'),
       step('#visibility','누가 볼 수 있나요?','나만 보기·팔로워 등 원하는 범위를 선택해요. 팔로우 관계와 링크 공유도 이 공개 범위를 넘어설 수 없어요.'),
       step('#discoverable','발견에 공개 게시하기','새로운 사람에게도 소개하고 싶을 때 선택해요. 공개 가능한 범위에서만 사용할 수 있고 비공개 글을 자동으로 공개하지 않아요.'),
-      step('#compose-travel-plan,#travel-plan-select,#memory-travel-plan','여행 계획과 연결','기록이 어느 여행과 일정에 해당하는지 선택할 수 있어요. 계획 밖의 순간은 연결하지 않아도 됩니다.'),
+      step('#memory-travel-plan','여행 계획과 연결','기록이 어느 여행과 일정에 해당하는지 선택할 수 있어요. 계획 밖의 순간은 연결하지 않아도 됩니다.'),
       step('#publish','확인하고 저장하기','사진, 메모, 날짜와 공개 범위를 확인한 뒤 이 버튼으로 게시해요. 저장이 실패하면 오류를 확인하고 다시 시도하세요.')
     ],
     workspace: [
-      step('.page-head,#community-page','문서와 업무 공간','개인 메모, 팀 문서, 공지와 질문을 함께 정리해요. 볼 수 있는 문서와 기능은 내 권한에 맞춰 나타나요.'),
+      step('.page-head','문서와 업무 공간','개인 메모, 팀 문서, 공지와 질문을 함께 정리해요. 볼 수 있는 문서와 기능은 내 권한에 맞춰 나타나요.'),
       step('#community-new','새 문서 작성','비공개 문서부터 시작하고 필요할 때 함께 볼 사람을 정해요. 템플릿은 더보기에서 고를 수 있어요.'),
       step('#community-search','제목과 내용 검색','문서가 많아지면 제목·내용으로 찾고 검증 상태, 기한, 진행 상태로 좁혀 보세요.'),
       step('#community-space,#community-tree','개인·팀 공간과 문서 트리','공간을 고르고 문서를 계층으로 정리해요. 내가 볼 권한이 있는 문서만 목록에 나타나요.'),
       step('#moa-board-doors','게시판의 소식과 질문','공지·질문·일상 소식은 게시판에서 함께 읽고 남겨요. 게시판과 문서, 개인 스레드는 각각의 목적에 맞춰 사용할 수 있어요.'),
-      step('#community-editor,.ProseMirror','블록으로 쓰는 문서','문단·할 일·표 등 필요한 블록을 더하고 내용을 수정해요. 자동 저장 상태를 확인한 뒤 이동하세요.'),
+      step('.ProseMirror','블록으로 쓰는 문서','문단·할 일·표 등 필요한 블록을 더하고 내용을 수정해요. 자동 저장 상태를 확인한 뒤 이동하세요.'),
       step('#community-more','양식과 휴지통','더보기에서 템플릿 작성과 내 휴지통 등 부가 기능을 찾을 수 있어요. 항목은 권한에 따라 다를 수 있어요.')
     ],
     files: [
@@ -66,11 +66,11 @@
       step('#moa-file-list','열기·받기·공유','파일의 작업 메뉴에서 미리보기·다운로드·공유 기능을 찾아보세요. 공유할 수 있는 파일에만 공유 항목이 표시돼요.')
     ],
     account: [
-      step('#welcome-security,#settings-passkeys','로그인 방법 선택','비밀번호로 시작하거나 OTP·기기 패스키를 추가해요. 패스키는 지문·얼굴·기기 잠금으로 본인을 확인하고 생체 정보는 모아에 저장하지 않아요.'),
+      step('#welcome-security,#passkey-panel','로그인 방법 선택','비밀번호로 시작하거나 OTP·기기 패스키를 추가해요. 패스키는 지문·얼굴·기기 잠금으로 본인을 확인하고 생체 정보는 모아에 저장하지 않아요.'),
       step('#welcome-choose-passkey','기기로 빠르게 로그인','지원하는 브라우저에서 이 기기를 등록해요. 이후 로그인 화면에서 패스키를 선택하면 OTP와 별도로 로그인할 수 있어요.'),
       step('#welcome-choose-otp','OTP 인증 앱 선택','원할 때 등록할 수 있어요. 인증 앱이 없다면 다운로드 안내를 열고 앱을 설치한 뒤 등록을 이어가세요.'),
-      step('#welcome-buddy','AI 비서는 나중에 해도 좋아요','설치와 연결은 선택 사항이에요. 웹앱은 로그인한 계정으로 쓰며 외부 비서는 지원되는 설치·연결 방법을 먼저 확인하세요.'),
-      step('#welcome-install,#member-install','모바일과 컴퓨터 설치','기기에 맞는 설치 안내를 따라요. 설치 후 같은 계정으로 로그인하면 내 기록과 이어지고 웹앱용 별도 토큰을 복사할 필요가 없어요.'),
+      step('#welcome-buddy','PC 비서는 나중에 해도 좋아요','설치와 연결은 선택 사항이에요. 웹앱은 로그인한 계정으로 쓰며 외부 비서는 지원되는 설치·연결 방법을 먼저 확인하세요.'),
+      step('#member-install','모바일과 컴퓨터 설치','기기에 맞는 설치 안내를 따라요. 설치 후 같은 계정으로 로그인하면 내 기록과 이어지고 웹앱용 별도 토큰을 복사할 필요가 없어요.'),
       step('#welcome-token-form','외부 비서용 연결 토큰','필요한 경우에만 사용할 기능을 골라 발급해요. 이 값은 AI 제공자의 API 키와 다르며 타인에게 공유하면 안 됩니다.'),
       step('#welcome-steps','언제든 다시 이어가기','선택 항목은 나중에 설정해도 돼요. 업무 홈과 이야기에서 일과 일상 기록을 함께 살펴보세요.')
     ],
@@ -78,13 +78,13 @@
     messenger: [
       step('#messenger-window #messenger-back,#messenger-window #message-people','대화 상대 목록','함께하는 사람과 모아 AI가 목록에 있어요. 사람을 고르면 이전 대화를 이어서 보고, 대화 중에는 ‹ 목록으로 돌아와요.'),
       step('#messenger-window #message-search','사람 찾기','이름이나 아이디로 함께하는 사람을 찾아요. 안내 중에는 검색하거나 대화를 열지 않아요.'),
-      step('#messenger-window #message-ai,#messenger-window #message-ai-notice','모아 AI와 전달되는 내용','모아 AI는 공용 Gemini로 답하고 대화 기록은 나만 봐요. AI에게 보낸 내용과 최근 AI 대화가 Google로 전송되니 개인정보·기밀은 입력하지 마세요.'),
+      step('#messenger-window #message-ai,#messenger-window #message-ai-notice','모아 AI와 전달되는 내용','모아 AI는 회사 공용 AI로 답하고 대화 기록은 나만 봐요. AI에게 보낸 내용과 최근 AI 대화가 Google로 전송되니 개인정보·기밀은 입력하지 마세요.'),
       step('#messenger-window #message-text','작성과 전송','Enter는 전송, Shift+Enter는 줄바꿈이에요. 쓰던 글은 이 기기에 암호화해 두어 다른 화면에서 창을 열어도 이어서 쓸 수 있어요.'),
-      step('#messenger-window .modal__head a[href]','크게 보기','메신저를 전체 화면으로 열어요. 내 PC의 비서 연결도 전체 화면에서 할 수 있어요.'),
+      step('#messenger-window .modal__head a[href]','크게 보기','메신저를 전체 화면으로 열어요. PC 비서 연결도 전체 화면에서 할 수 있어요.'),
       step('#messenger-window .modal__head [data-messenger-close]','닫아도 이어져요','창은 보던 화면 위에 떠 있어 뒤 화면을 그대로 쓸 수 있어요. 닫아도 상대와 쓰던 글은 남고, 다른 화면으로 옮기면 열어 둔 창이 그대로 돌아와요.')
     ],
     story: [
-      step('#memory-detail-dialog,#post-detail-dialog,#detail-dialog,#studio-dialog .dialog-head','사진과 이야기를 자세히','피드에서 접어 둔 사진과 글을 여기서 이어서 읽어요. 닫으면 원래 피드로 돌아가요.'),
+      step('#detail-dialog,#studio-dialog .dialog-head','사진과 이야기를 자세히','피드에서 접어 둔 사진과 글을 여기서 이어서 읽어요. 닫으면 원래 피드로 돌아가요.'),
       step('#studio-tone','글의 분위기 선택','간결한 에세이, 관찰 기록, 여행 노트 등 원하는 분위기를 고를 수 있어요.'),
       step('#gemini-wish','내가 원하는 이야기','사진을 보고 어떤 내용을 더해 주면 좋을지 적어요. 있었던 일을 알려 주면 사실에 가까운 초안을 만드는 데 도움이 돼요.'),
       step('#gemini-generate','선택한 사진으로 초안 만들기','버튼을 누를 때 사진의 축소본과 메모 등 안내된 내용을 Gemini에 전달해요. 결과는 검토한 뒤 저장하세요.'),
@@ -94,19 +94,19 @@
       step('#share-url','공유 가능한 기록만 나누기','링크가 있어도 소유자가 정한 범위를 우회할 수 없어요. 공유 안내와 링크 유효기간을 확인해 주세요.')
     ],
     travel: [
-      step('#travel-dialog,#travel-plans-dialog','계획을 기록으로 이어가기','가고 싶은 곳과 일정을 적고 실제로 남긴 사진·글을 연결해요. 계획이 바뀌어도 언제든 수정할 수 있어요.'),
-      step('#travel-new,#travel-plan-new','새 여행 계획','여행 이름과 기간, 메모를 입력해요. 날짜를 확정하기 어려우면 가능한 범위부터 작성하세요.'),
-      step('#travel-title,#travel-plan-title','이름과 여행 메모','이 여행을 알아볼 이름과 준비할 내용을 정리해요. 일정과 장소는 여행 중에도 바꿀 수 있어요.'),
+      step('#travel-dialog','계획을 기록으로 이어가기','가고 싶은 곳과 일정을 적고 실제로 남긴 사진·글을 연결해요. 계획이 바뀌어도 언제든 수정할 수 있어요.'),
+      step('#travel-new','새 여행 계획','여행 이름과 기간, 메모를 입력해요. 날짜를 확정하기 어려우면 가능한 범위부터 작성하세요.'),
+      step('#travel-title','이름과 여행 메모','이 여행을 알아볼 이름과 준비할 내용을 정리해요. 일정과 장소는 여행 중에도 바꿀 수 있어요.'),
       step('#travel-add-step','일정·장소 추가','들를 곳을 넣고 순서를 정해요. 새 장소를 더하거나 기존 계획을 변경하면서 실제 동선에 맞춰요.'),
       step('#travel-steps','진행 상태와 기록','예정·완료·건너뜀 같은 상태를 표시하고 사진 기록을 연결해요. 계획과 달라졌다는 이유로 기록을 지울 필요는 없어요.'),
-      step('#travel-save,#travel-plan-save','변경 내용 저장','수정 내용을 확인한 뒤 저장해요. 사진 기록을 쓸 때 여행 계획과 일정은 선택적으로 연결할 수 있어요.')
+      step('#travel-save','변경 내용 저장','수정 내용을 확인한 뒤 저장해요. 사진 기록을 쓸 때 여행 계획과 일정은 선택적으로 연결할 수 있어요.')
     ],
     // Q:F-12 D — 내 작업(`/community/my-tasks` — 옛 「오늘」 맥락 이름을 잇는다)
     today: [
       step('#my-tasks-list','기한으로 묶은 내 작업','지난 기한 · 오늘 · 이번 주 · 나중에 · 기한 없음으로 묶어요. 묶음 이름을 누르면 접고 펼쳐요.'),
       step('#my-tasks-add,[data-add-bucket]','바로 적기','「작업 추가」에서 이름을 적고 Enter 를 누르면 저장하고 다음 줄로 가요. 프로젝트 없이 적은 작업은 나만 보는 「내 할 일」에 모여요.'),
       step('[data-my-view]','목록 · 보드 · 달력','같은 작업을 묶음별 보드나 기한 달력으로도 볼 수 있어요. 「끝난 작업 보기」로 끝낸 작업을 다시 봐요.'),
-      step('#my-tasks-groups .task-row__title','작업 상세','이름을 누르면 오른쪽에 상세가 열려요. 담당자 · 마감 · 상태를 바꾸고 댓글과 모든 활동을 한 줄기로 봐요.')
+      step('#my-tasks-list .task-row__title','작업 상세','이름을 누르면 오른쪽에 상세가 열려요. 담당자 · 마감 · 상태를 바꾸고 댓글과 모든 활동을 한 줄기로 봐요.')
     ]
   };
   tours.travel.push(step('#travel-record','여행 중의 순간 기록','이 여행에 연결할 새 사진과 글을 작성해요. 여행 계획은 유연하게 고치고 기록은 별도로 남길 수 있어요.'));
@@ -114,8 +114,8 @@
   tours.travel.push(step('#travel-ai-prompt','AI와 계획 다듬기','요청문을 복사해 ChatGPT 등에 상담할 수 있어요. MCP가 연결되어 있으면 허용한 여행 읽기·쓰기 범위 안에서 계획을 다룰 수 있어요.'));
   const modalContexts = new Map([
     ['messenger-window','messenger'],['compose-dialog','composer'],['studio-dialog','story'],
-    ['share-dialog','story'],['memory-detail-dialog','story'],
-    ['post-detail-dialog','story'],['detail-dialog','story'],['travel-dialog','travel'],['travel-plans-dialog','travel']
+    ['share-dialog','story'],
+    ['detail-dialog','story'],['travel-dialog','travel']
   ]);
   tours.threads.push(step('#social-search','함께 기록할 사람 찾기','이름이나 아이디로 찾고 프로필을 열어 팔로우할 수 있어요. 공개하지 않은 기록은 팔로워라도 볼 수 없어요.'));
   tours.threads.push(step('#social-list','팔로잉·팔로워 목록','상대의 프로필을 열거나 팔로우 상태를 바꿀 수 있어요. 팔로워 공개 글은 나를 팔로우한 모든 회원에게 보이므로 글을 올리기 전에 범위를 확인해 주세요.'));
@@ -263,7 +263,7 @@
   function consent() {
     if(dialog) return; context=currentContext(); index=0; makeDialog(); dialog.classList.add('is-consent'); target=null; position();
     const card=dialog.querySelector('.usage-guide-card'), title=node('h2','모아 사용 방법을 안내해 드릴까요?'); title.id='usage-guide-title';
-    const body=node('p','일상 기록뿐 아니라 문서·게시판·자료실·메신저도 사용할 수 있어요. 화면의 버튼을 강조하며 차근차근 설명해 드릴게요. 언제든 건너뛰거나 물음표에서 다시 볼 수 있어요.'); body.id='usage-guide-body';
+    const body=node('p','할 일 · 파일 · 문서 · 메신저를 화면의 버튼을 강조하며 차근차근 안내해 드릴게요. 언제든 건너뛰거나 오른쪽 아래 「? 사용 안내」에서 다시 볼 수 있어요.'); body.id='usage-guide-body';
     const actions=node('div','','usage-guide-actions'); actions.append(button('나중에 볼게요',()=>finish('dismissed')),button('네, 안내해 주세요',()=>{ close(); start(); },true));
     card.append(title,body,actions); actions.lastElementChild.focus();
   }

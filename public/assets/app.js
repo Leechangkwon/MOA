@@ -4843,7 +4843,7 @@ function initFiles(csrfToken, uploadLevels, canFetch, myTeamId) {
   function zipNameFrom(disposition) {
     // 서버가 만든 ASCII 이름만 받는다(`t-box-YYYYMMDD-HHMMSS.zip`) — 모양이 다르면 고정 이름
     var m = (typeof disposition === 'string' ? disposition : '').match(/filename="([A-Za-z0-9._-]{1,100}\.zip)"/);
-    return m ? m[1] : 't-box.zip';
+    return m ? m[1] : 'moa.zip';
   }
 
   function zipDoneText(count, skipped) {
@@ -7444,8 +7444,8 @@ var TOKEN_SCOPE_LABELS = {
   'read': '파일 읽기',
   'upload': '파일 올리기',
   'delete': '파일 지우기',
-  'community.read': '커뮤니티 읽기',
-  'community.write': '커뮤니티 글쓰기',
+  'community.read': '업무 문서 읽기',
+  'community.write': '업무 문서 쓰기',
   'travel.read': '내 여행 계획 읽기',
   'travel.write': '내 여행 계획 수정',
   'diagnostics.write': 'PC 비서 요약 진단 전송 (선택)',
@@ -7459,7 +7459,7 @@ var TOKEN_SCOPE_NOTES = {
   'upload': '올리기·이름 바꾸기·옮기기 (파일 읽기 포함)',
   'delete': '지우기 (파일 읽기·올리기 포함)',
   'community.read': '업무 프로젝트·문서 찾기와 내용 읽기',
-  'community.write': '업무 문서 수정·개발 기록 추가·새 비공개 페이지 만들기. 커뮤니티 읽기도 함께 선택됩니다.',
+  'community.write': '업무 문서 수정·개발 기록 추가·새 비공개 페이지 만들기. 업무 문서 읽기도 함께 선택됩니다.',
   'travel.read': '내 여행 일정과 연결 기록 조회 · 다른 사람의 계획은 열리지 않습니다.',
   'travel.write': '내 여행 계획 만들기·수정·기록 연결 (여행 계획 읽기 포함)',
   'diagnostics.write': '직접 선택한 진단 요약만 계정에 연결해 보냅니다. 원문·AI 답변·인증정보는 제외하고 관리자만 최대 30일 조회합니다. 파일·업무·로그인 권한은 포함하지 않습니다.',

@@ -49,7 +49,7 @@ declare(strict_types=1);
         </summary>
         <div class="panel app-menu">
           <ul class="app-menu__apps">
-            <li><a class="app-menu__app" href="/"<?= $shellCurrentApp === 'home' ? ' aria-current="page"' : '' ?>><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">모아 홈</span><span class="app-menu__desc">이야기와 풍경이 모이는 곳</span></span></a></li>
+            <li><a class="app-menu__app" href="/"<?= $shellCurrentApp === 'home' ? ' aria-current="page"' : '' ?>><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">모아 홈</span><span class="app-menu__desc">검색과 바로가기</span></span></a></li>
 <?php foreach ($shellApps as $shellApp): ?>
 <?php   $shellAppName = htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8'); ?>
 <?php   $shellAppDesc = htmlspecialchars((string) ($shellApp['desc'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>

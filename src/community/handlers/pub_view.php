@@ -19,6 +19,6 @@ $ctx=['public'=>true,'public_links'=>$links,'synced'=>community_sync_map($doc,nu
 header('Content-Type: text/html; charset=utf-8');
 echo '<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">';
 if(!$pub['allow_index']) { echo '<meta name="robots" content="noindex, nofollow">'; }
-echo '<title>'.$esc($page['title']).' · Qaredi</title><link rel="stylesheet" href="'.$esc(Http::url('/assets/app.css')).'"><link rel="stylesheet" href="'.$esc(Http::url('/assets/community/community.css')).'"></head><body><main class="main">';
+echo '<title>'.$esc($page['title']).' · 모아</title><link rel="icon" type="image/svg+xml" href="'.$esc(Http::url('/assets/moa-favicon.svg')).'?v='.(int) filemtime(__DIR__.'/../../../public/assets/moa-favicon.svg').'"><link rel="stylesheet" href="'.$esc(Http::url('/assets/app.css')).'"><link rel="stylesheet" href="'.$esc(Http::url('/assets/community/community.css')).'"></head><body><main class="main">';
 if(count($pages)>1) { echo '<nav aria-label="공개 페이지"><ul>';foreach($links as $l) { echo '<li><a href="'.$esc($l['url']).'">'.$esc($l['title']).'</a></li>'; }echo '</ul></nav>'; }
-echo '<article><h1>'.$esc($page['title']).'</h1><p class="muted">'.$esc($page['display_name']??'').'</p>'.DocRender::html($doc,$ctx).'</article><footer class="muted">Qaredi 에서 공개한 페이지</footer></main></body></html>';
+echo '<article><h1>'.$esc($page['title']).'</h1><p class="muted">'.$esc($page['display_name']??'').'</p>'.DocRender::html($doc,$ctx).'</article><footer class="muted">모아에서 공개한 페이지</footer></main></body></html>';

@@ -33,7 +33,7 @@ declare(strict_types=1);
       <li>카메라를 쓸 수 없다면 — 지금 이 화면을 스마트폰에서 보고 있다면 아래
           <strong>「인증 앱에 바로 추가」</strong> 링크를 누르면 앱이 대신 받아 적습니다.
           그것도 안 되면 앱에서 <strong>「설정 키 입력」(수동 입력)</strong> 을 고르고,
-          계정 이름은 <code>t-box:아이디</code>, 키는 <strong>아래 「비밀 키」 문자열을 그대로</strong>
+          계정 이름은 <code>모아:아이디</code>, 키는 <strong>아래 「비밀 키」 문자열을 그대로</strong>
           넣습니다. 종류는 <strong>시간 기반(Time based) · 6자리</strong> 입니다.</li>
       <li>앱에 <strong>6자리 코드</strong>가 뜹니다(30초마다 새로 바뀝니다). 그 숫자를 아래 칸에 넣고
           <strong>「확인하고 켜기」</strong> 를 누릅니다.</li>

@@ -271,8 +271,8 @@ try:
                         w = st['word'] or {}
                         check(w.get('t') == '모아.' and w.get('hidden') == 'true' and w.get('fs') == ('44px' if phone else '64px'), '① %s: wordmark 「모아.」 %s' % (tag, w.get('fs')))   # H4 — 「Qaredi」 → 「모아.」
                         h1 = st['h1'] or {}
-                        check(h1.get('t') == '우리 회사의 일과 자료를 한곳에서' and h1.get('fs') == ('28px' if phone else '40px') and h1.get('fw') == '700' and h1.get('n') == 1,
-                              '① %s: h1 「우리 회사의 일과 자료를 한곳에서」 %s 700' % (tag, h1.get('fs')))
+                        check(h1.get('t') == '우리 회사의 일과 자료를 한곳에 모아.' and h1.get('fs') == ('28px' if phone else '40px') and h1.get('fw') == '700' and h1.get('n') == 1,
+                              '① %s: h1 「우리 회사의 일과 자료를 한곳에 모아.」 %s 700' % (tag, h1.get('fs')))
                         check(st['lead'] == '업무 · 자료실 · 메신저 · 우리 공간을 계정 하나로 — 초대받은 동료만 들어올 수 있어요.' and st['leadFs'] == '17px', '① %s: lead line 17px' % tag)
                         a = st['acts']
                         check(len(a) == 2 and a[0]['t'] == '로그인' and a[0]['href'] == '/tbox/login' and 'btn--quiet' not in a[0]['cls'] and a[1]['t'] == '초대 요청하기'
@@ -283,7 +283,7 @@ try:
                         check(st['featH2'] == '가입하면 할 수 있는 일' and st['cards'] == ['업무', '자료실', '메신저', '우리 공간'] and st['perRow'] == want_cols
                               and all(len(set(r)) == 1 for r in st['rowsH']) and st['cardLinks'] == 0 and all(n >= 2 for n in st['uses']) and all(x == [40, 40] for x in st['cardIcons']),
                               '② %s: four cards · %d per row · equal heights · icon 40 · uses ≥2 · links 0 %s' % (tag, st['perRow'], st['rowsH']))
-                        check(st['stepsH2'] == '이렇게 시작해요' and st['steps'] == ['초대 링크 받기', '가입하기', '내 홈에서 시작'] and st['stepsRow'] == (1 if phone else 3) and all(x == [32, 32] for x in st['nums']),
+                        check(st['stepsH2'] == '이렇게 시작해요' and st['steps'] == ['초대 링크 받기', '가입하기', '모아 홈에서 시작'] and st['stepsRow'] == (1 if phone else 3) and all(x == [32, 32] for x in st['nums']),
                               '③ %s: three steps %s · number circle 32' % (tag, 'vertical' if phone else 'in a row'))
                         check(st['trustH2'] == '안전하게 써요' and st['trust'] == 4 and st['trustRow'] == (1 if phone else 2) and all(x == 20 for x in st['ticons']),
                               '④ %s: four trust lines · %d columns · icon 20' % (tag, 1 if phone else 2))

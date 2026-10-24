@@ -32,7 +32,7 @@ final class Totp
     private const SECRET_BYTES = 20;
 
     /** 인증 앱 화면에 보이는 발급자 이름 */
-    private const ISSUER = 't-box';
+    private const ISSUER = '모아';
 
     /** RFC 4648 base32 알파벳 */
     private const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';

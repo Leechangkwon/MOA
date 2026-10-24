@@ -73,7 +73,7 @@ with sync_playwright()as pw:
  layout=original_layout
  session='consent';page.goto('https://entry.example/',wait_until='networkidle')
  check(page.locator('#home-open-dashboard').get_attribute('href')=='/tbox/consent','consent CTA preserves mandatory consent route')
- check(page.locator('#home-open-dashboard').inner_text().startswith('동의하고 내 홈 열기'),'consent CTA explains gate')
+ check(page.locator('#home-open-dashboard').inner_text().startswith('동의하고 모아 홈 열기'),'consent CTA explains gate')
  page.locator('#home-open-dashboard').click();page.wait_for_url('https://entry.example/tbox/consent')
  check(urlsplit(page.url).path=='/tbox/consent','actual consent CTA enters existing gate')
  session='anon';page.goto('https://entry.example/',wait_until='networkidle')

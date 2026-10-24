@@ -57,7 +57,7 @@ require __DIR__ . '/../views/shell_top.php';
       </div>
     </header>
 
-    <p><a class="btn btn--quiet" href="<?= Http::url('/welcome') ?>">시작 안내 · OTP · AI 비서 연결 →</a></p>
+    <p><a class="btn btn--quiet" href="<?= Http::url('/welcome') ?>">시작 안내 · OTP · PC 비서 연결 →</a></p>
     <div class="grid-2">
       <section class="panel span-all">
         <div class="panel__head"><h2 class="panel__title">ChatGPT 연결</h2><p class="panel__sub">ChatGPT에서 내 글·사진과 여행 계획을 읽고, 선택한 경우 저장하도록 허용합니다. 서버 준비 상태와 승인한 연결을 확인하거나 해제할 수 있습니다.</p></div>
@@ -385,7 +385,7 @@ require __DIR__ . '/../views/shell_top.php';
           <label class="field field--full">
             <span class="field__label">허용할 기능 (필수)</span>
             <select id="token-scope" required></select>
-            <span class="help">개발 기록 연결에는 「커뮤니티 글쓰기」를 선택하세요. 읽기도 함께 선택됩니다. 필요한 기능만 고르면 됩니다.</span>
+            <span class="help">개발 기록 연결에는 「업무 문서 쓰기」를 선택하세요. 읽기도 함께 선택됩니다. 필요한 기능만 고르면 됩니다.</span>
           </label>
           <label class="field">
             <span class="field__label">현재 비밀번호</span>

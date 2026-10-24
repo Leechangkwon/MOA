@@ -342,7 +342,7 @@ def no_left(d, wait=3.0):
 TMPD = INST + '/tmp'
 uid = {n: sql("SELECT id FROM users WHERE username = 'claude_%s'" % n) for n in ('employee01', 'employee02', 'manager01', 'admin01', 'guest01')}
 tag = uuid.uuid4().hex[:6]
-CD_RE = re.compile(r'^attachment; filename="(t-box-\d{8}-\d{6}\.zip)"; filename\*=UTF-8\'\'(t-box-\d{8}-\d{6}\.zip)$')
+CD_RE = re.compile(r'^attachment; filename="(moa-\d{8}-\d{6}\.zip)"; filename\*=UTF-8\'\'(moa-\d{8}-\d{6}\.zip)$')
 
 print('\n── 준비 — 파일(앱 창구로 올림 · 검사 상태·이름은 임시 DB 에서 정함 · 이름 표식 %s)' % tag)
 F1, F1h, _ = upload('e1', 'qf3c-a-%s.txt' % tag)

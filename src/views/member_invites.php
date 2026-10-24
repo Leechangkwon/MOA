@@ -28,7 +28,7 @@
 <div id="invite-result" hidden><p>이 링크를 초대할 사람에게 보내 주세요. 링크 원문은 이번에만 표시됩니다.</p><label class="field"><span>가입 링크</span><input id="invite-url" readonly></label><button id="invite-copy" class="btn btn--quiet" type="button">링크 복사</button></div><p id="invite-status" role="status" aria-live="polite"></p><div id="invite-list"></div>
 <details><summary>tbox-buddy 설치 파일 연결</summary><p>실제 Windows 설치 파일의 HTTPS 다운로드 주소를 등록하면 가입 안내에 표시됩니다.</p><form id="installer-form" class="form"><label class="field"><span>다운로드 주소</span><input id="installer-url" type="url" placeholder="https://…" maxlength="2000"></label><button class="btn btn--quiet" type="submit">다운로드 주소 저장</button></form></details></section>
 <section class="panel moa-invite-panel" id="member-ai-settings">
-  <div class="panel__head"><p class="moa-kicker">MOA × GEMINI</p><h2 class="panel__title">모두에게 한 명씩, 모아 AI</h2><p>공용 API 키 하나로 구성원 각자가 AI와 대화합니다. 대화 기록은 계정별로 분리됩니다.</p></div>
+  <div class="panel__head"><p class="moa-kicker">모아 AI 설정</p><h2 class="panel__title">모두에게 한 명씩, 모아 AI</h2><p>공용 API 키 하나로 구성원 각자가 AI와 대화합니다. 대화 기록은 계정별로 분리됩니다.</p></div>
   <form id="ai-settings-form" class="form form--grid" autocomplete="off">
     <label class="field"><span>Google AI Studio API 키</span><input id="ai-settings-key" type="password" autocomplete="new-password" spellcheck="false" maxlength="4096" placeholder="새 키 입력 · 비워 두면 기존 키 유지"><small id="ai-settings-key-state">등록 상태를 확인하고 있어요.</small></label>
     <label class="field"><span>AI 대화 사용</span><select id="ai-settings-enabled"><option value="false">잠시 끄기</option><option value="true">구성원에게 열기</option></select><small>모델: Gemini 3.5 Flash</small></label>

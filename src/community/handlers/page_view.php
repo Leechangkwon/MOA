@@ -906,13 +906,13 @@ unset($viewShellTop);
 
         <div id="atom-file" class="atom-pane" hidden>
           <label class="field field--full">
-            <span class="field__label">내 t-box 파일에서 고르기</span>
+            <span class="field__label">내 자료실 파일에서 고르기</span>
             <input id="atom-file-q" type="search" maxlength="200" autocomplete="off" spellcheck="false" placeholder="파일 이름 (비우면 맨 위 폴더)">
           </label>
           <p id="atom-file-chosen" class="help"></p>
           <ul id="atom-file-list" class="list" aria-label="고를 수 있는 파일"></ul>
           <div class="toolbar">
-            <a id="atom-file-upload" class="btn btn--quiet btn--small" href="#" target="_blank" rel="noopener">t-box 에 올리기</a>
+            <a id="atom-file-upload" class="btn btn--quiet btn--small" href="#" target="_blank" rel="noopener">자료실에 올리기</a>
             <button id="atom-file-refresh" class="btn btn--quiet btn--small" type="button">목록 새로 고침</button>
           </div>
           <p class="help">페이지를 읽는 사람이 모두 볼 수 있는 등급의 파일만 붙습니다. 좁으면 저장할 때 알려 드립니다.</p>

@@ -7,10 +7,10 @@
  */
 ?>
 <dialog id="message-assist-dialog" data-pc-user="<?= (int)$user['id'] ?>" class="moa-assist-dialog" aria-labelledby="assist-title">
-  <header class="moa-assist-head modal__head"><div><p class="moa-kicker">A LITTLE HELP, A BETTER MESSAGE</p><h2 id="assist-title">말이 조금 더 잘 전해지도록</h2><p id="assist-recipient" class="moa-muted"></p></div><button id="assist-close" type="button" class="btn btn--icon btn--plain" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
+  <header class="moa-assist-head modal__head"><div><p class="moa-kicker">모아 AI 로 다듬기</p><h2 id="assist-title">말이 조금 더 잘 전해지도록</h2><p id="assist-recipient" class="moa-muted"></p></div><button id="assist-close" type="button" class="btn btn--icon btn--plain" aria-label="닫기"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button></header>
   <div class="moa-assist-body">
     <div class="moa-assist-providers" role="group" aria-label="AI 사용 방법 선택">
-      <button type="button" data-assist-provider="gemini" aria-pressed="true"><strong>Gemini 3.5 Flash · 기본</strong><small>모아에서 바로 처리</small></button>
+      <button type="button" data-assist-provider="gemini" aria-pressed="true"><strong>모아 AI · 기본</strong><small>Gemini · 모아에서 바로 처리</small></button>
       <button type="button" data-assist-provider="local" aria-pressed="false"><strong>GPT · 내 ChatGPT</strong><small>내 구독 · Windows PC 연결</small></button>
       <button type="button" data-assist-provider="web" aria-pressed="false"><strong>ChatGPT 웹</strong><small>새 창에서 직접 작업</small></button>
     </div>
@@ -34,7 +34,7 @@
       <h3>내 PC에서 작업하고, 여기서 이어 쓰세요.</h3>
       <?php require __DIR__ . '/member_local_buddy.php'; ?>
       <p id="assist-local-task"></p>
-      <p id="assist-local-image-note" hidden>개인 ChatGPT 로컬 연결은 이미지 생성을 지원하지 않습니다. 위에서 모아 공용 Gemini 또는 ChatGPT 웹을 선택해 주세요.</p>
+      <p id="assist-local-image-note" hidden>개인 ChatGPT 로컬 연결은 이미지 생성을 지원하지 않습니다. 위에서 모아 AI 또는 ChatGPT 웹을 선택해 주세요.</p>
       <div id="assist-local-text-steps">
         <h3>처음 한 번만 PC에서 승인하세요</h3>
         <p>같은 Windows PC의 비서에 ChatGPT로 로그인한 뒤 ‘GPT 연결’을 누르세요. 승인한 브라우저는 30일간 기억합니다.</p>

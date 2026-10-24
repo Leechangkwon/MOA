@@ -33,7 +33,7 @@ require __DIR__ . '/../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <h1 class="page-head__title">휴대폰 경보</h1>
-        <p class="page-head__sub">관리자 휴대폰에 「Qaredi 경보」 앱을 설치해 두면 사람·시스템 경보는 곧바로, Claude 경보는 하루 한 번(18시) 요약으로 알림이 옵니다.</p>
+        <p class="page-head__sub">관리자 휴대폰에 「모아 경보」 앱을 설치해 두면 사람·시스템 경보는 곧바로, Claude 경보는 하루 한 번(18시) 요약으로 알림이 옵니다.</p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" id="push-test" disabled>
@@ -50,7 +50,7 @@ require __DIR__ . '/../views/shell_top.php';
     </div>
 <?php endif; ?>
     <div class="notice notice--recommend" id="push-ios-note" hidden>
-      <p>아이폰은 Safari 의 공유 단추 → 「홈 화면에 추가」 로 먼저 설치한 뒤, 홈 화면의 「Qaredi 경보」 아이콘으로 열어서 「알림 받기 켜기」를 누르세요 (iOS 16.4 이상).</p>
+      <p>아이폰은 Safari 의 공유 단추 → 「홈 화면에 추가」 로 먼저 설치한 뒤, 홈 화면의 「모아 경보」 아이콘으로 열어서 「알림 받기 켜기」를 누르세요 (iOS 16.4 이상).</p>
     </div>
 
     <section class="grid-2" id="push-app" data-push-ready="<?= $pushReady ? '1' : '0' ?>">
@@ -85,7 +85,7 @@ require __DIR__ . '/../views/shell_top.php';
         </div>
         <ol class="steps">
           <li>안드로이드 Chrome: 이 화면에서 「알림 받기 켜기」 → 알림 허락. 메뉴의 「홈 화면에 추가」로 설치하면 앱처럼 열립니다.</li>
-          <li>아이폰 Safari (iOS 16.4 이상): 공유 단추 → 「홈 화면에 추가」 → 홈 화면의 「Qaredi 경보」로 열기 → 「알림 받기 켜기」 → 알림 허락.</li>
+          <li>아이폰 Safari (iOS 16.4 이상): 공유 단추 → 「홈 화면에 추가」 → 홈 화면의 「모아 경보」로 열기 → 「알림 받기 켜기」 → 알림 허락.</li>
           <li>「시험 알림」을 누르면 1분 안에 등록한 기기 전부에 시험 알림이 옵니다 (10분에 한 번).</li>
           <li>휴대폰을 잃어버렸으면 다른 기기에서 이 화면의 「받는 기기」 목록에서 그 기기를 해지하세요.</li>
         </ol>

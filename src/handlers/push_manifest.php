@@ -29,9 +29,9 @@ $icon = static function (string $file, string $size) use ($assetDir): array {
 
 $manifest = [
     'id'          => Http::url('/alerts-app'),
-    'name'        => 'Qaredi 경보',
-    'short_name'  => 'Qaredi 경보',
-    'description' => '관리자 휴대폰으로 Qaredi 경보를 받습니다',
+    'name'        => '모아 관리자 경보',
+    'short_name'  => '모아 경보',
+    'description' => '관리자 휴대폰으로 모아 경보를 받습니다',
     'lang'        => 'ko',
     'dir'         => 'ltr',
     'start_url'   => Http::url('/alerts-app'),

@@ -604,7 +604,7 @@ try:
                 metrics['sidebar_work'] = work
                 seq = [x['text'] for x in work if x['t'] != 'folded']
                 top = seq[:6]
-                check(top == ['새로 만들기', '홈', '내 작업', '받은 알림', '검색Ctrl K', '프로젝트'], 'C-2 업무 sidebar top: 새로 만들기 → 홈 → 내 작업 → 받은 알림 → 검색 → 프로젝트 ' + json.dumps(top, ensure_ascii=False))
+                check(top == ['새로 만들기', '업무 홈', '내 작업', '받은 알림', '검색Ctrl K', '프로젝트'], 'C-2 업무 sidebar top: 새로 만들기 → 업무 홈 → 내 작업 → 받은 알림 → 검색 → 프로젝트 ' + json.dumps(top, ensure_ascii=False))
                 titles = [x['text'] for x in work if x['t'] == 'title']
                 check(titles[-1:] == ['더보기'] and '문서' in titles and titles.index('문서') < titles.index('더보기'), 'C-2 업무 sidebar groups … 문서 → 더보기(last) ' + json.dumps(titles, ensure_ascii=False))
                 check(all('오늘 할 일' not in x['text'] for x in work) and p.locator('#sidebar').get_by_text('오늘 할 일').count() == 0, 'C-2 업무 sidebar has no 「오늘 할 일」')

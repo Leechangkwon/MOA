@@ -7,10 +7,10 @@ $candidates=$publisher ? Programs::candidates($user) : [];
 $history=$publisher ? Programs::history($user) : [];
 $teams=$publisher ? Db::instance()->run('SELECT id,name FROM teams WHERE is_active ORDER BY name')->fetchAll() : [];
 $e=static fn($v)=>htmlspecialchars((string)$v,ENT_QUOTES|ENT_SUBSTITUTE,'UTF-8');
-$pageTitle='AI 비서 배포함'; $activeNav='programs'; $pageKey='programs';
+$pageTitle='PC 비서 배포함'; $activeNav='programs'; $pageKey='programs';
 require dirname(__DIR__) . '/views/shell_top.php';
 ?>
-<header class="page-head"><div class="page-head__text"><h1 class="page-head__title">AI 비서 배포함</h1>
+<header class="page-head"><div class="page-head__text"><h1 class="page-head__title">PC 비서 배포함</h1>
 <p class="page-head__sub">사용하던 PC 비서의 업데이트를 내려받습니다. 기존 바로가기·파일 팔레트·하나의 트레이를 유지합니다.</p></div></header>
 <p><a class="btn btn--quiet" href="<?= Http::url('/welcome?section=pc-assistant') ?>">받은 다음 어떻게 하나요? 설치·연결 안내</a></p>
 <?php if (Authz::canReadAudit($user)): ?><p><a class="btn btn--quiet" href="<?= Http::url('/admin/client-diagnostics') ?>">PC 비서 요약 진단·개선 검토</a></p><?php endif; ?>
@@ -21,7 +21,7 @@ require dirname(__DIR__) . '/views/shell_top.php';
 <?php endif; ?>
 <?php foreach ($programs as $program): ?>
 <section class="card card--pad">
-<h2>기존 PC AI 비서 업데이트 · <?= $e($program['version']) ?></h2>
+<h2>기존 PC 비서 업데이트 · <?= $e($program['version']) ?></h2>
 <p><?= $e($program['description']) ?></p>
 <p><?= $e($program['name']) ?> · <?= $e(number_format((int)$program['size_bytes']/1048576,1)) ?> MB</p>
 <p class="help">올린 사람 <?= $e($program['uploaded_by']) ?> · 게시 <?= $e((new DateTimeImmutable($program['published_at']))->setTimezone(new DateTimeZone('Asia/Seoul'))->format('Y-m-d H:i')) ?></p>

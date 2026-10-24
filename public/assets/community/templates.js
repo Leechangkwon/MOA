@@ -11,9 +11,9 @@
  * ★ 미리보기는 읽기 렌더러(`renderDoc`)가 그린다 — 보이는 것과 만들어지는 것이 같다.
  *   글자는 전부 textContent 로 넣는다(HTML 문자열을 넣는 자리가 없다).
  */
-import { renderDoc } from './doc-render.js?v=0fbd087e9d32';
+import { renderDoc } from './doc-render.js?v=b76472e6847d';
 
-import { repeatDialog } from './automations.js?v=0fbd087e9d32';
+import { repeatDialog } from './automations.js?v=b76472e6847d';
 
 const SCOPE_LABELS = {
   site: '사이트 기본',
@@ -24,7 +24,7 @@ const SCOPE_LABELS = {
 const SCOPE_HELP = {
   personal: '나만 봅니다',
   team: '이 팀 공간의 팀원이 봅니다',
-  site: '커뮤니티를 쓰는 모두가 봅니다 (관리자)',
+  site: '모아를 쓰는 모두가 봅니다 (관리자)',
   database: '이 데이터베이스에 행을 더할 수 있는 사람이 봅니다 (속성 값도 담습니다 — 사람·관계·파일 빼고)'
 };
 

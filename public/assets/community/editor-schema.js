@@ -1241,13 +1241,13 @@ export const BLOCK_TYPES = [
   },
   {
     type: 'image', label: '그림', editsAtom: true,
-    desc: '이 문서에 올리거나 t-box 에서 고른 그림을 보여 줍니다. 편집 중에도 그림이 보이고, 고른 뒤 오른쪽 손잡이를 끌거나 Alt+←/→ 로 폭(10~100%)을 바꿉니다. 그림 옆에 글을 나란히 두려면 「단 나누기」(2단) 블록을 쓰세요.',
+    desc: '이 문서에 올리거나 자료실에서 고른 그림을 보여 줍니다. 편집 중에도 그림이 보이고, 고른 뒤 오른쪽 손잡이를 끌거나 Alt+←/→ 로 폭(10~100%)을 바꿉니다. 그림 옆에 글을 나란히 두려면 「단 나누기」(2단) 블록을 쓰세요.',
     sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c6', type: 'file', file_ref: 'tbox:00000000-0000-4000-8000-0000000000c7' }] },
     sampleCtx: { base: '', tbox_base: '', file_titles: { '00000000-0000-4000-8000-0000000000c7': { name: '그림.png', size: 184320, image: false } } }
   },
   {
     type: 'file', label: '파일', editsAtom: true,
-    desc: 't-box 에 올린 파일을 카드로 겁니다. 누르면 t-box 가 자기 권한으로 내려줍니다.',
+    desc: '자료실에 올린 파일을 카드로 겁니다. 누르면 자료실이 자기 권한으로 내려줍니다.',
     sample: { schema: 1, blocks: [{ id: '00000000-0000-4000-8000-0000000000c8', type: 'file', file_ref: 'tbox:00000000-0000-4000-8000-0000000000c9' }] },
     sampleCtx: { base: '', tbox_base: '', file_titles: { '00000000-0000-4000-8000-0000000000c9': { name: '보고서.pdf', size: 1887436, image: false } } }
   },

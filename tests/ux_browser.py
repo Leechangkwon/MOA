@@ -113,7 +113,7 @@ try:
         if name!='claude': expect(page.locator('.q-start-item')).to_have_count(2)
         check(tag+' personal layout',page.evaluate('document.documentElement.scrollWidth<=innerWidth'))
     theme('nova'); page.set_viewport_size({'width':1440,'height':1080}); page.goto(BASE+'/?screen=launcher'); expect(page.locator('.q-start-item')).to_have_count(2)
-    check('recent items from both modules',page.locator('.q-start-kind').all_inner_texts()==['커뮤니티','t-box'])
+    check('recent items from both modules',page.locator('.q-start-kind').all_inner_texts()==['업무','자료실'])
     check('only validated local href',all(h.startswith(('/?q=','/community/p/')) for h in page.locator('.q-start-item').evaluate_all('(es)=>es.map(e=>e.getAttribute("href"))')))
     screenshot('nova-start.png')
     page.locator('[data-start-view="favorites"]').click(); expect(page.locator('#q-start-status')).to_contain_text('별을 달면'); check('favorite empty',page.locator('.q-start-item').count()==0)

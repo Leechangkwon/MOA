@@ -136,7 +136,7 @@ foreach ($shellApps as $shellHereRow) {
 $shellBrandName = '모아 ' . $shellHereName;
 if ($shellCafe) {
     // 카페 C2 (DESIGN 2.29 「앱 이름 자리 「우리 공간」」) — 고정 글자 · 아이콘은 Apps::ICON_PATHS 의 spaces(사람 셋)
-    [$shellBrandName, $shellBrandSub, $shellBrandIcon] = ['우리 공간', '카페 · 회사 · 모임 공간', 'spaces'];
+    [$shellBrandName, $shellBrandSub, $shellBrandIcon] = ['우리 공간', '자유 · 익명게시판', 'spaces'];
 }
 /** 브랜드 표시의 색 갈래(moa.css 의 `.moa-module-mark--tbox|community` 둘뿐 — 이야기는 옛 커뮤니티 것 그대로) */
 $shellMarkKey = $shellCurrentApp === 'tbox' ? 'tbox' : 'community';
@@ -339,10 +339,9 @@ if (!headers_sent()) {
 <meta name="color-scheme" content="light dark">
 <title><?= $shellTitle ?> · <?= htmlspecialchars($shellBrandName, ENT_QUOTES, 'UTF-8') ?></title>
 <!-- 25단계 — 브라우저가 스스로 부르는 `/favicon.ico` 가 404 로 떨어져 모든 화면의 콘솔에
-     오류 한 줄을 남겼다(시각 점검 도구가 세는 console_errors). 아이콘을 **문서 안에** 둔다:
-     파일을 새로 만들지 않고, CSP 의 `img-src 'self' data:` 안에서 끝난다. 고정 문자열이라
-     동적 값이 한 글자도 들어가지 않는다. -->
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath fill='%2314213d' d='M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z'/%3E%3C/svg%3E">
+     오류 한 줄을 남겼다(시각 점검 도구가 세는 console_errors). 아이콘을 문서에 적어 둔다.
+     Q:F-15 S1(DESIGN 5장 「브랜드 이름 3층」 · 2.33 D) — 옛 남색 방패 data URI 대신 「모아.」 파비콘 파일 하나(`img-src 'self'` · 고정 주소). -->
+<link rel="icon" type="image/svg+xml" href="<?= Http::url('/assets/moa-favicon.svg') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/moa-favicon.svg') ?>">
 <link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $shellCssVersion ?>">
 <?php foreach ($shellPageCss as $shellCssName): ?>
 <link rel="stylesheet" href="<?= Http::url('/assets/') ?><?= $shellCssName ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/' . $shellCssName) ?>">
@@ -388,7 +387,7 @@ if ($shellMod === 'community'): ?>
 <link rel="apple-touch-icon" href="<?= Http::url('/assets/alerts-icon-192.png') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/alerts-icon-192.png') ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Qaredi 경보">
+<meta name="apple-mobile-web-app-title" content="모아 경보">
 <?php endif; ?>
 <?= Design::assets() ?>
 </head>
@@ -464,7 +463,7 @@ if ($shellMod === 'community'): ?>
     <!-- ─── 「우리 공간」 모드 사이드바 위쪽 (카페 C2 · DESIGN 2.29 「카페 셸」) — 카페 홈 · 받은 알림 → (아래 공용) 검색.
          「＋ 새로 만들기」 · 홈 · 내 작업은 업무 앱의 것이라 그리지 않는다. 받은 알림은 익명 댓글 · 신고 처리 알림을 받는 길이라 둔다(종 · 창은 업무와 같은 한 벌). -->
     <nav class="nav" aria-label="우리 공간">
-      <a id="nav-cafe-home" class="<?= $shellNavClass('community-cafe') ?>" href="<?= Http::communityUrl('/cafe') ?>"<?= $shellActive === 'community-cafe' ? ' aria-current="page"' : '' ?> data-tip="카페 홈"><span class="icon" data-icon="home"></span><span>카페 홈</span></a>
+      <a id="nav-cafe-home" class="<?= $shellNavClass('community-cafe') ?>" href="<?= Http::communityUrl('/cafe') ?>"<?= $shellActive === 'community-cafe' ? ' aria-current="page"' : '' ?> data-tip="우리 공간"><span class="icon" data-icon="home"></span><span>우리 공간</span></a>
       <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog" data-tip="받은 알림">
         <span class="icon" data-icon="bell"></span><span>받은 알림</span>
         <span id="nav-community-bell-count" class="badge badge--internal" hidden></span>
@@ -492,7 +491,7 @@ if ($shellMod === 'community'): ?>
     <!-- 알림 (5-D, PRD F-22) — 종 아이콘 + 안 읽은 수. 30초마다 `GET /community/api/notifications?unread=1`(editor.js initNotifications).
          누르면 알림 창 — 목록은 창구가 **지금도 볼 수 있는 페이지만** 제목을 준다(아니면 「볼 수 없는 페이지」). Q:F-12 — 이름 「받은 알림」(2.19 ③). -->
     <nav class="nav" aria-label="업무">
-      <a id="nav-work-home" class="<?= $shellNavClass('community-overview') ?>" href="<?= Http::communityUrl('/') ?>" data-tip="홈"><span class="icon" data-icon="home"></span><span>홈</span></a>
+      <a id="nav-work-home" class="<?= $shellNavClass('community-overview') ?>" href="<?= Http::communityUrl('/') ?>" data-tip="업무 홈"><span class="icon" data-icon="home"></span><span>업무 홈</span></a>
       <a id="nav-work-my-tasks" class="<?= $shellNavClass('community-today') ?>" href="<?= Http::communityUrl('/my-tasks') ?>" data-tip="내 작업"><span class="icon" data-icon="check"></span><span>내 작업</span></a>
       <button id="nav-community-bell" class="nav__item" type="button" aria-haspopup="dialog" data-tip="받은 알림">
         <span class="icon" data-icon="bell"></span><span>받은 알림</span>
@@ -704,7 +703,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
            열지 않는다. **이 파일에는 역할 비교가 없다.** 되살려 열어도 보이는 행은 데이터 창구의
            SQL WHERE(Authz::restorableFilesWhere)가 정한다 (PRD S-01·S-02).
            `data-no-reauth` — 본인 휴지통은 재인증 대상이 아니므로 D-9 재인증 모달(armReauthLinks)을 걸지 않는다. -->
-      <a id="nav-programs" class="<?= $shellNavClass('programs') ?>" href="<?= Http::url('/programs') ?>"><span class="icon" data-icon="files"></span><span>AI 비서 업데이트</span></a>
+      <a id="nav-programs" class="<?= $shellNavClass('programs') ?>" href="<?= Http::url('/programs') ?>"><span class="icon" data-icon="files"></span><span>PC 비서 받기</span></a>
       <a id="nav-my-trash" class="<?= $shellNavClass('trash') ?>" href="<?= Http::url('/trash') ?>" data-no-reauth hidden>
         <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
       </a>

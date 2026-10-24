@@ -13,7 +13,7 @@ $e=static fn($value)=>htmlspecialchars((string)$value,ENT_QUOTES,'UTF-8');
 <link rel="stylesheet" href="<?= Http::url('/assets/dashboard-widgets.css') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/dashboard-widgets.css') ?>"><script defer src="<?= Http::url('/assets/dashboard-widgets.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/dashboard-widgets.js') ?>"></script>
 <script defer src="<?= Http::url('/assets/space-page.js') ?>?v=<?= filemtime(__DIR__.'/../../public/assets/space-page.js') ?>"></script>
 </head><body><main class="space-layout" id="space-app" data-base="<?= $e(rtrim(Http::url('/'),'/')) ?>" data-community-base="<?= $e(COMMUNITY_BASE) ?>">
-<nav class="toolbar space-breadcrumb" aria-label="모아 홈"><a href="/">내 홈으로</a><a href="<?= Http::url('/') ?>">자료실 열기</a></nav>
+<nav class="toolbar space-breadcrumb" aria-label="모아 홈"><a href="/">모아 홈으로</a><a href="<?= Http::url('/') ?>">자료실 열기</a></nav>
 <?php /* 사이트 H3 (DESIGN 2.29 「「우리 공간」 = 카페」) — 카페 홈 · 「내 공간」 묶음은 이 화면에서 빠졌다(카페 = /community/cafe).
          이 화면은 `?space=<id>` 로 연 공간 화면만(product_spaces_page.php — 쿼리가 없으면 302 /community/cafe). 공간 창구 · 판정 · 자료는 그대로. */ ?>
 <header><h1 id="space-title">공간</h1></header>

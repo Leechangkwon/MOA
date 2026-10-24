@@ -34,7 +34,7 @@ var ORIGIN_LABELS = {
 var KINDS = ['alert', 'digest', 'test', 'more'];
 var RULE_RE = /^AL-[0-9]{1,2}$/;
 var AT_RE = /^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
-var FALLBACK_TITLE = '[경보] Qaredi';
+var FALLBACK_TITLE = '[경보] 모아';
 var BODY_TAIL = '눌러서 관리자 페이지에서 확인하세요 (로그인 필요)';
 
 function readPayload(event) {
@@ -83,7 +83,7 @@ function build(d) {
   } else if (d.kind === 'more') {
     title = '[경보] 지난 한 시간 외 ' + count(d.n) + '건';
   } else {
-    title = '[시험] Qaredi 경보 알림이 이 기기에 옵니다';
+    title = '[시험] 모아 경보 알림이 이 기기에 옵니다';
   }
   var when = shortWhen(d.at);
   return { title: title, body: (when === '' ? '' : when + ' · ') + BODY_TAIL, kind: d.kind };

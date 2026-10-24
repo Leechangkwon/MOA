@@ -32,7 +32,7 @@
   const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;};
   const label=p=>p.display_name||p.username;
   const date=s=>new Date(s).toLocaleString('ko-KR',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'});
-  const scopes={'read':'파일 읽기','read+upload':'파일 읽기·업로드 (비서 파일 기능)','read+upload+delete':'파일 읽기·업로드·삭제','community.read':'커뮤니티 읽기','community.write':'커뮤니티 읽기·쓰기','travel.read':'여행 계획 읽기','travel.write':'여행 계획 읽기·쓰기','assistant.run':'비서 실행','session.open':'이 PC에서 바로 로그인'};
+  const scopes={'read':'파일 읽기','read+upload':'파일 읽기·업로드 (비서 파일 기능)','read+upload+delete':'파일 읽기·업로드·삭제','community.read':'업무 문서 읽기','community.write':'업무 문서 읽기·쓰기','travel.read':'여행 계획 읽기','travel.write':'여행 계획 읽기·쓰기','assistant.run':'비서 실행','session.open':'이 PC에서 바로 로그인'};
   if(page==='join'){
     // 사이트 H2 — 초대 요청 · 요청 확인 화면도 가입 화면과 같은 머리(memberPage 'join')를 쓴다. 그 두 화면의 일은 invite-request.js 몫이라 가입 폼이 없으면 여기서 끝난다.
     if(!$('join-form'))return;
@@ -60,7 +60,7 @@
     if(me.passkeys_active>0)$('welcome-choose-passkey').textContent='다른 기기 패스키 추가';
     for(const atom of me.token_scopes||[]){const scope=atom==='upload'?'read+upload':atom==='delete'?'read+upload+delete':atom;const opt=node('option',scopes[scope]||scope);opt.value=scope;$('welcome-scope').append(opt);}
     if((me.token_scopes||[]).includes('read'))$('welcome-scope').value='read';
-    say(required?'계정 보호 설정을 완료해 주세요.':'가입이 완료됐어요. 로그인 방법과 비서 연결은 필요한 것만 선택하세요.');
+    say(required?'계정 보호 설정을 완료해 주세요.':'가입이 완료됐어요. 로그인 방법과 PC 비서 연결은 필요한 것만 선택하세요.');
     $('welcome-choose-otp').addEventListener('click',()=>{$('welcome-mfa').hidden=false;$('welcome-passkey').hidden=true;$('welcome-enroll').focus();});
     $('welcome-security-later').addEventListener('click',()=>{$('welcome-mfa').hidden=true;$('welcome-passkey').hidden=true;$('welcome-passkey-password').value='';$('welcome-passkey-otp').value='';$('welcome-secret').textContent='';$('welcome-qr-area').hidden=true;$('welcome-enroll').hidden=false;});
     const passkey=window.QarediPasskey;
@@ -91,7 +91,7 @@
     $('welcome-otp-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{await api('/api/me/mfa/confirm','POST',{otp:$('welcome-otp').value});location.reload();});});
     $('welcome-token-form').addEventListener('submit',e=>{e.preventDefault();busy(e.currentTarget,async()=>{
       const scope=$('welcome-scope').value;
-      let data;try{data=await api('/api/me/api-tokens','POST',{name:$('welcome-token-name').value,purpose:'tbox-buddy 비서 연결',scope,password:$('welcome-password').value,otp:$('welcome-token-otp').value});}finally{$('welcome-password').value='';$('welcome-token-otp').value='';}
+      let data;try{data=await api('/api/me/api-tokens','POST',{name:$('welcome-token-name').value,purpose:'PC 비서 연결',scope,password:$('welcome-password').value,otp:$('welcome-token-otp').value});}finally{$('welcome-password').value='';$('welcome-token-otp').value='';}
       $('welcome-token').value=data.token;$('welcome-token-result').hidden=false;$('welcome-token-label').textContent=scopes[scope]+' 토큰';$('welcome-token-expiry').textContent='유효기간: '+date(data.expires_at)+(data.bound_ip?' · 등록 IP: '+data.bound_ip:'');
       say('연결 토큰을 발급했습니다. 이 기능을 지원하는 외부 비서에만 입력해 주세요.');$('welcome-token-result').scrollIntoView({behavior:'smooth',block:'nearest'});
     });});

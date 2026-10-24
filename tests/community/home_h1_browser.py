@@ -230,7 +230,7 @@ try:
                         s = st['search'] or {}
                         check(s and abs(s['h'] - 52) <= 0.5 and s['radius'] == '26px' and s['w'] <= 720.5 and abs(s['w'] - min(720, st['wrapW'])) <= 1 and s['icon'] == 20,
                               '② %s: search box 52 · radius 26 · width %.0f = min(720, %.0f) · icon 20' % (tag, s.get('w', -1), st['wrapW']))
-                        check(not s.get('focused') and not s.get('autofocus') and s.get('ph') == '문서 · 자료 · 작업 검색', '② %s: no autofocus · placeholder 「문서 · 자료 · 작업 검색」' % tag)
+                        check(not s.get('focused') and not s.get('autofocus') and s.get('ph') == '작업 · 문서 · 파일 검색', '② %s: no autofocus · placeholder 「작업 · 문서 · 파일 검색」' % tag)
                         # ③ 바로가기
                         check(st['ids'] == DEFAULT + ['+'], '③ %s: default five shortcuts + 「＋ 바로가기」 %s' % (tag, st['ids']))
                         check(all(c == [56, 56] for c in st['circles']) and st['svgs'] and all(v == [24, 24] for v in st['svgs']) and all(x == '13px' for x in st['labels']),
@@ -564,7 +564,7 @@ require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baselin
                             check(st['tools'] == 0 and not st['hero'] and st['logo'] and (st['intro'] if who == 'consent' else st['landing']) and st['signed'] == 'no' and st['overflow'] <= 0,   # H2 — 로그인 전은 .landing-hero
                                   '⑤ %s: header (logo) · intro screen as before · shell-tools 0 · H1 parts 0 · overflow 0 (%s)' % (tag, (st['cta'] or '').strip()))
                             if who == 'consent':
-                                check((st['cta'] or '').startswith('동의하고 내 홈 열기'), '⑤ %s: consent CTA unchanged' % tag)
+                                check((st['cta'] or '').startswith('동의하고 모아 홈 열기'), '⑤ %s: consent CTA unchanged' % tag)
                             p.screenshot(path=str(shots / ('before-%s.png' % tag)))
                             check(t.clean('before-' + tag), '⑤ %s console 0' % tag)
                             ctx.close()

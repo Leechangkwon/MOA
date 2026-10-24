@@ -4,7 +4,7 @@ require_once __DIR__ . '/../Design.php';
 ?>
 <dialog id="q-design-dialog" class="q-design-dialog" aria-labelledby="q-design-title" aria-describedby="q-design-description">
   <div class="q-design-heading">
-    <div><p class="q-eyebrow">YOUR SPACE, YOUR STYLE</p><h2 id="q-design-title">나에게 맞는 모아</h2></div>
+    <div><p class="q-eyebrow">화면 꾸미기</p><h2 id="q-design-title">나에게 맞는 모아</h2></div>
     <button type="button" class="btn btn--quiet" data-design-close aria-label="테마 선택 닫기">닫기</button>
   </div>
   <p id="q-design-description" class="q-design-description">테마를 눌러 미리 보세요. 기본으로 저장하면 이 브라우저의 모든 화면에 적용됩니다.</p>

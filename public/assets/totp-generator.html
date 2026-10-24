@@ -5,11 +5,11 @@
 <meta name="theme-color" content="#1d5fbf">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="t-box 코드">
+<meta name="apple-mobile-web-app-title" content="모아 코드">
 <link rel="manifest" href="totp-generator.webmanifest">
 <link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%231d5fbf'/%3E%3Cpath%20d='M22%2030v-6a10%2010%200%200%201%2020%200v6'%20fill='none'%20stroke='%23ffffff'%20stroke-width='5'%20stroke-linecap='round'/%3E%3Crect%20x='18'%20y='30'%20width='28'%20height='22'%20rx='4'%20fill='%23ffffff'/%3E%3Ccircle%20cx='32'%20cy='39'%20r='3'%20fill='%231d5fbf'/%3E%3Crect%20x='30.5'%20y='39'%20width='3'%20height='7'%20rx='1.5'%20fill='%231d5fbf'/%3E%3C/svg%3E" type="image/svg+xml">
 <link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='14'%20fill='%231d5fbf'/%3E%3Cpath%20d='M22%2030v-6a10%2010%200%200%201%2020%200v6'%20fill='none'%20stroke='%23ffffff'%20stroke-width='5'%20stroke-linecap='round'/%3E%3Crect%20x='18'%20y='30'%20width='28'%20height='22'%20rx='4'%20fill='%23ffffff'/%3E%3Ccircle%20cx='32'%20cy='39'%20r='3'%20fill='%231d5fbf'/%3E%3Crect%20x='30.5'%20y='39'%20width='3'%20height='7'%20rx='1.5'%20fill='%231d5fbf'/%3E%3C/svg%3E">
-<title>t-box 2단계 코드 생성기</title>
+<title>모아 2단계 코드 생성기</title>
 <style>
   :root { color-scheme: light dark; }
   * { box-sizing: border-box; }
@@ -113,10 +113,10 @@
 </style>
 
 <div class="wrap">
-  <h1>t-box 2단계 코드 생성기</h1>
+  <h1>모아 2단계 코드 생성기</h1>
   <p class="sub">스마트폰 인증 앱을 쓸 수 없을 때, 이 파일로 6자리 코드를 만듭니다.</p>
   <p class="sub">휴대폰에서는 브라우저 메뉴의 「홈 화면에 추가」로 앱처럼 열 수 있습니다.</p>
-  <p class="warn">비밀 키는 문구로 잠가 이 기기의 브라우저에만 저장됩니다. 문구를 잊으면 t-box 「내 계정」에서 2단계 인증을 끄고 다시 켜서 새 키를 받아야 합니다.</p>
+  <p class="warn">비밀 키는 문구로 잠가 이 기기의 브라우저에만 저장됩니다. 문구를 잊으면 모아 「내 계정」에서 2단계 인증을 끄고 다시 켜서 새 키를 받아야 합니다.</p>
   <p id="msg" class="msg"></p>
 
   <div class="card" id="vault-card" hidden>
@@ -134,7 +134,7 @@
   <div class="card" id="input-card">
     <label for="secret">비밀 키 또는 otpauth 주소</label>
     <textarea id="secret" spellcheck="false" autocomplete="off"
-      placeholder="예) GEZD GNBV GY3T QOJQ ...  또는  otpauth://totp/t-box:아이디?secret=...&amp;digits=6&amp;period=30&amp;algorithm=SHA1"></textarea>
+      placeholder="예) GEZD GNBV GY3T QOJQ ...  또는  otpauth://totp/모아:아이디?secret=...&amp;digits=6&amp;period=30&amp;algorithm=SHA1"></textarea>
     <div id="groups" class="groups"></div>
     <label for="lock-pass">잠금 문구 (「잠가 저장」 할 때만 필요)</label>
     <input id="lock-pass" type="password" autocomplete="off" spellcheck="false">
@@ -165,7 +165,7 @@
     <h2>시각 확인</h2>
     <div id="utc" class="meta">—</div>
     <div class="row base-row" id="base-row" hidden>
-      <label for="base-url" class="meta">t-box 주소(예: https://tbox.회사/tbox)</label>
+      <label for="base-url" class="meta">모아 주소(예: https://tbox.회사/tbox)</label>
       <input id="base-url" type="text" inputmode="url" autocomplete="off" spellcheck="false"
         placeholder="https://tbox.회사/tbox">
       <button id="base-save" type="button">시각 맞추기</button>
@@ -599,7 +599,7 @@
   function saveBase() {
     var text = el.baseUrl.value.trim().replace(/\/+$/, '');
     if (!/^https?:\/\/[^\s/]+$/.test(text)) {
-      setMsg('주소는 https:// 또는 http:// 로 시작하는 t-box 주소여야 합니다.', false);
+      setMsg('주소는 https:// 또는 http:// 로 시작하는 모아 주소여야 합니다.', false);
       return;
     }
     timeSync.base = text;

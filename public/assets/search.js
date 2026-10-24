@@ -141,7 +141,7 @@
           where.filter(function (t) { return t !== ''; }).join(' › '), r.snippet || '', terms));
       } else {
         // 파일 — 누르면 t-box 목록이 그 검색어로 열린다(파일 하나를 바로 여는 창구를 새로 두지 않는다)
-        var info = ['t-box'];
+        var info = ['자료실'];
         if (r.folder_path) { info.push(String(r.folder_path)); }
         out.push(hitRow(TBOX + '/?q=' + encodeURIComponent(q), String(r.name || ''),
           info.join(' › '), r.description ? String(r.description) : '', terms));

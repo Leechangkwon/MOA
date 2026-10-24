@@ -84,8 +84,8 @@ if ($loginReturn !== null && strpos($loginReturn, COMMUNITY_BASE . '/') === 0) {
    커뮤니티 타일을 누른 사람도 t-box 로 가는 줄 알았다. 글자는 **고정 표**에서만 고른다 — 요청 값은
    위 허용 목록을 지난 키뿐이다. */
 $loginApps = [
-    'home' => ['name' => '모아', 'into' => '모아 홈으로', 'sub' => '업무 · 자료 · AI 비서 · 이야기', 'icon' => 'grid'],
-    'tbox'      => ['name' => '모아 자료실',  'into' => '자료실로',  'sub' => '사내 파일 공유',                  'icon' => 'shield'],
+    'home' => ['name' => '모아', 'into' => '모아 홈으로', 'sub' => '업무 · 자료실 · 메신저 · 우리 공간', 'icon' => 'grid'],
+    'tbox'      => ['name' => '모아 자료실',  'into' => '자료실로',  'sub' => '파일 보관 · 찾기 · 공유',         'icon' => 'library'],
     // Q:F-12 D (WK-10) — 커뮤니티 갈래는 이제 「업무」(작업 · 프로젝트 · 문서) 앱이다. 이야기(`/community/memories`)로 돌아가는 사람도 같은 갈래(한 로그인)
     'community' => ['name' => '모아 업무', 'into' => '업무로', 'sub' => '작업 · 프로젝트 · 문서', 'icon' => 'grid'],
     'story'     => ['name' => '모아 이야기', 'into' => '이야기로', 'sub' => '스레드 · 여행 — 일상 나누기', 'icon' => 'grid'],
@@ -99,7 +99,8 @@ if ($loginReturn !== null) { $loginApp['into'] = '원래 열려던 화면으로'
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>로그인 · <?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?> · 모아</title>
+<title>로그인 · <?= htmlspecialchars($loginApp['name'], ENT_QUOTES, 'UTF-8') ?><?= strpos($loginApp['name'], '모아') === 0 ? '' : ' · 모아' ?></title>
+<link rel="icon" type="image/svg+xml" href="<?= Http::url('/assets/moa-favicon.svg') ?>?v=<?= (int) filemtime(__DIR__ . '/../../public/assets/moa-favicon.svg') ?>">
 <link rel="stylesheet" href="<?= Http::url('/assets/app.css') ?>?v=<?= $loginCssVersion ?>">
 <!-- T:F-72 라운드 C · 결정 PK-D5 — 홈 화면 「Qaredi」 앱(모든 사람). 로그인 화면이 앱 범위(`/`) 안이라 지문 창이 앱 안에서 뜬다.
      매니페스트는 public 라우트(데이터 0) · 서비스 워커 없음. 값은 전부 고정 글자다. -->
@@ -107,7 +108,7 @@ if ($loginReturn !== null) { $loginApp['into'] = '원래 열려던 화면으로'
 <link rel="apple-touch-icon" href="<?= Http::url('/assets/qaredi-icon-192.png') ?>?v=<?= $loginIconVersion ?>">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Qaredi">
+<meta name="apple-mobile-web-app-title" content="모아">
 <?= Design::assets() ?>
 </head>
 <body data-page="login" data-base="<?= TBOX_BASE ?>" data-community-base="<?= COMMUNITY_BASE ?>"<?= $loginDataTo === '' ? '' : ' data-to="' . htmlspecialchars($loginDataTo, ENT_QUOTES, 'UTF-8') . '"' ?>>
@@ -130,7 +131,7 @@ if ($loginReturn !== null) { $loginApp['into'] = '원래 열려던 화면으로'
     </div>
     <div>
       <h2 class="login__lead"><?= htmlspecialchars($loginApp['sub'], ENT_QUOTES, 'UTF-8') ?></h2>
-      <p class="login__brand-sub">할 일과 자료를 정리하고 AI의 도움을 받아 보세요. 모아에서 필요한 도구로 바로 시작하세요.</p>
+      <p class="login__brand-sub">우리 회사의 일과 자료를 한곳에 모아. 오늘 할 일 · 팀 파일 · 회의록 · 한마디를 계정 하나로 시작하세요.</p>
     </div>
 
     <!-- Qaredi C — 로그인 화면에는 「Qaredi 홈」 텍스트 링크 하나만 (ARCH-launcher 6장).
@@ -204,6 +205,7 @@ if ($loginReturn !== null) { $loginApp['into'] = '원래 열려던 화면으로'
 
 <!-- 아이콘 모음 — app.js 가 [data-icon] 자리에 clone 해서 넣는다 (문자열 → HTML 변환 0, CSP). -->
 <template id="tpl-icon-shield"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5z"/></svg></template>
+<?php /* Q:F-15 S1 — 「모아 자료실」 판 아이콘 library(DESIGN 2.11 「shield 는 보안 설정 뜻에만」) · 그림은 Apps::ICON_PATHS 한 벌 */ $moaIcon = 'library'; ?><template id="tpl-icon-library"><?php require __DIR__ . '/../views/moa_icon.php'; ?></template>
 <template id="tpl-icon-grid"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="5" height="5" rx="1.2"/><rect x="9.5" y="3" width="5" height="5" rx="1.2"/><rect x="16" y="3" width="5" height="5" rx="1.2"/><rect x="3" y="9.5" width="5" height="5" rx="1.2"/><rect x="9.5" y="9.5" width="5" height="5" rx="1.2"/><rect x="16" y="9.5" width="5" height="5" rx="1.2"/><rect x="3" y="16" width="5" height="5" rx="1.2"/><rect x="9.5" y="16" width="5" height="5" rx="1.2"/><rect x="16" y="16" width="5" height="5" rx="1.2"/></svg></template>
 <template id="tpl-icon-check"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 5 5L20 7"/></svg></template>
 <!-- T:F-72 지문 모양(24×24 선 · lucide fingerprint 규격 — DESIGN 2.11) — 「지문·얼굴로 로그인」 단추 -->

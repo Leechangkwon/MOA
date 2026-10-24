@@ -130,8 +130,8 @@ if (!community_file_refs_ok($pubFiles, CommunityAuthz::pageAudiences($row, $boar
     $narrowLevel = $narrowLevelNames[(string) $board['access_level']] ?? null;
     Http::json([
         'error' => $narrowLevel === null
-            ? '이 페이지에 이 게시판을 보는 사람이 볼 수 없는 그림이나 파일이 들어 있습니다. t-box 에서 그 파일의 등급을 올리거나, 페이지에서 빼고 다시 게시하세요'
-            : '이 페이지에 「' . $narrowLevel . '」 게시판에 올릴 수 없는 그림이나 파일이 들어 있습니다. t-box 에서 그 파일의 등급을 「' . $narrowLevel . '」'
+            ? '이 페이지에 이 게시판을 보는 사람이 볼 수 없는 그림이나 파일이 들어 있습니다. 자료실에서 그 파일의 등급을 올리거나, 페이지에서 빼고 다시 게시하세요'
+            : '이 페이지에 「' . $narrowLevel . '」 게시판에 올릴 수 없는 그림이나 파일이 들어 있습니다. 자료실에서 그 파일의 등급을 「' . $narrowLevel . '」'
               . ($narrowLevel === '공개' ? '로' : ' 이상으로') . ' 올리거나, 페이지에서 빼고 다시 게시하세요',
         'reason' => 'file_narrower',
     ], 400);

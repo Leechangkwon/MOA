@@ -1,6 +1,6 @@
 <div class="moa-install-note">
   <p><a class="btn btn--quiet" href="<?= Http::url('/welcome?section=pc-assistant') ?>" target="_blank" rel="noopener noreferrer">설치부터 GPT 연결까지 · 단계별 안내</a></p>
-  <p>처음 사용하는 PC라면 <a href="<?= Http::url('/programs') ?>">AI 비서 업데이트 받기</a>로 시작하세요. 설치한 뒤에는 기존 비서가 트레이에서 연결을 기다립니다.</p>
+  <p>처음 사용하는 PC라면 <a href="<?= Http::url('/programs') ?>">PC 비서 받기</a>로 시작하세요. 설치한 뒤에는 기존 비서가 트레이에서 연결을 기다립니다.</p>
   <details><summary>처음 설치 · 연결 도움말</summary>
     <ol>
       <li>비서를 종료하고 업데이트 ZIP을 모두 푼 뒤 <code>update.cmd</code>로 기존 비서 폴더를 선택합니다. 기존 바로가기로 실행하세요.</li>

@@ -16,7 +16,7 @@ $pageTitle='PC 비서 요약 진단';$activeNav='programs';$pageKey='client-diag
 require dirname(__DIR__).'/views/shell_top.php';
 ?>
 <header class="page-head"><div class="page-head__text"><h1 class="page-head__title">PC 비서 요약 진단</h1><p class="page-head__sub">사용자가 전송을 선택한 요약만 모읍니다. 수신 기록이 없는 PC의 상태는 알 수 없습니다.</p></div></header>
-<p><a class="btn btn--quiet" href="<?= Http::url('/programs') ?>">AI 비서 배포함</a></p>
+<p><a class="btn btn--quiet" href="<?= Http::url('/programs') ?>">PC 비서 배포함</a></p>
 <section class="card card--pad"><h2>최근 <?= $e($days) ?>일 관측</h2>
 <p>수신일 기준 · 실행 <?= $e($summary['metrics']['observed_runs']) ?>건 · 완료 <?= $e($summary['metrics']['completed_runs']) ?>건 · 설치 <?= $e($summary['metrics']['installations']) ?>개</p>
 <p>최초 완료율 <?= $summary['metrics']['first_completion_rate']===null?'관측 없음':$e(number_format(100*$summary['metrics']['first_completion_rate'],1)).'%' ?> · 재개 성공률 <?= $summary['metrics']['resume_success_rate']===null?'관측 없음':$e(number_format(100*$summary['metrics']['resume_success_rate'],1)).'%' ?></p>

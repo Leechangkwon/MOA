@@ -36,7 +36,7 @@ $messengerAsset = static function (string $file): string {
   <div class="moa-messenger">
     <aside class="moa-people" aria-label="대화 상대">
       <button id="message-ai" class="moa-person moa-person--ai" type="button" aria-pressed="false">
-        <span class="moa-avatar moa-ai-spark" aria-hidden="true">✦</span><span>모아 AI <b class="moa-ai-badge">AI</b></span><small>공용 Gemini · 나만의 대화 기록</small>
+        <span class="moa-avatar moa-ai-spark" aria-hidden="true">✦</span><span>모아 AI <b class="moa-ai-badge">AI</b></span><small>회사 공용 AI · 내 대화는 나만 봐요</small>
       </button>
       <label class="field"><span>동료 · 1:1 대화</span><input type="search" id="message-search" placeholder="이름 또는 아이디" maxlength="64"></label>
       <div id="message-people"></div>

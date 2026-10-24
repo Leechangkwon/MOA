@@ -146,7 +146,7 @@ if (!$mayRead) {
  */
 if ($file['program'] === true) {
     unset($rawPassword, $rawOtp);
-    Http::error(403, 'AI 비서 배포함에서 내려받아 주세요.');
+    Http::error(403, 'PC 비서 배포함에서 받아 주세요.');
 }
 
 if ($file['exec_content'] !== true) {
