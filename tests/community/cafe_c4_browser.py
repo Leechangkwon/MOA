@@ -724,7 +724,7 @@ try:
                     p.wait_for_selector('#mobile-nav-dialog[open] #sidebar', timeout=5000)
                     st = p.evaluate("() => { const s = document.getElementById('sidebar'); const h = document.getElementById('nav-work-home'); return {w: Math.round(s.getBoundingClientRect().width), home: h.textContent.trim(), homeW: Math.round(h.getBoundingClientRect().width), collapse: getComputedStyle(document.getElementById('sidebar-collapse')).display, overflow: document.documentElement.scrollWidth - innerWidth}; }")
                     res['412-' + str(cookie_open)] = st
-                    check(st['w'] > 200 and st['homeW'] > 100 and st['home'] == '홈' and st['collapse'] == 'none' and st['overflow'] <= 0,
+                    check(st['w'] > 200 and st['homeW'] > 100 and st['home'] == '업무 홈' and st['collapse'] == 'none' and st['overflow'] <= 0,
                           'c5 412 (cookie %s): drawer as before — full labels · ☰(collapse) hidden %s' % ('open' if cookie_open else 'none', json.dumps(st, ensure_ascii=False)))
                     check(t.clean('c5-412'), 'c5 412: console 0')
                     ctx.close()

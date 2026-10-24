@@ -81,11 +81,11 @@ note "본문 $(wc -l < "$WORK/text.txt" | tr -d ' ')줄"
 for bad in "/ 를" "굵게" "기울임" "다음에 열립"; do
   expect "본문에 「$bad」 0건" "0" "$(grep -c -F -- "$bad" "$WORK/text.txt")"
 done
-for good in "블록 추가" "Ctrl+K" "알림" "t-box"; do
+for good in "블록 추가" "Ctrl+K" "알림" "자료실"; do
   expect "본문에 「$good」 있음" "yes" "$(grep -q -F -- "$good" "$WORK/text.txt" && echo yes || echo no)"
 done
-expect "t-box 첨부 안내(「파일」·「그림」으로 t-box 파일을 붙인다)" "yes" \
-  "$(grep -F -- 't-box' "$WORK/text.txt" | grep -q -F '붙' && echo yes || echo no)"
+expect "자료실 첨부 안내(「파일」·「그림」으로 자료실 파일을 붙인다)" "yes" \
+  "$(grep -F -- '자료실' "$WORK/text.txt" | grep -q -F '붙' && echo yes || echo no)"
 
 echo "── ② 본문이 Doc::validate 를 지난다 (지금 스키마 단계)"
 STAGE=$(sed -n "s/^const COMMUNITY_DOC_STAGE = \([0-9]*\);.*/\1/p" "$ROOT/src/bootstrap.php")

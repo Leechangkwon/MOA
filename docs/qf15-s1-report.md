@@ -49,6 +49,8 @@
 | (grep) tests/neutral_home_entry.py:76 · tests/community/home_h1_browser.py:567 | `동의하고 내 홈 열기` → `동의하고 모아 홈 열기` |
 | (grep) tests/community/invite_request_browser.py:286 | 셋째 걸음 `내 홈에서 시작` → `모아 홈에서 시작` |
 | (grep) tests/ux_browser.py:116 | `['커뮤니티','t-box']` → `['업무','자료실']` — `'t-box'` 쪽은 이 단계 전부터 어긋나 있던 값(start.js 가 이미 「자료실」) · 같은 줄이라 함께 |
+| (독립 검토 1회차) tests/community/cafe_c4_browser.py:727 | 업무 사이드바 `st['home'] == '홈'` → `st['home'] == '업무 홈'`(표 F) |
+| (독립 검토 1회차) tests/community/qf4_onboarding.sh:84 · :87 · :88 | 「시작하기」 본문 good 목록 `"t-box"` → `"자료실"` · 단언 설명과 grep 의 `t-box` → `자료실`(「붙」 검사 그대로 · 표 B Doc.php) |
 | tests/dbg_s2_security.sh:360 | **고치지 않음 — 원래 깨짐**(`>Qaredi</h1>` 를 그리는 화면이 main 에도 없음) |
 
 ## 표에 없는데 찾아서 고친 글자 (표에 적힌 파일 안 · DESIGN 5장 Q:F-15 낱말 표 · 수락 시험 금지 낱말)
