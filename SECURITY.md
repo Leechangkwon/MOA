@@ -436,6 +436,8 @@ nginx 검색 전용 location은 정규화 URI로 제한, access 로그의 검색
 
 ## 7. 검토 이력
 
+- 2026-10-24 Q:F-15 S1 낱말·브랜드 맞추기 독립 검토(구현 Opus 에이전트와 다른 문맥 · 메인, 판정 「반영 가능」 · 재지시 1회 — 놓친 옛 시험 기대값 둘): ① 근거 — 최종 판 e3cdc56(구현 301042e)에서 수락 `brand_words_browser.py` 1046/0(격리 php -S 8778 · 합성 DB · claude_ 계정 · UA tbox-review/2026-10-24 · 화면 34 × 1280·412 × 밝게·어둡게) · security_lint 0 · php -l 43 · node --check 17 · 부품 버전 --check 0 · wiki 0 · diff --check 0. main...브랜치 diff: Audit · Authz · Auth · Http · Db · Storage · Upload · Passkey · public/index.php · db/** · deploy/** · 법적 문서 본문 변경 0, 쿠키·헤더·경로·MCP 도구·자산 파일 이름·토큰 범위 값 0 변화(토큰 용도 글자 `tbox-buddy 비서 연결`→`PC 비서 연결`은 표시 글자 · 저장된 토큰 무변경), 「페이지」 순증 1은 지시서 표 B 가 정한 문장(editor.js 「관리자 페이지에서」). 경계 파일: Totp ISSUER 글자만(otpauth URI rawurlencode · 32자 아이디 QR 예외 0 — 수락 static ①) · 패스키 rp name 만(rp id 식 무변경) · Doc.php 「시작하기」 문자열 한 줄(새 문서만 · 검증기 0) · community/routes.php 문자열 넷(준비 화면 · 개인 파일 거부 문장 — 판정·상태 코드 무변경). 새 파비콘 SVG 는 script · href · 외부 주소 0 · 같은 출처 정적 자산(CSP img-src self) · 새 개발 도구 scripts/brand_icons.php 는 웹 경로 밖 · 외부 요청 0. ② 불안전 — 없음(로직 변화 0). 되돌릴 수 없는 셋(지시서): 이미 등록한 OTP 항목 「t-box」 · 패스키 「Qaredi」 · 설치한 앱 이름·아이콘은 옛 것이 남음(로그인 영향 0). ③ 미검증 — 실기기 OTP 앱 · 패스키 OS 창 · 설치 아이콘 표시 · 회귀(밤 대기열). 수정 파일 밖이라 남은 사람 글자 일곱 자리(member_messages_page 「공용 Gemini」 · home-dashboard 「내 홈」 · moa.js · member-assist.js · member_invites 「Gemini 3.5 Flash」 · legal_page 파비콘·머리 글 · routes.php 503 h1 「커뮤니티」)는 보충 후보. ④ 다음 — 운영 반영 v2.74.0 · 운영 확인 한 번 · 밤 회귀 · 관문 ③(사용자) 대기.
+
 - 2026-10-17 작업글 생성 운영 v2.72.0: 고정23파일 모의·암호화 DB/코드/설정 전체 파싱 후 FF/FPM reload. 실제 HTTPS health1·정상 QA 생성/재전송/목록→본문390/1280 확인24/0, 새 QA 자료만 휴지통·세션 회수. 기존100표/798원본/10설정 보존. 별도 승인 사용자 기록36개 생성 뒤98표 원래행/ownerACL·파일 보존, users 로그인 및 api_tokens last_used_at만 제외. 기존 프로젝트 본문235블록·판4 보존.
 
 
