@@ -15,7 +15,7 @@
   [search] 글자 + Enter → 공통 검색 창이 그 글자로 열리고 결과(페이지 · 파일 묶음) · `/` 키 초점 · 칸 안에서 친 `/` 는 글자
   [short]  「메신저」 → 메신저 창(주소 그대로) · 「＋ 바로가기」 → 대시보드 펼침 + 바로가기 설정(1440 옆 칸 · 412 창) · 설정 순서대로 · 여덟 개 한 줄
   [dash]   펼침 → 위젯 · 홈 편집 · 내용 새로고침 · 펼친 뒤에만 위젯 창구 · 새로 고침 뒤 펼침 기억(localStorage 키) · 편집 중 접기 막힘 · 접고 새로 고침 → 접힘
-  [before] 로그인 전 · 동의 전 런처: 서버 HTML 이 H1 직전 launcher.php(34cfd3d)와 글자 그대로 같음 · 머리 · 소개 화면 · shell-tools 0 · 넘침 0 · 콘솔 0
+  [before] 로그인 전 · 동의 전 런처: 서버 HTML 이 이 갈래가 마지막으로 의도해 바뀐 launcher.php(2afc533 · v2.74.0 — 상수 LAUNCHER_SNAPSHOT_REF)와 글자 그대로 같음 · 머리 · 소개 화면 · shell-tools 0 · 넘침 0 · 콘솔 0
   [logout] 모아 홈의 내 계정 판 「로그아웃」 → 로그인 화면(셸과 같은 함수)
 """
 from pathlib import Path
@@ -512,8 +512,9 @@ try:
         if want('before'):
             def before():
                 summary = {}
-                # 서버 HTML — 바뀌기 전 launcher.php(34cfd3d — H1 직전 main · v2.66.0 + 문서) 와 글자 그대로 같은가(같은 틀 PHP 로 둘 다 그림)
-                base_src = subprocess.run(['git', '-C', str(WORKTREE), 'show', '34cfd3d:src/views/launcher.php'], check=True, capture_output=True).stdout
+                # 이 갈래가 마지막으로 의도해 바뀐 발행(v2.74.0 · Q:F-15 S1 — 그 전 기준 34cfd3d · H4 정규화는 이 판이 이미 H4 뒤라 필요 없음). 앞으로 이 갈래 글자를 일부러 바꾸는 발행이 나오면 이 값을 그 발행 커밋으로 옮긴다
+                LAUNCHER_SNAPSHOT_REF = '2afc533'
+                base_src = subprocess.run(['git', '-C', str(WORKTREE), 'show', LAUNCHER_SNAPSHOT_REF + ':src/views/launcher.php'], check=True, capture_output=True).stdout
                 (root / 'src/views/launcher_h1_baseline.php').write_bytes(base_src)
                 stub = root / 'tests/fixtures/home_h1_render.php'
                 stub.write_text("""<?php
@@ -532,17 +533,9 @@ require dirname(__DIR__,2).'/src/views/'.($argv[1]==='base'?'launcher_h1_baselin
                 for who in ('consent',):   # 사이트 H2 — 로그인 전 갈래는 2.32 첫 화면으로 바뀌었다(그 갈래는 invite_request_browser.py [grid] 가 잰다) · 동의 전만 그대로
                     a = subprocess.run(['php', str(stub), 'base', who], cwd=str(root), check=True, capture_output=True).stdout
                     b = subprocess.run(['php', str(stub), 'new', who], cwd=str(root), check=True, capture_output=True).stdout
-                    # R1(2026-10-15) — 사이트 H4(DESIGN 2.33)가 머리 로고 · 바닥의 「모아」 글자를 글자 로고 부품(span.moa-wordmark · 「m.」 의 점 span)으로
-                    #   바꿨다(바닥 「moa.」 → 「moa」). 그 세 자리만 H4 전 글자로 되돌린 뒤 글자 그대로 같아야 한다 — 다른 차이는 여전히 실패.
-                    def h4_back(x):
-                        x = re.sub(rb'<span class="moa-wordmark" role="img" aria-label="(\xeb\xaa\xa8\xec\x95\x84)"><span class="moa-wordmark__mo">\xeb\xaa\xa8</span>'
-                                   rb'<span class="moa-wordmark__a">\xec\x95\x84</span><span class="moa-wordmark__dot" aria-hidden="true">\.</span></span>', rb'\1', x)
-                        x = x.replace(b'm<span class="moa-symbol__dot">.</span></span>', b'm.</span>')
-                        return x.replace('모아<span>moa</span>'.encode(), '모아 <span>moa.</span>'.encode())
-                    nb = h4_back(b)
-                    summary['html-' + who] = {'base': len(a), 'new': len(b), 'new_h4_back': len(nb), 'sha_equal': hashlib.sha256(a).hexdigest() == hashlib.sha256(nb).hexdigest()}
-                    check(len(a) > 1000 and a == nb and b.count(b'class="moa-wordmark"') - a.count(b'class="moa-wordmark"') == 2,   # 테마 창의 「모아 글씨 색」 미리보기 넷은 둘 다 같은 부품(design_controls.php)이라 셈에서 뺀다
-                          '⑤ %s launcher: server HTML identical to the pre-H1 launcher (34cfd3d) except the H4 wordmark (logo · footer = 2) — %d bytes' % ('signed-out' if who == 'out' else 'consent-needed', len(b)))
+                    summary['html-' + who] = {'base': len(a), 'new': len(b), 'ref': LAUNCHER_SNAPSHOT_REF, 'sha_equal': hashlib.sha256(a).hexdigest() == hashlib.sha256(b).hexdigest()}
+                    check(len(a) > 1000 and a == b,
+                          '⑤ %s launcher: server HTML byte-identical to the last intended launcher (2afc533 · v2.74.0 Q:F-15 S1) — %d bytes' % ('signed-out' if who == 'out' else 'consent-needed', len(b)))
                 (root / 'src/views/launcher_h1_baseline.php').unlink()
                 stub.unlink()
                 # 실제 서버 — 로그인 전 · 동의 전(관리자 아닌 팀장 계정에 지난 판 동의 줄 하나 — 끝나면 지운다)
