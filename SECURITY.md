@@ -436,6 +436,10 @@ nginx 검색 전용 location은 정규화 URI로 제한, access 로그의 검색
 
 ## 7. 검토 이력
 
+- 2026-10-25 Q:F-15 S1c home_h1_browser ⑤ 기대값 보정 독립 검토(구현 Opus 에이전트와 다른 문맥 · 메인, 판정 「반영 가능」 · 재지시 0): ① 근거 — 최종 판 b2df350 에서 home_h1_browser 380/0(격리 php -S 8778 · ⑤ 「byte-identical to the last intended launcher (2afc533 · v2.74.0)」 15479B) · py_compile · security_lint 0 · wiki 0 · diff --check 0. diff: tests/community/home_h1_browser.py(⑤ 블록 · docstring 한 줄 — 단언 한 줄 바꿈 · 다른 단언 0) · docs/qf15-s1c-report.md 뿐 · 앱 코드 0. 단언 세기: 기준 판을 고정 상수 2afc533 으로 옮기고 H4 정규화를 지워 정규화 없는 바이트 비교 — 메인이 따로 지금 판 동의 전 갈래에 `<script>` 한 줄을 넣어 그리면 ⑤ 거짓 · 구현자 일부러 깨 보기(한 바이트 · ASCII 한 글자) 거짓. ② 불안전 — 없음(시험만). ③ 미검증 — 밤 회귀에서 main 판 통과(대기열 2026-10-25-qf15-s1c). ④ 다음 — 발행 · 백업 0(시험 · 문서만) · main ff 합침.
+
+- 2026-10-25 Q:F-15 S1b 밤 회귀 결과(2026-10-25 22:00 · report-2026-10-25.md): 5개 중 실패 2 → 기준 판(8a3977b) 대조 DIFF 0 · SAME 2(messenger_window_browser Q:T-19 전부터 · home_h1_browser ⑤ — 위 S1c 로 보정) · 나머지 3 통과 — **회귀 0**.
+
 - 2026-10-25 Q:F-15 S1b 운영 v2.74.1/5c4048a: 암호화 백업(전체 복호 · DB 덤프 해석 · tar 2342파일) → 고정 15파일 모의 반영(모의 트리 security_lint 0) → 드리프트 확인(운영 HEAD · 원격 main = 8a3977b · 깨끗함) → ff 합치기. 기존 103표 원래 행 · 소유자/ACL · 저장 파일 197 · 설정 10 · 파일 권한 보존, DB 이전 · 설정 · 재시작 · DB 직접 쓰기 0. 운영 확인(claude_employee01 · UA tbox-review/2026-10-25 · 읽기만 · 로그아웃) 23/0 — 개인정보 · 약관 화면 파비콘 · 머리 한 줄 소개 · 바뀐 JS 셋 바이트 일치 · 옛 글자 0 · /tbox/messages 「회사 공용 AI · 내 대화는 나만 봐요」 · 모아 홈 파비콘. 회귀: 밤 회귀 대기(5 — queue/2026-10-25-qf15-s1b.json). 관문 ③ 대기.
 
 - 2026-10-25 Q:F-15 S1 밤 회귀 결과(2026-10-24 22:00 · report-2026-10-24.md): 18개 중 실패 11 → 기준 판(d9998c4) 대조 SAME 6(qf4a · passkey_recovery_ui · messenger_window_browser · client_diagnostics · f70 · passkey — 전부터 깨짐) · DIFF 5 중 셋(qf3c_zip · qf12_shell_browser · dbg_u3_ui)은 같은 단언이 기준 판에서도 실패(임시 이름 · id · 바꾼 「업무 홈」만 다름) · invite_request_browser [same] 은 main 에서 늘 깨지는 브랜치 비교 단언(기준 판도 실패) · **home_h1_browser ⑤ 만 S1 때문**: 동의 전 런처 HTML 을 옛 판(34cfd3d)과 바이트 비교하는 스냅숏 단언이 S1 의 의도한 글자 변경에 걸림(기준 판 통과) — 앱 결함 아님 · 시험 기대값 보정 필요(S1 지시서 · 구현 · 검토가 놓침). 나머지 7 통과.
