@@ -228,6 +228,10 @@ DO $$ BEGIN
   GRANT SELECT,INSERT,UPDATE ON community.usage_guides TO tbox_app;
   GRANT SELECT ON community.usage_guide_versions,community.usage_guides TO tbox_backup;
  END IF;
+ IF to_regclass('community.guide_journeys') IS NOT NULL THEN
+  GRANT SELECT,INSERT,UPDATE ON community.guide_journeys TO tbox_app;
+  GRANT SELECT ON community.guide_journeys TO tbox_backup;
+ END IF;
 END $$;
 
 -- Apply messenger migration before these optional grants.

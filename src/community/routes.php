@@ -85,6 +85,7 @@ const COMMUNITY_ROUTES = [
     ['DELETE', '/api/travel-plans/{id}/records', 'travel_plans_api.php', 'travel.write'],
     ['GET', '/api/me/guide', 'usage_guide_api.php', 'community.read'],
     ['PATCH', '/api/me/guide', 'usage_guide_api.php', 'community.read'],
+    ['PATCH', '/api/me/journeys', 'guide_journeys_api.php', 'community.read'],
     ['GET', '/api/memories/social', 'memories_social.php', 'community.read'],
     ['POST', '/api/memories/follow', 'memories_social.php', 'community.write'],
     ['DELETE', '/api/memories/follow', 'memories_social.php', 'community.write'],
