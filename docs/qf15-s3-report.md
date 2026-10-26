@@ -125,9 +125,30 @@ OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1
 정적(`fix1-static.log`): node --check OK · 바꾼 PHP 0 · security_lint 「결과: 통과 (금지 패턴 0건)」 · git diff --check clean · 새 줄 색값 · 숫자 z-index 0 · 옛 투어 함수(render · start · consent · position · makeDialog · messengerWindow · addModalHelp · visible) 변경 0.
 새 화면 사진: `/home/changkwon/qaredi-qf15s3-results-20261026/fix1/shots/`(`pc-progress-card-1440.png` — 하는 단계 테두리 둘 · `pc-messenger-beside-card-1280.png` — 메신저 쪽에 붙은 카드).
 
-검토의 나머지 지적: **지적 2 · 4 · 5 · 6 — 받아들임 / 2차**(메인 판단 그대로 · 지적 원문은 이 작업 트리 · 결과 폴더에 없어 번호만 적는다). 지적 3 은 6장 11.
+검토의 나머지 지적(메인이 원문에서 옮김):
+- 지적 2(참고) `?guide=` 를 지울 때 다른 주소 꼬리도 함께 지움(지시서 D 3 문장 그대로 — 동작 영향 0) → **2차**에서 `URLSearchParams.delete('guide')` 로 그 키만.
+- 지적 3(참고) GET 실패 · 미완료 문맥에서 「? 사용 안내」가 `load()` 를 기다린 뒤 투어 → **받아들임**(6장 11).
+- 지적 4(참고) 진행 중 file-share 사실 질의 `files(uploaded_by, created_at) WHERE deleted_at IS NULL` 에 맞는 색인 0 · `member_invites(created_by)` 색인 0 → **남는 것**(운영 크기에서 느리면 색인 하나 — 규모 D 다음 조각).
+- 지적 5(참고) 시험의 「모아 AI 에게만 보낸」 부정 갈래가 꺼진 「보내기」 대신 폼을 직접 제출 → **받아들임**(부정 갈래만 · 긍정 갈래는 진짜 단추).
+- 지적 6(참고) 홈 이어 하기 줄 질의 둘(`ready()` + `resume()`) → **받아들임**(HTTP 요청 수 그대로).
 옮긴(움직이거나 크기를 바꾼) 메신저 옆 맞춤은 인라인 style 0 규칙 때문에 클래스로 따라갈 수 없어, 그때는 맞추지 않고 겹치지 않는 가운데 위 · 아래로 간다(미검증 — 시험은 기본 자리만).
 
-## 7. 스크린샷 (`/home/changkwon/qaredi-qf15s3-results-20261026/browser/shots/`)
+## 6-2. 최종 판 수락 · 정적 — 메인이 한 번(CLAUDE.md 3.1 ② · `9ee4ad7` · 2026-10-26 14:11 ~ 14:16)
+
+결과 `/home/changkwon/qaredi-qf15s3-results-20261026/final/`(`static.log` · `unit.log` · `http.log` · `browser.log` · `fallback.log` · `browser/shots/`).
+
+```
+bash scripts/security_lint.sh                  → 결과: 통과 (금지 패턴 0건)
+php -l (바꾼 PHP 7)                             → No syntax errors detected × 7
+node --check public/assets/usage-guide.js      → OK
+php scripts/wiki_check.php                      → 결과: 통과 (구조 문제 0건 · 빠진 글 0건, 글 70편)
+git diff --check 4997871 HEAD                   → clean
+php tests/community/guide_journey_unit.php      → RESULT pass=104 fail=0
+memories_harness --suite guide_journeys_http.py → SYNTHETIC_DB_CREATED=1; PRODUCTION_RECORDS_COPIED=0 · RESULT pass=106 fail=0 · SYNTHETIC_DB_DROPPED=1
+memories_harness --suite guide_journey_browser.py → RESULT pass=296 fail=0 · SYNTHETIC_DB_DROPPED=1
+python3 tests/community/usage_guide_browser.py → {"suite": "usage_guide_browser", "passed": 124} (고치지 않음 · 옛 목업 — 여정 기능 꺼짐)
+```
+
+## 7. 스크린샷 (`/home/changkwon/qaredi-qf15s3-results-20261026/browser/shots/` — 최종 판은 `final/browser/shots/`)
 
 관문 ③ 전에 보일 여섯 + 완성: **PC 진행 카드** `pc-progress-card-1440.png`(2단계 · 「파일 올리기」 테두리) · `pc-progress-card-1440-step1.png` · **창 안 한 줄** `pc-window-inset-1440.png`(올리기 창) · **메신저 옆 카드** `pc-messenger-beside-card-1280.png` · `pc-messenger-beside-card-1280-dark.png` · **질문 카드** `pc-question-card-1440.png`(이어 하기 줄) · **폰 메신저 시트** `phone-messenger-sheet-412.png` · **폰 작업 칸** `phone-work-task-412.png` · `phone-work-task-window-412.png`(새 작업 창 한 줄) · **완성 카드** `pc-done-card-1440.png` · 그 밖 `pc-messenger-done-1440.png` · `pc-messenger-beside-noresult-1440.png` · `phone-folded-chip-412.png` · `home-admin-1440-tasks.png`.
