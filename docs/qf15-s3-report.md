@@ -178,6 +178,22 @@ OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1
 정적(`fix2-static.log`): node --check OK · security_lint 「결과: 통과 (금지 패턴 0건)」 · git diff --check clean · CSS · PHP 변경 0 · 옛 투어 함수 변경 0.
 새 사진 `/home/changkwon/qaredi-qf15s3-results-20261026/fix2/shots/`: `pc-progress-same-screen-1440.png`(자료실 file-share 2 단계 「「파일 올리기」 누르기」 — 머리 「2 / 6 · 파일 올려서 동료에게 보여 주기」) · `pc-progress-next-screen-1440.png`(업무 홈 notice-post 1 단계 — 머리 「1 / 5 · 공지 올리기 · 다음: 「S3 공지」」).
 
+## 6-4. 「다음:」 보정 뒤 최종 판 — 메인이 한 번(사용자 2026-10-26 「브라우저 수락 시험은 한 번만 다시」 · `804d9a5` · 15:01 ~ 15:06)
+
+바뀐 것이 JS · DESIGN · 시험뿐이라 단위 · HTTP 는 다시 돌리지 않았다(6-2 의 104/0 · 106/0 그대로 — PHP · SQL · 마이그레이션 변경 0). 결과 `/home/changkwon/qaredi-qf15s3-results-20261026/final2/`.
+
+```
+bash scripts/security_lint.sh                    → 결과: 통과 (금지 패턴 0건)
+php -l (바꾼 PHP 7)                               → No syntax errors detected × 7
+node --check public/assets/usage-guide.js        → OK
+git diff --check 4997871 HEAD                     → clean
+memories_harness --suite guide_journey_browser.py → SYNTHETIC_DB_CREATED=1; PRODUCTION_RECORDS_COPIED=0 · RESULT pass=307 fail=0 · SYNTHETIC_DB_DROPPED=1
+```
+
+진행 카드 사진 둘(`final2/browser/shots/`): `pc-progress-same-screen-1440.png`(자료실 file-share 2 단계 — 머리 「2 / 6 · 파일 올려서 동료에게 보여 주기」) · `pc-progress-next-screen-1440.png`(업무 홈 notice-post 1 단계 — 「1 / 5 · 공지 올리기 · 다음: 「S3 공지」」).
+
+기록: 지시서 D 6(:110) · 기획 8장의 머리 표기 「n / m · <과업 제목> · 다음: <앱 이름>」은 DESIGN 2.37(ad63bbf)이 「다른 화면으로 이어질 때만」으로 바꿨다 — 문서 본문은 그대로 두고 이 줄과 STAGES 로 남긴다.
+
 ## 7. 스크린샷 (`/home/changkwon/qaredi-qf15s3-results-20261026/browser/shots/` — 최종 판은 `final/browser/shots/`)
 
 관문 ③ 전에 보일 여섯 + 완성: **PC 진행 카드** `pc-progress-card-1440.png`(2단계 · 「파일 올리기」 테두리) · `pc-progress-card-1440-step1.png` · **창 안 한 줄** `pc-window-inset-1440.png`(올리기 창) · **메신저 옆 카드** `pc-messenger-beside-card-1280.png` · `pc-messenger-beside-card-1280-dark.png` · **질문 카드** `pc-question-card-1440.png`(이어 하기 줄) · **폰 메신저 시트** `phone-messenger-sheet-412.png` · **폰 작업 칸** `phone-work-task-412.png` · `phone-work-task-window-412.png`(새 작업 창 한 줄) · **완성 카드** `pc-done-card-1440.png` · 그 밖 `pc-messenger-done-1440.png` · `pc-messenger-beside-noresult-1440.png` · `phone-folded-chip-412.png` · `home-admin-1440-tasks.png`.
