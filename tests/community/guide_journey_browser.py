@@ -45,6 +45,10 @@ INSTRUMENT = r"""(() => {
   wrap(HTMLDialogElement.prototype, 'showModal'); wrap(HTMLDialogElement.prototype, 'show'); wrap(HTMLDialogElement.prototype, 'close');
   window.__s3untrusted = 0;
   document.addEventListener('click', (e) => { if (!e.isTrusted && e.target instanceof Element && e.target.closest('[data-messenger-open]')) window.__s3untrusted++; }, true);
+  // 검토 보정 ① — 안내 스크립트가 만든 관찰자의 콜백 수(앱 관찰자는 그대로)
+  window.__s3mo = 0;
+  const MO = window.MutationObserver;
+  window.MutationObserver = class extends MO { constructor(cb) { const guide = fromGuide(); super(guide ? (...a) => { window.__s3mo++; return cb(...a); } : cb); } };
 })();"""
 STATE_JS = r"""() => {
   const vis = el => !!el && el.isConnected && !el.closest('[hidden]') && el.getClientRects().length > 0 && getComputedStyle(el).display !== 'none' && getComputedStyle(el).visibility !== 'hidden';
@@ -495,6 +499,7 @@ try:
                 hit = p.evaluate("""() => { const b = document.getElementById('upload-toggle').getBoundingClientRect(); const e = document.elementFromPoint(b.left + b.width / 2, b.top + b.height / 2);
                     return !!(e && e.closest('#upload-toggle')); }""")
                 check(hit and st['buttons'] == ['나중에', '건너뛰기'], '③ step 2: elementFromPoint(centre of #upload-toggle) is the real button · do-step buttons 「나중에」 「건너뛰기」')
+                check(st['primary'] == [] and p.locator('section.usage-guide-float .usage-guide-primary').count() == 0, '③ do step: both buttons outlined — .usage-guide-primary 0 in the card (DESIGN 2.37 「단추」 · 검토 보정 ②)')
                 p.screenshot(path=str(shots / 'pc-progress-card-1440.png'))
                 p.locator('#upload-toggle').click()
                 wait_inset(p, '3 / 6')
@@ -1094,6 +1099,14 @@ try:
                             return Math.max(0, Math.min(a.right, b.right) - Math.max(a.left, b.left)) * Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top)); }""")
                         m['messenger_overlap'] = area
                         check(area == 0 and state(p)['visible'], '⑮ %s: messenger open → card ∩ messenger area 0 (%s)' % (tag, state(p)['cls']))
+                        if width in (960, 1280, 1440):
+                            geo = p.evaluate("""() => { const a = document.querySelector('section.usage-guide-float').getBoundingClientRect(), b = document.getElementById('messenger-window').getBoundingClientRect(),
+                                t = document.getElementById('folder-pane').getBoundingClientRect();
+                                const ov = (x, y) => Math.max(0, Math.min(x.right, y.right) - Math.max(x.left, y.left)) * Math.max(0, Math.min(x.bottom, y.bottom) - Math.max(x.top, y.top));
+                                return {right: a.right, left: a.left, width: a.width, mleft: b.left, messenger: ov(a, b), target: ov(a, t)}; }""")
+                            m['beside'] = geo
+                            check(abs(geo['right'] - (geo['mleft'] - 16)) <= 1 and geo['messenger'] == 0 and geo['target'] == 0 and abs(geo['width'] - min(540, geo['mleft'] - 32)) <= 1,
+                                  '⑮ %s: messenger open → card right edge = messenger left − 16 (%.0f / %.0f) · width min(540, left − 32) · ∩ messenger 0 · ∩ target 0 (검토 보정 ③)' % (tag, geo['right'], geo['mleft'] - 16))
                         if width == 1280 and theme == 'dark':
                             p.screenshot(path=str(shots / 'pc-messenger-beside-card-1280-dark.png'))
                         if width == 1280 and theme == 'light':
@@ -1126,9 +1139,13 @@ try:
                     help_btn = p.locator('.page-head [data-help-open]').first
                     if help_btn.count() and help_btn.is_visible():
                         help_btn.focus()   # 좁은 폭에서 카드가 머리 단추 위에 올 수 있다 — 키보드로 연다(사람의 Enter)
+                        mo0 = p.evaluate('window.__s3mo')
                         p.keyboard.press('Enter')
                         p.wait_for_selector('#help-dialog[open]')
-                        p.wait_for_timeout(200)
+                        p.wait_for_timeout(1000)
+                        mo = p.evaluate('window.__s3mo') - mo0
+                        m['observer_calls_help_1s'] = mo
+                        check(mo <= 5, '⑮ %s: card up + an unrelated showModal window (help) open 1 s → guide observer callbacks %d ≤ 5 (no hidden re-write loop · 검토 보정 ①)' % (tag, mo))
                         check(not state(p)['visible'], '⑮ %s: a showModal window (help) open → card hidden' % tag)
                         p.keyboard.press('Escape')
                         p.wait_for_timeout(200)

@@ -442,9 +442,15 @@
   /* ─── 길잡이 — 질문 카드 · 진행 카드 · 창 안 한 줄 (DESIGN 2.37) ──────────────────────────────── */
   let run = null, floatEl = null, ringEl = null, insetEl = null, targetEl = null, leaving = false, jFrame = 0, boardFind = null;
   const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
+  /** 메신저 옆 카드의 가장 좁은 폭 — 이보다 좁으면 글 · 단추가 깨져 가운데 위 · 아래로 */
+  const BESIDE_MIN = 300;
   /** 길잡이의 보임 판정 — 그려진 상자가 있고 visibility 가 보임(옛 visible 은 [hidden] 조상만 보고 거짓이라, 넓은 화면에서 CSS 가 보이게 하는 사이드바 안 링크를 놓친다) */
   const shown = (el) => Boolean(el && el.isConnected && el.getClientRects().length && (typeof el.checkVisibility !== 'function' || el.checkVisibility({ visibilityProperty: true })));
   const pickShown = (selector) => Array.from(document.querySelectorAll(selector)).find(shown);
+  /** 값이 바뀔 때만 쓴다 — hidden 등은 관찰자 attributeFilter 안이라, 같은 값을 되쓰면 그 기록이 evaluate → place → 되쓰기를 프레임마다 돌린다(독립 검토 지적 1) */
+  const setHidden = (el, on) => { if (el && el.hidden !== on) el.hidden = on; };
+  const setText = (el, text) => { if (el && el.textContent !== text) el.textContent = text; };
+  const setAttr = (el, name, value) => { if (el && el.getAttribute(name) !== value) el.setAttribute(name, value); };
   const ids = Object.keys(journeys);
   const total = (def) => def.pages.reduce((n, p) => n + p.steps.length, 0);
   const ordinal = (def, page, at) => def.pages.slice(0, page).reduce((n, p) => n + p.steps.length, 0) + at + 1;
@@ -564,10 +570,10 @@
   function inset(box, n, m, text) {
     const head = box.querySelector(':scope > .modal__head') || box.querySelector('.modal__head');
     if (!insetEl) { insetEl = node('p', '', 'usage-guide-inset'); insetEl.setAttribute('role', 'status'); }
-    insetEl.replaceChildren(node('b', n + ' / ' + m), document.createTextNode(' ' + text));
+    if (insetEl.textContent !== n + ' / ' + m + ' ' + text) insetEl.replaceChildren(node('b', n + ' / ' + m), document.createTextNode(' ' + text));
     if (head) { if (head.nextElementSibling !== insetEl) head.insertAdjacentElement('afterend', insetEl); }
     else if (insetEl.parentElement !== box) box.prepend(insetEl);
-    if (floatEl) floatEl.hidden = true;
+    setHidden(floatEl, true);
     ringAt(null);
   }
   /**
@@ -603,10 +609,11 @@
     body.append(actions); body.hidden = folded;
     c.replaceChildren(chipRow, body);
     c.classList.toggle('is-folded', folded);
-    c.hidden = false;
+    setHidden(c, false);
     if (run) run.short = parts.short || '';
     place();
-    if (had && primary) primary.focus({ preventScroll: true });
+    const focusTo = primary || actions.lastElementChild;   // 주 단추가 없는 하는 단계는 마지막 단추(초점이 카드 밖으로 새지 않게)
+    if (had && focusTo) focusTo.focus({ preventScroll: true });
   }
   function ariaHidden(text) { const s = node('span', text); s.setAttribute('aria-hidden', 'true'); return s; }
   const editing = (el) => el instanceof Element && !(floatEl && floatEl.contains(el)) &&
@@ -615,8 +622,8 @@
     if (!floatEl) return;
     floatEl.classList.toggle('is-folded', on);
     const [chipRow, body] = floatEl.children;
-    if (chipRow) chipRow.hidden = !on;
-    if (body) body.hidden = on;
+    setHidden(chipRow, !on);
+    setHidden(body, on);
     place();
   }
   /** 열린 showModal 앱 창(재인증 · 확인 · 다른 앱 창)이 대상을 품지 않으면 카드는 숨고 기다린다 */
@@ -629,12 +636,16 @@
     }
     return false;
   }
-  /** 자리 — 아래 가운데 · 대상이 아래 반이면 위(.is-top) · ≥720 메신저가 열려 있으면 그 왼쪽으로(.is-beside — 겹친 넓이 0, 모자라면 위) */
+  /**
+   * 자리 — 아래 가운데 · 대상이 아래 반이면 위(.is-top) · ≥720 메신저가 열려 있으면 카드 오른쪽 끝을 메신저 왼쪽 −16 에 맞춘다
+   * (.is-beside — 메신저 기본 자리 기준 · 폭 min(540px, 메신저 왼쪽 − 32px)). 그 폭이 모자라거나(BESIDE_MIN 미만) 메신저를 옮겨 끝이 맞지 않으면
+   * 가운데 위 · 아래로. 메신저 · 대상과 겹치지 않는 자리가 늘 먼저.
+   */
   function place() {
     if (!run) return;
     const r = targetEl && shown(targetEl) ? targetEl.getBoundingClientRect() : null;
     const hide = blocked();
-    if (floatEl && !insetEl) floatEl.hidden = hide || run.mode === 'hidden';
+    if (floatEl && !insetEl) setHidden(floatEl, hide || run.mode === 'hidden');
     if (!floatEl || floatEl.hidden || insetEl) { ringAt(!hide && r && !insetEl ? r : null); return; }
     ringAt(r);
     const h = innerHeight;
@@ -642,11 +653,13 @@
     const win = $('messenger-window');
     const m = innerWidth >= 720 && win && win.open ? win.getBoundingClientRect() : null;
     const overlap = (a, b) => b && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
-    const tries = m ? [[true, low], [true, !low], [false, !low], [false, low]] : [[false, low], [false, !low]];
+    const besideOk = Boolean(m && m.left - 32 >= BESIDE_MIN);
+    const tries = m ? [...(besideOk ? [[true, low], [true, !low]] : []), [false, !low], [false, low]] : [[false, low], [false, !low]];
     let chosen = null;
     for (const [beside, top] of tries) {
       floatEl.classList.toggle('is-beside', beside); floatEl.classList.toggle('is-top', top);
       const c = floatEl.getBoundingClientRect();
+      if (beside && Math.abs(c.right - (m.left - 16)) > 1) continue;   // 옮긴 메신저 — 메신저 쪽에 붙지 않으면 쓰지 않는다
       if (!overlap(c, m) && !overlap(c, r)) { chosen = [beside, top]; break; }
       if (!chosen && !overlap(c, m)) chosen = [beside, top];
     }
@@ -674,13 +687,13 @@
       const def = journeys[a.journey];
       const pg = Math.min(Math.max(0, a.page | 0), def.pages.length - 1);
       const at = ordinal(def, pg, Math.min(Math.max(0, a.step | 0), def.pages[pg].steps.length - 1)) + '/' + total(def);
-      if (label) label.textContent = WORDS.resume + ' ' + at;
-      launch.classList.add('is-paused'); launch.setAttribute('aria-label', WORDS.resume + ' ' + at);
+      setText(label, WORDS.resume + ' ' + at);
+      launch.classList.add('is-paused'); setAttr(launch, 'aria-label', WORDS.resume + ' ' + at);
     } else {
-      if (label) label.textContent = '사용 안내';
-      launch.classList.remove('is-paused'); launch.setAttribute('aria-label', '사용 안내 열기');
+      setText(label, '사용 안내');
+      launch.classList.remove('is-paused'); setAttr(launch, 'aria-label', '사용 안내 열기');
     }
-    launch.hidden = Boolean(run);
+    setHidden(launch, Boolean(run));
   }
   function begin(id) {
     teardown();
@@ -810,7 +823,7 @@
     const last = run.page === run.def.pages.length - 1 && run.step === pg.steps.length - 1;
     const actions = s.kind === 'read'
       ? [[WORDS.later, later], [last ? WORDS.finish : WORDS.next, () => readNext(s), true]]
-      : [[WORDS.later, later], [WORDS.skip, () => advance(), true]];
+      : [[WORDS.later, later], [WORDS.skip, () => advance()]];   // 하는 단계 — 둘 다 테두리 · 검정 0(주요 동작은 테두리를 친 진짜 단추 · DESIGN 2.37 「단추」)
     paint({ progress: p.progress, short: p.short, title: s.title, text: stepText(s), error: run.notice, actions });
   }
   /** 「다음」(읽기 단계) — message-send 첫 단계만 메신저 창을 한 번 연다(예외 하나 · 이미 열려 있으면 부르지 않음) */

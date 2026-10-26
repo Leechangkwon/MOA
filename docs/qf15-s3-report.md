@@ -103,6 +103,30 @@ public/assets/community/ 0 · 다른 앱 JS 0 · 보호 파일 0 · 마이그레
 8. 홈 「하던 일 이어 하기」 줄은 `GuideJourney::ready()` + `resume()` 두 질의(같은 HTML 요청 안 — HTTP 요청 수 그대로).
 9. 수락 시험 해석: [static] 「usage-guide.js 에 'role' 0」은 역할 이름 문자열 · 역할 칸 읽기 0 으로 셈(ARIA `setAttribute('role', …)` 은 옛 코드에도 있어 제외) · [layout] 「재인증 · 확인 창 위 카드 0」은 화면 머리 「사용 방법」 도움말 창(showModal)으로 재고, 재인증 화면은 [invite] 에서 카드 0 · [missing] 「1초 뒤 채워지는 칸」은 템플릿 목록 창구 답을 1초 늦춰 확인 · [message] 합성 틀은 모아 AI 가 꺼져 있어 「보내기」가 꺼져 있으면 시험이 그 폼을 제출해 같은 신호를 만든다 · ProseMirror 의 CSS 확인 경고(앱 편집기)는 콘솔 셈에서 뺌(`qf12_w1_browser.py` 와 같은 예외) · 메신저 사람 목록이 claude_ 를 빼므로 로그인 없는 합성 구성원 둘(`synthetic_peer_a/b` — messenger_window_browser 와 같은 준비) · 재인증 통과는 합성 DB 의 그 관리자 비밀번호 해시를 잠시 아는 값으로 바꿔 실제 `/tbox/reauth` 폼으로 하고 되돌림.
 10. 단위 시험은 여정 묶음을 PHP 의 작은 데이터 해석기로 읽는다(security_lint 가 `proc_open(` 을 막아 node 실행 대신).
+11. (독립 검토 지적 3) GET 이 실패했거나 아직 끝나지 않은 문맥에서 셸 「? 사용 안내」를 누르면 `load()` 를 기다린 뒤 판단해 투어를 연다(길잡이가 켜졌는지 알아야 질문 카드 · 투어를 가를 수 있다) — 옛 코드는 곧바로 `start()`. 결과(여는 투어 · 이어 보기 여부)는 같고 GET 한 번만큼 늦다. 옛 목업 시험(`usage_guide_browser.py`)은 그대로 통과.
+
+## 6-1. 검토 보정 (관문 ② 독립 검토 「보정 뒤 반영 가능」 · 기준 `c82b3f0` — DESIGN 2.37 「단추」 · 「층 · 자리(≥720)」 두 줄을 메인이 먼저 고침)
+
+| # | 무엇을 | 어디를 |
+|---|---|---|
+| ① 검토 지적 1(중간) | `place()` 가 `floatEl.hidden` 을 같은 값이어도 매번 다시 써, `hidden` 이 관찰자 `attributeFilter` 안이라 대상을 품지 않은 showModal 창(재인증 · 확인 · 「사용 방법」)이 열린 동안 evaluate → place → 되쓰기가 프레임마다 돌았다(검토 재현 2초 121회). **값이 바뀔 때만 쓴다** — 같은 꼴(관찰자 필터 · 자식 목록에 걸리는 되쓰기)도 함께: 창 안 한 줄 글자(같으면 다시 그리지 않음) · 접기 칩 · 본문 `hidden` · 「? 사용 안내」 단추 `hidden` · 글자 · `aria-label`. 테두리 겹(`rect` x · y · 폭 · 높이)과 `class` 토글은 필터 밖이라 그대로 | `usage-guide.js` `setHidden` · `setText` · `setAttr`(새 도우미 셋) · `inset()` · `paint()` · `fold()` · `place()` · `paintLaunch()` |
+| ② 화면 사진 `pc-progress-card-1440` | 하는 단계의 「나중에」 · 「건너뛰기」 둘 다 테두리 · 검정 0(주요 동작은 테두리를 친 진짜 단추). 주 단추가 없으니 「초점이 이미 카드 안이었을 때」는 마지막 단추로 옮김. 읽는 단계 「다음」 · 가기 카드 「이 화면으로 가기」 · 완성 「마치기」 · 「안 보여요」 카드의 검정은 그대로 | `usage-guide.js` `paintStep()` · `paint()` |
+| ③ 화면 사진 `pc-messenger-beside-card-1280` | `.is-beside` = 카드 오른쪽 끝을 **메신저 왼쪽 − 16** 에 맞춤(메신저 기본 자리 2.17 — 오른쪽 16 · 폭 400 기준 `right: 432px`) · 폭 `min(540px, 100% − 448px)` = min(540, 메신저 왼쪽 − 32). 그 폭이 300px 미만(`BESIDE_MIN`)이거나 메신저를 옮겨 끝이 맞지 않으면(±1 밖) 쓰지 않고 가운데 위 · 아래로. 메신저 · 대상과 겹치지 않는 자리가 늘 먼저 | `usage-guide.css` `.is-beside`(+ <720 되돌림에 `right:auto`) · `usage-guide.js` `place()` |
+| 단언 셋 | [file] 하는 단계 카드 안 `.usage-guide-primary` 0 · [layout] 진행 카드가 뜬 채 「사용 방법」 창(showModal)을 1초 열어 둔 동안 안내 관찰자 콜백 ≤ 5(잰 값 3 — 안내 스크립트가 만든 관찰자만 세는 계측을 `INSTRUMENT` 에 더함) · [layout] 960 · 1280 · 1440 × 밝게 · 어둡게 메신저를 연 채 카드 오른쪽 끝 = 메신저 왼쪽 − 16(528 / 848 / 1008) · 폭 min(540, 왼쪽 − 32) · ∩ 메신저 0 · ∩ 대상 0 | `tests/community/guide_journey_browser.py` |
+
+시험(고친 곳에 닿는 묶음만 — 전체 수락 묶음은 메인이 최종 판에서): `GUIDE_ONLY=file,layout QCHECK_ENV_SRC=… python3 tests/community/memories_harness.py --port 8768 --suite guide_journey_browser.py --output /home/changkwon/qaredi-qf15s3-results-20261026/fix1`
+
+```
+PASS ⑮ 412 task console 0
+RESULT pass=191 fail=0
+OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1
+```
+
+정적(`fix1-static.log`): node --check OK · 바꾼 PHP 0 · security_lint 「결과: 통과 (금지 패턴 0건)」 · git diff --check clean · 새 줄 색값 · 숫자 z-index 0 · 옛 투어 함수(render · start · consent · position · makeDialog · messengerWindow · addModalHelp · visible) 변경 0.
+새 화면 사진: `/home/changkwon/qaredi-qf15s3-results-20261026/fix1/shots/`(`pc-progress-card-1440.png` — 하는 단계 테두리 둘 · `pc-messenger-beside-card-1280.png` — 메신저 쪽에 붙은 카드).
+
+검토의 나머지 지적: **지적 2 · 4 · 5 · 6 — 받아들임 / 2차**(메인 판단 그대로 · 지적 원문은 이 작업 트리 · 결과 폴더에 없어 번호만 적는다). 지적 3 은 6장 11.
+옮긴(움직이거나 크기를 바꾼) 메신저 옆 맞춤은 인라인 style 0 규칙 때문에 클래스로 따라갈 수 없어, 그때는 맞추지 않고 겹치지 않는 가운데 위 · 아래로 간다(미검증 — 시험은 기본 자리만).
 
 ## 7. 스크린샷 (`/home/changkwon/qaredi-qf15s3-results-20261026/browser/shots/`)
 
