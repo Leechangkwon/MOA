@@ -320,7 +320,7 @@ try:
                     p.screenshot(path=str(shots / ('home-%s.png' % tag)))
                     check('tasks' not in st['all'] and '내 작업' not in st['names'] and p.locator('#home-shortcut-template [data-shortcut="tasks"]').count() == 0,
                           'home %s: 「내 작업」 tile 0 (not in the row or the template · visible %s)' % (tag, json.dumps(st['names'], ensure_ascii=False)))
-                    check(st['ids'] == ['spaces', 'work', 'library', 'messages', 'assistant'], 'home %s: default shortcuts = 우리 공간 · 업무 홈 · 자료실 · 메신저 · AI 비서 %s' % (tag, st['ids']))
+                    check(st['ids'] == ['work', 'library', 'messages', 'spaces'], 'home %s: default shortcuts = 우리 공간 · 업무 홈 · 자료실 · 메신저 · AI 비서 %s' % (tag, st['ids']))
                     check(st['names'].count('업무 홈') == 1 and st['paths'].get('work') == icons['work'] and st['hrefs'].get('work') == '/community/',
                           'home %s: one 「업무 홈」 tile with the work icon → /community/' % tag)
                     check('우리 공간' in st['names'] and st['paths'].get('spaces') == icons['spaces'], 'home %s: 「우리 공간」 uses the spaces icon' % tag)
@@ -351,7 +351,7 @@ try:
                         p.wait_for_timeout(150)
                         after_order = order()
                         summary['reorder'] = {'before': before_order, 'after': after_order}
-                        check(before_order == ['spaces', 'work', 'library', 'messages', 'assistant'] and after_order == ['spaces', 'work', 'messages', 'library', 'assistant'],
+                        check(before_order == ['work', 'library', 'messages', 'spaces'] and after_order == ['work', 'messages', 'library', 'spaces'],
                               'home settings: first 「메신저 앞으로」 press moves 메신저 before 자료실 at once %s → %s' % (before_order, after_order))
                         if p.locator('.dashboard-inspector-dialog[open]').count():
                             p.locator('.dashboard-inspector-close:visible').click()

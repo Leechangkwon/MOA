@@ -33,7 +33,7 @@ shots.mkdir(exist_ok=True)
 metrics = {}
 WIDTHS = [1440, 1280, 960, 720, 412, 360]
 MODES = ['light', 'dark', 'hc']
-DEFAULT = ['spaces', 'work', 'library', 'messages', 'assistant']
+DEFAULT = ['work', 'library', 'messages', 'spaces']
 # 위젯 자료 창구(접힌 동안 0) — 공간 목록 · 위젯 창구 · 최근 작업(start.js) · 공간 활동(product-home.js) · 이야기 게시판
 WIDGET_RE = re.compile(r'(/api/product-spaces|/api/files/(recent|favorites)|/api/folders/favorites|/community/api/me/(recent|favorites)|/community/api/my-tasks'
                        r'|/community/api/briefing|/community/api/boards|/api/me/product-home|/assets/start\.js|/assets/product-home\.js)')
@@ -235,7 +235,7 @@ try:
                         check(st['ids'] == DEFAULT + ['+'], '③ %s: default five shortcuts + 「＋ 바로가기」 %s' % (tag, st['ids']))
                         check(all(c == [56, 56] for c in st['circles']) and st['svgs'] and all(v == [24, 24] for v in st['svgs']) and all(x == '13px' for x in st['labels']),
                               '③ %s: circles 56 · icons 24 · labels 13px' % tag)
-                        want_rows = [4, 2] if phone else [6]
+                        want_rows = [4, 1] if phone else [5]
                         check(st['rows'] == want_rows and st['navMax'] == '824px', '③ %s: rows %s (want %s · max 8 per row = 824px)' % (tag, st['rows'], want_rows))
                         # ④ 대시보드 접힘 · 접힌 동안 위젯 창구 0
                         widget_calls = [a for a in api if WIDGET_RE.search(a)]
@@ -287,7 +287,7 @@ try:
                     ac = p.evaluate(PANEL_JS, '.shell-tools .shell-account')
                     ap_open = p.evaluate("document.querySelector('.shell-tools .appbar__apps').open")
                     summary['%d' % width] = {'apps': ap, 'account': ac}
-                    check(ap['current'] == ['모아 홈'] and ap['tiles'][:4] == ['모아 홈', '자료실', '업무', '이야기'] and '검색' not in ap['tiles'] and '관리자 페이지' not in ap['tiles'],
+                    check(ap['current'] == ['모아 홈'] and ap['tiles'][:4] == ['모아 홈', '업무', '자료실', '우리 공간'] and '검색' not in ap['tiles'] and '관리자 페이지' not in ap['tiles'],
                           '① %d: app panel 「모아 홈」 aria-current · apps and tools · admin tile hidden for an employee %s' % (width, json.dumps(ap['tiles'], ensure_ascii=False)))
                     check(ac['open'] and not ap_open and ac['tiles'] == ['내 계정', '내 활동', '테마'] and ac['logout'] == ['로그아웃'] and ac['current'] == [],
                           '① %d: chip → account panel 내 계정 · 내 활동 · 테마 + 로그아웃 · app panel closed (one at a time) %s' % (width, json.dumps(ac['tiles'], ensure_ascii=False)))
@@ -420,13 +420,13 @@ try:
                         p.get_by_label('메신저 앞으로', exact=True).click()
                         p.wait_for_timeout(120)
                         order = p.evaluate("[...document.querySelectorAll('#dashboard-services > *')].map(n => n.dataset.homeShortcut || '+')")
-                        check(order == ['spaces', 'work', 'messages', 'library', 'assistant', '+'], 'short 1440: hero row follows the settings order at once %s' % order)
+                        check(order == ['work', 'messages', 'library', 'spaces', '+'], 'short 1440: hero row follows the settings order at once %s' % order)
                         for label in ('이야기', '계정'):
                             p.get_by_label(label, exact=True).check()
                             p.wait_for_timeout(80)
                         st8 = p.evaluate(STATE_JS)
                         summary['eight'] = {'ids': st8['ids'], 'rows': st8['rows']}
-                        check(len(st8['ids']) == 8 and st8['rows'] == [8], 'short 1440: seven shortcuts + 「＋」 = eight in one row %s' % st8['rows'])
+                        check(len(st8['ids']) == 7 and st8['rows'] == [7], 'short 1440: seven shortcuts + 「＋」 = eight in one row %s' % st8['rows'])
                         p.screenshot(path=str(shots / 'short-settings-1440.png'))
                     else:
                         p.screenshot(path=str(shots / ('short-settings-%d.png' % width)))

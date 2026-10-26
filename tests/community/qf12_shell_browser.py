@@ -170,7 +170,7 @@ GRID_STATE_JS = r"""() => {
   const box = el => { if (!el) return null; const r = el.getBoundingClientRect(); return {l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom), w: Math.round(r.width), vis: vis(el)}; };
   const sum = d ? d.querySelector(':scope > summary') : null;
   const panel = d ? d.querySelector('.app-menu') : null;
-  const tiles = d ? [...d.querySelectorAll('.app-menu__apps > li')].filter(li => getComputedStyle(li).display !== 'none').map(li => { const a = li.firstElementChild; const n = a.querySelector('.app-menu__name'); const s = getComputedStyle(n); const ts = getComputedStyle(a);
+  const tiles = d ? [...d.querySelectorAll('.app-menu__apps > li:not(.app-menu__sep)')].filter(li => getComputedStyle(li).display !== 'none').map(li => { const a = li.firstElementChild; const n = a.querySelector('.app-menu__name'); const s = getComputedStyle(n); const ts = getComputedStyle(a);
     return {name: n.textContent.trim(), href: a.getAttribute('href'), current: a.getAttribute('aria-current'), tag: a.tagName, id: a.id, color: s.color, bg: ts.backgroundColor, size: s.fontSize}; }) : [];
   const out = d ? d.querySelector('.app-menu__logout') : null;   // 카페 C6 — 앱 판에는 로그아웃 줄이 없다(내 계정 판으로 옮김) → null
   const ms = getComputedStyle(main);
@@ -248,10 +248,10 @@ try:
         metrics['apps_json'] = apps
         check(r.returncode == 0, 'Q:T-38 Apps::all() — config/apps.json passes Apps::validate (no exception)')
         # R1(2026-10-15) — 사이트 H3(「우리 공간」 = 카페 · config/apps.json order 4 · /community/cafe)가 넷째 앱을 더했다
-        check([a[0] for a in apps] == ['tbox', 'community', 'story', 'spaces'], 'Q:T-38 order tbox · community · story · spaces ' + json.dumps([a[0] for a in apps]))
-        check([a[1] for a in apps] == ['자료실', '업무', '이야기', '우리 공간'] and apps[3][3] == '/community/cafe', 'Q:T-38 names 자료실 · 업무 · 이야기 · 우리 공간(/community/cafe)')
-        check(apps and apps[2][3] == '/community/memories' and apps[1][3] == '/community/' and apps[0][3] == '/tbox/', 'Q:T-38 paths /tbox/ · /community/ · /community/memories')
-        check(apps and apps[1][4] == 'work' and apps[2][4] == 'community', 'Q:T-38 icons: 업무 work (new) · 이야기 community')
+        check([a[0] for a in apps] == ['community', 'tbox', 'spaces', 'story'], 'Q:T-38 order tbox · community · story · spaces ' + json.dumps([a[0] for a in apps]))
+        check([a[1] for a in apps] == ['업무', '자료실', '우리 공간', '이야기'] and apps[2][3] == '/community/cafe', 'Q:T-38 names 자료실 · 업무 · 이야기 · 우리 공간(/community/cafe)')
+        check(apps and apps[3][3] == '/community/memories' and apps[0][3] == '/community/' and apps[1][3] == '/tbox/', 'Q:T-38 paths /tbox/ · /community/ · /community/memories')
+        check(apps and apps[0][4] == 'work' and apps[3][4] == 'community', 'Q:T-38 icons: 업무 work (new) · 이야기 community')
         # 런처(로그인 뒤 · 전)
         for label, token in (('signed-in', users['employee']['session']), ('signed-out', None)):
             r = get('/', token)
@@ -278,7 +278,7 @@ try:
                 lr = get('/tbox/login?to=%2Fcommunity%2Fmemories')
                 check(lr.status_code == 200 and 'data-to="/community/memories"' in lr.text, 'Q:T-38 signed-out 이야기 tile → login page keeps the return address /community/memories (returnPath allow-list as before)')
         # 셸의 앱 격자(HTML) — 세 앱 (U2 · DESIGN 2.18 — 옛 아이콘 줄 · 사이드바 앱 메뉴 단언을 격자 단언으로 바꿈)
-        TILES = ['모아 홈', '자료실', '업무', '이야기', '우리 공간', '관리자 페이지']   # 사이트 H5 — 「검색」 타일 0(DESIGN 2.30)   # 사이트 H3 — 「우리 공간」 타일   # 카페 C6 (DESIGN 2.30) — 앱 판 = 앱과 도구만(메신저 · 내 계정 · 내 활동은 밖으로)
+        TILES = ['모아 홈', '업무', '자료실', '우리 공간', '이야기', '관리자 페이지']   # 사이트 H5 — 「검색」 타일 0(DESIGN 2.30)   # 사이트 H3 — 「우리 공간」 타일   # 카페 C6 (DESIGN 2.30) — 앱 판 = 앱과 도구만(메신저 · 내 계정 · 내 활동은 밖으로)
         for path, here in (('/tbox/', 'tbox'), ('/community/', 'community'), ('/community/memories', 'story')):
             r = get(path, users['employee']['session'])
             tiles = grid_tiles(r.text)
@@ -287,7 +287,7 @@ try:
             check([t_[0] for t_ in tiles] == TILES, 'Q:T-38 app grid ' + path + ' tile order (HTML — 관리자 is hidden until can_admin) ' + json.dumps([t_[0] for t_ in tiles], ensure_ascii=False))
             acct = re.search(r'<details class="shell-account" id="account-menu">(.*?)</details>', r.text, re.S)   # 카페 C6 (DESIGN 2.30) — 내 계정 · 내 활동 · 로그아웃은 내 계정 판에
             # R1(2026-10-15) — H3 뒤 다섯째 타일이 「우리 공간」(/community/cafe) · 관리자 타일(id menu-admin)은 여섯째
-            check([t_[1] for t_ in tiles[:5]] == ['/', '/tbox/', '/community/', '/community/memories', '/community/cafe'] and len(tiles) > 5 and tiles[5][3] == 'menu-admin'
+            check([t_[1] for t_ in tiles[:5]] == ['/', '/community/', '/tbox/', '/community/cafe', '/community/memories'] and len(tiles) > 5 and tiles[5][3] == 'menu-admin'
                   and acct is not None and 'id="menu-settings"' in acct.group(1) and 'id="menu-activity"' in acct.group(1),
                   'Q:T-38 app grid ' + path + ' links (Apps::all() order) · id menu-admin kept · menu-settings · menu-activity in the account panel')
             check([t_[1] for t_ in tiles if t_[2]] == [want_href], 'Q:T-38 app grid ' + path + ' aria-current only on the current app = ' + want_href)
@@ -302,7 +302,7 @@ try:
             check(('aria-label="' + brand + ' — 앱 전환"') in r.text, 'C-2 ' + path + ' phone app-name button aria-label 「' + brand + ' — 앱 전환」')
             check('<summary class="btn btn--quiet" aria-label="앱 — 앱 바꾸기"' in r.text and 'brand__switch' not in r.text, 'C-2 ' + path + ' grid summary = ⋮⋮⋮ + 「앱」 outline button 「앱 — 앱 바꾸기와 계정」 (U5-2 · DESIGN 2.28) · brand is no longer a menu (DESIGN 2.19 ① U2)')
             # 카페 C5 — 쿠키 없는 첫 HTML 은 접힘이 기본(☰ aria 첫 값 = 펼치기)
-            check(re.search(r'<button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="false" aria-label="메뉴 펼치기">', r.text) is not None, 'C-2 ' + path + ' sidebar head ☰ #sidebar-collapse')
+            check(re.search(r'<button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="true" aria-label="메뉴 접기">', r.text) is not None, 'C-2 ' + path + ' sidebar head ☰ #sidebar-collapse')
             me = re.search(r'<summary class="shell-tools__me" aria-label="([^"]+)">', r.text)   # 카페 C6 (DESIGN 2.30) — 칩은 내 계정 판의 summary
             check(me is not None and me.group(1) == '내 계정 메뉴 — ' + users['employee']['display'], 'Q:T-38 grid row 「내 계정」 chip = account panel summary with display name label')
         # 손님 · 역할로 보기도 같은 목록(앱 안 판정은 앱이 한다)
@@ -446,7 +446,7 @@ try:
             tok = new_session('employee')
             tok_admin = new_session('admin')
             screens = (('/tbox/', '/tbox/', '자료실'), ('/community/', '/community/', '업무'), ('/community/memories', '/community/memories', '이야기'))
-            TILES_EMP = ['모아 홈', '자료실', '업무', '이야기', '우리 공간']   # 사이트 H5 — 「검색」 타일 0   # 사이트 H3   # 카페 C6 (DESIGN 2.30)
+            TILES_EMP = ['모아 홈', '업무', '자료실', '우리 공간', '이야기']   # 사이트 H5 — 「검색」 타일 0   # 사이트 H3   # 카페 C6 (DESIGN 2.30)
             for width in (1440, 1280, 960, 959, 820, 412, 360):
                 ctx = browser.new_context(viewport={'width': width, 'height': 900}, locale='ko-KR', user_agent=UA, has_touch=width <= 412, is_mobile=width <= 412)
                 ctx.add_cookies(cookie(tok, {'qaredi_motion': 'reduce'}))
@@ -522,7 +522,7 @@ try:
                     p.wait_for_timeout(150)
                     st = p.evaluate(GRID_STATE_JS)
                     names = [x['name'] for x in st['tiles']]
-                    check(names == ['모아 홈', '자료실', '업무', '이야기', '우리 공간', '관리자 페이지'],   # 사이트 H5 — 「검색」 타일 0
+                    check(names == ['모아 홈', '업무', '자료실', '우리 공간', '이야기', '관리자 페이지'],   # 사이트 H5 — 「검색」 타일 0
                             # 사이트 H3
                           'Q:T-40 admin %s tiles include 관리자 페이지 (can_admin) %s' % (path, json.dumps(names, ensure_ascii=False)))
                     p.keyboard.press('Escape')

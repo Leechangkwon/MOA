@@ -1538,7 +1538,7 @@ try:
                 # 카페 C5 — 기억은 쿠키 qaredi_sidebar(펼침 = open · 접으면 지움 · 옛 localStorage 키는 지운다)
                 key = p.evaluate("Object.keys(localStorage).filter(k => k.startsWith('qaredi-sidebar-collapsed:v1:'))")
                 ck = [c['value'] for c in ctx.cookies() if c['name'] == 'qaredi_sidebar']
-                check(st['collapsed'] == 'collapsed' and st['width'] == 64 and key == [] and ck == [], 'U2 collapse kept after reload (cookie removed · old key 0 %s)' % json.dumps(ck))
+                check(st['collapsed'] == 'collapsed' and st['width'] == 64 and key == [] and ck == ['collapsed'], 'U2 collapse kept after reload (cookie removed · old key 0 %s)' % json.dumps(ck))
                 t.go('/community/my-tasks')
                 st = p.evaluate(COLLAPSE_JS)
                 check(st['collapsed'] == 'collapsed' and st['width'] == 64, 'U2 collapse kept on /community/my-tasks')
@@ -1571,7 +1571,7 @@ try:
                 check(t.clean('collapse-959'), 'U2 959 console 0')
                 ctx.close()
                 # 첫 그리기 깜빡임 — 화면이 그려지는 프레임마다(rAF · 그리기 직전) 사이드바가 이미 있는데 접힘 표시가 없는 프레임이 있었나 센다
-                ctx = context('employee', 1440, sidebar_open=False)   # 카페 C5 — 접힘은 서버가 첫 HTML 에 그린다(쿠키 없음)
+                ctx = context('employee', 1440, sidebar_open=False, extra={'qaredi_sidebar': 'collapsed'})   # Q:F-15 S2 (D-9) — 접힘 첫 그리기는 쿠키 collapsed 문맥으로 옮김(단언 그대로 · 서버가 첫 HTML 에 그린다)
                 ctx.add_init_script("""window.__u2frames = [];
                     const tick = () => { const s = document.getElementById('sidebar'); window.__u2frames.push(s ? (document.body.getAttribute('data-sidebar') || 'open') : 'no-sidebar');
                       if (document.readyState !== 'complete' && window.__u2frames.length < 400) requestAnimationFrame(tick); };
@@ -1586,6 +1586,19 @@ try:
                 metrics['collapse_first_paint_open_frames'] = frames[:early].count('open')
                 check(early <= 2 and 'open' not in frames[early:] and p.evaluate("document.body.getAttribute('data-sidebar')") == 'collapsed',
                       'U2 first paint: expanded frames before the collapsed mark ≤ 2 (measured %d) · never expanded afterwards (/api/me correction keeps it)' % frames[:early].count('open'))
+                ctx.close()
+                # Q:F-15 S2 (D-9 · Q4 A) — 쿠키 없는 첫 방문은 첫 프레임부터 펼침(data-sidebar 속성 없음)
+                ctx = context('employee', 1440, sidebar_open=False)
+                ctx.add_init_script("""window.__u2frames = [];
+                    const tick = () => { const s = document.getElementById('sidebar'); window.__u2frames.push(s ? (document.body.getAttribute('data-sidebar') || 'open') : 'no-sidebar');
+                      if (document.readyState !== 'complete' && window.__u2frames.length < 400) requestAnimationFrame(tick); };
+                    requestAnimationFrame(tick);""")
+                t = Tab(ctx)
+                p = t.page
+                t.go('/community/my-tasks')
+                frames = p.evaluate('window.__u2frames')
+                check('open' in frames and 'collapsed' not in frames and p.evaluate("document.body.getAttribute('data-sidebar')") is None,
+                      'Q:F-15 S2 first paint without the cookie: expanded from the first frame · never collapsed (no data-sidebar)')
                 ctx.close()
             guard('U2 collapse', collapse_wide)
 

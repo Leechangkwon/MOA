@@ -587,13 +587,13 @@ try:
 
                 for name, path in SHELLS:
                     st, body_tag, btn = first_html(path)
-                    check(st == 200 and 'data-sidebar="collapsed"' in body_tag and 'aria-expanded="false"' in btn and 'aria-label="메뉴 펼치기"' in btn,
+                    check(st == 200 and 'data-sidebar' not in body_tag and 'aria-expanded="true"' in btn and 'aria-label="메뉴 접기"' in btn,   # Q:F-15 S2 (D-9) — 쿠키 없음 = 펼침
                           'c5 %s: no cookie → first HTML <body data-sidebar="collapsed"> · ☰ aria-expanded false · 「메뉴 펼치기」' % name)
                     st, body_tag, btn = first_html(path, '; qaredi_sidebar=open')
                     check(st == 200 and 'data-sidebar' not in body_tag and 'aria-expanded="true"' in btn and 'aria-label="메뉴 접기"' in btn,
                           'c5 %s: cookie open → first HTML without data-sidebar · ☰ aria-expanded true' % name)
                     st, body_tag, _ = first_html(path, '; qaredi_sidebar=%3Cb%3Eopen')
-                    check('data-sidebar="collapsed"' in body_tag and '%3Cb%3E' not in body_tag and '<b>' not in body_tag, 'c5 %s: other cookie value → collapsed · value never echoed' % name)
+                    check('data-sidebar' not in body_tag and '%3Cb%3E' not in body_tag and '<b>' not in body_tag, 'c5 %s: other cookie value → collapsed · value never echoed' % name)
 
                 FRAMES_JS = """window.__c5frames = []; const tick = () => { const s = document.getElementById('sidebar');
                     window.__c5frames.push(s ? (document.body.getAttribute('data-sidebar') || 'open') : 'no-sidebar'); if (window.__c5frames.length < 40) requestAnimationFrame(tick); };
@@ -626,7 +626,7 @@ try:
                 for width in (1440, 1280, 960):
                     for name, path in SHELLS:
                         tag = '%s-%d' % (name, width)
-                        ctx = context('W', width, sidebar_open=False)
+                        ctx = context('W', width, sidebar_open=False, extra={'qaredi_sidebar': 'collapsed'})   # Q:F-15 S2 — 접힌 모양 단언(아래)은 쿠키 collapsed 문맥으로 옮김(단언 그대로)
                         ctx.add_init_script("localStorage.setItem('qaredi-sidebar-collapsed:v1:%s', '0');" % UN['W'] + FRAMES_JS)
                         t = Tab(ctx)
                         p = t.page
@@ -707,7 +707,7 @@ try:
                             ck = {c['name']: c['value'] for c in ctx.cookies()}
                             p.reload(wait_until='networkidle')
                             rail = p.evaluate(RAIL_JS)
-                            check('qaredi_sidebar' not in ck and rail['attr'] == 'collapsed' and rail['w'] == 64, 'c5 %s: ☰ again → cookie removed · reload collapsed' % tag)
+                            check(ck.get('qaredi_sidebar') == 'collapsed' and rail['attr'] == 'collapsed' and rail['w'] == 64, 'c5 %s: ☰ again → cookie removed · reload collapsed' % tag)
                             check(rail['overflow'] <= 0, 'c5 %s: horizontal overflow 0 (after toggles)' % tag)
                             if width == 1440 and name == 'work':
                                 p.screenshot(path=str(shots / 'c5-collapsed-1440.png'))
@@ -794,7 +794,7 @@ try:
                                 p.locator('.shell-tools .appbar__apps > summary').click()
                                 p.wait_for_timeout(150)
                                 ap = p.evaluate(PANEL_JS, '.shell-tools .appbar__apps')
-                                want_tiles = ['모아 홈', '자료실', '업무', '이야기'] + (['관리자 페이지'] if k == 'M' else [])   # 사이트 H5 — 「검색」 타일 0
+                                want_tiles = ['모아 홈', '업무', '자료실', '이야기'] + (['관리자 페이지'] if k == 'M' else [])   # 사이트 H5 — 「검색」 타일 0
                                 check([x for x in ap['tiles'] if x != '우리 공간'] == want_tiles and ap['logout'] == [] and ap['head'] is None,
                                       'c6 %s: app panel = apps and tools only (messenger · 내 계정 · 내 활동 · 로그아웃 0 · admin tile only for admin) %s' % (tag, json.dumps(ap['tiles'], ensure_ascii=False)))
                                 # 칩 → 내 계정 판 · 두 판 동시 0

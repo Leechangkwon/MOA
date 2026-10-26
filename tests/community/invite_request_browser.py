@@ -287,7 +287,7 @@ try:
                               '③ %s: three steps %s · number circle 32' % (tag, 'vertical' if phone else 'in a row'))
                         check(st['trustH2'] == '안전하게 써요' and st['trust'] == 4 and st['trustRow'] == (1 if phone else 2) and all(x == 20 for x in st['ticons']),
                               '④ %s: four trust lines · %d columns · icon 20' % (tag, 1 if phone else 2))
-                        check(st['faqH2'] == '자주 묻는 질문' and st['faq'] == ['초대 없이 가입할 수 있나요?', '회사 밖 사람도 쓸 수 있나요?', '내 자료는 누가 보나요?', 'AI 에 보내는 내용은?'] and st['faqOpen'] == 0,
+                        check(st['faqH2'] == '자주 묻는 질문' and st['faq'] == ['초대 없이 가입할 수 있나요?', '회사 밖 사람도 쓸 수 있나요?', '내 파일과 글은 누가 보나요?', 'AI 에 보내는 내용은?'] and st['faqOpen'] == 0,
                               '⑤ %s: four questions (closed)' % tag)
                         o = st['order']
                         check(st['stories'] and st['stories']['open'] is False and st['footer'] and all(o[i] is not None and o[i] < o[i + 1] for i in range(5)),

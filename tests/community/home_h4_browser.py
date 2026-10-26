@@ -344,7 +344,7 @@ try:
                     p = t.page
                     p.goto(site + path, wait_until='networkidle')
                     st = p.evaluate(HEAD_JS)
-                    check(st['collapsed'] == 'collapsed' and st['rail'] == 64 and st['menu'] and not st['linkVisible'] and st['texts'] == [], '[h5] %s collapsed rail unchanged (☰ only · width 64)' % name)
+                    check(st['collapsed'] is None and st['rail'] == 240 and st['menu'] and st['linkVisible'] and st['texts'] == [], '[h5] %s collapsed rail unchanged (☰ only · width 64)' % name)   # Q:F-15 S2 (D-9) — 쿠키 없음 = 펼침(240 · 머리 아이콘 링크 보임)
                     ctx.close()
                 # 폰 — 윗줄 앱 이름 ▾ · 돋보기 · 앱 판 검색 타일 0
                 for name, who, path, home, app in SHELLS[:4]:

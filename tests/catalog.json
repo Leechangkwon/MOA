@@ -6778,6 +6778,48 @@
       "notes": "사이트 Q:F-15 S1 낱말 · 브랜드 맞추기(지시서 docs/qf15-s1-words-directive.md · DESIGN 5장 낱말 표 · 브랜드 이름 3층 · 2.33 D) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 · Chromium. [static] otpauth issuer 모아 · 32자 아이디 QR · 패스키 rp name 모아 · rp id 식 무변경(git diff) · 매니페스트 · 경보 SW · 2단계 코드 생성기 · Legal::TITLES · 검색 출처 · zip 이름에 Qaredi · t-box 0 · 사용 안내 죽은 선택자 0 · 설치 아이콘 크기 · RGB · 귀퉁이 #6d28d9 · 파비콘 SVG(script · href · 외부 주소 0 · 색 2.33 값만). [must] 파비콘 200 image/svg+xml · app.webmanifest 한 줄 소개 · 경보 매니페스트 「모아 관리자 경보」. [pages] 화면 34 × 1280 · 412 × 밝게 · 어둡게(직원 · 관리자 · 손님 · 로그인 전): 제목 · 본문 · aria-label · placeholder · data-tip 금지 낱말 0 · 영어 대문자 머리글 0 · 파비콘 링크 · 넘침 0 · 콘솔 0 · 있어야 할 글자 · 바뀐 자리 대비 4.5. 제외(근거 표 EXCLUDE): 이야기 공개 범위 고르개 · 작성 창 · 법적 문서 본문 · 수정 파일 밖 두 자리(member_messages_page.php:25 · home-dashboard.js:51) · 법적 문서 화면 파비콘(legal_page.php). S1b(docs/qf15-s1b-words-directive.md) — 제외 셋 풂(위 두 자리 · 법적 문서 파비콘) · [static] ⑥ 일곱 자리 옛 글자 0 · ⑦ community_not_ready() 바뀐 줄 = 문자열 셋 + 파비콘 한 줄 · [pages] /tbox/users 「공급자: Google Gemini」 · 시작 안내 「모아 홈 시작 안내」 · 「홈 편집」 제목 「내 대시보드 편집」(취소 · 저장 0) · 「게시판 새 글」 글 있을 때 · 없을 때 · 법적 문서 머리 note."
     },
     {
+      "id": "community.home_front_browser",
+      "cmd": "python3 tests/community/memories_harness.py --port 8768 --suite home_front_browser.py --output /tmp/qaredi-home-front-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/views/launcher.php",
+        "src/site/launcher_page.php",
+        "src/views/shell_tools.php",
+        "src/views/shell_top.php",
+        "src/Apps.php",
+        "config/apps.json",
+        "src/site/ProductSpaces.php",
+        "src/handlers/product_spaces.php",
+        "src/handlers/member_register.php",
+        "src/handlers/member_join_page.php",
+        "src/community/handlers/ai_page.php",
+        "db/migrations/2026-10-26_qf15_s2_shortcuts.sql",
+        "public/assets/home-dashboard.js",
+        "public/assets/dashboard-widgets.js",
+        "public/assets/dashboard-canvas.js",
+        "public/assets/member.js",
+        "public/assets/app.js",
+        "public/assets/messenger.js",
+        "public/assets/moa.css",
+        "public/assets/app.css",
+        "tests/community/home_front_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-15 S2 앞세우기 · 접기(지시서 docs/qf15-s2-front-directive.md 「수락 시험」 ①~⑯ · DESIGN 2.31 「과업 카드」 · 「대시보드에서 숨김」 · 2.30 「앱 판」 · 2.19 ⑧ ⑨ · 2.32 ⑤ · 5장) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정(가입 시험만 초대로 만든 합성 아이디 s2_joined01 · 02) · Chromium. [static] 기본 바로가기 넷 · 설정 목록 값 집합 = ProductSpaces 허용 목록 · Apps::all() 순서 community · tbox · spaces · story · story 만 group more · 임시 사본 group x 예외(원본 무변경) · 새 마이그레이션 모양(BEGIN/COMMIT · UPDATE 대상 하나 · DDL · 권한 · DELETE · TRUNCATE 0) · 기준 판 310bbc3 대비 바뀐 줄의 새 색값 · innerHTML · style= · 역할 이름 0 · 요청 값은 쿠키 비교 둘뿐. [db] 구성 셋 → 마이그레이션 두 번(UPDATE 2 → 0 · revision +1 · 다른 칸 무변경 · 공간 홈 표 무변경) · 옛 revision PATCH 409. [home] 바로가기(구성 없음 기본 넷 · 저장 구성 그대로) · 과업 카드 쿠키 qaredi_home_tasks(첫 HTML open · 스크립트 끈 요청 · 다른 값 open 0 · 값 출력 0 · 여닫기 요청 0) · 줄(직원 다섯 · 관리자 여섯 · 손님 둘 · 역할로 보기 넷 · 메신저 창) · 1440×900 대시보드 단추 첫 화면 · 1440×900 · 1920×1080 · 412×900 짧은 화면 · 첫 로드 새 주소 0 · 대시보드(서비스 카드 둘 2열 · #product-home 숨김 · space_* 그리지 않음 · 위젯 추가 목록 space_* 0 · 저장 뒤 서버 구성에 공간 위젯 그대로 · 시작 안내 공간 낱말 0 · 공간 하나 든 새 계정 기본 위젯 셋 · /api/product-spaces 0). [grid] 1440 · 1280 · 412 · 360 × 밝게 · 어둡게 + 고대비 · 강제 색 — 넘침 0 · 누름 자리 44 · 대비 4.5 · 2열/1열. [apps] 앱 판 순서 · li.app-menu__sep 하나 · aria-current. [work] 더보기의 문서 AI 숨김 · /community/ai 200. [side] 사이드바 첫 방문 펼침 · collapsed/open 쿠키 · 959 서랍 · 960 이야기 통계 한 줄. [join] 초대 가입 → / · redirect '/'(2단계 필수 갈래는 이 틀에서 켤 수 없어 미검증). [words] 홈 · 홈 편집 · 위젯 고르기 · 로그인 전 첫 화면 「자료」 단독 0. 가입 화면 아이디 칸 pattern 경고 한 줄(member_join_page.php — 이 단계 밖)은 따로 세어 metrics 에 남긴다."
+    },
+    {
       "id": "core.scale_d1",
       "cmd": "python3 tests/scale/d1_measure.py --output /home/changkwon/qaredi-scale-d-results-20261014/run1 --tiers S,M,L --reps 7",
       "module": "core",
