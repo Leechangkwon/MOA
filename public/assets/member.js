@@ -43,7 +43,8 @@
       say('계정을 만들고 있어요…');
       // 사이트 Q:F-13 P1 — 체크 둘(약관 동의 · 만 14세 이상)의 참/거짓을 그대로 보낸다. 둘 다 참이 아니면 서버가 400 으로 거부한다(화면은 판단하지 않는다).
       const registered=await api('/api/register','POST',{invite:$('join-invite').value.trim(),username:$('join-username').value.trim(),display_name:$('join-name').value.trim(),password:$('join-password').value,agree_terms:$('join-terms').checked,age14:$('join-age14').checked},true);
-      $('join-password').value='';$('join-confirm').value='';location.assign(base+(registered.next==='login'?'/login':'/welcome'));
+      // 사이트 Q:F-15 S2 (D-8) — 남은 단계가 없으면(next 없음) 사이트 첫 화면 `/`(모아 홈 — base 가 아니다: base 는 /tbox) · 로그인이 필요하면 로그인 · 그 밖의 단계(password_change · mfa_setup)는 시작 안내가 맡는다
+      $('join-password').value='';$('join-confirm').value='';location.assign(registered.next==null?'/':base+(registered.next==='login'?'/login':'/welcome'));
     });});return;
   }
   async function welcome(){

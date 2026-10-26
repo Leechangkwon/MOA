@@ -1,27 +1,19 @@
 [
   {
-    "key": "tbox",
-    "name": "자료실",
-    "desc": "파일 보관 · 찾기 · 공유",
-    "path": "/tbox/",
-    "icon": "library",
-    "order": 1
-  },
-  {
     "key": "community",
     "name": "업무",
     "desc": "작업 · 프로젝트 · 문서",
     "path": "/community/",
     "icon": "work",
-    "order": 2
+    "order": 1
   },
   {
-    "key": "story",
-    "name": "이야기",
-    "desc": "스레드 · 여행 — 일상 나누기",
-    "path": "/community/memories",
-    "icon": "community",
-    "order": 3
+    "key": "tbox",
+    "name": "자료실",
+    "desc": "파일 보관 · 찾기 · 공유",
+    "path": "/tbox/",
+    "icon": "library",
+    "order": 2
   },
   {
     "key": "spaces",
@@ -29,6 +21,15 @@
     "desc": "카페 · 게시판 · 익명게시판",
     "path": "/community/cafe",
     "icon": "spaces",
-    "order": 4
+    "order": 3
+  },
+  {
+    "key": "story",
+    "name": "이야기",
+    "desc": "스레드 · 여행 — 일상 나누기",
+    "path": "/community/memories",
+    "icon": "community",
+    "order": 4,
+    "group": "more"
   }
 ]

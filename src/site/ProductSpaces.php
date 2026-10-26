@@ -169,9 +169,9 @@ final class ProductSpaces
     /** Pure recommendation shared with dashboard-widgets.js; no settings row is created on GET. */
     public static function defaultWidgetLayout(?array $space=null,bool $shared=false): array {
         if($shared)$types=($space['kind']??'company')==='group'?['space_event','space_task','space_notice','space_story','space_file']:['space_notice','space_task','space_file','space_event','space_story'];
-        elseif($space===null)$types=['recent','favorites','briefing'];
-        elseif($space['kind']==='company')$types=['space_task','space_notice','space_event','recent','favorites'];
-        else $types=['space_event','space_notice','recent','favorites'];
+        // 사이트 Q:F-15 S2 (7.4 · DESIGN 2.31 「대시보드에서 숨김」) — 개인 홈 기본은 공간 수와 무관하게 최근 · 즐겨찾기 · 오늘 챙길 것 셋(공간 위젯은 홈에 그리지 않는다).
+        // 공간 홈(공유 대시보드 · 위 $shared 줄) 기본은 그대로. 판정 · SQL 0 — dashboard() 가 공간을 세는 SELECT 는 그대로 두었다(결과가 개인 기본을 더 바꾸지 않는다).
+        else $types=['recent','favorites','briefing'];
         $ids=['recent'=>1,'favorites'=>2,'briefing'=>3,'space_task'=>4,'space_notice'=>5,'space_event'=>6,'space_file'=>7,'space_story'=>8];
         $widgets=[];$rows=[];$mobileY=0;
         foreach($types as $type){

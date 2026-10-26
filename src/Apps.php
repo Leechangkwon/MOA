@@ -24,10 +24,16 @@ final class Apps
     private const REQUIRED = ['key', 'name', 'desc', 'path', 'icon', 'order'];
 
     /** 있어도 되는 키 */
-    private const OPTIONAL = ['status'];
+    private const OPTIONAL = ['status', 'group'];
 
     /** `status` 에 쓸 수 있는 값. 없으면 「쓸 수 있는 앱」이다. */
     private const STATUSES = ['soon'];
+
+    /**
+     * `group` 에 쓸 수 있는 값 (사이트 Q:F-15 S2 · D-4 · DESIGN 2.30 「앱 판」). 없으면 구분줄 위 앱이다.
+     * `more` = 앱 판의 이름 없는 구분줄 **아래** 앱(shell_tools.php 가 그 첫 앱 앞에 구분줄 하나를 그린다). 다른 값은 예외 — 조용히 넘기지 않는다.
+     */
+    private const GROUPS = ['more'];
 
     /**
      * 아이콘 이름 → 24×24 선 아이콘의 path 데이터 (DESIGN.md 2.11).
@@ -68,7 +74,7 @@ final class Apps
     /**
      * 앱 목록을 `order` 오름차순으로 돌려준다.
      *
-     * @return list<array{key:string,name:string,desc:string,path:string,icon:string,order:int,status?:string}>
+     * @return list<array{key:string,name:string,desc:string,path:string,icon:string,order:int,status?:string,group?:string}>
      */
     public static function all(): array
     {
@@ -159,6 +165,12 @@ final class Apps
             && (!is_string($item['status']) || !in_array($item['status'], self::STATUSES, true))
         ) {
             throw new RuntimeException($where . ': 모르는 status 입니다');
+        }
+
+        if (array_key_exists('group', $item)
+            && (!is_string($item['group']) || !in_array($item['group'], self::GROUPS, true))
+        ) {
+            throw new RuntimeException($where . ': 모르는 group 입니다');
         }
 
         return $item;

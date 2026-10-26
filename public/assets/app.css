@@ -2339,6 +2339,10 @@ body[data-page="login"] .login__brand .moa-wordmark { --brand-wordmark: var(--wm
 .app-menu__apps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; margin: 0; padding: 0; list-style: none; }
 .app-menu__apps > li { display: flex; min-width: 0; }
 .app-menu__apps > li:has(> [hidden]) { display: none; }   /* 관리자 페이지 — #menu-admin 이 hidden 이면 칸째 비운다(can_admin 표시용 그대로) */
+/* 사이트 Q:F-15 S2 (D-4 · DESIGN 2.30 「앱 판」) — 이름 없는 구분줄 `li.app-menu__sep[role=separator]`(shell_tools.php — config/apps.json 의 `group: more` 첫 앱 앞):
+   격자 한 줄 전체 · 높이 1 · 바탕 --line · 위아래 6 · 글자 0 · 누름 자리 아님. 위 `li` 의 display:flex 를 이 선택자가 이긴다. 강제 색 모드는 바탕이 지워지므로 시스템 글자색으로 */
+.app-menu__apps > li.app-menu__sep { display: block; grid-column: 1 / -1; height: 1px; margin: 6px 0; padding: 0; background: var(--line); }
+@media (forced-colors: active) { .app-menu__apps > li.app-menu__sep { background: CanvasText; } }
 .app-menu__app {
   position: relative;
   display: flex;

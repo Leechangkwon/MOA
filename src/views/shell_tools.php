@@ -10,7 +10,7 @@ declare(strict_types=1);
  * 받는 변수 (부르는 쪽이 require 전에 정한다 — 전부 서버 값 · 요청 값 0)
  *   · $shellMessenger  bool    메신저 창을 쓸 수 있나(판정 함수 Authz::canCommunityWrite · 「역할로 보기」 아님 — 부르는 쪽이 계산)
  *   · $shellUser       array   지금 사용자(DB 에서 읽은 값)
- *   · $shellApps       array   Apps::all() — 앱 판의 타일 순서
+ *   · $shellApps       array   Apps::all() — 앱 판의 타일 순서(Q:F-15 S2 — `group: more` 인 첫 앱 앞에 이름 없는 구분줄 li.app-menu__sep)
  *   · $shellCurrentApp string  aria-current 가 붙는 앱 key — 셸은 'tbox' · 'community' · 'story', 모아 홈은 'home'(「모아 홈」 타일)
  *   · $shellActive     string  셸 내비 키(내 계정 · 내 활동 타일의 aria-current) — 모아 홈은 ''
  *   · $shellMeLabel · $shellInitial · $shellRole  이미 htmlspecialchars 를 거친 이름 · 이니셜 · 역할 글자
@@ -50,7 +50,13 @@ declare(strict_types=1);
         <div class="panel app-menu">
           <ul class="app-menu__apps">
             <li><a class="app-menu__app" href="/"<?= $shellCurrentApp === 'home' ? ' aria-current="page"' : '' ?>><span class="app-menu__icon icon" data-icon="home"></span><span class="app-menu__text"><span class="app-menu__name">모아 홈</span><span class="app-menu__desc">검색과 바로가기</span></span></a></li>
+<?php /* 사이트 Q:F-15 S2 (D-4 · DESIGN 2.30 「앱 판」) — 순서는 config/apps.json 의 order 그대로. `group` 이 'more' 인 **첫** 앱 앞에(그 앞에 앱이 하나라도 그려졌을 때만)
+         이름 없는 구분줄 하나 — 글자 0 · 누름 자리 아님 · class 가 붙은 li(타일 li 는 지금처럼 속성 없는 <li> · 두 번째 ul 로 나누지 않는다). 관리자 타일은 반복 뒤 그대로. */
+      $shellAppsDrawn = 0; $shellAppsSep = false; ?>
 <?php foreach ($shellApps as $shellApp): ?>
+<?php   if (!$shellAppsSep && ($shellApp['group'] ?? '') === 'more' && $shellAppsDrawn > 0): $shellAppsSep = true; ?>
+            <li class="app-menu__sep" role="separator"></li>
+<?php   endif; $shellAppsDrawn++; ?>
 <?php   $shellAppName = htmlspecialchars((string) $shellApp['name'], ENT_QUOTES, 'UTF-8'); ?>
 <?php   $shellAppDesc = htmlspecialchars((string) ($shellApp['desc'] ?? ''), ENT_QUOTES, 'UTF-8'); ?>
 <?php   $shellAppIcon = htmlspecialchars((string) ($shellApp['icon'] ?? 'grid'), ENT_QUOTES, 'UTF-8'); ?>

@@ -315,11 +315,13 @@ $shellPwa = isset($pageApp) && $pageApp === 'alerts' ? 'alerts' : '';
 
 /*
  * 카페 C5 (DESIGN 2.19 ⑨ 「2026-10-14 사용자 지적 보정」 — 「페이지에 들어왔을 때 기본은 사이드바가 전부 간소화된 상태」) — ≥960 사이드바 접힘의 **첫 그리기**.
- * 쿠키 `qaredi_sidebar` 의 값이 정확히 `open` 일 때만 펼친 채, 아니면(없거나 다른 값) `<body data-sidebar="collapsed">` 와 ☰ 의 aria 첫 값(접힘)을 그린다 —
+ * 사이트 Q:F-15 S2 (D-9 · Q4 A · DESIGN 2.19 ⑨ 2026-10-26 줄 — 「첫 방문은 펼침, 접으면 기억」) — 기본이 펼침으로 바뀌었다:
+ * 쿠키 `qaredi_sidebar` 의 값이 정확히 `collapsed` 일 때만 `<body data-sidebar="collapsed">` 와 ☰ 의 aria 첫 값(접힘)을 그리고, 아니면(없음 · `open` · 다른 값) 펼친 채 —
  * 첫 HTML 부터라 깜빡임 0 · 머리 스크립트 0(CSP 그대로). 쿠키 값은 **비교만** 하고 HTML 에 내보내지 않는다(나가는 글자는 아래 고정 글자 둘뿐).
- * 쓰는 쪽은 app.js initSidebarCollapse(☰ 누름 — 펼치면 open · 접으면 지움). 폰(<960)은 CSS 가 이 속성을 무시한다(서랍 그대로).
+ * 쓰는 쪽은 app.js initSidebarCollapse(☰ 누름 — 접으면 collapsed · 펼치면 open · 지우지 않음). 모든 셸(업무 · 자료실 · 이야기 · 우리 공간)이 이 한 줄을 읽는다.
+ * 폰(<960)은 CSS 가 이 속성을 무시한다(서랍 그대로).
  */
-$shellSidebarOpen = isset($_COOKIE['qaredi_sidebar']) && $_COOKIE['qaredi_sidebar'] === 'open';
+$shellSidebarOpen = !(isset($_COOKIE['qaredi_sidebar']) && $_COOKIE['qaredi_sidebar'] === 'collapsed');
 
 /** 지금 켜 둘 항목에만 is-active 를 붙인다. 값은 위 허용 목록을 통과한 문자열이다. */
 $shellNavClass = static function (string $key) use ($shellActive): string {
@@ -447,7 +449,7 @@ if ($shellMod === 'community'): ?>
   <aside id="sidebar" class="sidebar" hidden>
     <!-- 사이드바 머리 (Q:F-12 U2 · DESIGN 2.19 ① · ⑨ · ⑩ 사이트 H5) — ☰ 접기 단추 + 앱 아이콘(링크 — 그 앱의 첫 화면)뿐. 앱 바꾸기 · 계정은 본문 오른쪽 위 격자(2.18).
          ☰(`#sidebar-collapse`)는 ≥960 에서만 보인다(폰 윗줄 `#nav-toggle` 과는 다른 단추). 누르면 app.js 가 `<body data-sidebar="collapsed">` 를 단다/뗀다 —
-         속성 하나 · 마크업 재생성 0. 카페 C5 — 첫 값은 이 파일이 쿠키 `qaredi_sidebar`(open 이면 펼침 · 아니면 접힘이 기본)로 그린다. -->
+         속성 하나 · 마크업 재생성 0. 카페 C5 — 첫 값은 이 파일이 쿠키 `qaredi_sidebar`(Q:F-15 S2 — collapsed 면 접힘 · 아니면 펼침이 기본)로 그린다. -->
     <div class="brand moa-brand">
       <button id="sidebar-collapse" class="btn btn--icon btn--plain" type="button" aria-controls="sidebar" aria-expanded="<?= $shellSidebarOpen ? 'true' : 'false' ?>" aria-label="<?= $shellSidebarOpen ? '메뉴 접기' : '메뉴 펼치기' ?>">
         <span class="icon" data-icon="menu"></span>
@@ -667,7 +669,8 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
     <nav id="nav-community-shared" class="nav" aria-label="공유받은 페이지" hidden></nav>
     </details>
     <!-- 「더보기」 (Q:F-12 DESIGN 2.19 ⑧ — 시안 v1 승인) — 처음엔 접혀 있는 <details>(즐겨찾기 묶음과 같은 틀 · 여닫는 스크립트 0).
-         자동 작업 · 내 제안 · 공유·연동 설정 · 문서 AI · **내 휴지통**. 2.9 「휴지통 자리 — 두 앱이 같게」를 업무 앱에서는 이렇게 고쳤다(자료실은 그대로).
+         자동 작업 · 내 제안 · 공유·연동 설정 · ~~문서 AI~~ · **내 휴지통**. 2.9 「휴지통 자리 — 두 앱이 같게」를 업무 앱에서는 이렇게 고쳤다(자료실은 그대로).
+         「문서 AI」 줄(사이트 Q:F-15 S2 · D-6 · DESIGN 2.19 ⑧)은 hidden — 줄 · 주소 `/community/ai` · 관리자 설정 · 도움말은 그대로(숨김, 지우기 아님).
          「내 휴지통」(디버깅 묶음 U3): 누르면 「내 문서」 화면의 휴지통 창이 열린다(꼬리표 `trash=1` — 고정 글자, 그 화면에서는 이동 없이 창만).
          목록은 전과 같이 창구 `GET /community/api/me/trash` 가 주는 것뿐이다. 쓰기 자격이 없는 사람(손님)은 지울 수 없어 늘 비어 있으므로
          「내 제안」과 같은 값으로 숨긴다(편의 — 창구가 다시 판단한다). -->
@@ -677,7 +680,7 @@ $shellProjectsShown = $shellProjects['items'] !== [] || $shellCommunityWrite;
         <a class="nav__item" href="<?= Http::communityUrl('/automations') ?>"><span class="icon" data-icon="log"></span><span>자동 작업</span></a>
         <a class="nav__item" href="<?= Http::communityUrl('/suggestions') ?>"<?= $shellCommunityWrite ? '' : ' hidden' ?>><span class="icon" data-icon="files"></span><span>내 제안</span></a>
         <a class="nav__item" href="<?= Http::communityUrl('/integrations') ?>"><span class="icon" data-icon="link"></span><span>공유·연동 설정</span></a>
-        <a class="nav__item" href="<?= Http::communityUrl('/ai') ?>"><span class="icon" data-icon="assistant"></span><span>문서 AI</span></a>
+        <a class="nav__item" href="<?= Http::communityUrl('/ai') ?>" hidden><span class="icon" data-icon="assistant"></span><span>문서 AI</span></a>
         <a id="nav-community-trash" class="nav__item" href="<?= Http::communityUrl('/workspace') ?>?trash=1"<?= $shellCommunityWrite ? '' : ' hidden' ?>>
           <span class="icon" data-icon="trash"></span><span>내 휴지통</span>
         </a>

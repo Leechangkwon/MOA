@@ -49,4 +49,7 @@ if ($result === null) {
     Http::json(['ok'=>true,'next'=>'login','redirect'=>Http::url('/login')],201);
     return;
 }
-Http::json(['ok'=>true,'next'=>Auth::nextStep($result),'redirect'=>Http::url('/welcome')],201);
+// 사이트 Q:F-15 S2 (D-8) — 가입 직후 갈 곳: 남은 단계(password_change · mfa_setup)가 있으면 그 단계를 맡는 시작 안내 화면, 없으면 사이트 첫 화면 `/`(모아 홈).
+// 화면(member.js)도 같은 규칙으로 간다 — 이 값은 어긋나지 않게 맞춘 것뿐이다(판정 · 세션 · 감사 · 가입 검사 0).
+$next=Auth::nextStep($result);
+Http::json(['ok'=>true,'next'=>$next,'redirect'=>$next===null?'/':Http::url('/welcome')],201);

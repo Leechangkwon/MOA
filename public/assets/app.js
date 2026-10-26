@@ -61,8 +61,8 @@ var COMMUNITY_BASE = (document.body && document.body.getAttribute('data-communit
 /**
  * 사이드바 접기 ⑨ — 첫 그리기 (사이트 Q:F-12 U2 · DESIGN 2.19 ⑨ · 카페 C5 — 사용자 지적 2026-10-14 「페이지에 들어왔을 때 기본은 사이드바가 전부 간소화된 상태」).
  *
- * 접힘은 **서버가 첫 HTML 부터** 그린다(shell_top.php — 쿠키 `qaredi_sidebar` 가 `open` 이 아니면 `<body data-sidebar="collapsed">` · ☰ 의
- * aria 첫 값). 그래서 이 파일은 첫 그리기에 손대지 않는다(전의 「localStorage 를 읽어 임시 속성을 다는」 즉시 함수는 지웠다 — 깜빡임 0 · 머리 스크립트 0).
+ * 접힘은 **서버가 첫 HTML 부터** 그린다(shell_top.php — 쿠키 `qaredi_sidebar` 가 정확히 `collapsed` 일 때만 `<body data-sidebar="collapsed">` · ☰ 의
+ * aria 첫 값 — 없거나 `open` 이면 펼침이 기본: 사이트 Q:F-15 S2 · D-9 · Q4 A · DESIGN 2.19 ⑨ 2026-10-26 줄). 그래서 이 파일은 첫 그리기에 손대지 않는다(전의 「localStorage 를 읽어 임시 속성을 다는」 즉시 함수는 지웠다 — 깜빡임 0 · 머리 스크립트 0).
  * 효과는 CSS 가 ≥960 에서만 낸다(폰 서랍은 그대로). 옛 기억 키(`qaredi-sidebar-collapsed:v1:<아이디>`)는 읽지 않고 initSidebarCollapse 가 한 번 지운다.
  */
 var SIDEBAR_COLLAPSE_PREFIX = 'qaredi-sidebar-collapsed:v1:';
@@ -12202,8 +12202,9 @@ function initMobileSidebar(sidebar, navToggle, owner) {
 
 /**
  * 사이드바 접기 ⑨ (Q:F-12 U2 · DESIGN 2.19 ⑨ · 카페 C5) — ☰(`#sidebar-collapse`, ≥960 에서만 보인다)를 누르면 `<body data-sidebar="collapsed">` 를 단다/뗀다.
- * 기억은 쿠키 `qaredi_sidebar` 하나(값 `open` 하나만 — 화면 취향이라 비밀 0 · HttpOnly 아님 · Path=/ · SameSite=Lax · https 면 Secure · 1년):
- * 펼치면 `open` 을 쓰고, 접으면 지운다(없으면 접힘이 기본 — 서버가 첫 HTML 에 그린다). 첫 값은 서버가 그린 속성 그대로 읽는다.
+ * 기억은 쿠키 `qaredi_sidebar` 하나(값 `collapsed` · `open` — 화면 취향이라 비밀 0 · HttpOnly 아님 · Path=/ · SameSite=Lax · https 면 Secure · 1년):
+ * 사이트 Q:F-15 S2(D-9 · Q4 A · DESIGN 2.19 ⑨ 2026-10-26 줄) — 접으면 `collapsed` 를, 펼치면 `open` 을 쓴다(지우지 않는다 — 없으면 펼침이 기본 · 서버가 첫 HTML 에 그린다).
+ * 첫 값은 서버가 그린 속성 그대로 읽는다.
  * 옛 localStorage 키(`qaredi-sidebar-collapsed:v1:*`)는 읽지 않고 여기서 한 번 지운다. 판단 0.
  */
 function initSidebarCollapse() {
@@ -12223,7 +12224,7 @@ function initSidebarCollapse() {
     document.querySelectorAll('#sidebar details.menu[open]').forEach(function (menu) { menu.open = false; });
     var secure = location.protocol === 'https:' ? '; Secure' : '';
     document.cookie = next
-      ? 'qaredi_sidebar=; Path=/; Max-Age=0; SameSite=Lax' + secure
+      ? 'qaredi_sidebar=collapsed; Path=/; Max-Age=31536000; SameSite=Lax' + secure
       : 'qaredi_sidebar=open; Path=/; Max-Age=31536000; SameSite=Lax' + secure;
   });
 }
