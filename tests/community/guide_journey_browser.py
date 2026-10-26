@@ -223,6 +223,11 @@ def wait_inset(p, b, timeout=12000):
     p.wait_for_function("b => [...document.querySelectorAll('.usage-guide-inset')].some(i => (i.querySelector('b') || {}).textContent === b)", arg=b, timeout=timeout)
 
 
+def head(p):
+    """진행 카드 머리 글자(.usage-guide-progress) — 숨은 카드면 None"""
+    return p.evaluate("(() => { const f = document.querySelector('section.usage-guide-float'); const h = f && !f.hidden && f.querySelector('.usage-guide-progress'); return h ? h.textContent : null; })()")
+
+
 def press(p, label):
     p.locator('section.usage-guide-float .usage-guide-actions > button', has_text=label).first.click()
 
@@ -485,7 +490,7 @@ try:
                 check(t.jp()[:1] == [{'journey': 'file-share', 'status': 'active', 'page': 0, 'step': 0}], '③ /tbox/?guide=file-share: PATCH body exactly {journey, status:active, page:0, step:0} %s' % t.jp()[:1])
                 check(st['path'] == '/tbox/' and st['search'] == '' and p.evaluate("JSON.stringify(history.state)") == '{"s3probe":1}', '③ the ?guide= tail is gone · history.state kept')
                 check(st['tag'] == 'SECTION' and st['role'] == 'region' and st['label'] == '안내' and st['visible'] and not st['ask'], '③ progress card = section.usage-guide-float[role=region][aria-label=안내] (not a dialog)')
-                check(st['progress'] == '1 / 6 · 파일 올려서 동료에게 보여 주기 · 다음: 자료실' and st['buttons'] == ['나중에', '다음'], '③ step 1 progress 「1 / 6 · … · 다음: 자료실」 · 「나중에」 「다음」 %s' % st['buttons'])
+                check(st['progress'] == '1 / 6 · 파일 올려서 동료에게 보여 주기' and st['buttons'] == ['나중에', '다음'], '③ step 1 progress 「1 / 6 · 파일 올려서 동료에게 보여 주기」(같은 화면 — 「다음:」 0) · 「나중에」 「다음」 %s' % st['buttons'])
                 check(st['dialogs'] == dialogs0 and st['open'] == [] and st['launchHidden'] is True, '③ dialog count unchanged (%d) · no open dialog · no dim · 「? 사용 안내」 hidden' % st['dialogs'])
                 check(st['ring'] and st['ring']['w'] > 0 and st['ring']['pe'] == 'none' and 'folder-pane' in st['targets'], '③ ring rect around the target · pointer-events none · .usage-guide-target on #folder-pane')
                 check(st['calls'] == [], '③ the guide called click/submit/showModal/close on app elements 0 times')
@@ -500,7 +505,9 @@ try:
                     return !!(e && e.closest('#upload-toggle')); }""")
                 check(hit and st['buttons'] == ['나중에', '건너뛰기'], '③ step 2: elementFromPoint(centre of #upload-toggle) is the real button · do-step buttons 「나중에」 「건너뛰기」')
                 check(st['primary'] == [] and p.locator('section.usage-guide-float .usage-guide-primary').count() == 0, '③ do step: both buttons outlined — .usage-guide-primary 0 in the card (DESIGN 2.37 「단추」 · 검토 보정 ②)')
+                check(st['progress'] == '2 / 6 · 파일 올려서 동료에게 보여 주기', '③ step 2 head 「2 / 6 · 파일 올려서 동료에게 보여 주기」 — same screen next: 「다음:」 0 (%s)' % st['progress'])
                 p.screenshot(path=str(shots / 'pc-progress-card-1440.png'))
+                p.screenshot(path=str(shots / 'pc-progress-same-screen-1440.png'))
                 p.locator('#upload-toggle').click()
                 wait_inset(p, '3 / 6')
                 st = state(p)
@@ -527,6 +534,7 @@ try:
                 summary['done'] = {k: st[k] for k in ('progress', 'text', 'chips', 'buttons')}
                 check(st['text'] == '파일을 올렸어요. 자료실 목록과 검색에서 다시 찾을 수 있어요. 알리려면 메신저로 한 줄 보내요.' and st['chips'] == ['동료에게 한마디'] and st['buttons'] == ['마치기'],
                       '③ done card text · chip 「동료에게 한마디」 · 「마치기」')
+                check(st['progress'] == '6 / 6 · 파일 올려서 동료에게 보여 주기' and '다음:' not in st['progress'], '③ done card head 「6 / 6 · …」 — 「다음:」 0 (%s)' % st['progress'])
                 p.screenshot(path=str(shots / 'pc-done-card-1440.png'))
                 r = jrow('employee', 'file-share')
                 check(r['status'] == 'completed', '③ completed row (SQL)')
@@ -595,6 +603,7 @@ try:
                 wait_title(p, '내 작업')
                 press(p, '다음')
                 wait_title(p, '「작업 추가」 누르기')
+                check(head(p) == '2 / 4 · 맡은 일 보기 · 할 일 적기', '⑤ task-add step 2 head — same screen next: 「다음:」 0 (%s)' % head(p))
                 p.locator('#work-home-add').click()
                 wait_inset(p, '3 / 4')
                 st = state(p)
@@ -622,11 +631,17 @@ try:
                 p = t.page
                 go(t, '/community/workspace?guide=minutes-write')
                 wait_title(p, '「더보기」 열기')
+                heads = [head(p)]
                 p.locator('#community-more > summary').click()
                 wait_title(p, '「템플릿에서 만들기」')
+                heads.append(head(p))
                 p.locator('#community-template-new').click()
                 wait_inset(p, '3 / 10')
                 p.wait_for_timeout(300)
+                ins = state(p)['inset']
+                summary['heads'] = heads
+                check(heads == ['1 / 10 · 회의록 쓰기', '2 / 10 · 회의록 쓰기'], '⑥ minutes-write steps 1 · 2 — same screen next: 「다음:」 0 %s' % heads)
+                check(ins and '다음:' not in ins[0]['text'], '⑥ step 3 (「회의록」 만들기 — next is the document screen) is a window step: the window line carries no 「다음:」 (DESIGN 2.37 ③) %s' % (ins[0]['text'][:40] if ins else None))
                 saved = [b for b in t.jp()]
                 summary['patches_before_make'] = saved
                 check(saved and saved[-1] == {'journey': 'minutes-write', 'status': 'active', 'page': 1, 'step': 0}, '⑥ template 「만들기」 step pre-saves {page:1, step:0} before the click %s' % saved[-1:])
@@ -771,9 +786,12 @@ try:
                 check(st['text'] == '「S3 공지」 게시판을 누르세요. 공지 게시판 화면이 열려요.' and any(x.endswith('/b/' + str(BOARD)) for x in st['targets']),
                       '⑧ ≥960 open sidebar: the notice board link has the outline · text uses the board name %s' % st['targets'])
                 check(t.jp()[-1:] == [{'journey': 'notice-post', 'status': 'active', 'page': 1, 'step': 0}], '⑧ link step pre-saves {page:1, step:0}')
+                check(st['progress'] == '1 / 5 · 공지 올리기 · 다음: 「S3 공지」', '⑧ step 1 (next step on the board screen) head 「1 / 5 · 공지 올리기 · 다음: 「S3 공지」」 (%s)' % st['progress'])
+                p.screenshot(path=str(shots / 'pc-progress-next-screen-1440.png'))
                 p.locator('#nav-community-boards a[href$="/b/' + str(BOARD) + '"]').click()
                 p.wait_for_url(re.compile(r'/community/b/%d$' % BOARD), timeout=10000)
                 wait_title(p, '「새 글」 누르기')
+                check(head(p) == '2 / 5 · 공지 올리기', '⑧ board screen step 2 — next step on the same screen: 「다음:」 0 (%s)' % head(p))
                 p.locator('#board-new').click()
                 wait_inset(p, '3 / 5')
                 p.locator('#board-new-input').fill('S3 길잡이 공지')
@@ -800,6 +818,8 @@ try:
                     summary[tag] = {k2: st[k2] for k2 in ('buttons', 'links', 'progress')}
                     check(st['links'] == ['/community/b/%d' % BOARD] and st['buttons'][-1] == '이 화면으로 가기 → 「S3 공지」' and st['progress'].startswith('1 / 5'),
                           '⑧ %s: no wait — 「이 화면으로 가기 → 「S3 공지」」 href /community/b/<id> %s' % (tag, st['buttons']))
+                    check(st['progress'] == '1 / 5 · 공지 올리기 · 다음: 「S3 공지」' and st['progress'].split('다음: ', 1)[1] == st['buttons'][-1].split('→ ', 1)[1],
+                          '⑧ %s: go card head 「· 다음: 「S3 공지」」 = the button name (%s)' % (tag, st['progress']))
                     ctx.close()
                 # 공지 게시판을 보관한 문맥 → 빈 상태
                 reset_journeys('admin')
@@ -811,6 +831,7 @@ try:
                     go(t, '/community/?guide=notice-post')
                     wait_text(p, '공지 게시판이 아직 없어요 — 관리자가 만들면 여기 생겨요')
                     check(True, '⑧ notice board archived (is_active false): empty-state card')
+                    check(head(p) == '1 / 5 · 공지 올리기', '⑧ empty-state card head — 「다음:」 0 (%s)' % head(p))
                     ctx.close()
                 finally:
                     sql('UPDATE community.spaces SET is_active=true WHERE id=' + str(BOARD))
@@ -1055,6 +1076,7 @@ try:
                         st = state(p)
                         check(st['buttons'][:2] == ['건너뛰기', '나중에'] and st['buttons'][2].startswith('이 화면으로 가기') and st['progress'].startswith('1 / 4'),
                               '⑭ not there within 3 s → 「이 단추가 지금 안 보여요」 (건너뛰기 · 나중에 · 이 화면으로 가기) · n / m kept %s' % st['buttons'])
+                        check(st['progress'] == '1 / 4 · 맡은 일 보기 · 할 일 적기', '⑭ 「안 보여요」 card head — 「다음:」 0 (%s)' % st['progress'])
                     ctx.close()
                 reset_journeys('employee')
             guard('missing', missing)

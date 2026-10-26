@@ -62,7 +62,7 @@ public/assets/community/ 0 · 다른 앱 JS 0 · 보호 파일 0 · 마이그레
 
 ## 4. 여섯 여정 단계 (실제 선택자 · 넘김 신호 — 글은 E 표 그대로)
 
-공통: 진행 머리 「n / m · <과업 글자> · 다음: <화면 이름>」(화면 이름 = 업무 홈 · 자료실 · 내 문서 · 문서 · 「<게시판 이름>」 · 메신저 · 계정 관리). 「창 안」 = 그 앱 창의 `.modal__head` 다음 한 줄. 창 안 단계 도중 창이 사실 없이 닫히면 창을 여는 단계(아래 「돌아감」) + 「아직 결과가 없어요」 줄.
+공통: 진행 머리 「n / m · <과업 글자>」 — 「· 다음: <화면 이름>」은 다음 단계가 다른 화면일 때 · 가기 카드만(6-3 · 화면 이름 = 업무 홈 · 자료실 · 내 문서 · 문서 · 「<게시판 이름>」 · 메신저 · 계정 관리). 「창 안」 = 그 앱 창의 `.modal__head` 다음 한 줄. 창 안 단계 도중 창이 사실 없이 닫히면 창을 여는 단계(아래 「돌아감」) + 「아직 결과가 없어요」 줄.
 
 | 여정 | # | 대상 | 넘김 신호 · 다른 점 |
 |---|---|---|---|
@@ -148,6 +148,35 @@ memories_harness --suite guide_journeys_http.py → SYNTHETIC_DB_CREATED=1; PROD
 memories_harness --suite guide_journey_browser.py → RESULT pass=296 fail=0 · SYNTHETIC_DB_DROPPED=1
 python3 tests/community/usage_guide_browser.py → {"suite": "usage_guide_browser", "passed": 124} (고치지 않음 · 옛 목업 — 여정 기능 꺼짐)
 ```
+
+## 6-3. 보정 — 진행 카드 머리 「다음:」은 다른 화면으로 이어질 때만 (사용자 2026-10-26 · DESIGN 2.37 「진행 카드」 `ad63bbf`)
+
+전: 모든 카드 머리가 「· 다음: <지금 화면 이름>」(예 자료실에서 「다음: 자료실」). 후: 사람이 지금 있는 화면과 **다른 화면**에서 할 일이 이어질 때만.
+
+| 함수(`usage-guide.js`) | 바뀐 것 |
+|---|---|
+| `nameOf()`(새) · `pageName()` | 화면 이름 한 곳 — 게시판 화면은 창구가 준 「<게시판 이름>」, 그 밖은 정의의 이름. `pageName()` 은 게시판을 찾은 뒤 `nameOf()` |
+| `progressOf(page, at, next)` | 「n / m · <과업 제목>」 + `next` 가 있을 때만 「 · 다음: <next>」 |
+| `nextScreen()`(새) | 지금 단계의 다음 단계가 다음 화면(page + 1)이면 그 화면 이름, 같은 화면(창 안 단계 포함)이거나 마지막 단계면 null |
+| `paintStep()` | 머리 = `nextScreen()` — 지금 화면 이름을 넘기던 것 뺌 |
+| `goCard()` | 그대로 — 가야 할 화면 이름(단추 「이 화면으로 가기 → <이름>」과 같은 값) |
+| `missingCard()` · `emptyCard()` · `noResultCard()` · `alreadyCard()` | 머리에 「다음:」 0(`null`). 「안 보여요」 카드의 단추 글 「이 화면으로 가기 → <이름>」은 그대로 · 완성 카드 · 창 안 한 줄 · 접기 칩은 원래 「다음:」 0 |
+
+이 규칙으로 1차 여섯 여정에서 단계 카드에 「다음:」이 붙는 자리는 각 화면의 마지막 단계뿐이다: notice-post 1 단계(→ 「<게시판 이름>」) · notice-post 3 단계(→ 문서) · minutes-write 3 단계(→ 문서). 뒤의 둘은 앱 창 안 단계라 **창 안 한 줄**로 보이므로(DESIGN ③ — 「다음:」 0) 화면에서 보이는 단계 카드는 notice-post 1 단계 하나 · 그 밖은 가기 카드(「다음: <가야 할 화면>」).
+
+바꾼 기대값(`guide_journey_browser.py`): [file] ③ 1 단계 머리 `'1 / 6 · 파일 올려서 동료에게 보여 주기 · 다음: 자료실'` → `'1 / 6 · 파일 올려서 동료에게 보여 주기'`.
+더한 단언: ⓐ 같은 화면 — [file] 2 단계 머리 「2 / 6 · …」 · [task] 2 단계 「2 / 4 · …」 · [minutes] 1 · 2 단계 「1 / 10 · 회의록 쓰기」 「2 / 10 · 회의록 쓰기」 · [notice] 게시판 화면 2 단계 「2 / 5 · 공지 올리기」 — 모두 「다음:」 0 ⓑ 다른 화면 — [notice] 1 단계 「1 / 5 · 공지 올리기 · 다음: 「S3 공지」」 · [minutes] 3 단계(다음이 문서 화면)는 창 안 한 줄이라 머리 없음 — 그 한 줄에 「다음:」 0(지시의 「3 단계 머리 「· 다음: 문서」」 예는 이 단계가 창 안이라 화면에 나오지 않아 이렇게 셈) ⓒ [notice] 접힌 사이드바 · 412 가기 카드 머리 「· 다음: 「S3 공지」」 = 단추 「이 화면으로 가기 → 「S3 공지」」의 이름 ⓓ [file] 완성 카드 「6 / 6 · …」 · [notice] 빈 상태(보관한 공지 게시판) 「1 / 5 · 공지 올리기」 · [missing] 「안 보여요」 「1 / 4 · 맡은 일 보기 · 할 일 적기」 — 「다음:」 0.
+
+시험(고친 곳에 닿는 묶음만 — 지시의 file · minutes · notice 에 단언을 넣은 task · missing 을 더함): `GUIDE_ONLY=file,minutes,notice,task,missing QCHECK_ENV_SRC=… python3 tests/community/memories_harness.py --port 8768 --suite guide_journey_browser.py --output /home/changkwon/qaredi-qf15s3-results-20261026/fix2`
+
+```
+PASS ⑭ 「안 보여요」 card head — 「다음:」 0 (1 / 4 · 맡은 일 보기 · 할 일 적기)
+RESULT pass=57 fail=0
+OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1
+```
+
+정적(`fix2-static.log`): node --check OK · security_lint 「결과: 통과 (금지 패턴 0건)」 · git diff --check clean · CSS · PHP 변경 0 · 옛 투어 함수 변경 0.
+새 사진 `/home/changkwon/qaredi-qf15s3-results-20261026/fix2/shots/`: `pc-progress-same-screen-1440.png`(자료실 file-share 2 단계 「「파일 올리기」 누르기」 — 머리 「2 / 6 · 파일 올려서 동료에게 보여 주기」) · `pc-progress-next-screen-1440.png`(업무 홈 notice-post 1 단계 — 머리 「1 / 5 · 공지 올리기 · 다음: 「S3 공지」」).
 
 ## 7. 스크린샷 (`/home/changkwon/qaredi-qf15s3-results-20261026/browser/shots/` — 최종 판은 `final/browser/shots/`)
 

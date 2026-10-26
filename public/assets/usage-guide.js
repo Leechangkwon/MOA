@@ -531,10 +531,11 @@
     const app = appBaseOf(page.app);
     return app && page.path ? app + page.path : null;
   }
-  async function pageName(page) {
-    if (page.here === 'board') { const b = await findBoard(); if (b.state === 'ok' || b.state === 'denied') return '「' + b.name + '」'; }
-    return page.name;
+  /** 화면 이름 — 게시판 화면은 창구가 준 이름(「<게시판 이름>」) · 그 밖은 정의의 이름(업무 홈 · 자료실 · 내 문서 · 문서 · 메신저 · 계정 관리) */
+  function nameOf(page, board) {
+    return page.here === 'board' && board && (board.state === 'ok' || board.state === 'denied') ? '「' + board.name + '」' : page.name;
   }
+  async function pageName(page) { return nameOf(page, page.here === 'board' ? await findBoard() : null); }
   const fill = (text, b) => (b && b.name ? text.split('{name}').join(b.name) : text);
 
   /* ─── 그리기 ─── */
@@ -726,9 +727,19 @@
     }
     return null;
   }
-  function progressOf(page, at, name) {
+  /**
+   * 진행 머리 「n / m · <과업 제목>」 — 「· 다음: <화면>」은 next 가 있을 때만(사람이 지금 있는 화면과 다른 화면에서 할 일이 이어질 때만 ·
+   * DESIGN 2.37 「진행 카드」 · 사용자 2026-10-26). 단계 카드는 nextScreen() · 가기 카드는 가야 할 화면 · 그 밖 카드는 null.
+   */
+  function progressOf(page, at, next) {
     const n = ordinal(run.def, page, at), m = total(run.def);
-    return { progress: n + ' / ' + m + ' · ' + run.def.label + ' · 다음: ' + name, short: n + '/' + m, n, m };
+    return { progress: n + ' / ' + m + ' · ' + run.def.label + (next ? ' · 다음: ' + next : ''), short: n + '/' + m, n, m };
+  }
+  /** 지금 단계 다음 단계의 화면이 지금 화면과 다르면 그 화면 이름 — 같은 화면(창 안 단계 포함)이거나 마지막 단계면 null */
+  function nextScreen(page, at) {
+    const pages = run.def.pages;
+    if (at + 1 < pages[page].steps.length || page + 1 >= pages.length) return null;
+    return nameOf(pages[page + 1], run.board);
   }
   const boxOf = (s) => (s.box ? document.querySelector(s.box) : null);
   const boxOpen = (s) => { const b = boxOf(s); return Boolean(b && b.open); };
@@ -812,7 +823,7 @@
   }
   function paintStep(s, el) {
     const pg = run.def.pages[run.page];
-    const p = progressOf(run.page, run.step, pg.here === 'board' && run.board && run.board.name ? '「' + run.board.name + '」' : pg.name);
+    const p = progressOf(run.page, run.step, nextScreen(run.page, run.step));
     const box = boxOf(s);
     if (s.box && box && box.open) {
       setTarget(el);
@@ -988,7 +999,7 @@
     const pg = run.def.pages[run.page];
     const href = await pageHref(pg);
     if (!run || run.gen !== gen) return;
-    const p = progressOf(run.page, run.step, await pageName(pg));
+    const p = progressOf(run.page, run.step, null);   // 「안 보여요」 카드 — 「다음:」 0(단추 「이 화면으로 가기 → <이름>」이 그 화면을 말한다)
     const box = boxOf(s);
     if (s.box && box && box.open) { inset(box, p.n, p.m, '이 단추가 지금 안 보여요 — ' + stepText(s)); return; }
     const actions = [[WORDS.skip, () => advance()], [WORDS.later, later],
@@ -1005,9 +1016,8 @@
     const text = state === 'denied' ? '이 게시판엔 글을 쓸 자격이 없어요 — 관리자에게 물어보세요'
       : state === 'none' ? '공지 게시판이 아직 없어요 — 관리자가 만들면 여기 생겨요'
       : state === 'empty' && s.empty ? s.empty.text : '이 단추가 지금 안 보여요';
-    const name = await pageName(pg);
     if (!run || run.gen !== gen) return;
-    const p = progressOf(page, at, name);
+    const p = progressOf(page, at, null);   // 빈 상태 · 자격 — 「다음:」 0
     const box = boxOf(s);
     if (s.box && box && box.open) { inset(box, p.n, p.m, text); return; }
     paint({ progress: p.progress, short: p.short, title: s.title, text, actions: [[WORDS.later, later], [WORDS.recheck, () => { boardFind = null; show(page, at); }, true]] });
@@ -1031,13 +1041,13 @@
     paint({ progress: m + ' / ' + m + ' · ' + def.label, short: m + '/' + m, title: '', text: def.done.text, chips, actions: [[WORDS.finish, teardown, true]] });
   }
   function noResultCard(message) {
-    const p = progressOf(run.page, run.step, run.def.pages[run.page].name);
+    const p = progressOf(run.page, run.step, null);
     run.mode = 'noresult';
     paint({ progress: p.progress, short: p.short, title: NO_RESULT, text: message || NO_RESULT, actions: [[WORDS.later, later], [WORDS.recheck, () => complete(), true]] });
   }
   /** 이어 하기 줄을 눌렀는데 결과가 이미 있다 — 「마치기」 = 완성 · 「다시 하기」 = 처음부터 */
   function alreadyCard() {
-    const p = progressOf(run.page, run.step, run.def.pages[run.page].name);
+    const p = progressOf(run.page, run.step, null);
     run.mode = 'already';
     const id = run.id;
     paint({ progress: p.progress, short: p.short, title: '결과가 이미 있어요', text: '시작한 뒤에 한 일이 이미 남아 있어요. 「마치기」를 누르면 끝낸 일로 남아요.',
