@@ -513,7 +513,7 @@ try:
             def before():
                 summary = {}
                 # 이 갈래가 마지막으로 의도해 바뀐 발행(v2.74.0 · Q:F-15 S1 — 그 전 기준 34cfd3d · H4 정규화는 이 판이 이미 H4 뒤라 필요 없음). 앞으로 이 갈래 글자를 일부러 바꾸는 발행이 나오면 이 값을 그 발행 커밋으로 옮긴다
-                LAUNCHER_SNAPSHOT_REF = '2afc533'
+                LAUNCHER_SNAPSHOT_REF = 'c2c78d0'
                 base_src = subprocess.run(['git', '-C', str(WORKTREE), 'show', LAUNCHER_SNAPSHOT_REF + ':src/views/launcher.php'], check=True, capture_output=True).stdout
                 (root / 'src/views/launcher_h1_baseline.php').write_bytes(base_src)
                 stub = root / 'tests/fixtures/home_h1_render.php'
