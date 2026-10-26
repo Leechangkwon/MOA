@@ -55,6 +55,12 @@
       "url": "/tbox/settings",
       "on_load": { "method": "GET", "path": "/tbox/api/me/passkeys" },
       "steps": []
+    },
+    {
+      "id": "tbox.guide_file_share",
+      "url": "/tbox/?guide=file-share",
+      "on_load": { "method": "PATCH", "path": "/community/api/me/journeys" },
+      "steps": []
     }
   ]
 }

@@ -6820,6 +6820,102 @@
       "notes": "사이트 Q:F-15 S2 앞세우기 · 접기(지시서 docs/qf15-s2-front-directive.md 「수락 시험」 ①~⑯ · DESIGN 2.31 「과업 카드」 · 「대시보드에서 숨김」 · 2.30 「앱 판」 · 2.19 ⑧ ⑨ · 2.32 ⑤ · 5장) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정(가입 시험만 초대로 만든 합성 아이디 s2_joined01 · 02) · Chromium. [static] 기본 바로가기 넷 · 설정 목록 값 집합 = ProductSpaces 허용 목록 · Apps::all() 순서 community · tbox · spaces · story · story 만 group more · 임시 사본 group x 예외(원본 무변경) · 새 마이그레이션 모양(BEGIN/COMMIT · UPDATE 대상 하나 · DDL · 권한 · DELETE · TRUNCATE 0) · 기준 판 310bbc3 대비 바뀐 줄의 새 색값 · innerHTML · style= · 역할 이름 0 · 요청 값은 쿠키 비교 둘뿐. [db] 구성 셋 → 마이그레이션 두 번(UPDATE 2 → 0 · revision +1 · 다른 칸 무변경 · 공간 홈 표 무변경) · 옛 revision PATCH 409. [home] 바로가기(구성 없음 기본 넷 · 저장 구성 그대로) · 과업 카드 쿠키 qaredi_home_tasks(첫 HTML open · 스크립트 끈 요청 · 다른 값 open 0 · 값 출력 0 · 여닫기 요청 0) · 줄(직원 다섯 · 관리자 여섯 · 손님 둘 · 역할로 보기 넷 · 메신저 창) · 1440×900 대시보드 단추 첫 화면 · 1440×900 · 1920×1080 · 412×900 짧은 화면 · 첫 로드 새 주소 0 · 대시보드(서비스 카드 둘 2열 · #product-home 숨김 · space_* 그리지 않음 · 위젯 추가 목록 space_* 0 · 저장 뒤 서버 구성에 공간 위젯 그대로 · 시작 안내 공간 낱말 0 · 공간 하나 든 새 계정 기본 위젯 셋 · /api/product-spaces 0). [grid] 1440 · 1280 · 412 · 360 × 밝게 · 어둡게 + 고대비 · 강제 색 — 넘침 0 · 누름 자리 44 · 대비 4.5 · 2열/1열. [apps] 앱 판 순서 · li.app-menu__sep 하나 · aria-current. [work] 더보기의 문서 AI 숨김 · /community/ai 200. [side] 사이드바 첫 방문 펼침 · collapsed/open 쿠키 · 959 서랍 · 960 이야기 통계 한 줄. [join] 초대 가입 → / · redirect '/'(2단계 필수 갈래는 이 틀에서 켤 수 없어 미검증). [words] 홈 · 홈 편집 · 위젯 고르기 · 로그인 전 첫 화면 「자료」 단독 0. 가입 화면 아이디 칸 pattern 경고 한 줄(member_join_page.php — 이 단계 밖)은 따로 세어 metrics 에 남긴다."
     },
     {
+      "id": "community.guide_journey_unit",
+      "cmd": "php tests/community/guide_journey_unit.php",
+      "module": "community",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "src/community/GuideJourney.php",
+        "public/assets/usage-guide.js",
+        "tests/community/guide_journey_unit.php"
+      ],
+      "requirements": [
+        "Q:T-G1"
+      ],
+      "risks": [],
+      "est_sec": 2,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-15 S3 과업 길잡이 수락 [unit](지시서 docs/qf15-s3-guide-directive.md 「수락 시험」 · PRD 9.1 Q:T-G1) — DB 0 · 앱 부트스트랩 0. ① 여섯 여정 × {active, page 0, step 0} · restart:true · 마지막 page 통과 ② 400: 빈 본문 · user_id · confirm 키 · 키 하나 빠짐 · journey 'x' · '../a' · 'Task-add' · status 'new' · page -1 · page = 화면 수 · step 31 · 문자열 숫자 · restart 'yes' ③ GuideJourney::JOURNEYS 키 · 화면 수 = usage-guide.js journeys 묶음(데이터로만 읽음 — 실행 0)."
+    },
+    {
+      "id": "community.guide_journeys_http",
+      "cmd": "python3 tests/community/memories_harness.py --port 8768 --suite guide_journeys_http.py --output /tmp/qaredi-guide-journeys-http",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "db/migrations/2026-10-27_qf15_s3_guide_journeys.sql",
+        "db/community/grants.sql",
+        "src/community/GuideJourney.php",
+        "src/community/handlers/guide_journeys_api.php",
+        "src/community/handlers/usage_guide_api.php",
+        "src/community/routes.php",
+        "tests/community/guide_journeys_http.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [
+        "Q:T-G2",
+        "Q:T-G3",
+        "Q:T-G11",
+        "Q:T-G18"
+      ],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-15 S3 과업 길잡이 수락 [http](지시서 docs/qf15-s3-guide-directive.md 「수락 시험」 [db] ① · [api] ②~⑥ · [state] ⑦~⑫ · community ARCH 26장) — 빈 합성 DB · 로컬 php -S 두 대(포트 · 포트+1) · fixture claude_ 계정 + 합성 claude_s3_offer01 · UA tbox-review/<날짜>. 새 표 소유자(틀 갈음 tbox_testdb) · tbox_app SIU · DELETE 0 · tbox_backup S · 부분 유니크 · 세 번째 적용 · grants.sql 블록 / GET journeys · can(직원 · 관리자 · 손님 · 역할로 보기) / PATCH CSRF 403 · 세션 없음 401 · 개인 토큰 · MCP 토큰 헤더만 401 · GET · DELETE 405 · 손님 · 직원 공지 403 · 1025바이트 400 / 남의 행 0 / 표 이름을 잠시 바꾼 문맥(journeys null · 옛 PATCH 200 · 새 PATCH 503) / 여정 행 → offer 거짓 / 진행 중 하나 · 시작 시각 규칙 · 행 없음 400 · 사실 여섯(파일 올리기 · 내 할 일 · 문서(자동 프로젝트 · 프로젝트 · 행 제외 · ref) · 업무 공지 글 · 동료 메시지(모아 AI 제외) · 초대) · 동시 20쌍 200/409 · 감사 0. 결과 guide-journeys-http-results.json · metrics.json."
+    },
+    {
+      "id": "community.guide_journey_browser",
+      "cmd": "python3 tests/community/memories_harness.py --port 8768 --suite guide_journey_browser.py --output /tmp/qaredi-guide-journey-browser",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/usage-guide.js",
+        "public/assets/usage-guide.css",
+        "public/assets/app.css",
+        "src/views/usage_guide.php",
+        "src/views/launcher.php",
+        "src/community/GuideJourney.php",
+        "src/community/handlers/guide_journeys_api.php",
+        "src/community/handlers/usage_guide_api.php",
+        "src/community/routes.php",
+        "db/migrations/2026-10-27_qf15_s3_guide_journeys.sql",
+        "tests/community/guide_journey_browser.py",
+        "tests/community/memories_harness.py",
+        "tests/community/memories_http.py",
+        "tests/community/memories_fixture.php",
+        "tests/community/export_router.php"
+      ],
+      "requirements": [
+        "Q:T-G4",
+        "Q:T-G5",
+        "Q:T-G6",
+        "Q:T-G7",
+        "Q:T-G8",
+        "Q:T-G9",
+        "Q:T-G10",
+        "Q:T-G11",
+        "Q:T-G12",
+        "Q:T-G13",
+        "Q:T-G14",
+        "Q:T-G17"
+      ],
+      "risks": [],
+      "est_sec": 900,
+      "writes_prod": false,
+      "notes": "사이트 Q:F-15 S3 과업 길잡이 수락 [browser](지시서 docs/qf15-s3-guide-directive.md 「수락 시험」 ①~⑮ · DESIGN 2.37 · 2.31 「과업 카드」 · 5장 · 6장) — 빈 합성 DB · 로컬 php -S · fixture claude_ 계정 + 합성 claude_s3_offer02 · 합성 대화 상대 둘(synthetic_peer_a/b — 로그인 없음) · Chromium. 준비: 관리자 창구로 사이트 템플릿 「회의록」 · 업무 공지 게시판. [static] security_lint · php -l · node --check · 다른 앱 JS 변경 0 · 새 줄 색값 · 숫자 z-index · innerHTML · style 0 · 역할 이름 0 · 금지 낱말 · 문장 수 · 단추 글자 = DESIGN 5장 · 선택자 id 실재 · 런처 꼬리 = JOURNEYS · 공지 판정 같은 함수. [home] 과업 카드 줄(직원 넷 · 관리자 여섯 · 손님 둘 · 역할로 보기 셋) · 창 여는 속성 0 · 이어 하기 줄. [file] ?guide= PATCH 본문 · 꼬리 지움 · history.state · section(dialog 아님) · 어둡게 0 · elementFromPoint · 창 안 한 줄 · 앞질러 가기 · 완성 · 다시 하기 · 작업 칸 Esc · 파일 동작 창 초점 복원. [task] [minutes] [resume] [notice] [message](isTrusted 거짓 click 1 · 모아 AI 만 → 아직 결과가 없어요) [invite](재인증 통과 뒤 이어 받음) [pause] [offer] [guest] [missing] [layout] 360 · 412 · 820 · 960 · 1024 · 1280 · 1440 × 밝게 · 어둡게 + 고대비 — 메신저 겹친 넓이 0 · 앱 판 · 내 계정 판 · 서랍 · showModal 위 카드 0 · 30dvh · 접기 칩 · 누름 자리 44 · 대비 4.5 · 콘솔 0. GUIDE_ONLY=static,home,file,task,minutes,resume,notice,message,invite,pause,offer,guest,missing,layout 로 묶음만. 결과 guide-journey-browser-results.json · metrics.json · shots/."
+    },
+    {
       "id": "core.scale_d1",
       "cmd": "python3 tests/scale/d1_measure.py --output /home/changkwon/qaredi-scale-d-results-20261014/run1 --tiers S,M,L --reps 7",
       "module": "core",

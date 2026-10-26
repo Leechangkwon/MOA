@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,8778,8818))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('project_sections.py','work_documents_http.py','work_document_create_http.py','task_parent_browser.py','memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py','qf12_w1_http.py','qf12_w1_browser.py','invite_request_http.py','invite_request_browser.py','cafe_h3_browser.py','home_h4_browser.py','story_s1_browser.py','brand_words_browser.py','home_front_browser.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('project_sections.py','work_documents_http.py','work_document_create_http.py','task_parent_browser.py','memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py','qf12_w1_http.py','qf12_w1_browser.py','invite_request_http.py','invite_request_browser.py','cafe_h3_browser.py','home_h4_browser.py','story_s1_browser.py','brand_words_browser.py','home_front_browser.py','guide_journeys_http.py','guide_journey_browser.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()
@@ -68,7 +68,7 @@ def main():
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
     def sql_file(path):
-        if path.name in ('2026-10-01_community_suggestions.sql','2026-10-18_community_ai.sql','2026-10-21_privacy_retention.sql','2026-10-11_product_spaces.sql'):
+        if path.name in ('2026-10-01_community_suggestions.sql','2026-10-18_community_ai.sql','2026-10-21_privacy_retention.sql','2026-10-11_product_spaces.sql','2026-10-27_qf15_s3_guide_journeys.sql'):
             # Isolated DB owner only; production migration retains tbox_owner unchanged.
             adapted = work / 'test-owner-suggestions.sql'
             adapted.write_text(path.read_text().replace('OWNER TO tbox_owner;', 'OWNER TO tbox_testdb;').replace('SET LOCAL ROLE tbox_owner;', 'SET LOCAL ROLE tbox_testdb;'))
@@ -136,7 +136,9 @@ def main():
                            # 규모 D2a — 미리 센 게시판 글 수 · 목록 색인(스키마에도 같은 정의 — 두 번 돌려도 같음을 함께 본다)
                            '2026-10-26_scale_d2a_board_counts.sql', '2026-10-26_scale_d2a_indexes.sql',
                            # 사이트 Q:F-15 S2 (Q3 B) — 저장된 개인 홈 구성의 shortcuts 한 번 지우기(데이터만 · 두 번 돌려도 같음 — 빈 합성 DB 에서 오류 0 확인)
-                           '2026-10-26_qf15_s2_shortcuts.sql']
+                           '2026-10-26_qf15_s2_shortcuts.sql',
+                           # 사이트 Q:F-15 S3 — 길잡이 여정 표(소유자 갈음 위 목록 · 두 번 돌려도 같음)
+                           '2026-10-27_qf15_s3_guide_journeys.sql']
         for _ in range(2):
             for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)

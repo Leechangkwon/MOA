@@ -40,12 +40,13 @@ metrics = {}
 DEFAULT = ['work', 'library', 'messages', 'spaces']
 SLOGAN = '우리 회사의 일과 자료를 한곳에 모아.'
 SPACE_ONLY = ['공간 자료', '연결된 자료가 없습니다.', '선택한 공간의 자료']   # 공간 위젯 전용 글자(E 로 화면에 없음 — 나와도 예외)
-EMP_ROWS = [('업무 홈', '맡은 일 보기 · 할 일 적기', '/community/', 'work'), ('자료실', '파일 올려서 동료에게 보여 주기', '/tbox/', 'library'),
-            ('업무 홈 › 문서', '회의록 쓰기', '/community/workspace', 'work'), ('업무 홈 › 게시판', '공지 올리기', '/community/', 'work'),
-            ('메신저', '동료에게 한마디', '/tbox/messages', None)]
-ADMIN_ROWS = EMP_ROWS + [('계정 관리', '동료 초대하기', '/tbox/users', None)]
+# Q:F-15 S3 (지시서 「기대값만 바꿀 옛 시험」) — 쓰기 줄 주소에 ?guide=<여정> · 공지 줄은 관리자만(S3-1 A) · 「동료에게 한마디」 는 업무 홈 경유(S3-2 A)
+EMP_ROWS = [('업무 홈', '맡은 일 보기 · 할 일 적기', '/community/?guide=task-add', 'work'), ('자료실', '파일 올려서 동료에게 보여 주기', '/tbox/?guide=file-share', 'library'),
+            ('업무 홈 › 문서', '회의록 쓰기', '/community/workspace?guide=minutes-write', 'work'),
+            ('메신저', '동료에게 한마디', '/community/?guide=message-send', None)]
+ADMIN_ROWS = EMP_ROWS[:3] + [('업무 홈 › 게시판', '공지 올리기', '/community/?guide=notice-post', 'work'), EMP_ROWS[3], ('계정 관리', '동료 초대하기', '/community/?guide=invite-colleague', None)]
 GUEST_ROWS = [('업무 홈', '맡은 일 보기', '/community/', 'work'), ('자료실', '파일 찾기', '/tbox/', 'library')]
-ACTING_ROWS = EMP_ROWS[:4]   # 관리자가 직원으로 보기 — 쓰기 · 올리기 자격은 직원 값 · 메신저 0(역할로 보기) · 계정 관리 0(직원)
+ACTING_ROWS = EMP_ROWS[:3]   # 관리자가 직원으로 보기 — 쓰기 · 올리기 자격은 직원 값 · 공지 0(직원) · 메신저 0(역할로 보기) · 계정 관리 0(직원)
 GUEST_NOT = ['할 일 적기', '올려서', '회의록', '공지', '한마디', '초대']
 # 첫 화면이 부르는 것(대시보드 접힘) — 계정 확인 · 홈 구성 · 메신저(안 읽은 수) · 사용 안내(home_h1 과 같은 목록 — 새 주소 0)
 FIRST_OK_RE = re.compile(r'^(/tbox/api/me|/tbox/api/me/home-dashboard|/tbox/api/messages(/.*)?|/tbox/api/member(/.*)?|/tbox/api/me/usage-guide(/.*)?|/community/api/usage-guide(/.*)?)$')
@@ -466,7 +467,7 @@ try:
                 check(r.status_code == 200 and c is not None and not c['open'], '⑧ no cookie: response HTML has <details id="home-tasks"> without open')
                 check(c and '<span>무엇을 하고 싶으세요?</span>' in c['summary'] and '<span data-when="closed">펼치기 <span aria-hidden="true">▾</span></span>' in c['summary']
                       and '<span data-when="open">접기 <span aria-hidden="true">▴</span></span>' in c['summary'], '⑧ summary 「무엇을 하고 싶으세요?」 · 「펼치기 ▾」 / 「접기 ▴」 (data-when)')
-                check(r.text.count('id="home-tasks"') == 1 and '?guide=' not in r.text, '⑧ one #home-tasks · no ?guide= tail')
+                check(r.text.count('id="home-tasks"') == 1 and re.findall(r'\?guide=([a-z-]+)', r.text) == ['task-add', 'file-share', 'minutes-write', 'message-send'], '⑧ one #home-tasks · ?guide= only on the write rows (Q:F-15 S3)')
                 ctx = context('employee', 1440)
                 t = Tab(ctx)
                 p = t.page
@@ -542,7 +543,7 @@ try:
                     check(c is not None and rows == want_rows and c['aCount'] == len(want_rows) and c['navCount'] == 1,
                           '⑨ %s: server HTML rows = %d (place · text · href · data-service in order) %s' % (tag, len(want_rows), json.dumps(rows, ensure_ascii=False)))
                     msg_rows = [x[0] for x in (c['rows'] if c else []) if x[4]]
-                    check(msg_rows == (['메신저'] if tag in ('employee', 'admin') else []), '⑨ %s: messenger row only with the messenger qualification (window opener attributes) %s' % (tag, msg_rows))
+                    check(msg_rows == [], '⑨ %s: no task row carries the messenger-window opener attributes (Q:F-15 S3-2 A — the 「메신저」 shortcut still does) %s' % (tag, msg_rows))
                     if tag == 'guest':
                         m = re.search(r'<details id="home-tasks".*?</details>', r.text, re.S)
                         txt = htmllib.unescape(re.sub(r'<[^>]+>', ' ', m.group(0))) if m else ''
@@ -558,12 +559,12 @@ try:
                     check(st['open'] and dom == want_rows and all(x['arrow'] == '↗' for x in st['rows']) and st['navLabel'] == '하고 싶은 일',
                           '⑨ %s: page rows in order · 「↗」 aria-hidden on each · nav aria-label 「하고 싶은 일」' % tag)
                     if tag == 'employee':
-                        p.locator('#home-tasks [data-messenger-open]').click()
-                        p.wait_for_selector('#messenger-window[open]', timeout=10000)
-                        m = p.evaluate("({open: document.getElementById('messenger-window').open, url: location.pathname})")
-                        check(m['open'] and m['url'] == '/', '⑨ employee: 「동료에게 한마디」 opens #messenger-window (no navigation) %s' % json.dumps(m))
-                        p.locator('#messenger-window [data-messenger-close]').first.click()
-                        p.wait_for_timeout(200)
+                        # Q:F-15 S3-2 A — 「동료에게 한마디」 는 업무 홈으로 가서 길잡이가 시작한다(주소 꼬리는 길잡이가 지움 · 그 화면에 진행 카드)
+                        p.locator('#home-tasks a[href$="?guide=message-send"]').click()
+                        p.wait_for_selector('section.usage-guide-float:not([hidden])', timeout=10000)
+                        m = p.evaluate("({url: location.pathname, search: location.search, card: !!document.querySelector('section.usage-guide-float:not([hidden])')})")
+                        check(m['url'] == '/community/' and m['search'] == '' and m['card'], '⑨ employee: 「동료에게 한마디」 → /community/ (tail removed by the guide) · progress card %s' % json.dumps(m))
+                        sql('DELETE FROM community.guide_journeys WHERE user_id=' + str(uid('employee')))   # 뒤 단언의 홈 줄에 「하던 일 이어 하기」 가 끼지 않게
                     if tag == 'guest':
                         p.screenshot(path=str(shots / 'home-guest-1440-open.png'))
                     if tag == 'admin':
@@ -712,7 +713,7 @@ try:
                     summary[tag] = {'closedOverflow': closed['overflow'], 'overflow': st['overflow'], 'small': small, 'contrast': min(cr0 + cr) if cr0 + cr else None,
                                     'cols': len(lefts), 'card': st['card'], 'sumH': st['sum']['h']}
                     check(closed['overflow'] <= 0 and st['overflow'] <= 0, '[grid] %s: horizontal overflow 0 (card collapsed · open)' % tag)
-                    check(closed['sum']['h'] >= 52 and small == [] and len(rows) == 5, '[grid] %s: summary ≥ 52 · five rows · each row ≥ 44 %s' % (tag, small))
+                    check(closed['sum']['h'] >= 52 and small == [] and len(rows) == len(EMP_ROWS), '[grid] %s: summary ≥ 52 · four rows (Q:F-15 S3-1 A) · each row ≥ 44 %s' % (tag, small))
                     check(cols_ok, '[grid] %s: %s %s' % (tag, 'two columns (gap 28)' if two else 'one column', lefts))
                     # 2026-10-26 독립 검토 — 줄 사이 구분선: 첫 줄(맨 위 한 줄)만 위 선 0, 그 아래 줄은 모두 위 선 1(폰 1열에서 셋째 줄부터 선이 빠지던 결함)
                     lines_ok = all((x['bt'] >= 1) == (round(x['box']['t']) > min(tops)) for x in rows)
