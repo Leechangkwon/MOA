@@ -193,7 +193,7 @@ CARD_JS = r"""() => {
       return {place: s ? s.textContent : null, text: st ? st.firstChild.textContent.trim() : null, href: a.getAttribute('href'), svc: a.getAttribute('data-service'),
               arrow: ar ? ar.textContent : null, msg: a.hasAttribute('data-messenger-open'), vis: vis(a), box: box(a),
               spanFs: s ? getComputedStyle(s).fontSize : null, strongFs: st ? getComputedStyle(st).fontSize : null, strongFw: st ? getComputedStyle(st).fontWeight : null,
-              strongColor: st ? getComputedStyle(st).color : null}; }),
+              strongColor: st ? getComputedStyle(st).color : null, bt: parseFloat(getComputedStyle(a).borderTopWidth) || 0}; }),
     navLabel: card && card.querySelector('.home-tasks__list') ? card.querySelector('.home-tasks__list').getAttribute('aria-label') : null,
     titleColor: sum ? getComputedStyle(sum.children[0]).color : null,
     shortcuts: items.map(it => it.dataset.homeShortcut || (it.hasAttribute('data-home-shortcut-add') ? '+' : '?')),
@@ -714,6 +714,9 @@ try:
                     check(closed['overflow'] <= 0 and st['overflow'] <= 0, '[grid] %s: horizontal overflow 0 (card collapsed · open)' % tag)
                     check(closed['sum']['h'] >= 52 and small == [] and len(rows) == 5, '[grid] %s: summary ≥ 52 · five rows · each row ≥ 44 %s' % (tag, small))
                     check(cols_ok, '[grid] %s: %s %s' % (tag, 'two columns (gap 28)' if two else 'one column', lefts))
+                    # 2026-10-26 독립 검토 — 줄 사이 구분선: 첫 줄(맨 위 한 줄)만 위 선 0, 그 아래 줄은 모두 위 선 1(폰 1열에서 셋째 줄부터 선이 빠지던 결함)
+                    lines_ok = all((x['bt'] >= 1) == (round(x['box']['t']) > min(tops)) for x in rows)
+                    check(lines_ok, '[grid] %s: row dividers — every row below the first has a top line %s' % (tag, [(x['text'], x['bt']) for x in rows]))
                     check(cr0 and cr and min(cr0 + cr) >= 4.5, '[grid] %s: contrast ≥ 4.5 (card head · state · row place · row text) min %.2f' % (tag, min(cr0 + cr) if cr0 + cr else -1))
                     check(st['inline'] == 0, '[grid] %s: inline style 0 in the card' % tag)
                     if mode == 'hc':
