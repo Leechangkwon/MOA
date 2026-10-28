@@ -820,8 +820,10 @@ try:
                     r = get_html('/community/ai', key)
                     summary['ai-' + key] = r.status_code
                     check(r.status_code == 200, '⑬ %s: GET /community/ai still answers 200' % key)
-                same = subprocess.run(['git', '-C', str(WORKTREE), 'diff', '--quiet', BASE_REF, '--', 'public/index.php', 'src/community/routes.php', 'src/community/handlers/ai_page.php'])
-                check(same.returncode == 0, '⑬ route table · community routes · ai_page.php unchanged since %s (the /community/ai answer is the same as before)' % BASE_REF)
+                same = subprocess.run(['git', '-C', str(WORKTREE), 'diff', '--quiet', BASE_REF, '--', 'public/index.php', 'src/community/handlers/ai_page.php'])
+                routes_diff = subprocess.run(['git', '-C', str(WORKTREE), 'diff', BASE_REF, '--', 'src/community/routes.php'], capture_output=True, text=True, check=True).stdout
+                ai_lines = [ln.strip()[:120] for ln in routes_diff.splitlines() if ln[:1] in ('+', '-') and not ln.startswith(('+++', '---')) and ('/ai' in ln or 'ai_page.php' in ln)]
+                check(same.returncode == 0 and ai_lines == [], '⑬ route table · ai_page.php unchanged since %s · community routes: added/removed lines with /ai or ai_page.php 0 (the /community/ai answer is the same as before) %s' % (BASE_REF, ai_lines))
                 metrics['work'] = summary
             guard('work', work)
 

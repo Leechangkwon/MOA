@@ -78,7 +78,59 @@ rc=1
 
 ## 못 한 것 · 미검증
 
-- **B 완료 기준 「home_front_browser 통과」 미달** — ⑬ 실패 1(위 원인 · 보정안). 지시서가 :300 한 줄만 허락해 손대지 않음. 메인 판단 필요.
+- **B 완료 기준 「home_front_browser 통과」 미달** — ⑬ 실패 1(위 원인 · 보정안). 지시서가 :300 한 줄만 허락해 손대지 않음. 메인 판단 필요. → **아래 「보충」에서 해소(286/0)**.
 - `bash tests/dbg_u3_ui.sh` 전체 — 돌리지 않음: 이 스크립트는 운영 DB 를 `pg_dump` 로 **읽어** 임시 DB 를 만드는데 이번 자리 규칙이 운영 DB 읽기 0 이고, 운영 자료가 184273c(10-27 초기화)로 바뀌어 10-26 의 자료를 재현할 수도 없다. 대신 같은 측정을 합성 DB 에서 세 판으로 재현(후보 값 402/420 일치). 운영 자료의 「쓴 사람」 표시 이름 · 게시판 이름은 합성 값(`claude_employee01` · 시드 게시판)이라 그 둘이 달랐을 경우의 값은 미검증.
 - `design_fixture.php` 의 `?screen=community-page`(design 시험은 부르지 않음 · `tests/ux_browser.py` 만)는 500 — `Call to undefined function community_page_row_nodoc()`(page_view.php:52). 이번 흉내(Authz · Db)와 무관한 다른 함수 빠짐 · 이 지시서 밖 · ux_browser 미검증.
 - 밤 회귀의 나머지(SAME · 전부터 깨진 것)는 지시서대로 손대지 않음.
+
+## 보충 (재지시 2026-10-28 — 두 보정안 받아들임 · 시험만 · 앱 코드 0)
+
+### 바꾼 줄 (전 → 후)
+
+| 파일 · 자리 | 전 | 후 |
+|---|---|---|
+| `tests/community/home_front_browser.py` :823 · :824 (⑬ 한 단언) | `git diff --quiet 310bbc3 -- public/index.php src/community/routes.php src/community/handlers/ai_page.php` 가 0 · 「⑬ route table · community routes · ai_page.php unchanged since %s (the /community/ai answer is the same as before)」 | `public/index.php` · `ai_page.php` 는 그대로 `--quiet` 0, `routes.php` 는 `git diff 310bbc3` 의 더한 · 뺀 줄(`+++`/`---` 머리 제외) 가운데 `/ai` 또는 `ai_page.php` 를 담은 줄 0 · 「⑬ route table · ai_page.php unchanged since %s · community routes: added/removed lines with /ai or ai_page.php 0 (the /community/ai answer is the same as before) %s」(걸린 줄을 꼬리에 보임) — :823~:826 네 줄 |
+| `tests/browser/dbg_u3_ui.py` :179 | `{"title": "DBGU3 게시판 글 " + TAG, …}` | `{"title": "DBGU3 글 " + TAG, …}` — :502 단언 · 다른 자료 · 다른 단계 0 |
+
+이 제목 글자에 기대는 다른 단언: `grep -n 'DBGU3' tests/browser/dbg_u3_ui.py tests/dbg_u3_ui.sh` — 제목을 찾거나 견주는 단언 0(다른 DBGU3 줄은 다른 자료 제목 · 파일 이름 · 손잡이 이름뿐). 내 글 제목 `"DBGU3 글 화면 " + TAG`(:145)와도 겹치지 않는다.
+
+⑬ 새 판정이 실제로 가르는지(일회성 · 파일에 남기지 않음): 지금 판 → `same rc 0 · ai_lines []`(바뀐 줄은 `+ ['PATCH', '/api/me/journeys', 'guide_journeys_api.php', 'community.read'],` 하나) · `/ai` 줄의 정책을 바꾼 가짜 diff → 두 줄이 걸림.
+
+### 돌린 명령과 결과 꼬리 원문
+
+**B**(8768 · 8769 비어 있음 확인 뒤 · `home-front-2.log`):
+
+```
+$ QCHECK_ENV_SRC=/home/changkwon/qaredi-regress-results-20261013/env-src python3 tests/community/memories_harness.py --port 8768 --suite home_front_browser.py --output <결과>/home-front-2
+PASS ③ harness: the S2 migration is in the twice-applied list (after scale_d2a)
+PASS ⑬ route table · ai_page.php unchanged since 310bbc3 · community routes: added/removed lines with /ai or ai_page.php 0 (the /community/ai answer is the same as before) []
+RESULT pass=286 fail=0
+OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1
+rc=0
+```
+
+**② 새 제목 측정**(같은 감싸개 `c_run.py` + `c_measure4.py` — 제목 앞말은 손으로 옮기지 않고 `dbg_u3_ui.py` 의 `/community/api/boards/%s/pages` 줄에서 읽음 · 지금 판 = 4fa6da1 + 이 보충 · 자유게시판 · 360 · 412 × 밝게 · 꼬리 셋 + 무작위 uuid4 꼬리 300 = 303 글을 실제로 만들어 `FIRST_LINE` · `go()` 그대로 · `run4-newtitle.log`):
+
+```
+PREFIX from dbg_u3_ui.py: 'DBGU3 글 '
+NAMED 4fa6da1p 360 85e300 {'bottom': 385, 'top': 367, 'h': 780, 'text': '게시판 글 본문 첫 줄'} title [1, 35, 'DBGU3 글 85e300'] PASS
+NAMED 4fa6da1p 360 4b0a00 {'bottom': 385, 'top': 367, 'h': 780, 'text': '게시판 글 본문 첫 줄'} title [1, 35, 'DBGU3 글 4b0a00'] PASS
+NAMED 4fa6da1p 360 4b0a0a {'bottom': 385, 'top': 367, 'h': 780, 'text': '게시판 글 본문 첫 줄'} title [1, 35, 'DBGU3 글 4b0a0a'] PASS
+NAMED 4fa6da1p 412 85e300 {'bottom': 385, 'top': 367, 'h': 780, 'text': '게시판 글 본문 첫 줄'} title [1, 35, 'DBGU3 글 85e300'] PASS
+NAMED 4fa6da1p 412 4b0a00 {'bottom': 385, 'top': 367, 'h': 780, 'text': '게시판 글 본문 첫 줄'} title [1, 35, 'DBGU3 글 4b0a00'] PASS
+NAMED 4fa6da1p 412 4b0a0a {'bottom': 385, 'top': 367, 'h': 780, 'text': '게시판 글 본문 첫 줄'} title [1, 35, 'DBGU3 글 4b0a0a'] PASS
+SUMMARY w=360 pages=303 pass=303 fail=0 two_line_titles=0 bottoms=[385] title_heights=[35]
+SUMMARY w=412 pages=303 pass=303 fail=0 two_line_titles=0 bottoms=[385] title_heights=[35]
+C_MEASURE4_DONE
+OWNED_TEST_PROCESSES_STOPPED=1; SYNTHETIC_DB_DROPPED=1
+rc=0
+```
+
+→ 360 · 412 모두 첫 줄 bottom 385(≤ 390) · 두 줄 제목 0 · 이전 판의 한 줄 제목 값(385)과 같다 — 단언(:502)은 그대로 「속성 여섯이 본문을 밀어내지 않는다」를 잰다. 화면 사진 `<결과>/c/newtitle/4fa6da1p-newtitle-{360,412}-light-{85e300,4b0a00,4b0a0a}.png`(가운데 창은 S3 첫 방문 「무엇을 하고 싶으세요?」 — 맨 위 층이라 레이아웃 값 영향 0) · 원자료 `c/newtitle/measure4-4fa6da1p.json`.
+
+**정적**(`static-2.log`): `python3 -m py_compile tests/community/home_front_browser.py tests/browser/dbg_u3_ui.py` → OK · `bash scripts/security_lint.sh` → 「결과: 통과 (금지 패턴 0건)」 rc=0 · `git diff --check` → 0.
+
+### 못 한 것 · 미검증 (보충)
+
+- `bash tests/dbg_u3_ui.sh` 전체 — 여전히 돌리지 않음(운영 DB `pg_dump` 읽기 규칙). 새 제목의 효과는 위 격리 측정으로만 보였다 — dbg_u3 의 나머지 단언(경로 줄 · 터치 · 보드 등 밤 회귀에서 SAME 으로 깨져 있던 것)은 이 보충과 무관 · 미검증. 운영 「쓴 사람」 표시 이름 · 게시판 이름이 합성 값과 다를 때의 속성 요약 줄 수는 미검증(제목 줄 우연은 없앴음).
+- 어둡게는 이번 측정에서 빼었다(재지시가 밝게만 · 앞 조사에서 밝게 · 어둡게 값이 늘 같았음).

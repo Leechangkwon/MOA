@@ -176,7 +176,7 @@ BOARD_W = next((b for b in BOARDS if b.get("can_write") and b.get("access_level"
 step("직원이 쓸 수 있는 사내 게시판이 있다", bool(BOARD_W), str(BOARDS)[:160])
 P_POST = None
 if BOARD_W:
-    c, d = E.req("POST", "/community/api/boards/%s/pages" % BOARD_W["id"], {"title": "DBGU3 게시판 글 " + TAG, "tags": ["질문", "폰"]})
+    c, d = E.req("POST", "/community/api/boards/%s/pages" % BOARD_W["id"], {"title": "DBGU3 글 " + TAG, "tags": ["질문", "폰"]})
     P_POST = page_id(d)
     step("  게시판 글 201", c == 201 and bool(P_POST), (c, str(d)[:120]))
     if P_POST:
