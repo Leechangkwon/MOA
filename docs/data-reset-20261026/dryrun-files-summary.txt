@@ -1,0 +1,11 @@
+== 지울 파일 (갈래 T=T-box, Q=격리, M=이야기 사진, A=문서 첨부)
+  A 3개 321647 B
+  Q 8개 544 B
+  T 155개 61565389 B
+  M 24개 82738763 B
+  합계 190개 144626343 B (모의 DB 기준, 2026-10-26 프로그램 배포본까지 전부)
+== 남는 파일
+/var/lib/tbox-v2/storage/community-automations.cursor.json|31
+/var/lib/tbox-v2/storage/community-automations.lock|0
+== DB 에 이름이 있는데 디스크에 없는 것(영구삭제된 행 등) 개수
+  T 886

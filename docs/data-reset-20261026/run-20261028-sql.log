@@ -1,0 +1,143 @@
+BEGIN
+SELECT 60
+SELECT 1023
+SELECT 22
+SELECT 18
+SELECT 5
+SELECT 1049
+SELECT 10
+DO
+     집합     | count 
+--------------+-------
+ keep_pages   |    60
+ del_pages    |  1023
+ del_comments |    22
+ del_dbs      |    18
+ del_autos    |     5
+ del_files    |  1049
+ del_ai_turns |    10
+(7 rows)
+
+DELETE 5
+DELETE 19
+DELETE 1
+DELETE 22
+DELETE 0
+DELETE 11
+DELETE 5
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 130
+DELETE 1324
+DELETE 21
+DELETE 135
+DELETE 43
+DELETE 142
+DELETE 4
+DELETE 8
+DELETE 10
+DELETE 231
+DELETE 21
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 0
+DELETE 22
+DELETE 1
+DELETE 0
+DELETE 2
+DELETE 0
+DELETE 3
+UPDATE 0
+DELETE 0
+DELETE 0
+DELETE 1023
+DELETE 2
+DELETE 3
+DELETE 1
+DELETE 1
+DELETE 2
+DELETE 16
+DELETE 24
+DELETE 10
+DELETE 10
+DELETE 8
+DELETE 29
+UPDATE 0
+DELETE 0
+DELETE 0
+UPDATE 0
+DELETE 1049
+DO
+DELETE 5
+DELETE 0
+DELETE 2
+DELETE 0
+DELETE 1
+DELETE 3
+DELETE 3
+DELETE 3
+DELETE 3
+DELETE 1
+DELETE 0
+DELETE 12
+DELETE 2
+DELETE 12
+DELETE 3
+DELETE 3
+DELETE 6
+DELETE 2
+DELETE 34
+DELETE 8
+DELETE 7
+DELETE 2
+DELETE 2
+DELETE 0
+DELETE 14
+DELETE 14
+DELETE 1
+DELETE 6
+DELETE 108
+DELETE 9
+DELETE 1
+DELETE 7
+SELECT 24
+DO
+DELETE 6
+UPDATE 2
+UPDATE 1
+UPDATE 0
+UPDATE 0
+DELETE 0
+DELETE 0
+DELETE 24
+CREATE TABLE
+INSERT 0 20
+UPDATE 17003
+UPDATE 13
+UPDATE 22
+                       항목                        | count 
+---------------------------------------------------+-------
+ 남은 문서(=업무 프로젝트)                         |    60
+ 남은 문서 중 업무 프로젝트 밖                     |     0
+ files                                             |     0
+ folders                                           |     0
+ memory_posts                                      |     0
+ comments                                          |     0
+ member_messages                                   |     0
+ product_spaces                                    |     0
+ legacy posts                                      |     0
+ 게시판 post_count 합                              |     0
+ 계정(모두 켜짐이어야)                             |    11
+ 꺼진 계정                                         |     0
+ pkdkak1 MCP 연결                                  |     7
+ 살아 있는 API 토큰                                |     6
+ 감사 기록 행                                      | 42255
+ 감사: 내용 행 중 이름 남은 것(업무 프로젝트 제외) |     0
+(16 rows)
+
+COMMIT

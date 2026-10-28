@@ -1,0 +1,12 @@
+== 2026-10-28 11:2x 운영 tbox_re 에서 뽑음(읽기만), keep_programs=0
+== 지울 파일 (갈래 T=T-box, Q=격리, M=이야기 사진, A=문서 첨부)
+  A 3개 321647 B
+  Q 8개 544 B
+  T 143개 60546012 B
+  M 24개 82738763 B
+  합계 178개 143606966 B
+== 남는 파일
+/var/lib/tbox-v2/storage/community-automations.cursor.json|32
+/var/lib/tbox-v2/storage/community-automations.lock|0
+== DB 에 이름이 있는데 디스크에 없는 것(영구삭제된 행 등) 개수
+  T 898
