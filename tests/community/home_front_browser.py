@@ -297,7 +297,7 @@ try:
             harness = (root / 'tests/community/memories_harness.py').read_text()
             lst = re.search(r"migrations \+= \[(.*?)\]\n", harness, re.S)
             names = re.findall(r"'([0-9a-z_.-]+\.sql)'", lst.group(1)) if lst else []
-            check(names[-1:] == ['2026-10-26_qf15_s2_shortcuts.sql'], '③ harness: the new migration is last in the twice-applied list')
+            check('2026-10-26_qf15_s2_shortcuts.sql' in names and '2026-10-26_scale_d2a_indexes.sql' in names and names.index('2026-10-26_qf15_s2_shortcuts.sql') > names.index('2026-10-26_scale_d2a_indexes.sql'), '③ harness: the S2 migration is in the twice-applied list (after scale_d2a)')
             # ④ 바뀐 줄 — 기준 판 대비 더해진 줄만
             def added(files):
                 diff = subprocess.run(['git', '-C', str(WORKTREE), 'diff', BASE_REF, '--'] + files, capture_output=True, text=True, check=True).stdout

@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 // Test-only PHP router: rendered production views, no bootstrap/session/database.
+// 2단계 · 3단계 런처가 부르는 판정(Authz::uploadableLevels — GuideJourney::allowed) · 표 확인(GuideJourney::ready → Db) — 화면 그리기만. Db 는 그 한 질의에 「표 없음」만, 다른 질의는 예외(500)로 멈춘다.
 if (PHP_SAPI !== 'cli-server') { exit(1); }
 $root = dirname(__DIR__);
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -16,6 +17,14 @@ final class Authz {
     public static function canCommunityWrite(array $user): bool { return ($_GET['guest'] ?? '') !== '1'; }
     public static function canAdmin(array $user): bool { return false; }
     public static function canManageUsers(array $user): bool { return false; }
+    public static function uploadableLevels(array $user): array { return ($_GET['guest'] ?? '') === '1' ? [] : ['internal', 'team', 'private']; }
+}
+final class Db {
+    public static function instance(): self { return new self(); }
+    public function run(string $sql, array $params = []): object {
+        if (!str_contains($sql, "to_regclass('community.guide_journeys')")) { throw new LogicException('design_fixture: no database — unexpected query'); }
+        return new class { public function fetchColumn(): bool { return false; } };
+    }
 }
 function community_palette_version(): string { return 'fixture'; }
 function community_embed_csp(): void {}
