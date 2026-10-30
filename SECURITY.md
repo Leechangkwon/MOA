@@ -1417,3 +1417,15 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 ④ 다음 조치: 암호화 DB/코드/설정 백업 전체 파싱 → 고정 후보 모의 적용 → ff 반영(opcache 재검사 2초, 서비스 재시작 0) → 운영 확인(사용자 토큰으로 리서치 실행기가 토글 글을 올리고 다시 읽기) → 밤 회귀 대기열 `community.work_document_create`·`community.work_document_mcp`·`community.remote_mcp_http`.
 
 ⑤ 운영(10-30 10:25): v2.77.0 `bb8c7e0` — 암호화 백업 전체 파싱 · 모의 적용 · ff · 표 104 원래 행/owner·ACL/파일/설정 보존 · 서비스 재시작 0. 운영 확인: health 200 · 사용자 토큰 잘못된 토글 둘 400(새 문구) · 리서치 실행기 토글 글 생성·재조회. 회귀: 밤 회귀 대기(work_document_create · work_document_mcp · remote_mcp_http). 미검증: 화면 접고 펴기(사용자).
+
+### 2026-10-30 PHP CVE-2026-115560(세션 업로드 진행률) 점검 — 해당 없음 · 설정 변경 없음(사용자 결정)
+
+자동 「AI 동향 리서치」(10-30 펼치기 판 ②)가 「수정판 없는 PHP 새 구멍 · 임시 조치 session.upload_progress.enabled=0」을 꼭 볼 것으로 올림 → 1차 출처 확인.
+
+① 근거(실행·원문): PHP 정보성 공지 2026-10-23(php.net 첫 화면·archive/2026.php · oss-security 2026/q4/359, Alan Coopersmith 전재) — 조건 셋이 모두 맞아야 함: 설정에서 `session.serialize_handler` 를 `php_binary`/`php_serialize` 로 두고 · 실행 중 `ini_set()` 으로 `php` 로 바꾼 뒤 `session_start()` · 업로드 진행률 켜짐. 「실행 중에 바꾸지 않는 앱은 켜 둬도 된다」. 수정은 다음 정기 발행, 영향 판·8.1 언급 없음, Ubuntu CVE 페이지는 404(아직 없음). 이 서버: fpm `session.serialize_handler = php`(기본) · `session.upload_progress.enabled => On` · 모아(`tbox` 풀) 코드에 `serialize_handler`·`upload_progress`·`session_start`·`$_SESSION` 0건(세션은 DB 표) · 127.0.0.1:8081 옛 t-box v1(`www` 풀)은 `session_start` 2파일, `serialize_handler` 0건 → **조건 미충족, 해당 없음**. PHP2Shell(CVE-2026-109618·109619)은 10-22 `8.1.2-1ubuntu2.28` 로 이미 막힘(같은 절 10-22).
+
+② 남는 것: 업로드 진행률은 앱이 쓰지 않는데 켜져 있다(10-21 · 10-23 두 공지 모두 끄기를 권함 — 공격면만 남김). 끄면 영향 0 이지만 사용자 결정(10-30) 「그대로 두기」.
+
+③ 미검증: Ubuntu 의 이 CVE 상태(트래커 페이지 없음) · PHP 다음 정기 발행의 정식 공지 내용.
+
+④ 다음: 정식 공지·Ubuntu USN 이 나오면 조건·영향을 다시 대조하고 apt 로 받는다. 끄기로 바꿀 때는 `tbox` 풀 `php_admin_flag[session.upload_progress.enabled] = off`(php.net: ini_set·.user.ini 말고 풀/php.ini) → `php-fpm8.1 -t` → reload → T-17~T-19.
