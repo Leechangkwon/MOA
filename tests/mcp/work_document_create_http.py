@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Project-task creation acceptance, on the disposable PHP/Postgres harness only."""
-import hashlib,json,os,secrets,sys,uuid
+import copy,hashlib,json,os,re,secrets,sys,uuid
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
@@ -22,6 +22,13 @@ def mint(scope,user='employee'):
     token=secrets.token_hex(24)
     a.sql("INSERT INTO api_tokens(user_id,name,token_hash,hint,created_by,scope,expires_at) VALUES(:'uid','work fixture',:'digest','fixtur',:'uid',:'scope',now()+interval '1 hour')",uid=a.users[user]['id'],digest=hashlib.sha256(token.encode()).hexdigest(),scope=scope)
     return token
+UUID4=re.compile('[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}')
+def stable_id(seed):
+    # Same derivation as WorkDocuments::plainBlock: request UUID + position → sha256 → uuid4 shape.
+    h=hashlib.sha256(seed.encode()).hexdigest()
+    return h[0:8]+'-'+h[8:12]+'-4'+h[13:16]+'-a'+h[17:20]+'-'+h[20:32]
+def toggle(children,**extra):
+    return dict(dict(type='toggle',text='건별 핵심 한 줄',children=children),**extra)
 try:
     for user in a.users:a.api('GET','/me/space',user=user)
     project=page('작업 기록 프로젝트',database=True,preset='project')
@@ -57,6 +64,75 @@ try:
         except QarediError as exc:
             a.check(exc.status==409,'changed retry conflicts without overwriting')
     a.check(a.sql('SELECT count(*) FROM community.pages')==before_count,'retries create no duplicates')
+    # Existing plain blocks keep exactly the same stable IDs (request UUID + ':' + index).
+    plain_blocks=read(created['id'])['doc']['blocks']
+    a.check([b['id'] for b in plain_blocks]==[stable_id(task_args['request_id']+':'+str(i)) for i in range(2)]
+            and [set(b) for b in plain_blocks]==[{'id','type','text','level'},{'id','type','text'}], 'plain block IDs and shape unchanged')
+    # 2026-10-30 toggle blocks: one level of plain children, stable child IDs, 100 counts children.
+    long_child='펼치면 보이는 전문 '+'가'*2001
+    toggle_args=dict(task_args,request_id=str(uuid.uuid4()),title='토글 작업글',
+                     blocks=[{'type':'heading','text':'오늘의 요약','level':2},
+                             toggle([{'text':long_child},{'type':'bulleted','text':'세부 항목'}]),
+                             {'text':'맺음 문단'}])
+    made=local.create_work_document(**toggle_args)
+    a.check(made['created'] and made['id']==toggle_args['request_id'],'personal token creates task with a toggle block')
+    got=read(made['id'])['doc']['blocks']
+    tog=got[1]
+    a.check(len(got)==3 and tog['type']=='toggle' and tog['text']==[{'t':'건별 핵심 한 줄','m':[]}]
+            and set(tog)=={'id','type','text','children'},'toggle type/text read back')
+    a.check([c['type'] for c in tog['children']]==['paragraph','bulleted'] and all(set(c)=={'id','type','text'} for c in tog['children'])
+            and tog['children'][1]['text']==[{'t':'세부 항목','m':[]}],'toggle children types/text read back without level or nesting')
+    a.check(''.join(s['t'] for s in tog['children'][0]['text'])==long_child
+            and [len(s['t']) for s in tog['children'][0]['text']]==[2000,len(long_child)-2000]
+            and all(s['m']==[] for s in tog['children'][0]['text']),'child text split by segment_chars with empty marks')
+    ids=[b['id'] for b in got]+[c['id'] for c in tog['children']]
+    a.check(all(UUID4.fullmatch(x) for x in ids) and len(set(ids))==len(ids)==5,'toggle and child IDs are uuid4-shaped and distinct')
+    a.check(ids==[stable_id(made['id']+':'+str(i)) for i in range(3)]+[stable_id(made['id']+':1:'+str(j)) for j in range(2)],
+            'child IDs derive from request UUID and position')
+    replay=local.create_work_document(**toggle_args)
+    a.check(not replay['created'] and replay['id']==made['id'],'identical toggle retry returns created:false')
+    rows_before=a.sql('SELECT count(*) FROM community.pages')
+    for label,mutate in [('child text',lambda b:b[1]['children'][1].update(text='다른 세부 항목')),
+                         ('child type',lambda b:b[1]['children'][1].update(type='numbered')),
+                         ('child order',lambda b:b[1]['children'].reverse()),
+                         ('toggle text',lambda b:b[1].update(text='다른 요약'))]:
+        changed=copy.deepcopy(toggle_args);mutate(changed['blocks'])
+        try:
+            local.create_work_document(**changed)
+            a.check(False,'changed toggle retry must conflict: '+label)
+        except QarediError as exc:
+            a.check(exc.status==409,'changed toggle retry conflicts: '+label)
+    a.check(read(made['id'])['doc']['blocks']==got,'conflicting retries leave the toggle task unchanged')
+    bad_blocks=[('children empty',[toggle([])]),('children missing',[{'type':'toggle','text':'x'}]),
+                ('children not a list',[toggle({'text':'x'})]),('heading child',[toggle([{'type':'heading','text':'x'}])]),
+                ('toggle child',[toggle([toggle([{'text':'x'}])])]),('nested children',[toggle([{'text':'x','children':[{'text':'y'}]}])]),
+                ('child level',[toggle([{'type':'paragraph','text':'x','level':1}])]),('toggle level',[toggle([{'text':'x'}],level=2)]),
+                ('paragraph children',[{'text':'x','children':[{'text':'y'}]}]),('heading children',[{'type':'heading','text':'x','children':[{'text':'y'}]}]),
+                ('unknown child key',[toggle([{'text':'x','file_ref':'att:'+str(uuid.uuid4())}])]),
+                ('1+100 blocks',[toggle([{'text':'x'}]*100)]),('2+99 blocks',[toggle([{'text':'x'}]*50),toggle([{'text':'x'}]*49)]),
+                ('child type int',[toggle([{'type':1,'text':'x'}])]),('child type list',[toggle([{'type':['paragraph'],'text':'x'}])]),
+                ('empty child text',[toggle([{'text':' '}])]),('empty toggle text',[toggle([{'text':'x'}],text='')]),
+                ('long child text',[toggle([{'text':'x'*10001}])]),('child not object',[toggle(['x'])])]
+    for label,blocks in bad_blocks:
+        try:
+            local.create_work_document(**dict(task_args,request_id=str(uuid.uuid4()),blocks=blocks))
+            a.check(False,'personal token must reject: '+label)
+        except QarediError as exc:
+            a.check(exc.status==400,'personal token rejects toggle input 400: '+label)
+        a.tool(writer,'qaredi_create_work_document',dict(task_args,request_id=str(uuid.uuid4()),blocks=blocks),error=400)
+    a.check(a.sql('SELECT count(*) FROM community.pages')==rows_before,'rejected toggle inputs create no rows')
+    exact=local.create_work_document(**dict(task_args,request_id=str(uuid.uuid4()),blocks=[toggle([{'text':str(j)} for j in range(99)])]))
+    a.check(exact['created'] and len(read(exact['id'])['doc']['blocks'][0]['children'])==99,'1 toggle + 99 children = exactly 100 accepted')
+    oauth_toggle=dict(task_args,request_id=str(uuid.uuid4()),title='OAuth 토글 작업글',
+                      blocks=[{'text':'요약'},toggle([{'text':'a'}]*49),toggle([{'type':'quote','text':'b'}]*48)])
+    oauth_made=a.tool(writer,'qaredi_create_work_document',oauth_toggle)
+    oauth_blocks=read(oauth_made['id'])['doc']['blocks']
+    a.check(oauth_made['created'] and [b['type'] for b in oauth_blocks]==['paragraph','toggle','toggle']
+            and [len(b.get('children',[])) for b in oauth_blocks]==[0,49,48]
+            and oauth_blocks[2]['children'][0]=={'id':stable_id(oauth_made['id']+':2:0'),'type':'quote','text':[{'t':'b','m':[]}]},
+            'OAuth creates toggles; 3 top + 97 children = exactly 100 accepted')
+    a.check(not a.tool(writer,'qaredi_create_work_document',oauth_toggle)['created'],'identical OAuth toggle retry returns created:false')
+    a.check(a.sql('SELECT count(*) FROM community.pages')==str(int(rows_before)+2),'only the two valid toggle tasks were added')
     for extra in [dict(visibility='internal'),dict(author_id=a.users['other']['id']),dict(space_id=1),dict(database=True),dict(parent_id=project)]:
         a.api('POST','/work/documents',dict(task_args,request_id=str(uuid.uuid4()),**extra),expected=400)
     for changes in [dict(title='x\ny'),dict(title='x'*201),dict(blocks=[]),dict(blocks=[{'text':'x'}]*101),

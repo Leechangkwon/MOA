@@ -5,6 +5,7 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import re
 import secrets
 import sys
 import uuid
@@ -96,6 +97,42 @@ try:
     ]:
         update(pid, current['doc_version'], expected=status, **body)
         a.check(read(pid) == current, 'rejected mutation preserves entire document')
+    # 2026-10-30 toggle append: one level of plain children; existing replacements reach those children.
+    uuid4_shape = re.compile('[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}')
+    toggle_append = [{'type':'toggle', 'text':'오늘의 핵심 한 줄',
+                      'children':[{'text':'펼치면 보이는 전문'}, {'type':'bulleted', 'text':'세부 항목'}]}]
+    appended = update(pid, current['doc_version'], append=toggle_append)
+    after = read(pid)
+    added = after['doc']['blocks'][-1]
+    a.check(appended['appended'] == 1 and appended['doc_version'] == after['doc_version'] == current['doc_version'] + 1, 'toggle append advances one version')
+    a.check(after['doc']['blocks'][:-1] == current['doc']['blocks'], 'toggle append preserves every existing block')
+    a.check(added['type'] == 'toggle' and added['text'] == [{'t':'오늘의 핵심 한 줄', 'm':[]}]
+            and [(c['type'], c['text']) for c in added['children']] == [('paragraph', [{'t':'펼치면 보이는 전문', 'm':[]}]), ('bulleted', [{'t':'세부 항목', 'm':[]}])]
+            and all(set(c) == {'id','type','text'} for c in added['children']), 'appended toggle read back with plain children')
+    toggle_ids = [added['id']] + [c['id'] for c in added['children']]
+    a.check(all(uuid4_shape.fullmatch(x) for x in toggle_ids) and len(set(toggle_ids)) == 3, 'appended toggle and child IDs are distinct uuid4')
+    update(pid, after['doc_version'], replacements=[dict(block_id=added['children'][0]['id'], old_text='전문', new_text='전체 내용')])
+    replaced = read(pid)
+    a.check(replaced['doc']['blocks'][-1] == dict(added, children=[dict(added['children'][0], text=[{'t':'펼치면 보이는 전체 내용', 'm':[]}]), added['children'][1]])
+            and replaced['doc']['blocks'][:-1] == current['doc']['blocks'], 'replacement inside appended toggle child changes only that text')
+    # Each rejection names the work-document rule itself (not a later Doc::validate failure).
+    too_many = '블록은 펼치기 안의 하위 블록까지 합쳐 최대 100개입니다.'
+    one_level = '펼치기 안에는 문단·목록·인용만 한 단계로 넣을 수 있습니다.'
+    for body, message in [
+        ({'append':[{'type':'toggle', 'text':'x', 'children':[{'text':'y'}] * 100}]}, too_many),
+        ({'append':[{'text':'x'}] * 50 + [{'type':'toggle', 'text':'x', 'children':[{'text':'y'}] * 50}]}, too_many),
+        ({'append':[{'type':'toggle', 'text':'x', 'children':[]}]}, '펼치기에는 펼쳤을 때 보일 하위 블록이 1개 이상 필요합니다.'),
+        ({'append':[{'type':'toggle', 'text':'x', 'children':[{'type':'heading', 'text':'y'}]}]}, one_level),
+        ({'append':[{'type':'toggle', 'text':'x', 'children':[{'type':'toggle', 'text':'y', 'children':[{'text':'z'}]}]}]}, one_level),
+        ({'append':[{'type':'toggle', 'text':'x', 'children':[{'text':'y', 'level':2}]}]}, one_level),
+        ({'append':[{'type':'toggle', 'text':'x', 'level':1, 'children':[{'text':'y'}]}]}, '문단·제목·목록·인용·펼치기만 추가할 수 있습니다.'),
+        ({'append':[{'text':'x', 'children':[{'text':'y'}]}]}, '하위 블록(children)은 펼치기에만 넣을 수 있습니다.'),
+        ({'append':[{'type':'toggle', 'text':'x', 'children':[{'text':'y', 'color':'red'}]}]}, '지원하지 않는 입력 항목입니다.'),
+    ]:
+        rejected = update(pid, replaced['doc_version'], expected=400, **body)
+        a.check(rejected.get('error') == message, 'toggle append rejected with rule message: ' + message)
+        a.check(read(pid) == replaced, 'rejected toggle append preserves entire document')
+    current = replaced
     a.api('PATCH','/work/documents/'+pid, {'append':[{'text':'x'}]}, expected=400)
     a.api('PATCH','/work/documents/'+pid, {'doc_version':True,'append':[{'text':'x'}]}, expected=400)
     a.request('PATCH', '/community/api/work/documents/' + pid, user='employee', csrf=False,
@@ -145,6 +182,23 @@ try:
     a.tool(writer,'qaredi_update_work_document',{'page_id':pid,'doc_version':read(pid)['doc_version'],
            'replacements':[{'block_id':text_block['id'],'old_text':'개발 완료','new_text':''}]})
     a.check(a.sql("SELECT actor_id FROM audit_logs WHERE action='page.update' ORDER BY id DESC LIMIT 1") == str(a.users['employee']['id']), 'OAuth actor wins over incidental other-account cookie')
+    # OAuth append schema advertises the toggle contract and goes through the same domain rules.
+    schemas = {t['name']: t['inputSchema'] for t in tools}
+    for name, key in [('qaredi_create_work_document', 'blocks'), ('qaredi_update_work_document', 'append')]:
+        item = schemas[name]['properties'][key]['items']
+        a.check('toggle' in item['properties']['type']['enum'] and item['properties']['children']['items']['properties']['type']['enum'] == ['paragraph','bulleted','numbered','quote']
+                and item['properties']['children']['items']['additionalProperties'] is False, name + ' schema advertises toggle children')
+    before_oauth = read(pid)
+    a.tool(writer, 'qaredi_update_work_document', {'page_id':pid, 'doc_version':before_oauth['doc_version'],
+           'append':[{'type':'toggle', 'text':'OAuth 요약', 'children':[{'type':'numbered', 'text':'OAuth 전문'}]}]})
+    oauth_after = read(pid)
+    a.check(oauth_after['doc']['blocks'][:-1] == before_oauth['doc']['blocks'] and oauth_after['doc']['blocks'][-1]['type'] == 'toggle'
+            and [(c['type'], c['text']) for c in oauth_after['doc']['blocks'][-1]['children']] == [('numbered', [{'t':'OAuth 전문', 'm':[]}])], 'OAuth append adds a toggle')
+    for bad in [[{'type':'toggle', 'text':'x', 'children':[{'type':'heading', 'text':'y'}]}],
+                [{'type':'toggle', 'text':'x', 'children':[{'text':'y'}] * 100}],
+                [{'type':'paragraph', 'text':'x', 'children':[{'text':'y'}]}]]:
+        a.tool(writer, 'qaredi_update_work_document', {'page_id':pid, 'doc_version':oauth_after['doc_version'], 'append':bad}, error=400)
+    a.check(read(pid) == oauth_after, 'rejected OAuth toggle appends preserve the document')
     # Concurrent appends with one version: exactly one commits, including on separate PHP workers.
     version = read(pid)['doc_version']; barrier=Barrier(2)
     def race(port):

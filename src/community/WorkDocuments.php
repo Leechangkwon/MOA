@@ -102,31 +102,62 @@ final class WorkDocuments
         return $result;
     }
 
-    /** Plain blocks only: no HTML, attachments, references, mentions or executable content. */
+    /**
+     * Plain blocks only: no HTML, attachments, references, mentions or executable content.
+     * A toggle holds one level of plain children (no heading/toggle inside). The existing 100-block
+     * limit counts those children too. Shared by create (stable IDs from $requestId) and append (random IDs).
+     */
     private static function plainBlocks(array $items, ?string $requestId = null): array
     {
         $blocks = [];
+        $total = count($items);
         foreach ($items as $i => $item) {
-            if (!is_array($item)) { Http::error(400, Http::MSG_BAD_REQUEST); }
-            self::fields($item, ['type','text','level']);
-            $type = $item['type'] ?? 'paragraph';
-            if (!in_array($type, ['paragraph','heading','bulleted','numbered','quote'], true)
-                || (isset($item['level']) && ($type !== 'heading' || !in_array($item['level'], [1,2,3], true)))) {
-                Http::error(400, '문단·제목·목록·인용만 추가할 수 있습니다.');
+            $block = self::plainBlock($item, false, $requestId === null ? null : $requestId . ':' . $i);
+            if ($block['type'] === 'toggle') {
+                $children = $item['children'] ?? null;
+                if (!is_array($children) || !array_is_list($children) || $children === []) {
+                    Http::error(400, '펼치기에는 펼쳤을 때 보일 하위 블록이 1개 이상 필요합니다.');
+                }
+                $total += count($children);
+                if ($total > 100) { Http::error(400, '블록은 펼치기 안의 하위 블록까지 합쳐 최대 100개입니다.'); }
+                $block['children'] = [];
+                foreach ($children as $j => $child) {
+                    $block['children'][] = self::plainBlock($child, true, $requestId === null ? null : $requestId . ':' . $i . ':' . $j);
+                }
             }
-            $text = self::text($item['text'] ?? null, 10000);
-            // Stable block IDs make a byte-for-byte retry distinguishable from a changed request.
-            $hash = $requestId === null ? null : hash('sha256', $requestId . ':' . $i);
-            $id = $hash === null ? Doc::uuid4() : substr($hash,0,8) . '-' . substr($hash,8,4)
-                . '-4' . substr($hash,13,3) . '-a' . substr($hash,17,3) . '-' . substr($hash,20,12);
-            $block = ['id'=>$id, 'type'=>$type, 'text'=>[]];
-            for ($pos=0; $pos<iconv_strlen($text,'UTF-8'); $pos+=Doc::limit('segment_chars')) {
-                $block['text'][] = ['t'=>iconv_substr($text,$pos,Doc::limit('segment_chars'),'UTF-8'), 'm'=>[]];
-            }
-            if ($type === 'heading') { $block['level'] = $item['level'] ?? 2; }
             $blocks[] = $block;
         }
         return $blocks;
+    }
+
+    /** One plain block. $seed null → random ID (append); otherwise a stable ID derived from request and position. */
+    private static function plainBlock($item, bool $child, ?string $seed): array
+    {
+        if (!is_array($item)) { Http::error(400, Http::MSG_BAD_REQUEST); }
+        self::fields($item, ['type','text','level','children']);
+        $type = $item['type'] ?? 'paragraph';
+        if ($child && (!in_array($type, ['paragraph','bulleted','numbered','quote'], true)
+                || array_key_exists('level', $item) || array_key_exists('children', $item))) {
+            Http::error(400, '펼치기 안에는 문단·목록·인용만 한 단계로 넣을 수 있습니다.');
+        }
+        if (!in_array($type, ['paragraph','heading','bulleted','numbered','quote','toggle'], true)
+            || (isset($item['level']) && ($type !== 'heading' || !in_array($item['level'], [1,2,3], true)))) {
+            Http::error(400, '문단·제목·목록·인용·펼치기만 추가할 수 있습니다.');
+        }
+        if (array_key_exists('children', $item) && $type !== 'toggle') {
+            Http::error(400, '하위 블록(children)은 펼치기에만 넣을 수 있습니다.');
+        }
+        $text = self::text($item['text'] ?? null, 10000);
+        // Stable block IDs make a byte-for-byte retry distinguishable from a changed request.
+        $hash = $seed === null ? null : hash('sha256', $seed);
+        $id = $hash === null ? tbox_uuid_v4() : substr($hash,0,8) . '-' . substr($hash,8,4)
+            . '-4' . substr($hash,13,3) . '-a' . substr($hash,17,3) . '-' . substr($hash,20,12);
+        $block = ['id'=>$id, 'type'=>$type, 'text'=>[]];
+        for ($pos=0; $pos<iconv_strlen($text,'UTF-8'); $pos+=Doc::limit('segment_chars')) {
+            $block['text'][] = ['t'=>iconv_substr($text,$pos,Doc::limit('segment_chars'),'UTF-8'), 'm'=>[]];
+        }
+        if ($type === 'heading') { $block['level'] = $item['level'] ?? 2; }
+        return $block;
     }
 
     /** Creates one direct project task. No project/schema, ownership, sharing or location changes. */
@@ -271,23 +302,7 @@ final class WorkDocuments
                 'new_text'=>self::text($item['new_text'] ?? null, 10000, true)];
         }
         unset($item);
-        $newBlocks = [];
-        foreach ($append as $item) {
-            if (!is_array($item)) { Http::error(400, Http::MSG_BAD_REQUEST); }
-            self::fields($item, ['type','text','level']);
-            $type = $item['type'] ?? 'paragraph';
-            if (!in_array($type, ['paragraph','heading','bulleted','numbered','quote'], true)
-                || (isset($item['level']) && ($type !== 'heading' || !in_array($item['level'], [1,2,3], true)))) {
-                Http::error(400, '문단·제목·목록·인용만 추가할 수 있습니다.');
-            }
-            $text = self::text($item['text'] ?? null, 10000);
-            $block = ['id'=>tbox_uuid_v4(), 'type'=>$type, 'text'=>[]];
-            for ($pos = 0; $pos < iconv_strlen($text, 'UTF-8'); $pos += Doc::limit('segment_chars')) {
-                $block['text'][] = ['t'=>iconv_substr($text, $pos, Doc::limit('segment_chars'), 'UTF-8'), 'm'=>[]];
-            }
-            if ($type === 'heading') { $block['level'] = $item['level'] ?? 2; }
-            $newBlocks[] = $block;
-        }
+        $newBlocks = self::plainBlocks($append);
         $db = Db::instance();
         $db->begin();
         try {

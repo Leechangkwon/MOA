@@ -200,8 +200,10 @@ def qaredi_read_work_document(page_id: str) -> str:
     "새 작업마다 request_id UUID를 만들고 같은 작업 재전송은 같은 UUID를 사용한다. "
     "응답이 불명확하면 request_id 문서를 먼저 읽고 중복 생성하지 않는다. 409이면 기존 작업을 확인한다. "
     "프로젝트·공유·소유권·스키마 변경, 파일 업로드, 기존 문서 삭제·이동은 지원하지 않는다. "
+    "blocks=[{type,text,level?}]는 평문 문단·제목·목록·인용이고, 펼치기(토글)는 {type:'toggle',text:'접혔을 때 보이는 한 줄',children:[{type?,text}]}로 쓴다(하위는 문단·목록·인용 1개 이상·한 단계, 하위까지 합쳐 최대 100개). "
     "\nCreate a task only in the user-designated existing project; read first, use a stable request UUID, "
-    "preserve originals and distinguish shipped features from plans and unverified work."),
+    "preserve originals and distinguish shipped features from plans and unverified work. "
+    "A toggle {type:'toggle', text, children:[{type?, text}]} shows text as a one-line summary and reveals 1+ plain paragraph/list/quote children (one level; children count toward 100 blocks)."),
     annotations=ToolAnnotations(title="모아: 프로젝트 작업글 만들기", readOnlyHint=False, destructiveHint=False, idempotentHint=True, openWorldHint=False))
 def qaredi_create_work_document(project_id: str, request_id: str, title: str,
                                blocks: list[dict[str, Any]], status: str = 'todo', section: str | None = None) -> str:
@@ -212,9 +214,11 @@ def qaredi_create_work_document(project_id: str, request_id: str, title: str,
     "사용자가 승인한 업무 기록 흐름에서 기존 문서 일부를 수정하고 기록을 추가한다. 먼저 read_work_document로 읽은 doc_version 필수. "
     "replacements=[{block_id,old_text,new_text}]: 해당 블록에서 단 한 번 나오는 기존 문구만 교체. "
     "append=[{type,text,level?}]: 문서 끝에 문단(paragraph), 제목(heading,level 1~3), 목록(bulleted/numbered), 인용(quote)을 추가. "
+    "펼치기(토글)는 {type:'toggle',text:'접혔을 때 보이는 한 줄',children:[{type?,text}]}로 추가한다(하위는 문단·목록·인용 1개 이상·한 단계, 하위까지 합쳐 최대 100개). "
     "text는 Markdown이 아닌 일반 글자다. 기존 그림·표·다른 블록·서식을 보존하며 이전 판을 남긴다. "
     "읽기 공유만으로는 수정할 수 없다. 함께 보는 사람에게도 변경된다. 충돌/응답 불명확 시 다시 읽고 확인하며 자동 덮어쓰기·맹목적인 재전송 금지. "
-    "삭제·이동·공유 변경은 지원하지 않는다. 개발 기록에는 구현·테스트·운영 반영을 구분한다.\nUpdate only user-authorized document text and append records; preserve other blocks, require current version, never blindly retry."),
+    "삭제·이동·공유 변경은 지원하지 않는다. 개발 기록에는 구현·테스트·운영 반영을 구분한다.\nUpdate only user-authorized document text and append records; preserve other blocks, require current version, never blindly retry. "
+    "append may add a toggle {type:'toggle', text, children:[{type?, text}]}: one-line summary plus 1+ plain paragraph/list/quote children (one level; children count toward 100 blocks)."),
     annotations=ToolAnnotations(readOnlyHint=False, destructiveHint=True, idempotentHint=False, openWorldHint=True))
 def qaredi_update_work_document(page_id: str, doc_version: int,
                                 replacements: list[dict[str, Any]] | None = None,

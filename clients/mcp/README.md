@@ -149,3 +149,7 @@ bash tests/validate_with_php.sh               # 변환 결과를 저장소의 �
 ### 프로젝트 작업 목록에 새 개발 기록 만들기 (0.3.0)
 
 `qaredi_create_work_document`는 사용자가 지정한 기존 프로젝트 안에 새 작업글을 만듭니다. 먼저 프로젝트를 읽어 `project.sections`를 확인하고 저장값 `value`를 사용하세요. 입력은 project_id/request_id UUID/title/평문 blocks와 선택 status/section입니다. 같은 요청 재전송은 동일 UUID를 유지하고 응답이 불분명하면 그 UUID를 먼저 읽습니다. 기존 작업을 수정·삭제한 뒤 충돌하면 새 UUID로 복제하지 않습니다. 프로젝트 자체·소유권·공유·섹션 설정은 변경하지 않습니다. 기존 문서 부분 갱신 도구도 그대로 제공됩니다.
+
+### 작업글 본문에 펼치기(토글) 넣기 (0.4.0)
+
+`qaredi_create_work_document`의 `blocks`와 `qaredi_update_work_document`의 `append`에 펼치기(토글) 블록을 넣을 수 있습니다. `{type: "toggle", text: "접혔을 때 보이는 한 줄", children: [{text: "펼치면 보이는 내용"}, {type: "bulleted", text: "세부 항목"}]}`처럼 쓰며, 하위(`children`)에는 평문 문단·글머리/번호 목록·인용을 1개 이상 한 단계로만 넣습니다(제목·토글은 안에 넣지 않습니다). 블록 수 상한 100은 하위 블록까지 셉니다. 건마다 핵심 한 줄을 보이고 전문은 접어 두면 긴 기록도 읽기 쉽습니다. 기존 문구 교체는 토글 안 하위 블록에도 그대로 동작하고, 링크·서식·그림·파일은 여전히 웹에서 넣습니다. 서버가 이 기능을 반영하기 전에는 토글 입력이 400으로 거부됩니다.

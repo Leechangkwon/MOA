@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qaredi-mcp"
-version = "0.3.0"
+version = "0.4.0"
 description = "Qaredi 커뮤니티 — Markdown 글을 내 개인 공간에 비공개 페이지로 만드는 stdio MCP 서버"
 readme = "README.md"
 requires-python = ">=3.10"

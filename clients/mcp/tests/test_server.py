@@ -104,6 +104,18 @@ class ServerTools(unittest.TestCase):
         self.assertTrue(tools["qaredi_search_pages"]["annotations"].readOnlyHint)
         self.assertFalse(tools["qaredi_search_pages"]["annotations"].destructiveHint)
 
+    def test_work_document_tools_describe_toggle(self):
+        # 0.4.0 — 만들기 blocks · 갱신 append 에 펼치기(토글) 사용법이 한/영 두 줄 모두에 있다.
+        tools = self._tools()
+        for name in ("qaredi_create_work_document", "qaredi_update_work_document"):
+            with self.subTest(tool=name):
+                ko, en = tools[name]["description"].split("\n")
+                self.assertIn("펼치기(토글)", ko)
+                self.assertIn("children", ko)
+                self.assertIn("toggle", en)
+                self.assertIn("children", en)
+                self.assertIn("one level", en)
+
 
 class ServerCalls(unittest.TestCase):
     @classmethod
