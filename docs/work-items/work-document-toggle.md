@@ -1,6 +1,6 @@
 # 작업글 본문에 펼치기(토글) 블록
 
-- 상태: 기획 — 구현 전
+- 상태: 검토 통과 — 운영 반영 대기
 - 작업 브랜치: `claude/workdoc-toggle`
 - 기준 main: `10d8b99` (v2.76.0)
 - 환경: 서버의 격리 작업본 `/home/changkwon/qaredi-workdoc-toggle-20261030`
@@ -32,3 +32,9 @@
 ## 서버 적용
 
 예전 작업글 창구 반영과 같은 순서 — 고정 후보·드리프트 확인 → 암호화 DB/코드/설정 백업 전체 복호화·파싱 → 파일 고정 모의 적용 → FF · php-fpm reload → HTTPS·원래 행·파일·owner/ACL 보존 확인. 운영 확인은 사용자 토큰으로 「AI 동향 리서치」 실행기가 토글 형식 글을 올리고 다시 읽는 것으로 한다.
+
+## 구현·검증 결과
+
+- 구현 `5091655`(Opus 에이전트): `WorkDocuments::plainBlock` 으로 만들기·추가 검증 통합, 토글 한 단계 하위, 하위 포함 100, 하위 안정 ID `요청UUID:i:j`, OAuth 스키마 `$workBlock`, 로컬 MCP 0.4.0. 오류 문구 둘이 바뀜(상태 코드 400 그대로): 「문단·제목·목록·인용·펼치기만 추가할 수 있습니다.」 · 문단에 children → 「하위 블록(children)은 펼치기에만 넣을 수 있습니다.」. 갱신 응답 `appended` 는 최상위 개수.
+- 최종 판 한 번(메인): 만들기 수락 304/0 · 갱신 수락 279/0(격리 하네스, 합성 DB, 운영 기록 복사 0) · `clients/mcp` unittest 115 OK · php -l 2 · security_lint 0 · wiki_check 0. 원문 `/home/changkwon/qaredi-workdoc-toggle-results-20261030/final/`.
+- 발견: 만들기 재전송 비교가 느슨해(10-17 부터) 숫자로 읽히는 문구만 다른 재전송을 같은 요청으로 본다 — SECURITY C:R-19, 이번에 고치지 않음.
