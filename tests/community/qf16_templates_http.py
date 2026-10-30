@@ -246,8 +246,11 @@ if __name__ == '__main__':
         css_new = [ln for ln in added('public/assets/app.css') if not ln.lstrip().startswith(('/*', '*'))]
         check(not [ln for ln in css_new if re.search(r'#[0-9a-fA-F]{3,8}\b|rgb\(|z-index:\s*\d|style=', ln)],
               'Q:T-50 ⑪ app.css 새 줄에 색값 · rgb( · 숫자 z-index 0')
-        base_css = sh(['git', 'show', base_rev + ':public/assets/app.css']).stdout.decode()
-        old_cls = set(re.findall(r'\.([a-z][\w-]*)', base_css))
+        # 기준 판에 이미 있던 이름(기준 판의 모든 CSS 파일)은 새 클래스로 세지 않는다 — 다른 화면의 기존 클래스를 고르는 규칙은 새 클래스가 아니다
+        css_files = [f for f in sh(['git', 'ls-tree', '-r', '--name-only', base_rev, 'public']).stdout.decode().splitlines() if f.endswith('.css')]
+        old_cls = set()
+        for f in css_files:
+            old_cls |= set(re.findall(r'\.([a-z][\w-]*)', sh(['git', 'show', base_rev + ':' + f]).stdout.decode()))
         new_cls = {c for ln in css_new for c in re.findall(r'\.([a-z][\w-]*)', ln.split('{')[0])} - old_cls
         seven = {'menu--picker', 'menu__row', 'menu__scope', 'menu__look', 'menu__hint', 'menu__preview', 'menu__sheet-head'}
         check(new_cls <= seven, 'Q:T-50 ⑪ 새 클래스는 DESIGN 2.38 일곱 안 %s' % sorted(new_cls))

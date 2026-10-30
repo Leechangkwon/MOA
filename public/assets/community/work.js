@@ -1,9 +1,9 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=a592c4f5caf1';
-import { renderDoc } from './doc-render.js?v=a592c4f5caf1';
-import { createMentionInput } from './mention-input.js?v=a592c4f5caf1';
-import { personText } from './cafe.js?v=a592c4f5caf1';
-import { optionLabel } from './db-option-label.js?v=a592c4f5caf1';
-import { repeatDialog } from './automations.js?v=a592c4f5caf1';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=cd5329f796b6';
+import { renderDoc } from './doc-render.js?v=cd5329f796b6';
+import { createMentionInput } from './mention-input.js?v=cd5329f796b6';
+import { personText } from './cafe.js?v=cd5329f796b6';
+import { optionLabel } from './db-option-label.js?v=cd5329f796b6';
+import { repeatDialog } from './automations.js?v=cd5329f796b6';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -2188,6 +2188,9 @@ export function createWork(deps) {
     const st = pickerState();
     const known = st.bodies[t.id];
     if (known) { drawPreview(parts, known); return; }
+    // 본문을 받는 동안 앞 템플릿의 미리보기(와 그 「만들기 · 반복 만들기」)를 남기지 않는다 — 남기면 그 단추가 앞 템플릿으로 움직인다(검토 보정)
+    clear(parts.preview);
+    parts.preview.hidden = true;
     api('GET', '/api/templates/' + encodeURIComponent(t.id)).then((r) => {
       if (r.status === 401) { toLogin(); return; }
       if (parts.previewing !== t.id || !parts.menu.isConnected) { return; }

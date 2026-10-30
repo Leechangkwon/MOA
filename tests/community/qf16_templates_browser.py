@@ -418,6 +418,8 @@ try:
         page.wait_for_timeout(300)
         open_head(page)
         page.locator(HEAD + ' [data-template-look="' + F['T_me'] + '"]').click()
+        # 그 템플릿의 미리보기가 선 뒤에 바닥 단추를 누른다(앞 미리보기는 받는 동안 비워진다)
+        page.wait_for_function("(s) => { const h = document.querySelector(s + ' .menu__preview > .toolbar strong'); return h && h.textContent.includes('흐름 지도'); }", arg=HEAD)
         page.locator(HEAD + ' .menu__preview [data-template-repeat]').wait_for(state='visible')
         page.locator(HEAD + ' .menu__preview [data-template-repeat]').click()
         dlg = page.locator('dialog.modal[open]').last
