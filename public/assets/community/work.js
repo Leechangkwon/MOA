@@ -1,9 +1,9 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=22f0b58918e4';
-import { renderDoc } from './doc-render.js?v=22f0b58918e4';
-import { createMentionInput } from './mention-input.js?v=22f0b58918e4';
-import { personText } from './cafe.js?v=22f0b58918e4';
-import { optionLabel } from './db-option-label.js?v=22f0b58918e4';
-import { repeatDialog } from './automations.js?v=22f0b58918e4';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=a592c4f5caf1';
+import { renderDoc } from './doc-render.js?v=a592c4f5caf1';
+import { createMentionInput } from './mention-input.js?v=a592c4f5caf1';
+import { personText } from './cafe.js?v=a592c4f5caf1';
+import { optionLabel } from './db-option-label.js?v=a592c4f5caf1';
+import { repeatDialog } from './automations.js?v=a592c4f5caf1';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -2256,7 +2256,7 @@ export function createWork(deps) {
     use.addEventListener('click', () => { parts.menu.open = false; parts.summary.focus(); makeFromTemplate(parts, tpl); });
     foot.appendChild(use);
     if (canWrite()) {
-      const rep = textButton('이 템플릿으로 매주 만들기', 'btn btn--quiet btn--small');
+      const rep = textButton('이 템플릿으로 반복 만들기', 'btn btn--quiet btn--small');
       rep.setAttribute('data-template-repeat', '');
       rep.addEventListener('click', () => {
         parts.menu.open = false;

@@ -9,9 +9,9 @@
   [pick]   Q:T-44 머리 · 섹션 끝 꺾쇠 · 열기 전 목록 요청 0 · 열면 둘 · 다시 열어도 +0 · 순서 · 미리보기 · 고르면 그 자리에 만들고 칸이 열림 ·
                   「빈 작업」 = 지금 그 자리 입력 줄 · 꺾쇠 없는 「작업 추가」 그대로 · 빈 상태 · 만들기 실패 문장 = 서버 문장
   [share]  Q:T-45 보기 공유 · 손님 — 꺾쇠 0 · 목록 요청 0 · 칸 더보기 「템플릿으로 저장」 0
-  [save]   Q:T-48 작업 칸 더보기 「템플릿으로 저장」 — 범위 = 창구 template_scopes · 저장 뒤 「이 템플릿으로 매주 만들기」 · 꺾쇠 목록 다시 받음 ·
+  [save]   Q:T-48 작업 칸 더보기 「템플릿으로 저장」 — 범위 = 창구 template_scopes · 저장 뒤 「이 템플릿으로 반복 만들기」 · 꺾쇠 목록 다시 받음 ·
                   팀장 · 전체 화면 작업 · 업무 홈 · 내 작업(항목 0)
-  [repeat] Q:T-49 미리보기 바닥 「이 템플릿으로 매주 만들기」 → 기존 반복 창 · 「만들 자리」 기본값(행 = 이 템플릿의 데이터베이스 · 일반 = 이 프로젝트)
+  [repeat] Q:T-49 미리보기 바닥 「이 템플릿으로 반복 만들기」 → 기존 반복 창 · 「만들 자리」 기본값(행 = 이 템플릿의 데이터베이스 · 일반 = 이 프로젝트)
   [layout] Q:T-50 360 · 412(터치 · 마우스) · 820 · 960 · 1280 · 1440 × 밝게 · 어둡게 + 고대비 — 시트 · 두 칸 · 넘침 0 · 콘솔 0 · 누름 자리 44 ·
                   보이는 상자 어디를 눌러도 자기 자신 · 인라인 style 0 · 메뉴 안 검정 0
 """
@@ -171,7 +171,7 @@ try:
               'Q:T-44 ② 본문 = 렌더러(표 1 · 할 일 3) %d/%d' % (page.locator(HEAD + ' .menu__preview table').count(), page.locator(HEAD + ' .menu__preview .doc-todo').count()))
         mk = page.locator(HEAD + ' .menu__preview [data-template-make]')
         rp = page.locator(HEAD + ' .menu__preview [data-template-repeat]')
-        check(mk.inner_text().strip() == '이 템플릿으로 만들기' and rp.inner_text().strip() == '이 템플릿으로 매주 만들기'
+        check(mk.inner_text().strip() == '이 템플릿으로 만들기' and rp.inner_text().strip() == '이 템플릿으로 반복 만들기'
               and 'btn--quiet' in (mk.get_attribute('class') or '') and 'btn--quiet' in (rp.get_attribute('class') or ''), 'Q:T-44 ② 바닥 단추 둘 테두리')
         check(page.locator(HEAD + ' [data-template-look="' + F['T_row'] + '"]').get_attribute('aria-pressed') == 'true', 'Q:T-44 ② 미리보는 줄 aria-pressed')
         page.locator(HEAD + ' [data-template-id="' + F['T_me'] + '"]').focus()
@@ -346,8 +346,8 @@ try:
         page.locator('#template-save-confirm').click()
         rep_btn = page.locator('#template-save-dialog [data-template-repeat]')
         rep_btn.wait_for(state='visible')
-        check('템플릿으로 저장했습니다' in page.locator('#template-save-msg').inner_text() and rep_btn.inner_text().strip() == '이 템플릿으로 매주 만들기',
-              'Q:T-48 ⑨ 저장 201 · 알림 · 옆에 「이 템플릿으로 매주 만들기」')
+        check('템플릿으로 저장했습니다' in page.locator('#template-save-msg').inner_text() and rep_btn.inner_text().strip() == '이 템플릿으로 반복 만들기',
+              'Q:T-48 ⑨ 저장 201 · 알림 · 옆에 「이 템플릿으로 반복 만들기」')
         page.screenshot(path=str(shots / 'pc-1440-saved-repeat.png'))
         rep_btn.click()
         dlg = page.locator('dialog.modal[open]').last

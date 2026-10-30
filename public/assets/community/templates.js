@@ -11,9 +11,9 @@
  * ★ 미리보기는 읽기 렌더러(`renderDoc`)가 그린다 — 보이는 것과 만들어지는 것이 같다.
  *   글자는 전부 textContent 로 넣는다(HTML 문자열을 넣는 자리가 없다).
  */
-import { renderDoc } from './doc-render.js?v=22f0b58918e4';
+import { renderDoc } from './doc-render.js?v=a592c4f5caf1';
 
-import { repeatDialog } from './automations.js?v=22f0b58918e4';
+import { repeatDialog } from './automations.js?v=a592c4f5caf1';
 
 const SCOPE_LABELS = {
   site: '사이트 기본',
@@ -230,8 +230,9 @@ export function createTemplateSave(d) {
   // Q:F-16 1차 — 페이지 더보기(draw 가 세운 값)와 작업 칸 더보기(open 이 넘긴 값)가 한 창을 함께 쓴다.
   // 페이지 값은 따로 두고, 창을 열 때마다 그 자리의 값으로 바꾼다(작업 칸에서 연 뒤 페이지 「템플릿으로 저장」이 작업을 담지 않게)
   let pageOwn = { id: '', title: '', scopes: [] };
-  let repeatParent = null;   // 저장 뒤 「이 템플릿으로 매주 만들기」의 「만들 자리」 기본값 {id, title} — 작업 칸이 넘길 때만
+  let repeatParent = null;   // 저장 뒤 「이 템플릿으로 반복 만들기」의 「만들 자리」 기본값 {id, title} — 작업 칸이 넘길 때만
   let repeatBtn = null;
+  let repeatRow = null;      // 저장 뒤 알림 + 「이 템플릿으로 반복 만들기」를 한 줄로 감싼 .toolbar(다시 열면 풀어 알림 줄만 남긴다)
   let onSaved = null;        // 저장(201) 뒤 부를 함수 — 작업 칸이 넘길 때만(꺾쇠 목록을 다음에 다시 받게)
   if (!button || !dialog) { return { draw: () => {} }; }
 
@@ -262,6 +263,7 @@ export function createTemplateSave(d) {
     d.setText(msg, '');
     msg.classList.remove('msg--ok');
     if (repeatBtn) { repeatBtn.remove(); repeatBtn = null; }
+    if (repeatRow) { repeatRow.parentNode.insertBefore(msg, repeatRow); repeatRow.remove(); repeatRow = null; }
     // 글자(코드 포인트) 단위로 자른다 — UTF-16 단위로 자르면 이모지가 반으로 갈린다(독립 검토 L-7)
     nameInput.value = Array.from(title).slice(0, 60).join('');
     drawScopes();
@@ -297,13 +299,17 @@ export function createTemplateSave(d) {
         repeatBtn.type = 'button';
         repeatBtn.className = 'btn btn--quiet btn--small';
         repeatBtn.setAttribute('data-template-repeat', '');
-        repeatBtn.textContent = '이 템플릿으로 매주 만들기';
+        repeatBtn.textContent = '이 템플릿으로 반복 만들기';
         const parentForRepeat = repeatParent;
         repeatBtn.addEventListener('click', () => {
           dialog.close();
           repeatDialog(d.api, null, { template: saved, parent: parentForRepeat });
         });
-        msg.parentNode.insertBefore(repeatBtn, msg.nextSibling);
+        // 지시서 D — 성공 알림 **옆** 한 줄(지금 .toolbar 틀 — 새 클래스 0)
+        repeatRow = document.createElement('div');
+        repeatRow.className = 'toolbar';
+        msg.parentNode.insertBefore(repeatRow, msg);
+        repeatRow.append(msg, repeatBtn);
       }
     }).catch(() => { confirm.disabled = false; d.setText(msg, d.genericError); });
   });
@@ -326,7 +332,7 @@ export function createTemplateSave(d) {
     /**
      * Q:F-16 1차 — 작업 칸(work.js) 더보기 「템플릿으로 저장」: 그 작업의 창구 답으로 같은 창을 연다.
      * 범위 항목은 그 답의 `template_scopes` 뿐 — 비면 아무 일도 하지 않는다(화면이 범위를 따지지 않는다).
-     * opts.repeatParent = {id, title} — 저장 뒤 「이 템플릿으로 매주 만들기」의 「만들 자리」 기본값 · opts.onSaved(template) — 저장(201) 뒤
+     * opts.repeatParent = {id, title} — 저장 뒤 「이 템플릿으로 반복 만들기」의 「만들 자리」 기본값 · opts.onSaved(template) — 저장(201) 뒤
      */
     open(id, data, opts) {
       const s = data && Array.isArray(data.template_scopes) ? data.template_scopes.filter((x) => !!SCOPE_LABELS[x]) : [];
