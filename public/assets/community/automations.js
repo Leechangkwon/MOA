@@ -107,7 +107,10 @@ export function repeatDialog(api, pageId, data) {
   const time = field(body, '시각 · 서울', input('time', '09:00')); time.step = 600;
   const parentChoices = template ? [['', template.scope === 'database' ? '이 템플릿의 데이터베이스' : '내 공간 맨 위']]
     : [[pageId, '이 절차서 아래'], ...(data.children || []).map(p => [p.id, p.title])];
-  const parent = field(body, '만들 자리', select(parentChoices, pageId || ''));
+  // Q:F-16 1차(DESIGN 2.38 「반복 창」) — 업무 프로젝트에서 부른 일반 템플릿이면 「만들 자리」 기본값 = 그 프로젝트(data.parent {id, title})
+  const usesParent = Boolean(template && template.scope !== 'database' && data.parent && data.parent.id);
+  if (usesParent) parentChoices.unshift([data.parent.id, data.parent.title]);
+  const parent = field(body, '만들 자리', select(parentChoices, usesParent ? data.parent.id : (pageId || '')));
   const pattern = field(body, '제목 틀', input('text', '{제목} – {YYYY-MM}')); pattern.maxLength = 200;
   body.append(el('p', '{제목} · {YYYY} · {MM} · {DD} · {YYYY-MM} · {주}를 사용할 수 있습니다.', 'help'));
   const status = field(body, '새 페이지 상태', select([['', '없음'], ['todo', '할 일'], ['doing', '진행'], ['review', '검토'], ['done', '완료'], ['hold', '보류']], 'todo'));

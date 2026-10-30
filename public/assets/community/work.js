@@ -1,8 +1,9 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=b76472e6847d';
-import { renderDoc } from './doc-render.js?v=b76472e6847d';
-import { createMentionInput } from './mention-input.js?v=b76472e6847d';
-import { personText } from './cafe.js?v=b76472e6847d';
-import { optionLabel } from './db-option-label.js?v=b76472e6847d';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=22f0b58918e4';
+import { renderDoc } from './doc-render.js?v=22f0b58918e4';
+import { createMentionInput } from './mention-input.js?v=22f0b58918e4';
+import { personText } from './cafe.js?v=22f0b58918e4';
+import { optionLabel } from './db-option-label.js?v=22f0b58918e4';
+import { repeatDialog } from './automations.js?v=22f0b58918e4';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -206,6 +207,17 @@ export function createWork(deps) {
   function say(node, text, ok) {
     setText(node, text);
     if (node && node.classList) { node.classList.toggle('msg--ok', !!ok && String(text || '') !== ''); }
+  }
+  /** Q:F-16 1차 — editor.js 가 만든 「템플릿으로 저장」 창 한 벌(창이 없는 화면 — 업무 홈 · 내 작업 — 이면 null) */
+  function templateSaver() {
+    const t = typeof deps.templateSave === 'function' ? deps.templateSave() : deps.templateSave;
+    return t && typeof t.open === 'function' ? t : null;
+  }
+  /** Q:F-16 1차 — 반복 창 「만들 자리」 기본값(일반 템플릿일 때) = 지금 프로젝트. 프로젝트 화면이 아니면 null(반복 창 그대로) */
+  function repeatParentOf() {
+    if (!project || !project.db || typeof project.db.page_id !== 'string') { return null; }
+    const t = pageData && pageData.page && typeof pageData.page.title === 'string' ? pageData.page.title : '';
+    return { id: project.db.page_id, title: '이 프로젝트 · ' + t };
   }
 
   /* ════════════════ 작업 줄 (DESIGN 2.20) ════════════════ */
@@ -690,6 +702,7 @@ export function createWork(deps) {
     let editor = null;
     let editorHasError = false;
     let attWatch = null;   // 카페 C4 — 칸에 그린 문서의 검사 중 첨부 다시 묻기(editor.js watchAttachments 한 벌)
+    let lastData = null;   // Q:F-16 1차 — 마지막으로 그린 창구 답 {id, data}(꺾쇠 메뉴 「지금 작업을 템플릿으로 저장」)
     const full = ctx.mode === 'full';
     const sizer = full ? null : paneSizer(paneEl);
     let projectHref = base + '/';
@@ -717,6 +730,7 @@ export function createWork(deps) {
       if (editor) { editor.flush().catch(() => {}); editor.destroy(); editor = null; }
       if (paneEl) { show(paneEl, false); clear(paneEl); }
       if (!full) { body.removeAttribute('data-task-open'); }
+      lastData = null;
     }
     /** U4-2 — 전체 화면: 이미 받은 페이지 답(editor.js 가 넘긴 것)으로 곧바로 그린다(창구를 한 번 더 부르지 않는다) */
     function showFull(id, data) {
@@ -795,6 +809,7 @@ export function createWork(deps) {
     }
 
     function draw(id, data, focusHead) {
+      lastData = { id: id, data: data };
       const page = data.page || {};
       const w = canWrite();
       const canEdit = w && data.can_edit === true;
@@ -871,11 +886,18 @@ export function createWork(deps) {
       const subItem = el('button', 'menu__item', '하위 작업 더하기');
       subItem.type = 'button';
       subItem.hidden = !canEdit;
+      // Q:F-16 1차(DESIGN 2.38 「작업 상세 더보기」) — 페이지 더보기와 같은 창 한 벌. 보일지는 창구 답 template_scopes 뿐(화면이 범위를 따지지 않는다)
+      const tplItem = el('button', 'menu__item', '템플릿으로 저장');
+      tplItem.type = 'button';
+      tplItem.setAttribute('aria-haspopup', 'dialog');
+      tplItem.setAttribute('data-task-save-template', '');
+      tplItem.hidden = !(w && Array.isArray(data.template_scopes) && data.template_scopes.length > 0 && templateSaver() !== null);
+      tplItem.addEventListener('click', () => { const saver = templateSaver(); if (saver) { saver.open(id, data, { repeatParent: repeatParentOf(), onSaved: pickerForget }); } });
       const sep = el('hr', 'menu__sep');
       const delItem = el('button', 'menu__item menu__item--danger', '지우기');
       delItem.type = 'button';
       delItem.hidden = !canManage;
-      list.append(titleItem, editItem, subItem);
+      list.append(titleItem, editItem, subItem, tplItem);
       // U4-2 — 전체 화면의 「문서로 보기」(프로젝트 메뉴와 같은 방식 — 옛 일반 문서 모양 · 볼 수 있는 사람 누구나)
       if (full && typeof ctx.onAsDoc === 'function') {
         const asDocItem = el('button', 'menu__item');
@@ -1585,7 +1607,8 @@ export function createWork(deps) {
       return box;
     }
 
-    return { open, close, showFull, release, current: () => currentId, host: () => paneEl, fromUrl: taskFromUrl, reload: () => (currentId ? load(currentId, false) : null) };
+    return { open, close, showFull, release, current: () => currentId, host: () => paneEl, fromUrl: taskFromUrl, reload: () => (currentId ? load(currentId, false) : null),
+      currentData: () => (currentId !== null && lastData && lastData.id === currentId ? lastData.data : null) };
   }
 
   /* 공간 트리(하위 작업의 상태 · 기한) — 공간마다 한 번. 공간 관문에 막히면(남의 개인 공간의 공유 페이지) 빈 목록 */
@@ -2006,6 +2029,264 @@ export function createWork(deps) {
     bindProjectStatus();
   }
 
+  /* ════════════════ Q:F-16 1차 — 「작업 추가 ▾」 템플릿 골라 작업 만들기 (DESIGN 2.38) ════════════════
+     꺾쇠(details.menu.menu--picker)는 머리 하나 · 섹션 끝마다 하나. 열 때 한 번만 목록 창구 둘(?database= · 일반)을 부르고 프로젝트마다 기억한다.
+     보일지 · 무엇을 고를 수 있는지는 창구 값(can_add_rows · 목록 · template_scopes)뿐 — 역할 · 공간 · 범위 비교 0.
+     목록 위의 「빈 작업」은 지금 「작업 추가」 단추를 그대로 누른다(그 자리 입력 줄 — 새 입력 코드 0). */
+  const PICK_SCOPE = { database: '이 프로젝트', personal: '내 템플릿', team: '팀', site: '사이트 기본' };
+  const PICK_ORDER = { personal: 0, team: 1, site: 2 };
+  const finePointer = typeof window.matchMedia === 'function' ? window.matchMedia('(hover: hover) and (pointer: fine)') : null;
+  const pickerParts = new WeakMap();
+  let picker = null;     // { dbId, rows, general, bodies, errors, loading } — 프로젝트(DB) 하나에 하나
+  let lastList = null;   // { gp, ctx } — 마지막으로 그린 목록(머리 꺾쇠가 섹션 칸을 안다)
+
+  function pickerState() {
+    const dbId = project && project.db ? String(project.db.id) : '';
+    if (!picker || picker.dbId !== dbId) { picker = { dbId: dbId, rows: null, general: null, bodies: {}, errors: [], loading: null }; }
+    return picker;
+  }
+  /** 「템플릿으로 저장」(201) 뒤 — 다음에 꺾쇠를 열 때 목록을 다시 받는다 */
+  function pickerForget() {
+    if (picker) { picker.rows = null; picker.general = null; picker.loading = null; }
+  }
+  function pickScopeText(t) {
+    if (t.scope === 'team' && typeof t.team === 'string' && t.team !== '') { return PICK_SCOPE.team + ' · ' + t.team; }
+    return PICK_SCOPE[t.scope] || '';
+  }
+  function loadPicker() {
+    const st = pickerState();
+    if (st.rows !== null) { return Promise.resolve(st); }
+    if (st.loading) { return st.loading; }
+    const take = (r) => {
+      if (r.status === 401) { toLogin(); return { list: [], err: '' }; }
+      if (r.status !== 200) { return { list: [], err: errorMessage(r.data) }; }
+      return { list: r.data && Array.isArray(r.data.templates) ? r.data.templates : [], err: '' };
+    };
+    const fail = () => ({ list: [], err: genericError });
+    st.loading = Promise.all([
+      api('GET', '/api/templates?database=' + encodeURIComponent(st.dbId)).then(take, fail),
+      api('GET', '/api/templates').then(take, fail)
+    ]).then(([a, b]) => {
+      st.rows = a.list;
+      st.general = b.list.map((t, i) => ({ t: t, i: i }))
+        .sort((x, y) => ((PICK_ORDER[x.t.scope] ?? 9) - (PICK_ORDER[y.t.scope] ?? 9)) || (x.i - y.i)).map((x) => x.t);
+      st.errors = [a.err, b.err].filter((e) => e !== '');
+      st.loading = null;
+      return st;
+    });
+    return st.loading;
+  }
+  /** 섹션 칸 · 누른 자리 — 머리는 지금 보이는 목록의 첫 섹션(지금 「작업 추가」가 여는 그 자리), 섹션 끝은 그 섹션 */
+  function pickPlace(parts) {
+    if (parts.section !== null) { return { gp: parts.gp, value: parts.section, name: parts.sectionName, ctx: parts.ctx }; }
+    const first = document.querySelector('#project-list:not([hidden]) [data-add-section]');
+    if (!first || !lastList) { return { gp: null, value: '', name: '', ctx: project }; }
+    const value = first.getAttribute('data-add-section') || '';
+    const gp = lastList.gp;
+    return { gp: gp, value: value, name: gp && value !== '' ? optionLabel(gp, value) : '', ctx: lastList.ctx };
+  }
+  /** 꺾쇠 안의 틀(한 번) — 목록이 비면 CSS(2.15)가 꺾쇠째 숨기므로 「빈 작업」은 처음부터 있다 */
+  function setupPicker(menu, opts) {
+    if (!menu || pickerParts.has(menu)) { return; }
+    const summary = menu.querySelector('summary');
+    const list = menu.querySelector('.menu__list');
+    if (!summary || !list) { return; }
+    clear(list);
+    const sheetHead = el('div', 'menu__sheet-head');
+    const closeSheet = iconButton('x', '닫기');
+    closeSheet.addEventListener('click', () => { menu.open = false; summary.focus(); });
+    sheetHead.append(el('strong', null, '템플릿 골라 작업 추가'), closeSheet);
+    const col = el('div');
+    const msg = el('p', 'msg');
+    msg.setAttribute('role', 'alert');
+    msg.setAttribute('aria-live', 'polite');
+    const empty = el('button', 'menu__item');
+    empty.type = 'button';
+    empty.setAttribute('data-template-empty', '');
+    empty.append(icon('plus'), el('span', null, '빈 작업'));
+    empty.addEventListener('click', () => opts.onEmpty());
+    const rowsBox = el('div');
+    const hint = el('p', 'menu__hint', '자주 쓰는 작업을 템플릿으로 저장하면 여기서 골라 쓸 수 있어요.');
+    hint.hidden = true;
+    const sep = el('hr', 'menu__sep');
+    const saveItem = el('button', 'menu__item', '지금 작업을 템플릿으로 저장');
+    saveItem.type = 'button';
+    saveItem.setAttribute('aria-haspopup', 'dialog');
+    saveItem.setAttribute('data-template-save-current', '');
+    saveItem.hidden = true;
+    saveItem.addEventListener('click', () => {
+      const saver = templateSaver();
+      const id = projectPane ? projectPane.current() : null;
+      const data = projectPane ? projectPane.currentData() : null;
+      if (saver && id && data) { saver.open(id, data, { repeatParent: repeatParentOf(), onSaved: pickerForget }); }
+    });
+    col.append(msg, empty, rowsBox, hint, sep, saveItem);
+    const preview = el('section', 'menu__preview');
+    preview.setAttribute('role', 'region');
+    preview.setAttribute('aria-label', '템플릿 미리보기');
+    preview.hidden = true;
+    list.append(sheetHead, col, preview);
+    const parts = { menu: menu, summary: summary, msg: msg, rowsBox: rowsBox, hint: hint, saveItem: saveItem, preview: preview,
+      section: opts.section, sectionName: opts.sectionName || '', gp: opts.gp || null, ctx: opts.ctx || null, previewing: null, hoverTimer: 0 };
+    pickerParts.set(menu, parts);
+    menu.addEventListener('toggle', () => { if (menu.open) { openPicker(parts); } });
+  }
+  function openPicker(parts) {
+    say(parts.msg, '');
+    const saver = templateSaver();
+    const data = projectPane ? projectPane.currentData() : null;
+    parts.saveItem.hidden = !(canWrite() && saver && data && Array.isArray(data.template_scopes) && data.template_scopes.length > 0);
+    drawPickRows(parts);
+    const st = pickerState();
+    if (st.rows === null) {
+      loadPicker().then(() => { if (parts.menu.open && parts.menu.isConnected) { drawPickRows(parts); } });
+    }
+  }
+  function drawPickRows(parts) {
+    const st = pickerState();
+    clear(parts.rowsBox);
+    if (st.rows === null) { parts.hint.hidden = true; return; }
+    const all = st.rows.concat(st.general || []);
+    for (const t of all) {
+      if (!t || typeof t.id !== 'string') { continue; }
+      const row = el('div', 'menu__row');
+      const item = el('button', 'menu__item');
+      item.type = 'button';
+      item.setAttribute('data-template-id', t.id);
+      item.setAttribute('data-template-scope', String(t.scope || ''));
+      item.append(el('span', null, (t.icon ? t.icon + ' ' : '') + (t.name || t.title || '')), el('span', 'menu__scope', pickScopeText(t)));
+      item.addEventListener('click', () => makeFromTemplate(parts, t));
+      item.addEventListener('focusin', () => previewTemplate(parts, t));
+      item.addEventListener('pointerenter', () => {
+        if (!finePointer || !finePointer.matches) { return; }
+        window.clearTimeout(parts.hoverTimer);
+        parts.hoverTimer = window.setTimeout(() => previewTemplate(parts, t), 150);
+      });
+      item.addEventListener('pointerleave', () => window.clearTimeout(parts.hoverTimer));
+      const look = iconButton('search', (t.name || t.title || '') + ' 미리보기', 'menu__look');
+      look.setAttribute('aria-pressed', parts.previewing === t.id ? 'true' : 'false');
+      look.setAttribute('data-template-look', t.id);
+      look.addEventListener('click', () => previewTemplate(parts, t));
+      row.append(item, look);
+      parts.rowsBox.appendChild(row);
+    }
+    parts.hint.hidden = !(all.length === 0 && st.errors.length === 0);
+    say(parts.msg, st.errors.length ? st.errors[0] : '');
+  }
+  function previewCtx() {
+    const data = pageData || {};
+    return { child_titles: {}, link_titles: {}, file_titles: {}, attachment_titles: {}, attachment_page: null, synced: {},
+      embeds: data.embeds || { hosts: [], frames: false }, base: base, tbox_base: tboxBase, mention_labels: {}, db_views: {}, buttons: {} };
+  }
+  function previewTemplate(parts, t) {
+    window.clearTimeout(parts.hoverTimer);
+    if (parts.previewing === t.id && !parts.preview.hidden) { return; }
+    parts.previewing = t.id;
+    for (const b of parts.rowsBox.querySelectorAll('[data-template-look]')) {
+      b.setAttribute('aria-pressed', b.getAttribute('data-template-look') === t.id ? 'true' : 'false');
+    }
+    const st = pickerState();
+    const known = st.bodies[t.id];
+    if (known) { drawPreview(parts, known); return; }
+    api('GET', '/api/templates/' + encodeURIComponent(t.id)).then((r) => {
+      if (r.status === 401) { toLogin(); return; }
+      if (parts.previewing !== t.id || !parts.menu.isConnected) { return; }
+      if (r.status !== 200 || !r.data || !r.data.template) {
+        clear(parts.preview);
+        parts.preview.hidden = false;
+        const m = el('p', 'msg', errorMessage(r.data));
+        m.setAttribute('role', 'alert');
+        parts.preview.appendChild(m);
+        return;
+      }
+      st.bodies[t.id] = r.data.template;
+      drawPreview(parts, r.data.template);
+    }).catch(() => {
+      if (parts.previewing !== t.id) { return; }
+      clear(parts.preview);
+      parts.preview.hidden = false;
+      parts.preview.appendChild(el('p', 'msg', genericError));
+    });
+  }
+  /** 칸 값 한 줄 — 행 템플릿의 값 가운데 지금 프로젝트 스키마에 있는 칸만(서버도 지금 스키마로 다시 거른다) */
+  function fillLine(tpl, place) {
+    if (tpl.scope !== 'database' || !project || !project.db) { return ''; }
+    const schema = Array.isArray(project.db.schema) ? project.db.schema : [];
+    const vals = tpl.properties && typeof tpl.properties === 'object' ? tpl.properties : {};
+    const bits = [];
+    for (const k of Object.keys(vals)) {
+      const prop = schema.find((p) => p.key === k);
+      if (!prop) { continue; }
+      const v = vals[k];
+      let text = '';
+      if (prop.type === 'select') { text = optionLabel(prop, v); }
+      else if (prop.type === 'multi_select') { text = (Array.isArray(v) ? v : []).map((x) => optionLabel(prop, x)).join('·'); }
+      else if (prop.type === 'checkbox') { text = v === true ? '예' : '아니요'; }
+      else if (v !== null && v !== undefined) { text = String(v); }
+      if (text !== '') { bits.push((prop.name || k) + ' ' + text); }
+    }
+    if (bits.length === 0) { return ''; }
+    let line = '미리 채움: ' + bits.join(' · ');
+    if (place.gp && place.value !== '') { line += ' (' + (place.gp.key === 'section' ? '섹션' : place.gp.name) + '은 누른 자리 ' + place.name + ')'; }
+    return line;
+  }
+  function drawPreview(parts, tpl) {
+    const pv = parts.preview;
+    clear(pv);
+    pv.hidden = false;
+    const head = el('div', 'toolbar');
+    head.append(el('strong', null, (tpl.icon ? tpl.icon + ' ' : '') + (tpl.name || '')), el('span', 'muted', pickScopeText(tpl)));
+    pv.appendChild(head);
+    pv.appendChild(el('p', 'muted', '제목: ' + (tpl.title || '')));
+    const line = fillLine(tpl, pickPlace(parts));
+    if (line !== '') { pv.appendChild(el('p', 'muted', line)); }
+    pv.appendChild(el('p', 'muted', '상태 · 담당 · 기한은 만든 뒤 작업 상세에서 정해요.'));
+    const docBox = el('div');
+    const blocks = tpl.doc && Array.isArray(tpl.doc.blocks) ? tpl.doc.blocks : [];
+    let node = null;
+    if (blocks.length) {
+      try { node = renderDoc(tpl.doc, previewCtx()); } catch (e) { node = null; docBox.appendChild(el('p', 'muted', '본문을 그릴 수 없어요 — 전체 화면으로 열어 보세요.')); }
+    }
+    if (node && (node.textContent.trim() !== '' || node.querySelector('img, table, iframe, hr, a, input'))) { docBox.appendChild(node); }
+    else if (!docBox.firstChild) { docBox.appendChild(el('p', 'muted', '본문이 비어 있어요.')); }
+    pv.appendChild(docBox);
+    const foot = el('div', 'toolbar');
+    const use = textButton('이 템플릿으로 만들기', 'btn btn--quiet btn--small');
+    use.setAttribute('data-template-make', '');
+    use.addEventListener('click', () => { parts.menu.open = false; parts.summary.focus(); makeFromTemplate(parts, tpl); });
+    foot.appendChild(use);
+    if (canWrite()) {
+      const rep = textButton('이 템플릿으로 매주 만들기', 'btn btn--quiet btn--small');
+      rep.setAttribute('data-template-repeat', '');
+      rep.addEventListener('click', () => {
+        parts.menu.open = false;
+        parts.summary.focus();
+        repeatDialog(api, null, { template: tpl, parent: repeatParentOf() });
+      });
+      foot.appendChild(rep);
+    }
+    pv.appendChild(foot);
+  }
+  /** 고르기 → 만들기: 지금 「작업 추가」 줄과 같은 두 걸음(POST 행 → PATCH 상태 「할 일」) · 제목은 서버가 템플릿 제목으로 */
+  function makeFromTemplate(parts, t) {
+    if (!project || !project.db) { return; }
+    const place = pickPlace(parts);
+    const payload = { parent_id: project.db.page_id, template_id: t.id };
+    if (place.gp && place.value !== '') { payload.properties = {}; payload.properties[place.gp.key] = place.value; }
+    const msg = $('db-msg') || msgEl();
+    const buttons = Array.from(parts.menu.querySelectorAll('button'));
+    for (const b of buttons) { b.disabled = true; }
+    say(msg, '');
+    api('POST', '/api/pages', payload).then((r) => {
+      if (r.status !== 201) { throw new Error(failMessage(r)); }
+      return api('PATCH', '/api/pages/' + r.data.page.id + '/properties', { status: 'todo' }).then(() => r.data.page.id);
+    }).then((id) => {
+      const ctx = place.ctx || project;
+      return Promise.resolve(ctx && typeof ctx.reload === 'function' ? ctx.reload() : null).then(() => { if (projectPane) { projectPane.open(id, { push: true }); } });
+    }).catch((err) => say(msg, err && err.message ? err.message : genericError))
+      .finally(() => { for (const b of buttons) { b.disabled = false; } });
+  }
+
   function drawProjectHead() {
     if (!project || !pageData) { return; }
     headDrawn = true;
@@ -2025,6 +2306,12 @@ export function createWork(deps) {
     const b = $('page-share-open');
     show(shareBtn, (a && !a.hidden) || (b && !b.hidden));
     show($('project-add-task'), project.db.can_add_rows === true);
+    // Q:F-16 1차 — 머리 꺾쇠(창구 값 can_add_rows · 쓰기 자격만)
+    const pickHead = $('project-add-task-pick');
+    if (pickHead) {
+      setupPicker(pickHead, { section: null, onEmpty: () => { const b = $('project-add-task'); if (b) { b.click(); } } });
+      show(pickHead, project.db.can_add_rows === true && canWrite());
+    }
     const status = $('project-status');
     if (status) { status.disabled = false; }
     loadProjectStatus();
@@ -2184,6 +2471,7 @@ export function createWork(deps) {
     const groupKey = view && view.group_by && view.group_by !== 'status' ? view.group_by : 'section';
     const gp = (db.schema || []).find((p) => p.key === groupKey && p.type === 'select' && Array.isArray(p.options)) || null;
     const spaceId = pageData && pageData.space ? pageData.space.id : null;
+    lastList = { gp: gp, ctx: ctx };   // Q:F-16 1차 — 머리 꺾쇠가 섹션 칸을 안다
     clear(host);
     const headRow = el('div', 'task-list__head');
     headRow.append(el('span', null, '이름'), el('span', null, '담당자'), el('span', null, '마감'));
@@ -2259,6 +2547,17 @@ export function createWork(deps) {
             const add = textButton('작업 추가', 'btn btn--quiet btn--small', 'plus');
             add.setAttribute('data-add-section', g.value);
             actions.appendChild(add);
+            // Q:F-16 1차(DESIGN 2.38 「자리 둘」) — 「작업 추가」 바로 오른쪽 꺾쇠. 「작업 추가」의 글자 · 속성 · 처리는 그대로
+            if (canWrite()) {
+              const pick = el('details', 'menu menu--picker');
+              pick.setAttribute('data-add-section-pick', g.value);
+              const pickSum = el('summary', 'btn btn--icon btn--quiet btn--small');
+              pickSum.setAttribute('aria-label', '템플릿 골라 ' + g.name + '에 작업 추가');
+              pickSum.appendChild(icon('chevron'));
+              pick.append(pickSum, el('div', 'menu__list'));
+              actions.appendChild(pick);
+              setupPicker(pick, { section: g.value, sectionName: g.name, gp: gp, ctx: ctx, onEmpty: () => add.click() });
+            }
             sec.appendChild(actions);
             add.addEventListener('click', () => {
               projectAdding = g.value;

@@ -377,6 +377,53 @@ button.appbar__brand .icon { display: inline-flex; color: var(--muted); }
 .menu__sep { display: none; }
 .menu__item:not([hidden]) ~ .menu__sep:has(~ .menu__item:not([hidden])) { display: block; }
 .menu:not(:has(.menu__item:not([hidden]))) { display: none; }
+/* Q:F-16 1차 (DESIGN 2.38) — 업무 프로젝트 「작업 추가 ▾」 템플릿 고르기. 새 클래스 일곱 · 토큰만 · 2.15 의 위 줄은 그대로.
+   선택자를 `.menu.menu--picker` 로 한 단계 세게 — 아래 2.15 「창 안에 머묾」 @supports 묶음(.menu > .menu__list)보다 뒤에 와도 이 값이 이긴다.
+   목록 칸(첫 자식 div)과 미리보기(.menu__preview) 둘 — 미리보기가 보일 때만 ≥960 두 칸으로 넓힌다(비어 있는 오른쪽 칸 0). */
+.menu.menu--picker > .menu__list { min-width: min(18rem, calc(100vw - 32px)); max-width: calc(100vw - 32px); }
+.menu.menu--picker > .menu__list:has(> .menu__preview:not([hidden])) { width: min(44rem, calc(100vw - 32px)); }
+.menu__row { display: flex; align-items: center; gap: 8px; }
+.menu__row > .menu__item { flex: 1 1 auto; width: auto; min-width: 0; }
+.menu__row > .menu__item > span:first-child { overflow: hidden; text-overflow: ellipsis; }
+.menu__scope { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
+.menu__look { flex-shrink: 0; }
+.menu__hint { margin: 0; padding: 6px 10px; font-size: 13px; color: var(--muted); white-space: normal; }
+.menu__preview { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 6px 8px; overflow-y: auto; }
+.menu__preview > .toolbar > strong { overflow-wrap: anywhere; }
+.menu__preview > p { margin: 0; }
+.menu__preview > div:not(.toolbar) { font-size: 13px; }
+.menu__preview > .toolbar:last-child { position: sticky; bottom: -6px; padding: 6px 0; background: var(--surface); }   /* 바닥 단추 둘은 본문이 길어도 늘 보인다 */
+.menu__sheet-head { display: none; }
+@media (min-width: 960px) {
+  .menu.menu--picker > .menu__list:has(> .menu__preview:not([hidden])) {
+    display: grid;
+    grid-template-columns: minmax(14rem, 18rem) minmax(0, 1fr);
+    align-items: start;
+    gap: 6px 12px;
+  }
+  .menu__preview { max-height: min(60vh, 32rem); border-left: 1px solid var(--line); }
+}
+@media (max-width: 959.98px) {
+  .menu.menu--picker > .menu__list {
+    position: fixed;
+    inset: auto 0 0 0;
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    max-height: 80dvh;
+    margin: 0;
+    border-radius: var(--r-card) var(--r-card) 0 0;
+    overflow-y: auto;
+  }
+  .menu.menu--picker > .menu__list:has(> .menu__preview:not([hidden])) { width: auto; }
+  .menu__sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 4px 4px 10px; }
+  .menu__preview { border-top: 1px solid var(--line); }
+  /* 시트는 떠 있는 메신저 단추(--z-floating) 위 — 마지막 줄이 가려 눌리지 않던 것. 숫자 0 · 지금 토큰(길잡이 층) */
+  .menu.menu--picker > .menu__list { z-index: var(--z-guide); }
+  @supports (anchor-name: --menu) and (anchor-scope: --menu) {
+    .menu.menu--picker > .menu__list { position-area: none; position-try-fallbacks: none; inset: auto 0 0 0; margin: 0; max-height: 80dvh; }
+  }
+}
 
 /* ─── 카드 · 패널 ──────────────────────────────────────────────── */
 .card {

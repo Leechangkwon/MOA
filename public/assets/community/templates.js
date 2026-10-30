@@ -11,9 +11,9 @@
  * ★ 미리보기는 읽기 렌더러(`renderDoc`)가 그린다 — 보이는 것과 만들어지는 것이 같다.
  *   글자는 전부 textContent 로 넣는다(HTML 문자열을 넣는 자리가 없다).
  */
-import { renderDoc } from './doc-render.js?v=b76472e6847d';
+import { renderDoc } from './doc-render.js?v=22f0b58918e4';
 
-import { repeatDialog } from './automations.js?v=b76472e6847d';
+import { repeatDialog } from './automations.js?v=22f0b58918e4';
 
 const SCOPE_LABELS = {
   site: '사이트 기본',
@@ -227,6 +227,12 @@ export function createTemplateSave(d) {
   let pageId = '';
   let title = '';
   let scopes = [];
+  // Q:F-16 1차 — 페이지 더보기(draw 가 세운 값)와 작업 칸 더보기(open 이 넘긴 값)가 한 창을 함께 쓴다.
+  // 페이지 값은 따로 두고, 창을 열 때마다 그 자리의 값으로 바꾼다(작업 칸에서 연 뒤 페이지 「템플릿으로 저장」이 작업을 담지 않게)
+  let pageOwn = { id: '', title: '', scopes: [] };
+  let repeatParent = null;   // 저장 뒤 「이 템플릿으로 매주 만들기」의 「만들 자리」 기본값 {id, title} — 작업 칸이 넘길 때만
+  let repeatBtn = null;
+  let onSaved = null;        // 저장(201) 뒤 부를 함수 — 작업 칸이 넘길 때만(꺾쇠 목록을 다음에 다시 받게)
   if (!button || !dialog) { return { draw: () => {} }; }
 
   function drawScopes() {
@@ -251,15 +257,25 @@ export function createTemplateSave(d) {
     });
   }
 
-  button.addEventListener('click', () => {
+  function openDialog() {
     if (typeof dialog.showModal !== 'function') { return; }
     d.setText(msg, '');
+    msg.classList.remove('msg--ok');
+    if (repeatBtn) { repeatBtn.remove(); repeatBtn = null; }
     // 글자(코드 포인트) 단위로 자른다 — UTF-16 단위로 자르면 이모지가 반으로 갈린다(독립 검토 L-7)
     nameInput.value = Array.from(title).slice(0, 60).join('');
     drawScopes();
     confirm.disabled = false;
     if (!dialog.open) { dialog.showModal(); }
     nameInput.focus();
+  }
+  button.addEventListener('click', () => {
+    pageId = pageOwn.id;
+    title = pageOwn.title;
+    scopes = pageOwn.scopes;
+    repeatParent = null;
+    onSaved = null;
+    openDialog();
   });
   confirm.addEventListener('click', () => {
     const picked = scopesBox.querySelector('input[name="template-scope"]:checked');
@@ -272,6 +288,23 @@ export function createTemplateSave(d) {
       // 저장한 뒤에는 「저장」을 끈 채 둔다 — 한 번 더 눌러 같은 템플릿이 둘 생기지 않게(창을 다시 열면 켜진다)
       const n = typeof r.data.dropped_blocks === 'number' ? r.data.dropped_blocks : 0;
       d.setText(msg, '템플릿으로 저장했습니다' + (n > 0 ? ' — 첨부·하위 페이지 블록 ' + String(n) + '개는 담지 않았습니다' : ''));
+      msg.classList.add('msg--ok');   // DESIGN 2.21 「알림 색」 — 성공 안내는 성공 모양
+      // Q:F-16 1차(DESIGN 2.38 「작업 상세 더보기」 · G-3) — 저장한 템플릿으로 곧바로 반복 창(기존 repeatDialog — 새 창 0)
+      const saved = r.data.template;
+      if (typeof onSaved === 'function') { onSaved(saved); }
+      if (saved && typeof saved.id === 'string' && msg.parentNode) {
+        repeatBtn = document.createElement('button');
+        repeatBtn.type = 'button';
+        repeatBtn.className = 'btn btn--quiet btn--small';
+        repeatBtn.setAttribute('data-template-repeat', '');
+        repeatBtn.textContent = '이 템플릿으로 매주 만들기';
+        const parentForRepeat = repeatParent;
+        repeatBtn.addEventListener('click', () => {
+          dialog.close();
+          repeatDialog(d.api, null, { template: saved, parent: parentForRepeat });
+        });
+        msg.parentNode.insertBefore(repeatBtn, msg.nextSibling);
+      }
     }).catch(() => { confirm.disabled = false; d.setText(msg, d.genericError); });
   });
   for (const close of dialog.querySelectorAll('[data-template-save-close]')) {
@@ -280,10 +313,30 @@ export function createTemplateSave(d) {
 
   return {
     draw(id, data) {
+      pageOwn = {
+        id: id,
+        title: data && data.page && typeof data.page.title === 'string' ? data.page.title : '',
+        scopes: data && Array.isArray(data.template_scopes) ? data.template_scopes.filter((s) => !!SCOPE_LABELS[s]) : []
+      };
+      pageId = pageOwn.id;
+      title = pageOwn.title;
+      scopes = pageOwn.scopes;
+      d.show(button, pageOwn.scopes.length > 0);
+    },
+    /**
+     * Q:F-16 1차 — 작업 칸(work.js) 더보기 「템플릿으로 저장」: 그 작업의 창구 답으로 같은 창을 연다.
+     * 범위 항목은 그 답의 `template_scopes` 뿐 — 비면 아무 일도 하지 않는다(화면이 범위를 따지지 않는다).
+     * opts.repeatParent = {id, title} — 저장 뒤 「이 템플릿으로 매주 만들기」의 「만들 자리」 기본값 · opts.onSaved(template) — 저장(201) 뒤
+     */
+    open(id, data, opts) {
+      const s = data && Array.isArray(data.template_scopes) ? data.template_scopes.filter((x) => !!SCOPE_LABELS[x]) : [];
+      if (s.length === 0) { return; }
       pageId = id;
       title = data && data.page && typeof data.page.title === 'string' ? data.page.title : '';
-      scopes = data && Array.isArray(data.template_scopes) ? data.template_scopes.filter((s) => !!SCOPE_LABELS[s]) : [];
-      d.show(button, scopes.length > 0);
+      scopes = s;
+      repeatParent = opts && opts.repeatParent && typeof opts.repeatParent.id === 'string' ? opts.repeatParent : null;
+      onSaved = opts && typeof opts.onSaved === 'function' ? opts.onSaved : null;
+      openDialog();
     }
   };
 }

@@ -210,6 +210,10 @@ unset($viewShellTop);
         <button id="project-add-task" class="btn" type="button" hidden>
           <span class="icon" data-icon="plus"></span><span>작업 추가</span>
         </button>
+        <details id="project-add-task-pick" class="menu menu--picker" hidden>
+          <summary class="btn btn--icon btn--quiet" aria-label="템플릿 골라 작업 추가"><span class="icon" data-icon="chevron"></span></summary>
+          <div class="menu__list"></div>
+        </details>
       </div>
     </header>
 

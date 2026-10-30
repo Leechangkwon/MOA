@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=b76472e6847d';
-import { hydrateDashboard } from './dashboard.js?v=b76472e6847d';
+import { createTableEditor } from './table-editor.js?v=22f0b58918e4';
+import { hydrateDashboard } from './dashboard.js?v=22f0b58918e4';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=b76472e6847d';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=b76472e6847d';
-import { createMentionInput, mentionTokens } from './mention-input.js?v=b76472e6847d';
-import { createDatabaseView } from './database.js?v=b76472e6847d';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=b76472e6847d';
-import { bindEmbedAdmin } from './embeds.js?v=b76472e6847d';
-import { bindPopular } from './popular.js?v=b76472e6847d';
-import { bindPalettes } from './palettes.js?v=b76472e6847d';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=b76472e6847d';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=b76472e6847d';
-import { drawTrust, bindProcedures } from './procedures.js?v=b76472e6847d';
-import { createPageExport } from './export.js?v=b76472e6847d';
-import { createDrafts } from './drafts.js?v=b76472e6847d';
-import { drawPageAi, bindAiCenter } from './ai.js?v=b76472e6847d';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=b76472e6847d';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=22f0b58918e4';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=22f0b58918e4';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=22f0b58918e4';
+import { createDatabaseView } from './database.js?v=22f0b58918e4';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=22f0b58918e4';
+import { bindEmbedAdmin } from './embeds.js?v=22f0b58918e4';
+import { bindPopular } from './popular.js?v=22f0b58918e4';
+import { bindPalettes } from './palettes.js?v=22f0b58918e4';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=22f0b58918e4';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=22f0b58918e4';
+import { drawTrust, bindProcedures } from './procedures.js?v=22f0b58918e4';
+import { createPageExport } from './export.js?v=22f0b58918e4';
+import { createDrafts } from './drafts.js?v=22f0b58918e4';
+import { drawPageAi, bindAiCenter } from './ai.js?v=22f0b58918e4';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=22f0b58918e4';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=b76472e6847d';
-import { createCafe, personInto, isAnon } from './cafe.js?v=b76472e6847d';
+import { createWork } from './work.js?v=22f0b58918e4';
+import { createCafe, personInto, isAnon } from './cafe.js?v=22f0b58918e4';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 
@@ -5623,6 +5623,7 @@ function createToolbar(view, opts) {
 
 /* ── 페이지 화면 전체 ──────────────────────────────────────── */
 
+let pageTemplateSave = null;   // Q:F-16 1차 — initPage 의 「템플릿으로 저장」 창 한 벌을 업무 화면(작업 칸 더보기)도 쓴다
 function initPage() {
   const meta = document.getElementById('page-meta');
   if (!meta) { return; }
@@ -5675,6 +5676,7 @@ function initPage() {
     api: api, setText: setText, show: show, clear: clear, errorMessage: errorMessage,
     genericError: GENERIC_ERROR, toLogin: toLogin
   });
+  pageTemplateSave = templateSave;
   const conflictDialog = document.getElementById('conflict-dialog');
   const visibilityBadgeEl = document.getElementById('page-visibility');
   const visibilityButton = document.getElementById('page-visibility-edit');
@@ -8734,7 +8736,8 @@ function boot() {
           favorites: { star: navStar, ids: () => favoriteIds, onChange: (fn) => { favoriteListeners.push(fn); } },   // Q:F-12 U2 — 업무함 ★ = 사이드바 즐겨찾기의 같은 함수 · 같은 창구
           makeIcon: makeIcon, canWrite: () => meCanWrite, meName: () => meUsername || '', loadSpaces: loadSpaces, mountEditor: mountPaneEditor,
           // 카페 C4 — 검사 중 첨부 다시 묻기 · 편집기 그림 부품 다시 그리기 · 남긴 댓글의 멘션 표시(전체 화면과 같은 함수 한 벌)
-          watchAttachments: watchAttachments, redrawAttachments: redrawAttachmentViews, mentionInto: mentionInto
+          watchAttachments: watchAttachments, redrawAttachments: redrawAttachmentViews, mentionInto: mentionInto,
+          templateSave: () => pageTemplateSave   // Q:F-16 1차 — 작업 칸 더보기 「템플릿으로 저장」(창이 없는 화면이면 open 이 없다)
         });
         // 카페 C2 — 카페 부품(신고 · 이름표 · 관리자 화면 둘) · 「우리 공간」 셸의 관리 묶음(can_admin — 표시용)
         cafe = createCafe({ api: api, personLabel: personLabel, base: COMMUNITY_BASE });
