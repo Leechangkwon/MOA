@@ -1415,3 +1415,5 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 ③ 미검증: 실제 휴대폰 화면에서 토글 접고 펴기(화면 코드는 바뀌지 않았고 기존 `<details>` 렌더러) · ChatGPT 실제 연결에서 새 스키마 사용 · 회귀(밤 대기열).
 
 ④ 다음 조치: 암호화 DB/코드/설정 백업 전체 파싱 → 고정 후보 모의 적용 → ff 반영(opcache 재검사 2초, 서비스 재시작 0) → 운영 확인(사용자 토큰으로 리서치 실행기가 토글 글을 올리고 다시 읽기) → 밤 회귀 대기열 `community.work_document_create`·`community.work_document_mcp`·`community.remote_mcp_http`.
+
+⑤ 운영(10-30 10:25): v2.77.0 `bb8c7e0` — 암호화 백업 전체 파싱 · 모의 적용 · ff · 표 104 원래 행/owner·ACL/파일/설정 보존 · 서비스 재시작 0. 운영 확인: health 200 · 사용자 토큰 잘못된 토글 둘 400(새 문구) · 리서치 실행기 토글 글 생성·재조회. 회귀: 밤 회귀 대기(work_document_create · work_document_mcp · remote_mcp_http). 미검증: 화면 접고 펴기(사용자).
