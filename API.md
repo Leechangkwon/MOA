@@ -1459,6 +1459,10 @@ nginx는 검색·파일목록·게시판글목록의 GET에 IP당8r/s+burst16을
 
 `POST /community/api/work/documents` (`community.write`, 세션 CSRF 또는 개인 토큰): `project_id`, `request_id` UUID, `title`(1~200자), `blocks`(평문 문단/제목/목록/인용 1~100개, 문구 10000자), 선택 `status`(기존 5상태, 기본 todo), `section`(현재 section select의 저장값). 읽고 편집 가능한 살아 있는 업무 프로젝트의 직계 행만 만든다. 부모 공간·범위를 상속하고 소유권/공유/스키마/첨부 입력은 받지 않는다. 생성201, 동일 본문·상태·섹션·부모·작성자의 같은 요청 UUID 재전송200(`created:false`), 다른 요청/이후 수정/휴지통 UUID 충돌409. 응답 `id,url,doc_version,status,section,created`. UUID는 새 작업의 public ID이므로 응답 불명 시 해당 ID를 다시 읽는다. 기존 POST pages 토큰 위치 제한은 유지한다. 업무 문서 읽기는 프로젝트일 때 `project.sections:[{value,name}]`를 추가한다. OAuth `qaredi_create_work_document`는 기존 `work.read`+`work.write`와 같은 행 판정을 적용한다.
 
+### 2026-10-30 작업글 본문의 펼치기(토글) 블록
+
+`POST /community/api/work/documents`의 `blocks`와 `PATCH /community/api/work/documents/{id}`의 `append`가 기존 평문 문단/제목/목록/인용에 더해 `{type:"toggle", text, children}`을 받는다. `text`는 접힌 상태에서 보이는 한 줄(평문, 10000자 이하), `children`은 펼쳤을 때 보이는 평문 문단·글머리/번호 목록·인용 1개 이상이다. 하위에는 제목·토글·`children`을 넣을 수 없다(한 단계). `level`은 제목에만, `children`은 토글에만 허용하고 다른 키는 400. 블록 수 상한 100은 하위 블록까지 센다(만들기 1~100, 추가 최대 100). 만들기의 하위 블록 ID도 요청 UUID·위치에서 안정적으로 도출해 같은 요청 재전송은 `created:false`, 하위 본문이 달라지면 409. 기존 문구 교체는 토글 안 하위 블록에도 그대로 동작한다. 링크·멘션·마크·그림·파일은 여전히 받지 않으며 저장 전에 `Doc::validate`를 통과해야 한다. OAuth `qaredi_create_work_document`·`qaredi_update_work_document` 입력 스키마도 같다.
+
 ## PC 비서 선택 요약 진단·배포 확인 (2026-10-17)
 
 GET `/api/client/release`는 `file.read`(파일 읽기 토큰 포함)로 현재 사용자에게 보이는 배포판의 버전·SHA256·변경 설명·게시시각·배포함 주소·사용자 선택 정책만 반환한다. 원본 업로더 이름은 제외한다.

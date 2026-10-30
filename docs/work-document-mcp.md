@@ -30,7 +30,7 @@
 | `qaredi_create_work_document` | 지정한 기존 프로젝트의 작업 목록에 새 작업글 만들기 |
 | `qaredi_update_work_document` | 지정 문구 교체와 끝에 기록 추가 |
 
-갱신 예시: `page_id`, 읽은 `doc_version`, `replacements: [{block_id, old_text, new_text}]`, `append: [{type: "heading", level: 2, text: "개발 기록"}, {text: "검사 통과 / 운영 미반영"}]`. 추가 가능한 종류는 문단·제목·번호/글머리 목록·인용이며 `text`는 일반 글자입니다. Markdown 문법을 렌더링하지 않습니다. 문구 교체는 한 블록 안에서 정확히 한 번 나오는 문자열만 받습니다. 표·그림 자체와 멘션은 웹에서 편집합니다.
+갱신 예시: `page_id`, 읽은 `doc_version`, `replacements: [{block_id, old_text, new_text}]`, `append: [{type: "heading", level: 2, text: "개발 기록"}, {text: "검사 통과 / 운영 미반영"}]`. 추가 가능한 종류는 문단·제목·번호/글머리 목록·인용·펼치기(토글)이며 `text`는 일반 글자입니다. 토글은 `{type: "toggle", text: "접혔을 때 보이는 한 줄", children: [{text: "펼치면 보이는 내용"}]}`처럼 쓰고, 하위에는 문단·목록·인용만 한 단계로 넣습니다. Markdown 문법을 렌더링하지 않습니다. 문구 교체는 한 블록 안에서 정확히 한 번 나오는 문자열만 받습니다. 표·그림 자체와 멘션은 웹에서 편집합니다.
 
 ## 저장과 충돌
 
@@ -44,6 +44,6 @@
 
 기능별 개발 기록이나 예정 과제를 등록할 때는 프로젝트 설명 본문에 한꺼번에 덧붙이지 않습니다. 사용자가 지정한 프로젝트를 읽고 현재 섹션을 확인한 뒤, `qaredi_create_work_document`로 작업글을 하나씩 만듭니다. 프로젝트 설명은 서비스 개요·공통 기준을 둘 때 사용하고, 항목별 기록은 작업 목록에서 바로 열 수 있게 합니다.
 
-입력은 `project_id`, 새 작업마다 고유한 `request_id` UUID, `title`, `blocks: [{type, text, level?}]`와 선택 항목 `status`, `section`입니다. 본문은 평문 문단·제목·목록·인용 1~100개이며 파일·그림·표는 웹에서 추가합니다. `section`에는 프로젝트 읽기의 `project.sections`에 나온 `value`를 사용합니다. 상태 기본은 할 일이고 완료·확인 대기는 근거에 따라 구분합니다.
+입력은 `project_id`, 새 작업마다 고유한 `request_id` UUID, `title`, `blocks: [{type, text, level?}]`와 선택 항목 `status`, `section`입니다. 본문은 평문 문단·제목·목록·인용·펼치기(토글) 1~100개(토글 안 하위 블록까지 셈)이며 파일·그림·표는 웹에서 추가합니다. 건마다 핵심 한 줄을 보이고 자세한 내용은 접어 두려면 토글을 씁니다. `section`에는 프로젝트 읽기의 `project.sections`에 나온 `value`를 사용합니다. 상태 기본은 할 일이고 완료·확인 대기는 근거에 따라 구분합니다.
 
 응답이 불분명하면 `request_id`를 문서 주소로 다시 읽습니다. 같은 요청의 재전송은 같은 UUID를 유지하고, 본문이 달라졌거나 사람이 수정·삭제했다면 덮어쓰거나 다시 만들지 않습니다. 이 기능은 프로젝트 생성·섹션 설정·삭제·이동·공유 변경을 지원하지 않습니다. 외부 ChatGPT는 기존 `work.write` 승인, 로컬은 `community.write` 개인 토큰과 실제 프로젝트 편집 권한이 필요합니다.
