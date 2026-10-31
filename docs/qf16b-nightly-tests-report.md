@@ -13,7 +13,7 @@
 | D | `tests/community/qf12_work_browser.py` `AUDIT_JS` 누름 자리 | `if (!vis(el) \|\| el.closest('.doc') \|\| el.closest('dialog:not([open])')) continue;` 만 | 그 앞에: 닫힌 `details` 조상을 바깥으로 차례로 보며, 어느 하나라도 `el` 이 그 details 의 **직속 summary** 안이 아니면 건너뜀(중첩 — 바깥이 닫혔으면 안쪽 summary 도 건너뜀) · 주석 두 줄 |
 
 - PATH 전달 확인: `tests/run.sh` · `tests/lib/*.sh` 에 `env -i` 0 · `memories_harness.py` 는 `os.environ` 을 그대로 쓰거나(`dict(os.environ, …)`) `PG*` · `PHP_CLI_SERVER_WORKERS` 만 뺀다 — PATH 는 시험까지 간다(아래 ① 실측).
-- U1 · U2 · U3 누름 자리(`:1022 · :1464 · :2036`)는 **같은 `AUDIT_JS`** 를 부른다 — D 가 그대로 적용된다(닫힌 details 내용만 빠짐 · 이번 실행 범위 밖이라 그 묶음은 돌리지 않음).
+- U1 · U2 · U3 누름 자리(`:1028 · :1470 · :2042`)는 **같은 `AUDIT_JS`** 를 부른다 — D 가 그대로 적용된다(닫힌 details 내용만 빠짐 · 이번 실행 범위 밖이라 그 묶음은 돌리지 않음).
 - `guide_journey_browser.py:274 · 306` 의 맨 `node` 도 A 로 함께 풀린다(확인만 · 손대지 않음).
 
 ## 돌린 명령과 출력 꼬리 (원문)
@@ -54,3 +54,7 @@ B 읽힘 확인(`tests/lib/results.py`): #52 원문 browser 로그의 합계 줄
 - `qf16_templates_http` 의 정적 단언(새 줄 innerHTML · 새 클래스 일곱 등)은 `git merge-base HEAD main` 과의 diff 를 본다. 밤 회귀처럼 **main 자체**에서 돌면 비교할 새 줄이 없어 그 단언들은 늘 통과(빈 비교) — 깨짐은 아니고 뜻이 「가지에서만 의미 있음」. 손대지 않음.
 - ① 실행 끝 「열린 포트 8818 · 8819」 보고는 같은 시각 ②(포트 8818)를 따로 돌렸기 때문 — 끝난 뒤 닫힘.
 - 같은 사본 이름 비교: `nightly.py.bak-20261031` 과 지금 판의 차이는 `node_env()` 19줄 + `Popen` 한 줄뿐.
+
+## 독립 검토 (2026-10-31 · Fable · 새 문맥)
+
+판정 **「반영 가능」** — 범위 밖 변경 0 · 단언 약화 0 · 보고 숫자 = 원문 로그(run #54 · qf12 666/0 · 진단 20x44 ×4). 낮음 둘은 메인이 고침: ① `nightly.py` PATH 가 아예 없을 때 빈 항목(= 현재 폴더)이 남던 것 → 있을 때만 이어 붙임(실측: `/usr/bin:/bin` → nvm bin 앞 · PATH 없음 → nvm bin 하나) ② 이 보고서의 U1 · U2 · U3 줄 번호(:1028 · :1470 · :2042).
