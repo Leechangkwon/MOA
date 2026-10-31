@@ -261,5 +261,5 @@ if __name__ == '__main__':
     finally:
         (out / 'qf16-templates-http-results.json').write_text(json.dumps(checks, ensure_ascii=False, indent=2))
         fails = sum(not x['pass'] for x in checks)
-        print('QF16_TEMPLATES_HTTP pass=%d fail=%d' % (sum(x['pass'] for x in checks), fails), flush=True)
+        print('RESULT pass=%d fail=%d' % (sum(x['pass'] for x in checks), fails), flush=True)
     raise SystemExit(1 if fails else 0)

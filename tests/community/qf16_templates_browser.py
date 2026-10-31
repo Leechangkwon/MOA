@@ -486,5 +486,5 @@ except Exception as error:   # noqa: BLE001
 finally:
     (out / 'qf16-templates-browser-results.json').write_text(json.dumps({'checks': checks, 'metrics': metrics if 'metrics' in dir() else {}}, ensure_ascii=False, indent=2))
     fails = sum(not x['pass'] for x in checks)
-    print('QF16_TEMPLATES_BROWSER pass=%d fail=%d' % (sum(x['pass'] for x in checks), fails), flush=True)
+    print('RESULT pass=%d fail=%d' % (sum(x['pass'] for x in checks), fails), flush=True)
 raise SystemExit(1 if fails else 0)

@@ -140,6 +140,10 @@ AUDIT_JS = r"""(touch) => {
   if (touch) {
     const sel = 'button, summary, a[class], input[type=checkbox], input[type=radio]';
     for (const el of document.querySelectorAll('.main ' + sel.split(', ').join(', .main '))) {
+      // 닫힌 details 의 내용(직속 summary 밖)은 그려지지 않는다 — dialog 와 같은 규칙(2026-10-31 · 닫힌 「작업 추가 ▾」 「빈 작업」 20x44)
+      let shut = el.closest('details:not([open])'), off = false;   // 닫힌 details 가 겹쳐도 — 바깥이 닫혔으면 안쪽 summary 도 안 보임
+      while (shut && !off) { off = ![...shut.children].some(c => c.tagName === 'SUMMARY' && c.contains(el)); shut = shut.parentElement && shut.parentElement.closest('details:not([open])'); }
+      if (off) continue;
       if (!vis(el) || el.closest('.doc') || el.closest('dialog:not([open])')) continue;
       const r = el.getBoundingClientRect(); const b = getComputedStyle(el, '::before');
       let w = r.width, h = r.height;
@@ -379,7 +383,9 @@ try:
                         return {done: [...pane.querySelectorAll('button')].filter(b => vis(b) && /완료 (표시|취소)/.test(b.textContent)).length,
                                 assign: [...pane.querySelectorAll('#task-assign')].filter(vis).length,
                                 inputs: [...pane.querySelectorAll('.task-pane__props input, .task-pane__props select')].filter(vis).length,
-                                menuItems: [...pane.querySelectorAll('.menu__item')].filter(b => !b.hidden).length,
+                                // 「템플릿으로 저장」(Q:F-16)은 공유받은 작업을 바꾸지 않고 자기 개인 템플릿에 사본 — SECURITY.md 2026-10-30 Q:F-16 ④ · qf16_templates_browser ⑧ 이 따로 단언
+                                menuItems: [...pane.querySelectorAll('.menu__item:not([data-task-save-template])')].filter(b => !b.hidden).length,
+                                saveTemplate: [...pane.querySelectorAll('.menu__item[data-task-save-template]')].some(b => !b.hidden),
                                 checks: [...pane.querySelectorAll('.task-check')].filter(vis).length}; }""")
                     metrics['t41_reader_' + key] = writes
                     check(writes['done'] == 0 and writes['assign'] == 0 and writes['inputs'] == 0 and writes['menuItems'] == 0 and writes['checks'] == 0,
