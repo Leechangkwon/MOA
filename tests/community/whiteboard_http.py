@@ -246,6 +246,11 @@ fastcgi_pass unix:{sock};
         tab.on('response',lambda response:fonts.append(response.status) if '.woff' in response.url else None)
         tab.on('request',lambda req: external.append(req.url) if req.url.startswith(('http:','https:')) and not req.url.startswith(browser_site) else None)
         tab.add_init_script("window.__csp=[]; document.addEventListener('securitypolicyviolation',e=>window.__csp.push(e.violatedDirective+':'+e.blockedURI));")
+        task=tab.goto(browser_site+'/community/p/'+pid)
+        entry=tab.get_by_role('link',name='회의 그림판 열기 · 판 '+str(a.api('GET',path)['board']['version_no']),exact=True)
+        entry.wait_for(state='visible',timeout=20000)
+        a.check(entry.get_attribute('href')=='/community/p/'+pid+'/whiteboard','actual task page exposes its whiteboard entry')
+        # The work page has its own CSP, so begin canvas-only CSP observations here.
         tab.goto(browser_site+'/community/p/'+pid+'/whiteboard')
         tab.wait_for_selector('.excalidraw canvas',timeout=45000)
         a.check(tab.locator('.excalidraw canvas').count()>0,'real Excalidraw renders under strict CSP')

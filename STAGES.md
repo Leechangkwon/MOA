@@ -3359,3 +3359,5 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 | 2026-11-18 | 구현·학습 | 미리보기 수신자의 onChange가 남의 그림을 다시 저장하지 않도록 서버 지문/일시 지문을 구분. 움직이지 않고 펜을 놓아도 저장하도록 pointerup 포착. 글꼴 대체 주소도 같은 출처의 절대 주소로 고정 | 실제 두 브라우저 수락 · docs/work-items/meeting-whiteboard.md |
 
 | 2026-11-18 | 측정·미해결 | 6개 브라우저10분: PHP p95 356.5ms·작업자6/8·대기열0, 화면 반영 p95 1333ms로 목표300ms 미달. 실제 분산 기기 성능은 미검증. 기본 기능143/0과 구분하여 기록 | docs/work-items/meeting-whiteboard.md Q:T-62 · release/load-results.json |
+
+| 2026-11-18 | 보정·학습 | 그림판 API 직접 열기만으로 작업 화면 진입을 검증할 수 없었다. 최상위 응답을 맞추고 실제 작업의 링크 표시 단언 추가, 관련 브라우저43/0 | work.js `data.whiteboard` · docs/work-items/meeting-whiteboard.md |

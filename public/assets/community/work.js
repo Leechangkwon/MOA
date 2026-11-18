@@ -1,9 +1,9 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=d44d8daf57f9';
-import { renderDoc } from './doc-render.js?v=d44d8daf57f9';
-import { createMentionInput } from './mention-input.js?v=d44d8daf57f9';
-import { personText } from './cafe.js?v=d44d8daf57f9';
-import { optionLabel } from './db-option-label.js?v=d44d8daf57f9';
-import { repeatDialog } from './automations.js?v=d44d8daf57f9';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=4a50ab9739e5';
+import { renderDoc } from './doc-render.js?v=4a50ab9739e5';
+import { createMentionInput } from './mention-input.js?v=4a50ab9739e5';
+import { personText } from './cafe.js?v=4a50ab9739e5';
+import { optionLabel } from './db-option-label.js?v=4a50ab9739e5';
+import { repeatDialog } from './automations.js?v=4a50ab9739e5';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -1231,8 +1231,8 @@ export function createWork(deps) {
       paneEl.appendChild(docSec);
 
       // Q:F-17: the server supplies availability and the action URL for project tasks only.
-      if (page.whiteboard) {
-        const wb = page.whiteboard;
+      if (data.whiteboard) {
+        const wb = data.whiteboard;
         const section = el('section', 'task-pane__section');
         section.appendChild(el('h3', 'task-pane__label', '회의 그림판'));
         if (wb.exists || wb.can_create) {
