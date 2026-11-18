@@ -34,7 +34,7 @@ final class WorkDocuments
                  AND p.visibility <> 'published' AND ({$where})", $bind];
     }
 
-    private static function row(array $user, string $id): array
+    public static function row(array $user, string $id): array
     {
         self::id($id);
         [$where, $bind] = self::visible($user);

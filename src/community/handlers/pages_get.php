@@ -335,6 +335,7 @@ $payload = [
         [':space'=>(int)$row['space_id'],':page'=>(int)$row['id']])->fetchAll(),
     'can_web_publish' => CommunityAuthz::decideWebPublish($user,$row)[0],
     'can_edit'   => $mayChange,
+    'whiteboard' => Whiteboards::summary($user,$row),
     'can_suggest' => CommunityAuthz::decideSuggestionCreate($user, $row)[0],
     ...$suggestionInfo,
     'can_export' => CommunityAuthz::decidePageExport($user, $row)[0],

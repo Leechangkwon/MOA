@@ -1,9 +1,9 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=cd5329f796b6';
-import { renderDoc } from './doc-render.js?v=cd5329f796b6';
-import { createMentionInput } from './mention-input.js?v=cd5329f796b6';
-import { personText } from './cafe.js?v=cd5329f796b6';
-import { optionLabel } from './db-option-label.js?v=cd5329f796b6';
-import { repeatDialog } from './automations.js?v=cd5329f796b6';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=d44d8daf57f9';
+import { renderDoc } from './doc-render.js?v=d44d8daf57f9';
+import { createMentionInput } from './mention-input.js?v=d44d8daf57f9';
+import { personText } from './cafe.js?v=d44d8daf57f9';
+import { optionLabel } from './db-option-label.js?v=d44d8daf57f9';
+import { repeatDialog } from './automations.js?v=d44d8daf57f9';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -1229,6 +1229,19 @@ export function createWork(deps) {
         });
       }
       paneEl.appendChild(docSec);
+
+      // Q:F-17: the server supplies availability and the action URL for project tasks only.
+      if (page.whiteboard) {
+        const wb = page.whiteboard;
+        const section = el('section', 'task-pane__section');
+        section.appendChild(el('h3', 'task-pane__label', '회의 그림판'));
+        if (wb.exists || wb.can_create) {
+          const link = el('a', 'btn btn--quiet btn--small', wb.exists ? '회의 그림판 열기 · 판 ' + wb.version_no : '회의 그림판 만들기');
+          link.href = wb.url;
+          section.appendChild(link);
+        } else { section.appendChild(el('p', 'muted', '아직 회의 그림판이 없어요.')); }
+        paneEl.appendChild(section);
+      }
 
       /* 하위 작업(WK-6 ① — 하위 페이지 = 하위 작업). 상태 · 기한은 그 공간 트리(보는 사람이 볼 수 있는 것만)에서.
          U1-c(WK-18 A, 2026-10-08 — DESIGN 2.21 「누르면 편집」): 고칠 수 있는 줄(부모 can_edit · 트리에 보이는 하위 작업)은 제목이 단추 —

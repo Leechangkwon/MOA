@@ -1,5 +1,5 @@
-import { createTableEditor } from './table-editor.js?v=cd5329f796b6';
-import { hydrateDashboard } from './dashboard.js?v=cd5329f796b6';
+import { createTableEditor } from './table-editor.js?v=d44d8daf57f9';
+import { hydrateDashboard } from './dashboard.js?v=d44d8daf57f9';
 /**
  * public/assets/community/editor.js — 커뮤니티 화면의 동작 한 벌 (모듈 스크립트)
  *
@@ -42,24 +42,24 @@ import { inputRules, textblockTypeInputRule, InputRule } from './vendor/pm/prose
 import { dropCursor } from './vendor/pm/prosemirror-dropcursor.js?v=5823578fa61a';
 import { gapCursor } from './vendor/pm/prosemirror-gapcursor.js?v=5823578fa61a';
 
-import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=cd5329f796b6';
-import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=cd5329f796b6';
-import { createMentionInput, mentionTokens } from './mention-input.js?v=cd5329f796b6';
-import { createDatabaseView } from './database.js?v=cd5329f796b6';
-import { bindTemplateGallery, createTemplateSave } from './templates.js?v=cd5329f796b6';
-import { bindEmbedAdmin } from './embeds.js?v=cd5329f796b6';
-import { bindPopular } from './popular.js?v=cd5329f796b6';
-import { bindPalettes } from './palettes.js?v=cd5329f796b6';
-import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=cd5329f796b6';
-import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=cd5329f796b6';
-import { drawTrust, bindProcedures } from './procedures.js?v=cd5329f796b6';
-import { createPageExport } from './export.js?v=cd5329f796b6';
-import { createDrafts } from './drafts.js?v=cd5329f796b6';
-import { drawPageAi, bindAiCenter } from './ai.js?v=cd5329f796b6';
-import { drawIntegrations, bindIntegrations } from './integrations.js?v=cd5329f796b6';
+import { createSuggestions, bindMySuggestions, buildSuggestionOps, suggestionTypeAllowed, suggestionEqual } from './suggestions.js?v=d44d8daf57f9';
+import { renderDoc, embedHost, renderFileBlock, imageWidthClass, imageWidthPct } from './doc-render.js?v=d44d8daf57f9';
+import { createMentionInput, mentionTokens } from './mention-input.js?v=d44d8daf57f9';
+import { createDatabaseView } from './database.js?v=d44d8daf57f9';
+import { bindTemplateGallery, createTemplateSave } from './templates.js?v=d44d8daf57f9';
+import { bindEmbedAdmin } from './embeds.js?v=d44d8daf57f9';
+import { bindPopular } from './popular.js?v=d44d8daf57f9';
+import { bindPalettes } from './palettes.js?v=d44d8daf57f9';
+import { schema, toDoc, fromDoc, uuid4, colorAllowed, schemeOkForEditor, mentionAllowed, editorDomParser, clipboardDomParser, COLORS, BLOCK_TYPES } from './editor-schema.js?v=d44d8daf57f9';
+import { drawAutomationPage, drawAutomationSpace, bindAutomations, loadAutomations } from './automations.js?v=d44d8daf57f9';
+import { drawTrust, bindProcedures } from './procedures.js?v=d44d8daf57f9';
+import { createPageExport } from './export.js?v=d44d8daf57f9';
+import { createDrafts } from './drafts.js?v=d44d8daf57f9';
+import { drawPageAi, bindAiCenter } from './ai.js?v=d44d8daf57f9';
+import { drawIntegrations, bindIntegrations } from './integrations.js?v=d44d8daf57f9';
 // Q:F-12 D — 업무 화면(홈 · 내 작업 · 프로젝트 목록 · 작업 상세 칸 · 포트폴리오 · 「새로 만들기」). 이 파일은 고리 몇 개만 이어 준다
-import { createWork } from './work.js?v=cd5329f796b6';
-import { createCafe, personInto, isAnon } from './cafe.js?v=cd5329f796b6';
+import { createWork } from './work.js?v=d44d8daf57f9';
+import { createCafe, personInto, isAnon } from './cafe.js?v=d44d8daf57f9';
 
 /* ─── 주소와 공통 도우미 ─────────────────────────────────────── */
 

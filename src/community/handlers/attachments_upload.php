@@ -153,14 +153,7 @@ if ($sensitive !== [] && community_attachment_wide($row)) {
 // ─── [6] 트랜잭션: 잠금 → 다시 판정 → INSERT → 디스크 → 감사 → COMMIT ─────
 $storedName = Storage::newStoredName($checked['ext']);
 $scanStatus = Upload::initialScanStatus();
-$sqlInsert  = <<<'SQL'
-    INSERT INTO community.page_attachments
-        (page_id, uploaded_by, original_name, ext, mime, size_bytes, sha256, stored_name, scan_status, sensitive_flags)
-    VALUES
-        (CAST(:page AS bigint), CAST(:by AS bigint), :name, :ext, :mime, CAST(:size AS bigint), :sha, :stored, :scan,
-         CAST(:flags AS text[]))
-    RETURNING id, public_id
-    SQL;
+
 
 $db    = Db::instance();
 $moved = false;
@@ -181,42 +174,8 @@ try {
         $refuseSensitive();
     }
 
-    $ins = $db->run($sqlInsert, [
-        ':page'   => $pageId,
-        ':by'     => $me,
-        ':name'   => $original,
-        ':ext'    => $checked['ext'],
-        ':mime'   => $checked['mime'],
-        ':size'   => $checked['size'],
-        ':sha'    => $checked['sha256'],
-        ':stored' => $storedName,
-        ':scan'   => $scanStatus,
-        // 패턴 이름 배열(`{rrn,card}`) — 값은 Sensitive 의 고정 식별자뿐이지만 그래도 바인딩해 CAST 한다(자료실과 같다)
-        ':flags'  => '{' . implode(',', $flags) . '}',
-    ])->fetch();
-    if (!is_array($ins)) {
-        throw new RuntimeException('첨부 행을 만들 수 없습니다');
-    }
-
-    Storage::put($tmpPath, $storedName, Storage::AREA_ATTACHMENTS);
+    $ins = WhiteboardAttachments::store($user,$fresh,$checked,$tmpPath,$original,$sensitive,$storedName);
     $moved = true;
-
-    Audit::allow('attachment.upload', [
-        'target_type' => 'page_attachment',
-        'target_id'   => (int) $ins['id'],
-        'target_name' => $original,
-        // 카페 C1 (ARCH 25.6) — 익명게시판 글이면 감사 화면이 행위자를 가리는 표식
-        'detail'      => community_anon_audit_detail($fresh, [
-            'granted_by'  => $stillCode,
-            'page_title'  => $pageTitle,
-            'page_id'     => $pageId,
-            'ext'         => $checked['ext'],
-            'mime'        => $checked['mime'],
-            'size_bytes'  => $checked['size'],
-            'sha256'      => $checked['sha256'],
-            'scan_status' => $scanStatus,
-        ] + ($sensitive === [] ? [] : ['sensitive' => $sensitive])),
-    ]);
 
     $db->commit();
 } catch (Throwable $e) {

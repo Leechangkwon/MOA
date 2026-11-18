@@ -1,0 +1,2 @@
+# Generated vendor string literals retain the exact reproducible build bytes.
+public/assets/community/vendor/excalidraw/** -whitespace

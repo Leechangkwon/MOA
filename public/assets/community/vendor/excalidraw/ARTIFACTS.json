@@ -1,0 +1,32 @@
+[
+  {
+    "name": "@excalidraw/excalidraw",
+    "version": "0.18.1",
+    "url": "https://registry.npmjs.org/@excalidraw/excalidraw/-/excalidraw-0.18.1.tgz",
+    "sha256": "b280d4b364b65cba264c5aa4e7435cc2ce6421eabbbef9765a56997a0fadf534"
+  },
+  {
+    "name": "react",
+    "version": "19.3.1",
+    "url": "https://registry.npmjs.org/react/-/react-19.3.1.tgz",
+    "sha256": "56936913918dcf1f7a6fe58784e79df54b18200a88655ce809cf5e9c4ef871aa"
+  },
+  {
+    "name": "react-dom",
+    "version": "19.3.1",
+    "url": "https://registry.npmjs.org/react-dom/-/react-dom-19.3.1.tgz",
+    "sha256": "8b49975821eec6311e00d2b3f4b8337923253c876517388a33f9839c61ab262e"
+  },
+  {
+    "name": "ws",
+    "version": "8.22.0",
+    "url": "https://registry.npmjs.org/ws/-/ws-8.22.0.tgz",
+    "sha256": "ca9b3798b2e11ce8fac6713f50ef0501aa12b09b330623c1dc409dff94e7abc8"
+  },
+  {
+    "name": "esbuild",
+    "version": "0.28.2",
+    "url": "https://registry.npmjs.org/esbuild/-/esbuild-0.28.2.tgz",
+    "sha256": "e045f94c235c7adc50e77ba2a579c7bec41b496b6b47c3a7845f7c1e19959a88"
+  }
+]

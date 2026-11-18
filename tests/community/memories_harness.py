@@ -34,7 +34,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--port', type=int, default=8768, choices=(8768,8778,8818))
     parser.add_argument('--output', type=Path, required=True)
-    parser.add_argument('--suite', choices=('project_sections.py','work_documents_http.py','work_document_create_http.py','task_parent_browser.py','memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py','qf12_w1_http.py','qf12_w1_browser.py','invite_request_http.py','invite_request_browser.py','cafe_h3_browser.py','home_h4_browser.py','story_s1_browser.py','brand_words_browser.py','home_front_browser.py','guide_journeys_http.py','guide_journey_browser.py','qf16_templates_http.py','qf16_templates_browser.py'), default='memories_http.py')
+    parser.add_argument('--suite', choices=('project_sections.py','work_documents_http.py','work_document_create_http.py','task_parent_browser.py','memories_http.py','memories_runtime_browser.py','memory_ai_http.py','memory_story_http.py','memory_social_http.py','travel_plans_http.py','remote_http.py','messenger_http.py','messenger_store_browser.py','messenger_window_browser.py','qf12_floor_http.py','qf12_server_http.py','qf12_shell_browser.py','qf12_work_browser.py','memories_http.py','qf13h_privacy_browser.py','qf13_retention_http.py','feedback_http.py','feedback_browser.py','feedback_perf.py','product_spaces_http.py','document_trash_api.py','qf12_u3_attach_http.py','qf12_u4_http.py','qf12_u4_browser.py','qf12_u5_browser.py','cafe_c1_http.py','cafe_c2_browser.py','cafe_c4_browser.py','home_h1_browser.py','qf12_w1_http.py','qf12_w1_browser.py','invite_request_http.py','invite_request_browser.py','cafe_h3_browser.py','home_h4_browser.py','story_s1_browser.py','brand_words_browser.py','home_front_browser.py','guide_journeys_http.py','guide_journey_browser.py','qf16_templates_http.py','qf16_templates_browser.py','whiteboard_http.py'), default='memories_http.py')
     parser.add_argument('--baseline-code', action='store_true')
     args = parser.parse_args()
     args.output = args.output.resolve()
@@ -68,7 +68,7 @@ def main():
                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, **kwargs)
 
     def sql_file(path):
-        if path.name in ('2026-10-01_community_suggestions.sql','2026-10-18_community_ai.sql','2026-10-21_privacy_retention.sql','2026-10-11_product_spaces.sql','2026-10-27_qf15_s3_guide_journeys.sql'):
+        if path.name in ('2026-11-18_community_whiteboards.sql','2026-10-01_community_suggestions.sql','2026-10-18_community_ai.sql','2026-10-21_privacy_retention.sql','2026-10-11_product_spaces.sql','2026-10-27_qf15_s3_guide_journeys.sql'):
             # Isolated DB owner only; production migration retains tbox_owner unchanged.
             adapted = work / 'test-owner-suggestions.sql'
             adapted.write_text(path.read_text().replace('OWNER TO tbox_owner;', 'OWNER TO tbox_testdb;').replace('SET LOCAL ROLE tbox_owner;', 'SET LOCAL ROLE tbox_testdb;'))
@@ -76,7 +76,7 @@ def main():
         return db_cmd('psql', ['-X', '-d', db_name, '-v', 'ON_ERROR_STOP=1', '-f', str(path)])
 
     try:
-        shutil.copytree(ROOT, instance, ignore=shutil.ignore_patterns('.git', '.env', '__pycache__'))
+        shutil.copytree(ROOT, instance, ignore=shutil.ignore_patterns('.git', '.env', '__pycache__', 'node_modules'))
         # Actual application classes; GPT remains disabled and no outside calls.
         if args.baseline_code:
             import tarfile, io
@@ -100,8 +100,8 @@ def main():
         config.update(DB_NAME=db_name, APP_SECRET=secrets.token_hex(32),
                       STORAGE_DIR=str(work / 'storage'), AUDIT_LOG_FILE=str(work / 'logs/audit.log'),
                       APP_URL='http://127.0.0.1:{}'.format(args.port), API_TOKEN=secrets.token_hex(24),
-                      API_TOKEN_USER='claude_employee01', SCAN_ENABLED='0', ALERT_COMMAND='')
-        if args.suite in ('remote_http.py', 'work_documents_http.py','work_document_create_http.py'):
+                      API_TOKEN_USER='claude_employee01', WHITEBOARD_RELAY_SECRET=secrets.token_hex(32), SCAN_ENABLED='0', ALERT_COMMAND='')
+        if args.suite in ('remote_http.py', 'work_documents_http.py','work_document_create_http.py','whiteboard_http.py'):
             # OAuth issuer stays HTTPS; tests connect directly to the owned loopback
             # PHP listener and never resolve/follow this reserved .invalid origin.
             config.update(APP_URL='https://mcp-fixture.invalid', MCP_REMOTE_ENABLED='1',
@@ -138,7 +138,7 @@ def main():
                            # 사이트 Q:F-15 S2 (Q3 B) — 저장된 개인 홈 구성의 shortcuts 한 번 지우기(데이터만 · 두 번 돌려도 같음 — 빈 합성 DB 에서 오류 0 확인)
                            '2026-10-26_qf15_s2_shortcuts.sql',
                            # 사이트 Q:F-15 S3 — 길잡이 여정 표(소유자 갈음 위 목록 · 두 번 돌려도 같음)
-                           '2026-10-27_qf15_s3_guide_journeys.sql']
+                           '2026-10-27_qf15_s3_guide_journeys.sql','2026-11-18_community_whiteboards.sql']
         for _ in range(2):
             for migration in migrations:
                 logs.append(sql_file(instance / 'db/migrations' / migration).stdout)
@@ -182,7 +182,7 @@ def main():
             result = subprocess.run([sys.executable, str(ROOT / suite_directory / args.suite)],
                                     env=dict(fixture_env, FILE_RENAME_MANIFEST=str(work / 'manifest.json'),
                                              FILE_RENAME_OUTPUT=str(args.output), STAGE89_SECOND_PORT=str(args.port+1),
-                                             REMOTE_MCP_HARNESS='1' if args.suite in ('remote_http.py', 'work_documents_http.py','work_document_create_http.py') else '0'), cwd=instance)
+                                             REMOTE_MCP_HARNESS='1' if args.suite in ('remote_http.py', 'work_documents_http.py','work_document_create_http.py','whiteboard_http.py') else '0'), cwd=instance)
             server_log.flush()
             (args.output / 'http.log').write_bytes((work / 'logs/php.log').read_bytes())
             if result.returncode:

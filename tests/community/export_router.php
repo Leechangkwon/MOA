@@ -11,6 +11,7 @@ if (is_string($path) && str_starts_with($path, '/tbox/assets/')) {
     $file = realpath($public . '/assets/' . $relative);
     if ($base !== false && $file !== false && str_starts_with($file, $base . '/') && is_file($file)) {
         $types = ['js' => 'text/javascript', 'mjs' => 'text/javascript', 'css' => 'text/css',
+            'woff2'=>'font/woff2', 'woff'=>'font/woff', 'wasm'=>'application/wasm',
             'json' => 'application/json', 'svg' => 'image/svg+xml', 'png' => 'image/png',
             'webmanifest' => 'application/manifest+json', 'map' => 'application/json', 'txt' => 'text/plain'];
         $ext = strtolower(pathinfo($file, PATHINFO_EXTENSION));

@@ -346,8 +346,8 @@ final class Audit
         'mcp.oauth|deny|rejected' => 'ChatGPT 연결의 OAuth 요청이 거부되었습니다',
         'mcp.refresh|deny|reuse' => '재사용된 갱신 자격으로 ChatGPT 연결이 회수되었습니다',
         'mcp.revoke|allow' => 'ChatGPT 클라이언트가 연결을 회수했습니다',
-        'mcp.tool|allow' => '{actor} 이(가) ChatGPT 도구를 실행했습니다',
-        'mcp.tool|deny|denied' => '{actor} 의 ChatGPT 도구 실행이 거부되었습니다',
+        'mcp.tool|allow' => '{actor} 이(가) 연결한 AI 앱의 도구를 실행했습니다',
+        'mcp.tool|deny|denied' => '{actor} 의 연결한 AI 앱 도구 실행이 거부되었습니다',
         'mcp.connect|allow' => '{actor} 이(가) ChatGPT 연결을 승인했습니다',
         'mcp.disconnect|allow' => '{actor} 이(가) ChatGPT 연결을 해제했습니다',
         'group.create|allow' => '권한 그룹을 만들었습니다',
@@ -1328,6 +1328,11 @@ final class Audit
         'page.visibility|deny|file_narrower'    => '{actor} 이(가) 페이지 「{target}」 를 넓히려 했지만 새 범위의 사람이 볼 수 없는 파일이 붙어 있어 거부했습니다',
         // Q:F-12 U3-1 문서 전용 첨부 (커뮤니티 ARCH 24.6) — 거부 사유는 detail.cause(판정·검사 코드 원문)에, 문장은 한 줄씩.
         //   detail 에는 문서 제목 · 크기 · 형식 · sha256 · 사유만 — 파일 내용 · 디스크 이름 · 경로는 넣지 않는다.
+        'whiteboard.change|deny|refused' => '{actor} 이(가) 회의 그림판 변경 권한이 없어 거부했습니다',
+        'whiteboard.create|allow' => '{actor} 이(가) 회의 그림판을 만들었습니다',
+        'whiteboard.version|allow' => '{actor} 이(가) 새 판에서 이어 그리기를 시작했습니다',
+        'whiteboard.confirm|allow' => '{actor} 이(가) 회의 그림판을 확정했습니다',
+        'whiteboard.minutes.save|allow' => '{actor} 이(가) 그림판 근거와 회의록을 저장했습니다',
         'attachment.upload|allow'               => '{actor} 이(가) 문서 첨부 「{target}」 을(를) 올렸습니다 (문서 제목·크기는 상세 기록)',
         'attachment.upload|deny|refused'        => '{actor} 이(가) 문서 첨부 「{target}」 을(를) 올리려 했지만 거부했습니다 (문서 제목·사유는 상세 기록)',
         'attachment.download|allow'             => '{actor} 이(가) 문서 첨부 「{target}」 을(를) 열거나 내려받았습니다 (문서 제목·방식은 상세 기록)',

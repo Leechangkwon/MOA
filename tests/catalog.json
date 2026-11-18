@@ -7243,11 +7243,19 @@
       "module": "community",
       "env": "static",
       "status": "required",
-      "needs": ["browser"],
+      "needs": [
+        "browser"
+      ],
       "writes_prod": false,
-      "covers": ["public/assets/mcp-connect.js", "public/assets/member.js", "src/mcp/handlers/connect_page.php"],
+      "covers": [
+        "public/assets/mcp-connect.js",
+        "public/assets/member.js",
+        "src/mcp/handlers/connect_page.php"
+      ],
       "requirements": [],
-      "risks": ["R-115"],
+      "risks": [
+        "R-115"
+      ],
       "est_sec": 30,
       "timeout_sec": 180,
       "notes": "실제 JS/화면과 합성 API만. HTTP/HTTPS callback의 실제 브라우저 이동·literal127.0.0.1 제한·URL혼동거부·범위/CSRF/재전송방지. 운영 네트워크/DB/자격 접근0. 실제 OAuth는 별도 수락."
@@ -7291,6 +7299,43 @@
       "est_sec": 45,
       "writes_prod": false,
       "notes": "독립 합성 DB/실제HTTP만. 선택권한·동의·개인 격리·중복/한도·집계·보관·일별/주간·배포 중지/검증판 복원과390/1280 브라우저. 운영 데이터 복사·쓰기0. 필수 합성 DB 자격과Playwright 필요."
+    },
+    {
+      "id": "community.whiteboard",
+      "cmd": "python3 tests/community/memories_harness.py --suite whiteboard_http.py --output /tmp/qaredi-whiteboard-results",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "src/community/Whiteboards.php",
+        "src/community/WhiteboardSync.php",
+        "src/community/WhiteboardSnapshot.php",
+        "src/community/WhiteboardGraph.php",
+        "src/community/WhiteboardAttachments.php",
+        "src/community/routes.php",
+        "src/community/WorkDocuments.php",
+        "src/community/handlers/pages_get.php",
+        "src/community/handlers/whiteboard_api.php",
+        "src/community/handlers/whiteboard_page.php",
+        "src/community/handlers/whiteboard_work_api.php",
+        "public/assets/community/whiteboard.js",
+        "public/assets/community/whiteboard.css",
+        "relay/whiteboard-runtime.mjs",
+        "db/migrations/2026-11-18_community_whiteboards.sql",
+        "scripts/whiteboard_chain.php",
+        "tests/community/whiteboard_http.py",
+        "tests/community/memories_harness.py"
+      ],
+      "requirements": [
+        "Q:F-17"
+      ],
+      "risks": [],
+      "est_sec": 180,
+      "writes_prod": false,
+      "notes": "회의 그림판 1차 a: 실제 PHP/Postgres·Excalidraw/Chromium·동일 출처 WebSocket, 격리 합성 DB/검토 계정만 사용. Node/브라우저 필요. 운영 자료 복사·쓰기 0."
     }
   ]
 }

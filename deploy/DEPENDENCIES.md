@@ -247,3 +247,21 @@ Ubuntu 배포판 php8.1-gd 8.1.2-1ubuntu2.26 / libgd3 2.3.0-2ubuntu2.3를 사용
 ## 2026-10-22 PHP 보안 패치 실측 보충
 
 PHP CLI/FPM/common/curl/gd/opcache/pgsql/readline/zip 총9패키지가 모두 Ubuntu `8.1.2-1ubuntu2.28`이다. Ubuntu USN-8948-1이 CVE-2026-109618·109619의 수정판으로 명시하고 설치 changelog도 두 CVE를 포함한다. 오늘06:21 자동 업데이트와06:21:51 FPM 재시작, 실행 중7프로세스의 수정본 일치·PHP deleted 모듈0·dpkg 무결성을 확인했다. 위의 예전 단계별 설치판/해시는 그때의 이력이며 현재판 보증값으로 사용하지 않는다. PHP 이외의 구성요소 버전은 이번에 재측정하지 않았다. 추가 설치·재시작0, 상세 `docs/work-items/php-cve-2026-109618-109619.md`.
+
+
+## 4.9 회의 그림판 (Q:F-17 1차 a, 2026-11-18)
+
+Excalidraw/React는 로컬 자산으로 배포한다. 모든 npm 전이 의존성은 tools/whiteboard/package-lock.json의 버전·integrity에 고정하며 설치 스크립트를 실행하지 않는다. 다시 만들기/검증: bash scripts/vendor_excalidraw.sh [--verify].
+
+| 패키지 | 버전 | 사용권 | 원본 tarball SHA-256 |
+|---|---|---|---|
+| `@excalidraw/excalidraw` | 0.18.1 | MIT | `b280d4b364b65cba264c5aa4e7435cc2ce6421eabbbef9765a56997a0fadf534` |
+| `react` | 19.3.1 | MIT | `56936913918dcf1f7a6fe58784e79df54b18200a88655ce809cf5e9c4ef871aa` |
+| `react-dom` | 19.3.1 | MIT | `8b49975821eec6311e00d2b3f4b8337923253c876517388a33f9839c61ab262e` |
+| `ws` | 8.22.0 | MIT | `ca9b3798b2e11ce8fac6713f50ef0501aa12b09b330623c1dc409dff94e7abc8` |
+| `esbuild` | 0.28.2 | MIT | `e045f94c235c7adc50e77ba2a579c7bec41b496b6b47c3a7845f7c1e19959a88` |
+
+- ws는 Node 중계기에만 포함한다. 중계기 산출물 지문과 브라우저 각 파일 지문은 vendor/excalidraw/MANIFEST.json, 원본 tarball 지문은 ARTIFACTS.json에 있다. BUNDLE-MODULES.json은 실제 산출물에 포함된 npm 모듈 목록이다. LICENSES.txt와 글꼴별 사용권을 함께 둔다.
+- 취약한 전이 코드 보정: lodash-es 4.18.1, nanoid 5.1.16, katex 0.19.1을 overrides/lockfile에 고정했다. npm audit에서 남는 HIGH 6개는 picomatch와 이를 포함하는 sass/chokidar/anymatch/readdirp 및 상위 패키지 표식이다. 이 여섯 표식의 원인은 빌드용 Sass 경로이며, Sass·picomatch·chokidar는 BUNDLE-MODULES에 없고 운영 Node에도 배포하지 않는다. audit 0건이라고 기록하지 않는다. 설치 생명주기도 끈다.
+- 운영 Node는 공식 보안판 v24.22.3(2026-11-10, LTS Krypton)을 별도 /opt/moa-whiteboard에 둔다. 기존 nvm Node/다른 서비스는 바꾸지 않는다. 공식 SHASUMS256과 대조한 값은 deploy/whiteboard-node.json에 기록했다. Node/ws/React/Excalidraw는 이후 보안 공지 점검 대상이다.
+- Excalidraw의 esm.sh 대체 글꼴 주소를 같은 출처의 절대 주소로 치환한다. SVG/Mermaid 넣기·웹 임베드·외부 협업을 노출하지 않는다. strict CSP 및 실제 브라우저에서 외부 요청 0을 검증한다.

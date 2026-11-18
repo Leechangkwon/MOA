@@ -1,0 +1,28 @@
+/* Q:F-17 / DESIGN 2.39. Canvas fills the window; history is closed by default. */
+.whiteboard-page { margin:0; padding:0; height:100dvh; display:flex; flex-direction:column; overflow:hidden; background:var(--bg); color:var(--fg); }
+.whiteboard-head { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:8px 12px; border-bottom:1px solid var(--line); }
+.whiteboard-head h1 { font-size:16px; margin:0; flex:1; min-width:120px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.whiteboard-head select { max-width:160px; }
+.whiteboard-status { margin:0; padding:4px 12px; font-size:13px; min-height:24px; }
+.whiteboard-main { min-height:0; flex:1; display:flex; position:relative; }
+#whiteboard-canvas { flex:1; min-width:0; height:100%; }
+.whiteboard-records { position:absolute; right:0; top:0; bottom:0; z-index:10; width:300px; max-width:85vw; padding:12px; overflow:auto; border-left:1px solid var(--line); background:var(--surface); box-shadow:var(--shadow); }
+.whiteboard-records input[type=range] { width:100%; }
+.whiteboard-records ol { list-style:none; padding:0; margin:12px 0; }
+.whiteboard-records li { border-bottom:1px solid var(--line); }
+#whiteboard-fingerprints { overflow-wrap:anywhere; white-space:pre-line; }
+.whiteboard-records button { white-space:normal; text-align:left; overflow-wrap:anywhere; }
+.whiteboard-page dialog { max-width:min(480px,90vw); background:var(--surface); color:var(--fg); border:1px solid var(--line); border-radius:var(--radius,8px); padding:24px; }
+.whiteboard-page .excalidraw .dropdown-menu-item--submenu,
+.whiteboard-page .excalidraw .library-menu-browse-button,
+.whiteboard-page .excalidraw [data-testid="toolbar-embeddable"],
+.whiteboard-page .excalidraw [data-testid="toolbar-magicframe"],
+.whiteboard-page .excalidraw [data-testid="toolbar-image"],
+.whiteboard-page .excalidraw [data-testid="mermaid-to-excalidraw"],
+.whiteboard-page .excalidraw [data-testid="export-to-svg"] { display:none !important; }
+@media(max-width:760px) {
+ .whiteboard-head { gap:4px; }
+ .whiteboard-head h1 { order:-1; flex-basis:100%; }
+ #whiteboard-presence { display:none; }
+ .whiteboard-records { position:absolute; right:0; top:0; bottom:0; z-index:10; box-shadow:var(--shadow); }
+}

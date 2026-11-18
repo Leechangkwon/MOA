@@ -41,6 +41,11 @@ require_once __DIR__ . '/Automation.php';
 require_once __DIR__ . '/Suggestion.php';
 require_once __DIR__ . '/SaveDoc.php';
 require_once __DIR__ . '/WorkDocuments.php';
+require_once __DIR__ . '/WhiteboardSync.php';
+require_once __DIR__ . '/WhiteboardGraph.php';
+require_once __DIR__ . '/WhiteboardAttachments.php';
+require_once __DIR__ . '/Whiteboards.php';
+require_once __DIR__ . '/WhiteboardSnapshot.php';
 require_once __DIR__ . '/suggestion_helpers.php';
 require_once __DIR__ . '/DocRender.php';
 require_once __DIR__ . '/DocMarkdown.php';
@@ -174,6 +179,20 @@ const COMMUNITY_ROUTES = [
     ['GET',    '/portfolios/{id}',           'portfolio_page.php',  'community.read'],
     ['GET', '/workspace', 'home_page.php', 'community.read'],
     ['GET',    '/p/{id}',                    'page_view.php',       'community.read'],
+    ['GET', '/p/{id}/whiteboard', 'whiteboard_page.php', 'community.read'],
+    ['GET', '/api/pages/{id}/whiteboard', 'whiteboard_api.php', 'community.read'],
+    ['POST', '/api/pages/{id}/whiteboard', 'whiteboard_api.php', 'community.write'],
+    ['GET', '/api/pages/{id}/whiteboard/changes', 'whiteboard_api.php', 'community.read'],
+    ['GET', '/api/pages/{id}/whiteboard/events', 'whiteboard_api.php', 'community.read'],
+    ['POST', '/api/pages/{id}/whiteboard/elements', 'whiteboard_api.php', 'community.write'],
+    ['POST', '/api/pages/{id}/whiteboard/ticket', 'whiteboard_api.php', 'community.read'],
+    ['POST', '/api/pages/{id}/whiteboard/confirm', 'whiteboard_api.php', 'community.write'],
+    ['POST', '/api/pages/{id}/whiteboard/versions', 'whiteboard_api.php', 'community.write'],
+    ['GET', '/api/work/whiteboards', 'whiteboard_work_api.php', 'community.read'],
+    ['GET', '/api/work/whiteboards/{id}', 'whiteboard_work_api.php', 'community.read'],
+    ['GET', '/api/work/whiteboards/{id}/image', 'whiteboard_work_api.php', 'community.read'],
+    ['GET', '/api/work/whiteboards/{id}/events', 'whiteboard_work_api.php', 'community.read'],
+    ['POST', '/api/work/whiteboards/{id}/minutes', 'whiteboard_work_api.php', 'community.write'],
     ['GET', '/p/{id}/print', 'page_print.php', 'community.write'],
     ['GET', '/api/pages/{id}/export', 'pages_export.php', 'community.write'],
 
@@ -410,6 +429,11 @@ const COMMUNITY_ROUTES = [
  * ★ 전부 화면도 쓰는 라우트라, 헤더가 **왔을 때만** 토큰 갈래로 간다 — 헤더가 없으면 세션 경로가 한 글자도 바뀌지 않는다.
  */
 const COMMUNITY_API_TOKEN_ROUTES = [
+    'GET /api/work/whiteboards',
+    'GET /api/work/whiteboards/{id}',
+    'GET /api/work/whiteboards/{id}/image',
+    'GET /api/work/whiteboards/{id}/events',
+    'POST /api/work/whiteboards/{id}/minutes',
     // Targeted work-document edits only; generic page PATCH remains session-only.
     'GET /api/work/projects',
     'GET /api/work/documents',

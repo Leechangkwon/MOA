@@ -88,6 +88,8 @@ function list_js(string $dir): array
     $out = [];
     $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($dir, FilesystemIterator::SKIP_DOTS));
     foreach ($it as $f) {
+        // Excalidraw uses its own content-hashed chunks and reproducible vendor manifest.
+        if (str_contains($f->getPathname(), '/vendor/excalidraw/')) { continue; }
         if ($f->isFile() && substr($f->getFilename(), -3) === '.js') {
             $out[] = substr($f->getPathname(), strlen($dir) + 1);
         }

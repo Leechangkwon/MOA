@@ -3340,3 +3340,22 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 | 2026-10-31 | 요청 | 오늘 리서치 글의 「Claude Code VS Code 확장 2.1.313 뒷문」 보안 점검을 실시 | SECURITY.md 7장 같은 날짜 절 |
 | 2026-10-31 | 궁금 | 이 서버가 감염됐나 | 흔적 0 — 변조판은 Cursor 마켓의 Windows·macOS 빌드뿐, 서버엔 VS Code 마켓 2.1.296 · 확인 `grep svc-telemetry ~/.ssh/authorized_keys` · `crontab -l \| grep @reboot` · `ls ~/.config/.smt /tmp/.stk_*` |
 | 2026-10-31 | 대기 | 사용자 PC 두 대 확인(PowerShell 읽기 전용) · sudo NOPASSWD 줄이기 여부 | 미보고 |
+
+
+## 모아 Q:F-17 1차 a 회의 그림판 — 2026-11-18
+
+| 항목 | 상태·근거 |
+|---|---|
+| 사용자 요청 | 「화이트보드 진행 해」 — 기획 v1.2의 1차 a를 구현·검증. 1차 b 배경 캡처는 MB-14의 기본 판 수락 뒤 별도 묶음 |
+| 구현 | 실제 Excalidraw·공동 미리보기/커서·서버 작성자/순번·되감기·판 확정/새 판·사슬·MCP 5도구. 문서: docs/qf17-whiteboard-directive.md · docs/work-items/meeting-whiteboard.md |
+| 수락 | 격리 PHP/Postgres/두 Chromium/실제 WS **143/0**; 중계기 **13/0**; 로컬 MCP 실제 SDK 1.12.4 · 도구 18개/그림 내용 확인 · 클라이언트 **115/0**. 결과: ~/qaredi-whiteboard-results-20261118/final |
+| 정적·공급망 | security_lint 금지 0 · 부품 버전 검사 · 위키 71편/0 · 고정 lockfile 산출물 바이트 재빌드 일치. 취약 전이 3종 보정; 남은 audit HIGH 6개는 배포하지 않는 Sass/picomatch 경로(DEPENDENCIES 4.9) |
+| 운영 | 후보 검증 완료 · 백업/드리프트/추가 전용 migration/새 Node 중계기·nginx 반영 및 실제 HTTPS 확인 대기 |
+| 관문 ③ | 사용자 실제 회의·되감기·판 확정·회의록 → PRD 초안 사용은 대기. 실물 휴대폰/Claude 앱 재연결은 미검증 |
+
+| 날짜 | 구분 | 내용 | 해소·근거 |
+|---|---|---|---|
+| 2026-11-18 | 요청 | 화이트보드 진행 | 위 1차 a · 기획 MB-1~23 |
+| 2026-11-18 | 구현·학습 | 미리보기 수신자의 onChange가 남의 그림을 다시 저장하지 않도록 서버 지문/일시 지문을 구분. 움직이지 않고 펜을 놓아도 저장하도록 pointerup 포착. 글꼴 대체 주소도 같은 출처의 절대 주소로 고정 | 실제 두 브라우저 수락 · docs/work-items/meeting-whiteboard.md |
+
+| 2026-11-18 | 측정·미해결 | 6개 브라우저10분: PHP p95 356.5ms·작업자6/8·대기열0, 화면 반영 p95 1333ms로 목표300ms 미달. 실제 분산 기기 성능은 미검증. 기본 기능143/0과 구분하여 기록 | docs/work-items/meeting-whiteboard.md Q:T-62 · release/load-results.json |

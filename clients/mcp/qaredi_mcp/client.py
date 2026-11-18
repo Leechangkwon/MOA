@@ -343,6 +343,55 @@ class QarediClient:
         # One request only. A conflict or uncertain response must never cause a blind retry.
         return self._call('PATCH', '/community/api/work/documents/' + page_id_from(page_id), body)
 
+    def list_whiteboards(self, project_id: str | None = None, kind: str | None = None,
+                         limit: int = 30, after_id: str | None = None) -> dict[str, Any]:
+        if type(limit) is not int or not 1 <= limit <= 100:
+            raise QarediError('한 번에 1~100개를 읽을 수 있습니다')
+        query = {'limit': str(limit)}
+        if project_id is not None:
+            query['project_id'] = page_id_from(project_id)
+        if after_id is not None:
+            query['after_id'] = page_id_from(after_id)
+        if kind is not None:
+            if kind != 'meeting':
+                raise QarediError('지원하는 판 유형은 meeting입니다')
+            query['kind'] = kind
+        return self._call('GET', '/community/api/work/whiteboards?' + urllib.parse.urlencode(query))
+
+    def _whiteboard(self, page_id: str, version_no: int | None, suffix: str = '', **args) -> dict[str, Any]:
+        query = {}
+        if version_no is not None:
+            if type(version_no) is not int or not 1 <= version_no <= 2147483646:
+                raise QarediError('판 번호를 확인해 주세요')
+            query['version_no'] = str(version_no)
+        for name, value in args.items():
+            if type(value) is not int or value < 0 or value > 2147483646:
+                raise QarediError('순번과 개수를 확인해 주세요')
+            query[name] = str(value)
+        path = '/community/api/work/whiteboards/' + page_id_from(page_id) + suffix
+        return self._call('GET', path + ('?' + urllib.parse.urlencode(query) if query else ''))
+
+    def read_whiteboard(self, page_id: str, version_no: int | None = None, after: int = 0) -> dict[str, Any]:
+        return self._whiteboard(page_id, version_no, after=after)
+
+    def read_whiteboard_events(self, page_id: str, version_no: int | None = None,
+                               after_seq: int = 0, limit: int = 100) -> dict[str, Any]:
+        if type(limit) is not int or not 1 <= limit <= 500:
+            raise QarediError('한 번에 1~500개 기록을 읽을 수 있습니다')
+        return self._whiteboard(page_id, version_no, '/events', after_seq=after_seq, limit=limit)
+
+    def read_whiteboard_image(self, page_id: str, version_no: int | None = None) -> dict[str, Any]:
+        return self._whiteboard(page_id, version_no, '/image')
+
+    def save_meeting_minutes(self, page_id: str, whiteboard_version: int, doc_version: int,
+                             request_id: str, minutes: dict[str, Any]) -> dict[str, Any]:
+        for version in (whiteboard_version, doc_version):
+            if type(version) is not int or not 1 <= version <= 2147483646:
+                raise QarediError('현재 판 번호를 확인해 주세요')
+        body = dict(whiteboard_version=whiteboard_version, doc_version=doc_version,
+                    request_id=page_id_from(request_id), minutes=minutes)
+        return self._call('POST', '/community/api/work/whiteboards/' + page_id_from(page_id) + '/minutes', body)
+
     def write_page(self, title: str, markdown: str) -> dict[str, Any]:
         doc = markdown_to_doc(markdown)             # 상한을 넘으면 DocLimitError — 부르기 전에 멈춘다
         self.my_space()                             # 개인 공간이 없으면 만든다(멱등) — POST 의 409 를 막는다

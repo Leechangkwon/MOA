@@ -1454,3 +1454,13 @@ D2a 통합 정적 검사 보완: 최신 main의 붙여넣기를 보존했다. Br
 ③ 미검증: 사용자 PC(windows-notebook 10.0.4.168 · new-pc 10.0.4.173)에 Cursor 와 Claude Code 확장이 있었는지·그 시간에 자동 갱신됐는지 — 서버에서 볼 수 없음. 다른 계정(eric·root) 홈은 권한 밖. Linux 빌드 영향 여부는 두 공지 모두 밝히지 않음(Cursor 는 Windows·macOS 만 명시).
 
 ④ 다음: 사용자 PC 에서 읽기 전용 확인(PowerShell — 확장 폴더 · `authorized_keys`·`C:\ProgramData\ssh\administrators_authorized_keys` 의 `svc-telemetry` · 예약 작업 `SysMon` · 시작 프로그램 `sysmon.cmd` · `%USERPROFILE%\.config\smt.cmd`·`smtk` · 134.209.82.225 연결). 하나라도 나오면 지우기 전에 증거 보존 → 깨끗한 기기에서 그 PC 로 접근하던 비밀 교체(이 서버의 그 PC SSH 키 포함). NOPASSWD 줄이기는 서버 설정이라 사용자·eric 결정.
+
+
+### 2026-11-18 Q:F-17 1차 a 회의 그림판 — 후보 검토
+
+1. **확인한 근거:** 실제 격리 PHP/Postgres/Chromium/WS 수락 143/0, 중계기 13/0, 실제 MCP SDK 1.12.4의 도구 18개·image content와 클라이언트 115/0. 타인·관리자 특권 접근 404, 보기 공유 쓰기 거부, 토큰 범위·CSRF, version/nonce 충돌, 서버 작성자·순번, 재전송 중복 0, 확정 잠금·새 판·과거 판 보존, 회의록 CAS/refs/중복 방지/사람 문단 보존, 앱 사건 UPDATE/DELETE 0, 사슬 CLI 재계산 및 소유자 변조 탐지 종료 2. 브라우저 외부 HTTP 요청·CSP 위반·JS 오류 0. 보안 린트 0, 자산 버전·위키 71편/0, lockfile 재빌드 바이트 일치.
+2. **남는 위험:** 새 Node/ws/React/Excalidraw 보안 공지 추적 필요. 남은 npm audit HIGH 6개는 Sass/picomatch 개발 경로이며 운영 산출물에 포함되지 않음(BUNDLE-MODULES·DEPENDENCIES 4.9). 원본은 서버 scene JSON, PNG는 클라이언트가 만든 보조 그림. DB 소유자/root가 사슬 전체를 다시 쓰는 공격을 외부 봉인 없이 완전히 막지는 못함.
+3. **미검증:** 이 Codex 세션의 구현·검토는 같은 문맥이며 독립 문맥 검토라고 하지 않는다. 실물 모바일/Safari/스크린리더, 사용자의 실제 회의·Claude 앱 재연결, 운영 HTTPS와 서비스·백업/데이터 보존 확인은 반영 뒤 기록한다. 배경 캡처는 아직 구현 범위가 아님(MB-14, 1차 b).
+4. **다음 조치:** 검증한 후보 고정 → 암호화 백업/복호화 확인 → migration 재적용·앱/백업 권한 → 공식 보안판 Node v24.22.3/loopback 중계기·샌드박스/nginx → 운영 HTTPS·기존 자료 보존. 회귀는 밤 대기열에 넣는다. 다른 사람에게 외부 메시지를 보내지 않았으며 새 서비스·런타임 정보는 이 기록에 남긴다.
+
+Q:T-62 최종 측정: 실제 FPM8·6 Chromium 세션/10분, PHP p95 356.5ms·최대 활성6/8·대기열0·중계기69.3MiB. 화면 반영 p95 1333ms로 목표300ms **미달(수락 통과 아님)**. 브라우저까지 같은2코어 호스트에서 실행했으며 원인 분리·실제 분산 기기 목표 달성은 미검증. 기본 기능143/0과 구분해 출시 제한으로 남긴다. 상세 명령/원문은 작업 문서.
