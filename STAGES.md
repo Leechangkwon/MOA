@@ -3361,3 +3361,5 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 | 2026-11-18 | 측정·미해결 | 6개 브라우저10분: PHP p95 356.5ms·작업자6/8·대기열0, 화면 반영 p95 1333ms로 목표300ms 미달. 실제 분산 기기 성능은 미검증. 기본 기능143/0과 구분하여 기록 | docs/work-items/meeting-whiteboard.md Q:T-62 · release/load-results.json |
 
 | 2026-11-18 | 보정·학습 | 그림판 API 직접 열기만으로 작업 화면 진입을 검증할 수 없었다. 최상위 응답을 맞추고 실제 작업의 링크 표시 단언 추가, 관련 브라우저43/0 | work.js `data.whiteboard` · docs/work-items/meeting-whiteboard.md |
+
+| 2026-11-18 | 운영 | 기본 기능 v2.79.1/1cdd908 반영. 실제 HTTPS29/0·자산/health6/0, 기존104표/2원본/10설정 보존·로컬MCP회의5도구 설치·밤 회귀6종 대기. 성능 목표 미달/사용자 관문③/배경1차b는 미완료 | docs/work-items/meeting-whiteboard.md · deploy/production-state.json |
