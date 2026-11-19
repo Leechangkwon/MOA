@@ -666,8 +666,8 @@ expect "따옴표 종류를 가리지 않고 상대 경로가 아닌 import 0건
   "$(grep -hoE "(from|import)[[:space:]]*['\"][^'\"]+['\"]" "$ROOT"/public/assets/community/vendor/pm/*.js \
      | sed -E "s/.*['\"]([^'\"]+)['\"].*/\1/" | grep -vc '^\./' | tr -d ' ')"
 expect "vendor/pm 파일 수 14" "14" "$(find "$ROOT/public/assets/community/vendor/pm" -maxdepth 1 -name '*.js' | wc -l | tr -d ' ')"
-expect "editor.js 에 /tbox·/community 절대 경로 리터럴 0건" "0" \
-  "$(grep -cE "['\"]/(tbox|community)/" "$ROOT/public/assets/community/editor.js" | tr -d ' ')"
+expect "편집기 부품 전체에 /tbox·/community 절대 경로 리터럴 0건" "0" \
+  "$(cat "$ROOT/public/assets/community/editor.js" "$ROOT/public/assets/community/page.js" "$ROOT/public/assets/community/editor-runtime.js" "$ROOT/public/assets/community/editor-loader.js" | grep -cE "['\"]/(tbox|community)/" | tr -d ' ')"
 expect "doc-schema.json 사본이 원본과 같다" "0" \
   "$(diff "$ROOT/../community/doc-schema.json" "$ROOT/public/assets/community/doc-schema.json" >/dev/null 2>&1; echo $?)"
 

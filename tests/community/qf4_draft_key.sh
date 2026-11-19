@@ -214,7 +214,7 @@ expect "서버 표식 상수 — Auth.php 에 이름·값 한 번씩" "1|1" \
   "$(grep -c "public const BACKGROUND_HEADER = 'X-Qaredi-Background';" "$ROOT/src/Auth.php")|$(grep -c "public const BACKGROUND_VALUE  = '1';" "$ROOT/src/Auth.php")"
 expect "화면 표식 상수 — editor.js 에 이름 글자가 한 번(상수 정의)뿐" "1" \
   "$(grep -c "X-Qaredi-Background" "$ROOT/public/assets/community/editor.js")"
-expect "자동 요청 둘(폴링·heartbeat)에만 표식" "2" "$(grep -c "{ background: true }" "$ROOT/public/assets/community/editor.js")"
+expect "자동 요청 둘(폴링·heartbeat)에만 표식" "2" "$(cat "$ROOT/public/assets/community/editor.js" "$ROOT/public/assets/community/page.js" | grep -c "{ background: true }")"
 expect "Auth — 표식은 SQL_TOUCH 를 건너뛰는 한 곳에서만 본다" "1" "$(grep -c "isBackgroundRequest()" "$ROOT/src/Auth.php" | awk '{print $1-1}')"
 expect "drafts.js — importKey extractable=false 한 곳 · true 0" "1|0" \
   "$(grep -c "importKey('raw', bytes, { name: 'AES-GCM' }, false, \['encrypt', 'decrypt'\])" "$ROOT/public/assets/community/drafts.js")|$(grep -cE "importKey\([^)]*true" "$ROOT/public/assets/community/drafts.js")"

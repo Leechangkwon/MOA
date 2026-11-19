@@ -236,7 +236,7 @@ require __DIR__ . '/../views/shell_top.php';
          `<p>` 가 아니라 `<div>` — 문단 기본 여백이 열 간격에 더해져 옆 폴더 카드와 윗줄이 어긋났다(스크린샷 확인). -->
     <div id="files-ok" class="ok-note" role="status" aria-live="polite" hidden></div>
     <form id="search-form" class="toolbar" autocomplete="off">
-      <input id="search-q" type="search" maxlength="200" placeholder="파일명 · 설명 검색">
+      <input id="search-q" type="search" maxlength="200" aria-label="파일명 · 설명 검색" placeholder="파일명 · 설명 검색">
       <select id="search-sort" aria-label="정렬 기준">
         <option value="created_at">올린 시각</option>
         <option value="name">이름</option>
@@ -392,7 +392,7 @@ require __DIR__ . '/../views/shell_top.php';
           <!-- 18-2 일괄 업로드 (F-27, ARCH 5.17) — 여러 개를 고르거나 끌어 놓는다.
                **서버 계약은 그대로**다: 파일 하나 = 요청 하나이고, app.js 가 순서대로 보낸다. -->
           <div class="field field--full">
-            <span class="field__label">파일 (여러 개 선택 가능 · 한 번에 최대 50개)</span>
+            <label class="field__label" for="upload-file">파일 (여러 개 선택 가능 · 한 번에 최대 50개)</label>
             <div id="upload-drop" class="dropzone">
               <p class="dropzone__text">여기에 파일을 끌어 놓거나 아래에서 고르세요</p>
               <input id="upload-file" type="file" multiple required>

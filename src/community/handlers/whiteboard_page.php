@@ -17,14 +17,25 @@ header('Cache-Control: no-store');
 <a class="btn btn--quiet" href="<?=$e(COMMUNITY_BASE.'/p/'.$id)?>">작업으로</a>
 <h1><?=$e((string)$page['title'])?> <span id="whiteboard-version"></span></h1>
 <span id="whiteboard-presence" class="muted"></span>
+<div class="whiteboard-actions" role="group" aria-label="그림판 보기와 저장">
 <select id="whiteboard-versions" aria-label="판 고르기"></select>
+<button class="btn btn--quiet" id="whiteboard-fit" type="button">전체 보기</button>
+<button class="btn btn--quiet" id="whiteboard-element-toggle" type="button" aria-expanded="false" aria-controls="whiteboard-elements">글과 요소</button>
 <button class="btn btn--quiet" id="whiteboard-history" type="button" aria-expanded="false" aria-controls="whiteboard-records">그린 순서</button>
 <button class="btn btn--quiet" id="whiteboard-recover" type="button" hidden>내 그림 보관</button>
 <button class="btn" id="whiteboard-confirm" type="button" hidden>판 확정</button>
 <button class="btn" id="whiteboard-new" type="button" hidden>새 판에서 이어 그리기</button>
+</div>
 </header>
-<p id="whiteboard-status" class="whiteboard-status" role="status">그림판을 불러오고 있어요…</p>
+<div class="whiteboard-statusbar"><p id="whiteboard-status" class="whiteboard-status" role="status" aria-atomic="true">그림판을 불러오고 있어요…</p>
+<span id="whiteboard-connection" class="whiteboard-connection" role="status">연결 확인 중</span></div>
+<details id="whiteboard-diagnostics" class="whiteboard-diagnostics"><summary>이 창의 성능 진단</summary>
+<p>최근 동작별 최대 120회 측정만 이 창에 남아요. 글·이름·식별자와 외부 전송은 없어요. 장면 API 갱신 시간은 실제 화면 표시나 INP 측정과 달라요.</p>
+<pre id="whiteboard-diagnostic-values"></pre><button class="btn btn--quiet btn--small" id="whiteboard-diagnostic-refresh" type="button">측정 새로 보기</button></details>
 <main class="whiteboard-main"><div id="whiteboard-canvas" aria-label="회의 그림판"></div>
+<aside id="whiteboard-elements" class="whiteboard-records" aria-labelledby="whiteboard-elements-title" hidden>
+<h2 id="whiteboard-elements-title">글과 요소</h2><p id="whiteboard-element-count"></p><ol id="whiteboard-element-list"></ol>
+</aside>
 <aside id="whiteboard-records" class="whiteboard-records" aria-label="그린 순서" hidden>
 <h2>그린 순서</h2><button class="btn btn--quiet" id="whiteboard-live" type="button">현재 판으로</button>
 <p id="whiteboard-fingerprints" class="muted" hidden></p>

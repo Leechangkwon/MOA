@@ -419,8 +419,8 @@ QRBAD=$(grep -cE 'curl_|file_get_contents|fopen\(|imagecreate|exec\(|require|inc
 expect "src/Qr.php 에 외부 요청·이미지·코드 실행·외부 코드 끌어오기 0건" 0 "$QRBAD"
 QRUSE=$(grep -cE '^\s*use\s+' "$ROOT/src/Qr.php"); QRUSE=${QRUSE:-0}
 expect "src/Qr.php 에 use 로 끌어오는 것 0건" 0 "$QRUSE"
-JSBAD=$(grep -cE 'innerHTML|outerHTML|document\.write|data:image' "$ROOT/public/assets/app.js"); JSBAD=${JSBAD:-0}
-expect "app.js 에 innerHTML·document.write·data:image 0건" 0 "$JSBAD"
+JSBAD=$(cat "$ROOT/public/assets/app.js" "$ROOT/public/assets/files-page.js" | grep -cE 'innerHTML|outerHTML|document\.write|data:image'); JSBAD=${JSBAD:-0}
+expect "app.js·files-page.js 에 innerHTML·document.write·data:image 0건" 0 "$JSBAD"
 
 # ─────────────────────────────────────────────────────────────
 hr "(d) 화면 — /settings 슬롯 · 강제 절차 슬롯 (Playwright)"

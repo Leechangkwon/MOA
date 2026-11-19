@@ -271,7 +271,7 @@ html[data-theme="dark"] .moa-module-mark--tbox { color:#edb978; }
 .moa-recipe-grid h3 { font-size:13px; margin:0 0 9px; }
 .moa-recipe-grid p,.moa-usage-tip { font-size:12px; line-height:1.9; color:var(--muted); }
 .moa-use-recipes>a { display:inline-block; font-size:12px; color:var(--accent); margin-top:6px; }
-.moa-documents-heading { margin:32px 0 20px; scroll-margin-top:90px; }
+.moa-documents-heading { margin:20px 0 12px; scroll-margin-top:90px; }
 .moa-documents-heading h2 { font-size:21px; margin:0 0 8px; }
 .moa-documents-heading p { font-size:12px; line-height:1.8; }
 .moa-choose { padding-top:32px; }
@@ -699,3 +699,13 @@ body.moa-site:has(> footer.moa-footer) > footer.moa-footer { flex: none; box-siz
 .q-wordmark-option > input { flex: none; width: 18px; height: 18px; margin: 0; }
 .q-wordmark-sample { flex: none; min-width: 3.2em; font-size: 22px; }
 @media (max-width: 559.98px) { .q-wordmark-picker { grid-template-columns: minmax(0, 1fr); } }
+
+/* DESIGN 2.40 — 선택형 시작 안내: 기존 카드·단추는 펼쳤을 때 모두 유지한다. */
+details.moa-purpose { padding: 0; margin: 0; border-radius: var(--r-ctl); background: var(--surface); }
+details.moa-purpose > summary.moa-purpose-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; margin: 0; padding: 10px 16px; color: var(--fg); cursor: pointer; font-size: 14px; font-weight: 600; }
+details.moa-purpose > summary::after { content: '▾'; margin-left: auto; }
+details.moa-purpose[open] > summary::after { content: '▴'; }
+details.moa-purpose > summary::-webkit-details-marker { display: none; }
+details.moa-purpose > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
+details.moa-purpose > .moa-purpose-heading { margin: 20px 20px 16px; }
+details.moa-purpose > .moa-purpose-grid, details.moa-purpose > .moa-use-recipes { margin: 0 20px 20px; }

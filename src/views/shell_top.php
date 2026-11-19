@@ -356,7 +356,8 @@ if (!headers_sent()) {
    그 갈래를 지워, 같은 키를 쓰는 업무 화면도 다른 업무 화면처럼 editor.js 한 벌로 시작한다.
    이야기 셸(`story`)은 editor.js 를 싣지 않는다 — 업무 사이드바(트리·팀·게시판·알림)가 없고, 스레드 화면은 memories.js 가 맡는다. */
 if ($shellMod === 'community'): ?>
-<!-- 커뮤니티 화면의 동작 한 벌 (커뮤니티 ARCHITECTURE.md 21.3). `type="module"` 은 기본이
+<!-- 커뮤니티 셸·목록의 가벼운 진입점 (커뮤니티 ARCHITECTURE.md 21.3).
+     문서 화면 제어(page.js)는 해당 화면에서, ProseMirror/editor-runtime.js는 실제 편집을 시작할 때만 불러온다. `type="module"` 은 기본이
      defer 라 <head> 에 두어도 본문이 다 그려진 뒤 돌아간다 — shell_bottom 을 고치지 않고
      모듈 스크립트를 싣는 자리다. CSP 는 `script-src 'self'` 그대로이고 import map 을 쓰지
      않는다(ProseMirror 는 저장소 안 상대 경로로 서로를 부른다).

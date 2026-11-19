@@ -269,9 +269,9 @@ else
   expect "src/community/routes.php 차이 = 404 갈래 한 곳만" "1 1 yes" "$1 $2 $([ "$3" = "$4" ] && [ "$3" -gt 0 ] && echo yes || echo "no($3/$4)")"
   fi
   expect "댓글 본문을 한 덩어리 글자로 넣던 줄 0 · 글자 노드와 링크를 만드는 함수로" "0 1" \
-    "$(grep -c 'else { body.textContent = c.body; }' "$ROOT/public/assets/community/editor.js") $(grep -c 'else { linkifyInto(body, c.body); }' "$ROOT/public/assets/community/editor.js")"
-  expect "댓글 링크 — http·https 스킴 확인 · rel noopener noreferrer (editor.js)" "1 1" \
-    "$(grep -c "url.protocol !== 'https:' && url.protocol !== 'http:'" "$ROOT/public/assets/community/editor.js") $(grep -c "a.setAttribute('rel', 'noopener noreferrer');" "$ROOT/public/assets/community/editor.js")"
+    "$(grep -c 'else { body.textContent = c.body; }' "$ROOT/public/assets/community/page.js") $(grep -c 'else { linkifyInto(body, c.body); }' "$ROOT/public/assets/community/page.js")"
+  expect "댓글 링크 — http·https 스킴 확인 · rel noopener noreferrer (page.js)" "1 1" \
+    "$(grep -c "url.protocol !== 'https:' && url.protocol !== 'http:'" "$ROOT/public/assets/community/page.js") $(grep -c "a.setAttribute('rel', 'noopener noreferrer');" "$ROOT/public/assets/community/page.js")"
   expect "옛 시험 dbg_u_ui.sh — 기준 판 기본값이 운영 HEAD 를 따라간다(고정 e88f690 0)" "1 0" \
     "$(grep -c 'rev-parse --short HEAD' "$ROOT/tests/dbg_u_ui.sh") $(grep -c 'DBGU_BASE_REV:-e88f690' "$ROOT/tests/dbg_u_ui.sh")"
   # 11 — 도움말 ↔ 단추 글자(좁은 폭은 narrow-hide 가 가려 「＋ 페이지」 · 넓은 폭은 「하위 페이지 만들기」)

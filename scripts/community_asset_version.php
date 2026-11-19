@@ -73,14 +73,19 @@ if (!is_dir($dir)) {
     exit(2);
 }
 
-// 상대 경로 import 한 개. 줄 머리의 `import`/`export` 로 시작하는 문장만 본다 — 주석 속 글자는 건드리지 않는다.
-//   1 = 앞부분(`import { a } from '` · `import '` — 여러 줄 import 도 `;` 전까지 한 문장으로 본다)
-//   2 = 따옴표  3 = 경로(`./x.js`·`../x.js`)  4 = 지금 붙은 질의(없으면 빈 값 — `?v=낡은값`·`?v=…&x=1` 등
-//   **무엇이 붙어 있든** 지우고 새 값으로 찍는다. 손으로 쓴 이상한 값이 남아 모듈이 두 벌 되지 않게 — 독립 검토 L-1)
-const IMPORT_RE = '~^(import\s*|(?:import|export)\b[^;\'"]*?\bfrom\s*)([\'"])(\.\.?/[^\'"?]+\.js)(?:\?([^\'"]*))?\2~m';
+// Static/literal imports and the retry helper's fixed canonical path share one content hash.
+// The helper may vary only its retry query at runtime; its dependencies keep canonical URLs.
+// Groups: 1 prefix, 2 quote, 3 relative path, 4 existing query.
+const IMPORT_RE = <<<'REGEX'
+~(?://[^\n]*|/\*[\s\S]*?\*/|"(?:[^"\\]++|\\.)*+"|'(?:[^'\\]++|\\.)*+'|`(?:[^`\\]++|\\.)*+`)(*SKIP)(*F)|(^import\s*|^(?:import|export)\b[^;'"`]*?\bfrom\s*|\bimport\s*\(\s*(?=['"][^'"]+['"]\s*\))|\bcreateModuleImporter\s*\(\s*(?=['"][^'"]+['"]\s*,\s*import\.meta\.url\s*\)))(['"])(\.\.?/[^'"?]+\.js)(?:\?([^'"]*))?\2~m
+REGEX;
 // 상대 경로 `.js`·`.json` 문자열 — 위 모양(줄 머리 import/export … from) **밖**에 남으면 문제로 센다
-// (들여 쓴 import·동적 import()·new URL()·JSON 모듈 import 는 버전을 찍지 못한다 — 독립 검토 L-4)
+// Computed import(), indented static imports, new URL() and JSON imports are still rejected.
 const BARE_REL_RE = '~[\'"]\.\.?/[^\'"?]+\.js(?:on)?(?:\?[^\'"]*)?[\'"]~';
+// A helper call left after removing supported imports used a computed path/base or extra arguments.
+const UNSUPPORTED_MODULE_HELPER_RE = <<<'REGEX'
+~(?://[^\n]*|/\*[\s\S]*?\*/|"(?:[^"\\]++|\\.)*+"|'(?:[^'\\]++|\\.)*+'|`(?:[^`\\]++|\\.)*+`)(*SKIP)(*F)|\bcreateModuleImporter\s*(?:\?\.\s*)?\(~
+REGEX;
 
 /** 폴더 안 `.js` 전부 — 앱 폴더 기준 상대 경로로, 정렬해서 (해시가 순서에 따라 흔들리지 않게) */
 function list_js(string $dir): array
@@ -187,9 +192,12 @@ foreach ($files as $rel) {
     }
     // 찍은 import 문을 빼고 남은 글자에서 상대 경로를 찾는다
     $rest = (string) preg_replace(IMPORT_RE, '', $want);
+    if (preg_match(UNSUPPORTED_MODULE_HELPER_RE, $rest) === 1) {
+        $problems[] = "$rel: 재시도 import는 고정 상대 JS 경로와 import.meta.url만 허용한다";
+    }
     if (preg_match_all(BARE_REL_RE, $rest, $bare) > 0) {
         foreach ($bare[0] as $b) {
-            $problems[] = "$rel: import 문으로 보이지 않는 상대 경로 — $b (줄 머리의 import/export … from 만 버전을 찍는다)";
+            $problems[] = "$rel: import 문으로 보이지 않는 상대 경로 — $b (정적 import/export 또는 문자열 리터럴 import()만 버전을 찍는다)";
         }
     }
     if ($want !== $src) {
@@ -242,9 +250,12 @@ foreach (OUTSIDE_ENTRIES as $entry) {
         exit(2);
     }
     $rest = (string) preg_replace(IMPORT_RE, '', $want);
+    if (preg_match(UNSUPPORTED_MODULE_HELPER_RE, $rest) === 1) {
+        $problems[] = "$entry: 재시도 import는 고정 상대 JS 경로와 import.meta.url만 허용한다";
+    }
     if (preg_match_all(BARE_REL_RE, $rest, $bare) > 0) {
         foreach ($bare[0] as $b) {
-            $problems[] = "$entry: import 문으로 보이지 않는 상대 경로 — $b (줄 머리의 import/export … from 만 버전을 찍는다)";
+            $problems[] = "$entry: import 문으로 보이지 않는 상대 경로 — $b (정적 import/export 또는 문자열 리터럴 import()만 버전을 찍는다)";
         }
     }
     if ($want !== $src) {

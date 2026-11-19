@@ -28,7 +28,7 @@
  *   · PC 도우미(내 PC 의 loopback 주소)는 `/messages` 에서만 — 이 파일에는 그 주소가 없다(member-assist.js 가 창에서는 안내만 보인다).
  *   · 역할 비교 0 — `/api/me` 의 `can_community_write`·`acting` 만 본다(근거는 서버 `Member::requireMessenger`).
  */
-import { createDrafts } from './community/drafts.js?v=4a50ab9739e5';
+import { createDrafts } from './community/drafts.js?v=a9fddd18fefd';
 
 /** 창 상태 열쇠 접두 — 뒤에 진짜 사용자 아이디(`/api/me` 의 username — 역할로 보기 중에도 실제 계정) */
 const STATE_PREFIX = 'qaredi-messenger:v1:';
@@ -1025,7 +1025,7 @@ async function mount(options) {
   $('message-text').addEventListener('input', () => {
     if (ai.active) { store.put('ai', String(ai.getState().thread || 0), { text: $('message-text').value }); } else { remember(); }
   });
-  $('message-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); if (!$('message-send').disabled) { $('message-form').requestSubmit(); } } });
+  $('message-text').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); if (!$('message-send').disabled) { $('message-form').requestSubmit(); } } });
   $('message-older').addEventListener('click', async () => { if (loading) { return; } loading = true; $('message-older').disabled = true; try { await load(true); } catch (e) { say(e.message); } finally { loading = false; $('message-older').disabled = false; } });
   let searchTimer; $('message-search').addEventListener('input', () => { clearTimeout(searchTimer); searchTimer = setTimeout(() => people().catch((e) => say(e.message)), 250); });
   let scrollTimer = null;

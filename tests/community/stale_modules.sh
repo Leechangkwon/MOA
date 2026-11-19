@@ -61,7 +61,7 @@ for f in doc-render.js database.js templates.js editor-schema.js; do
     || { echo "  ✖ $OLD_TAG 의 $f 를 꺼내지 못했다(태그가 없는 클론?)"; exit 3; }
 done
 expect "옛 doc-render.js 에는 embedHost 가 없다(사고 조건)" "0" "$(grep -c 'embedHost' "$WORK/old/doc-render.js")"
-expect "지금 editor.js 는 embedHost 를 부른다" "1" "$(grep -c "import { renderDoc, embedHost } from './doc-render.js" "$ROOT/public/assets/community/editor.js")"
+expect "지금 editor-runtime.js 는 renderDoc·embedHost 를 부른다" "1" "$(grep -cE "^import \\{ (renderDoc.*embedHost|embedHost.*renderDoc).* \\} from './doc-render\\.js" "$ROOT/public/assets/community/editor-runtime.js")"
 APP_VER=$(php "$ROOT/scripts/community_asset_version.php" --print | sed -n 's/^app=//p')
 expect "버전 표시가 지금 내용과 맞다(--check)" "0" "$(php "$ROOT/scripts/community_asset_version.php" --check > /dev/null 2>&1; echo $?)"
 note "부품 버전 $APP_VER"

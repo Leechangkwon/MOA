@@ -697,8 +697,8 @@ for f in wiki/tbox/guide-risks.json wiki/tbox/guide-what.json wiki/tbox/stage-11
 done
 expect "wiki JSON 4파일 파싱 실패 0" 0 "$JSON_FAIL"
 
-JSBAD=$(grep -cE 'innerHTML|outerHTML|document\.write' "$ROOT/public/assets/app.js"); JSBAD=${JSBAD:-0}
-expect "app.js 에 innerHTML·document.write 0건" 0 "$JSBAD"
+JSBAD=$(cat "$ROOT/public/assets/app.js" "$ROOT/public/assets/files-page.js" | grep -cE 'innerHTML|outerHTML|document\.write'); JSBAD=${JSBAD:-0}
+expect "app.js·files-page.js 에 innerHTML·document.write 0건" 0 "$JSBAD"
 
 NONQA_AFTER=$(db_read "$DB" "SELECT count(*) FROM audit_logs WHERE happened_at > '$T0'::timestamptz AND actor_name IS NOT NULL AND $REVIEW_NOT_SQL")
 echo "  이 실행 중 비-qa 감사 행: $NONQA_AFTER (0 이어야 정상)"

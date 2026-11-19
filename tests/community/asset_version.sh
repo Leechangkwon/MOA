@@ -10,7 +10,7 @@
 #   ② 임시 사본에서 우리 부품 한 줄을 바꾸면 --check 가 실패하고, 다시 찍으면 통과 · 부품 버전만 바뀌고
 #      ProseMirror 버전·vendor 파일은 그대로
 #   ③ vendor 한 줄을 바꾸면 두 버전이 모두 바뀐다(우리 부품도 따라 새 주소)
-#   ④ 줄 머리가 아닌 import · 없는 파일을 가리키는 import 는 문제로 잡는다
+#   ④ 문자열 리터럴 동적 import·재시도 helper 고정 경로도 같은 버전 · 계산 경로/없는 파일은 거부
 #   ⑤ release.sh 는 버전 표시가 낡은 커밋을 발행하지 않는다(임시 클론 · --dry-run)
 #   ⑥ 셸이 진입 파일을 module 로 부른다 · 문법
 #
@@ -53,8 +53,11 @@ printf '    %s\n' "$(printf '%s' "$out" | head -1)"
 python3 - "$ROOT/public/assets/community" > "$TMP/imports.txt" <<'PY'
 import os, re, sys
 base = sys.argv[1]
-rx = re.compile(r"^(?:import\s*|(?:import|export)\b[^;'\"]*?\bfrom\s*)(['\"])(\.\.?/[^'\"?]+\.js)(\?v=[0-9a-f]*)?\1", re.M)
-for dp, _, fs in os.walk(base):
+rx = re.compile(r"(?:^import\s*|^(?:import|export)\b[^;'\"]*?\bfrom\s*|\bimport\s*\(\s*|\bcreateModuleImporter\s*\(\s*(?=['\"][^'\"]+['\"]\s*,\s*import\.meta\.url\s*\)))(['\"])(\.\.?/[^'\"?]+\.js)(\?v=[0-9a-f]*)?\1", re.M)
+for dp, dirs, fs in os.walk(base):
+    # Excalidraw's separately pinned, content-hashed chunks are outside the PM/app group.
+    if os.path.relpath(dp, base) == 'vendor':
+        dirs[:] = [name for name in dirs if name != 'excalidraw']
     for f in sorted(fs):
         if not f.endswith('.js'):
             continue
@@ -77,8 +80,12 @@ n_app_bad=$(awk -F'\t' -v app="?v=$APP" '$2 !~ /^vendor\// && $3 != app' "$TMP/i
 expect "vendor/pm 을 부르는 import 는 전부 ProseMirror 버전($PM)" "0" "$n_pm_bad"
 expect "우리 부품을 부르는 import 는 전부 부품 버전($APP)" "0" "$n_app_bad"
 expect "vendor 가 우리 부품을 부르지 않는다" "0" "$(awk -F'\t' '$1 ~ /^vendor\// && $2 !~ /^vendor\//' "$TMP/imports.txt" | wc -l | tr -d ' ')"
-expect "editor.js 가 doc-render.js 를 버전과 함께 부른다" "1" \
-  "$(grep -cF "from './doc-render.js?v=$APP'" "$ROOT/public/assets/community/editor.js")"
+expect "읽기 page.js 가 doc-render.js 를 버전과 함께 부른다" "1" \
+  "$(grep -cF "from './doc-render.js?v=$APP'" "$ROOT/public/assets/community/page.js")"
+expect "editor.js 의 문서 화면 동적 import도 같은 버전" "1" \
+  "$(grep -cF "import('./page.js?v=$APP')" "$ROOT/public/assets/community/editor.js")"
+expect "runtime 재시도 helper의 고정 경로도 같은 버전" "1" \
+  "$(grep -cF "createModuleImporter('./editor-runtime.js?v=$APP', import.meta.url)" "$ROOT/public/assets/community/editor.js")"
 
 hr "② 우리 부품 한 줄을 바꾸면 (임시 사본)"
 fresh_copy
@@ -111,9 +118,45 @@ expect "prosemirror-model.js 가 새 버전으로 orderedmap.js 를 부른다" "
 hr "④ 잡아야 하는 모양"
 fresh_copy
 printf '\nif (window.x) {\n  import("./doc-render.js");\n}\n' >> "$TMP/app/public/assets/community/popular.js"
+expect "버전 없는 문자열 리터럴 동적 import → --check 실패" "1" "$(php "$SCRIPT" --check --root "$TMP/app" > /dev/null 2>&1; echo $?)"
+expect "문자열 리터럴 동적 import → 버전 찍기 통과" "0" "$(php "$SCRIPT" --root "$TMP/app" > /dev/null 2>&1; echo $?)"
+expect "문자열 리터럴 동적 import → 찍은 뒤 통과" "0" "$(php "$SCRIPT" --check --root "$TMP/app" > /dev/null 2>&1; echo $?)"
+APP_DYNAMIC=$(ver "$TMP/app" app)
+expect "동적 import도 정적 import와 같은 부품 버전" "1" "$(grep -cF "import(\"./doc-render.js?v=$APP_DYNAMIC\")" "$TMP/app/public/assets/community/popular.js")"
+fresh_copy
+printf '\ncreateModuleImporter("./doc-render.js", import.meta.url);\n' >> "$TMP/app/public/assets/community/popular.js"
+expect "재시도 helper의 버전 없는 고정 경로 → --check 실패" "1" "$(php "$SCRIPT" --check --root "$TMP/app" > /dev/null 2>&1; echo $?)"
+expect "재시도 helper 고정 경로 → 버전 찍기 통과" "0" "$(php "$SCRIPT" --root "$TMP/app" > /dev/null 2>&1; echo $?)"
+expect "재시도 helper 고정 경로 → 찍은 뒤 통과" "0" "$(php "$SCRIPT" --check --root "$TMP/app" > /dev/null 2>&1; echo $?)"
+APP_RETRY=$(ver "$TMP/app" app)
+expect "재시도 helper도 정적 의존 import와 같은 부품 버전" "1" "$(grep -cF "createModuleImporter(\"./doc-render.js?v=$APP_RETRY\", import.meta.url)" "$TMP/app/public/assets/community/popular.js")"
+for unsupported in \
+  'createModuleImporter("./doc-render.js" + window.suffix, import.meta.url);' \
+  'createModuleImporter(window.path, import.meta.url);' \
+  'createModuleImporter?.(window.path, import.meta.url);' \
+  'createModuleImporter("./doc-render.js", window.base);' \
+  'createModuleImporter("./doc-render.js", import.meta.url, window.importer);'; do
+  fresh_copy
+  printf '\n%s\n' "$unsupported" >> "$TMP/app/public/assets/community/popular.js"
+  out=$(php "$SCRIPT" --root "$TMP/app" 2>&1); rc=$?
+  expect "재시도 helper 계산 경로/기준/추가 인자 거부: $unsupported" "1" "$rc"
+  contains "helper 거부 이유를 적는다" "고정 상대 JS 경로와 import.meta.url만 허용" "$out"
+done
+fresh_copy
+printf '\ncreateModuleImporter("./missing-retry.js", import.meta.url);\n' >> "$TMP/app/public/assets/community/popular.js"
+out=$(php "$SCRIPT" --root "$TMP/app" 2>&1); rc=$?
+expect "없는 재시도 helper 대상 → 실패" "1" "$rc"
+contains "재시도 helper 대상 이름을 적는다" "가리키는 파일이 없다 — ./missing-retry.js" "$out"
+fresh_copy
+printf '\nimport("./doc-render.js" + window.suffix);\n' >> "$TMP/app/public/assets/community/popular.js"
 out=$(php "$SCRIPT" --check --root "$TMP/app" 2>&1); rc=$?
-expect "줄 머리가 아닌 import(동적 import) → 실패" "1" "$rc"
+expect "계산한 동적 경로 → 실패" "1" "$rc"
 contains "무엇이 문제인지 적는다" "import 문으로 보이지 않는 상대 경로" "$out"
+fresh_copy
+printf '\nimport("./missing-dynamic.js");\n' >> "$TMP/app/public/assets/community/popular.js"
+out=$(php "$SCRIPT" --root "$TMP/app" 2>&1); rc=$?
+expect "없는 동적 import 대상 → 실패" "1" "$rc"
+contains "동적 import 대상 이름을 적는다" "가리키는 파일이 없다 — ./missing-dynamic.js" "$out"
 fresh_copy
 sed -i "1i import { nope } from './nope.js';" "$TMP/app/public/assets/community/popular.js"
 php "$SCRIPT" --root "$TMP/app" > "$TMP/o.txt" 2>&1; rc=$?

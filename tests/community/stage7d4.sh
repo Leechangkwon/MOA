@@ -930,13 +930,13 @@ python3 -c "import ast,io;ast.parse(io.open('$ROOT/tests/community/browser_7d4.p
 expect "커뮤니티 코드에 역할 문자열 비교 0" "0" \
   "$(grep -rnE "'(Admin|Manager|Employee|Guest)'" "$ROOT/src/community" | grep -vE '^[^:]+:[0-9]+:\s*(\*|//|/\*)' | wc -l | tr -d ' ')"
 expect "편집기·렌더러에 색값(#rrggbb) 0 · 7-D4 CSS 줄에 색값 0" "0 0" \
-  "$(grep -cE "#[0-9a-fA-F]{6}\b" "$ROOT/public/assets/community/doc-render.js" "$ROOT/public/assets/community/editor-schema.js" "$ROOT/public/assets/community/editor.js" | awk -F: '{s+=$2} END {print s+0}') $(git -C "$ROOT" diff "$BASE_REV" -- public/assets/community/community.css | grep '^+' | grep -cE '#[0-9a-fA-F]{3,8}\b|rgb\(' | tr -d ' ')"
+  "$(grep -cE "#[0-9a-fA-F]{6}\b" "$ROOT/public/assets/community/doc-render.js" "$ROOT/public/assets/community/editor-schema.js" "$ROOT/public/assets/community/editor.js" "$ROOT/public/assets/community/page.js" "$ROOT/public/assets/community/editor-runtime.js" "$ROOT/public/assets/community/editor-loader.js" | awk -F: '{s+=$2} END {print s+0}') $(git -C "$ROOT" diff "$BASE_REV" -- public/assets/community/community.css | grep '^+' | grep -cE '#[0-9a-fA-F]{3,8}\b|rgb\(' | tr -d ' ')"
 expect "렌더러 두 벌은 표를 읽지 않는다(이름 풀이는 창구가 — 지도만 본다)" "0" \
   "$(grep -cE 'Db::|public\.users|/api/mention-candidates|/api/search' "$ROOT/src/community/DocRender.php" "$ROOT/public/assets/community/doc-render.js" | awk -F: '{s+=$2} END {print s+0}')"
 expect "편집기 — mention 마크에 parseDOM 0 · 「@」 키로 여는 길 0(keydown '@' · keymap '@' 0)" "0 0" \
-  "$(awk '/^    mention: \{/,/^    \}/' "$ROOT/public/assets/community/editor-schema.js" | grep -c parseDOM | tr -d ' ') $(grep -cE "key === '@'|'@': |\"@\": " "$ROOT/public/assets/community/editor.js" | tr -d ' ')"
+  "$(awk '/^    mention: \{/,/^    \}/' "$ROOT/public/assets/community/editor-schema.js" | grep -c parseDOM | tr -d ' ') $(cat "$ROOT/public/assets/community/editor.js" "$ROOT/public/assets/community/page.js" "$ROOT/public/assets/community/editor-runtime.js" "$ROOT/public/assets/community/editor-loader.js" | grep -cE "key === '@'|'@': |\"@\": " | tr -d ' ')"
 expect "멘션 후보 목록은 줄 안(.list.list--scroll) — 떠 있는 요소(popover·position) 0" "1 0" \
-  "$(grep -c "mentionList.className = 'list list--scroll';" "$ROOT/public/assets/community/editor.js" | tr -d ' ') $(git -C "$ROOT" diff "$BASE_REV" -- public/assets/community/editor.js | grep '^+' | grep -cE 'popover|\.style\.|position' | tr -d ' ')"
+  "$(grep -c "mentionList.className = 'list list--scroll';" "$ROOT/public/assets/community/editor-runtime.js" | tr -d ' ') $(git -C "$ROOT" diff "$BASE_REV" -- public/assets/community/editor-runtime.js | grep '^+' | grep -cE 'popover|\.style\.|position' | tr -d ' ')"
 expect "고치지 않는 것(지시서 3.5) 변경 0 — Authz·Auth·Audit·Http·Db·CommunityAuthz·index·db·deploy·bootstrap·comments_create·search" "0" \
   "$(git -C "$ROOT" diff --name-only "$BASE_REV" -- src/Authz.php src/Auth.php src/Audit.php src/Http.php src/Db.php src/community/CommunityAuthz.php public/index.php db deploy src/bootstrap.php src/community/handlers/comments_create.php src/community/handlers/search.php | wc -l | tr -d ' ')"
 expect "지시서 예외 mention_candidates.php — 바뀐 줄은 id 칸 하나 + 머리글 주석뿐(판정·SQL·정렬·개수 그대로)" "1" \
@@ -951,12 +951,12 @@ expect "지시서 예외 browser_stale_modules.py — 대조군 B 의 빠진 exp
 expect "불변식 예외 하나 — routes.php 에서 tbox_person_label( 은 community_mention_labels 안 한 번뿐" "1 community_mention_labels" \
   "$(grep -c 'tbox_person_label(' "$ROOT/src/community/routes.php" | tr -d ' ') $(awk '/^function /{fn=$2; sub(/\(.*/, "", fn)} /tbox_person_label\(/{print fn}' "$ROOT/src/community/routes.php")"
 # 부품 버전 다시 찍기로 바뀐 파일은 import 줄만
-RESTAMP_BAD=$(for f in $(git -C "$ROOT" diff --name-only "$BASE_REV" -- public/assets/community | grep -E '\.js$' | grep -vE '/(doc-render|editor-schema|editor)\.js$'); do
+RESTAMP_BAD=$(for f in $(git -C "$ROOT" diff --name-only "$BASE_REV" -- public/assets/community | grep -E '\.js$' | grep -vE '/(doc-render|editor-schema|editor|page|editor-runtime|editor-loader)\.js$'); do
   git -C "$ROOT" diff -U0 "$BASE_REV" -- "$f" | grep -E '^[+-]' | grep -vE '^(\+\+\+|---)' | grep -vE "^[+-]import .* from '\./[a-z/-]+\.js\?v=[0-9a-f]{12}';$" | sed "s#^#$f: #"
 done)
 expect "부품 버전 다시 찍기만 한 파일은 import 줄만 바뀌었다" "" "$RESTAMP_BAD"
 if git -C "$ROOT" rev-parse -q --verify "$BASE_REV^{commit}" >/dev/null 2>&1; then
-  ALLOWED='^(public/assets/community/doc-schema\.json|src/community/Doc\.php|src/community/routes\.php|src/community/DocRender\.php|src/community/handlers/(pages_get|version_get|mention_candidates)\.php|public/assets/community/(doc-render|editor-schema|editor|templates|database|embeds|popular|palettes|drafts)\.js|public/assets/community/community\.css|tests/community/(stage7d4\.sh|browser_7d4\.py|stage3\.sh|stage7c\.sh|stage5a2\.sh|stage5c\.sh|stage5d\.sh|stage5e\.sh|stage6a\.sh|stage6b\.sh|stage6c\.sh|stage7a\.sh|stage7b\.sh|stage7d1\.sh|qf2_search\.sh|browser_stale_modules\.py)|tests/catalog\.json|SECURITY\.md|DESIGN\.md|src/help/community\.php|wiki/community/(stage-7-d|guide-blocks|index)\.json|review-scripts/(apply-7d4-repo-2026-09-27|pins-7d4-repo)\.sh)$'
+  ALLOWED='^(public/assets/community/doc-schema\.json|src/community/Doc\.php|src/community/routes\.php|src/community/DocRender\.php|src/community/handlers/(pages_get|version_get|mention_candidates)\.php|public/assets/community/(doc-render|editor-schema|editor|page|editor-runtime|editor-loader|templates|database|embeds|popular|palettes|drafts)\.js|public/assets/community/community\.css|tests/community/(stage7d4\.sh|browser_7d4\.py|stage3\.sh|stage7c\.sh|stage5a2\.sh|stage5c\.sh|stage5d\.sh|stage5e\.sh|stage6a\.sh|stage6b\.sh|stage6c\.sh|stage7a\.sh|stage7b\.sh|stage7d1\.sh|qf2_search\.sh|browser_stale_modules\.py)|tests/catalog\.json|SECURITY\.md|DESIGN\.md|src/help/community\.php|wiki/community/(stage-7-d|guide-blocks|index)\.json|review-scripts/(apply-7d4-repo-2026-09-27|pins-7d4-repo)\.sh)$'
   OUTSIDE=$( { git -C "$ROOT" diff --name-only "$BASE_REV"; git -C "$ROOT" ls-files --others --exclude-standard; } | sort -u | grep -vE "$ALLOWED" || true)
   expect "허용 목록(지시서 3.5 · 메인 결정 예외 다섯 · 부품 import 버전 · 반영 스크립트) 밖 변경 0" "" "$OUTSIDE"
 fi

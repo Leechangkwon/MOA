@@ -386,8 +386,8 @@ if [ -f "$ROOT/scripts/security_lint.sh" ]; then
   expect "보안 린트 종료 코드" "0" "$rc"
   [ "$rc" -eq 0 ] || tail -8 "$WORK/lint.txt" | sed 's/^/    /'
 fi
-expect "app.js 절대 경로는 줄마다 APP_BASE 로(Q:T-4) — 새 일괄 코드의 '/api/' 줄" "0" \
-  "$(grep -n "'/api/" "$ROOT/public/assets/app.js" | grep -v 'APP_BASE' | grep -ciE 'bulk|restore|favorite')"
+expect "files-page.js 절대 경로는 줄마다 APP_BASE 로(Q:T-4) — 새 일괄 코드의 '/api/' 줄" "0" \
+  "$(grep -n "'/api/" "$ROOT/public/assets/files-page.js" | grep -v 'APP_BASE' | grep -ciE 'bulk|restore|favorite')"
 
 hr "결과"
 printf '통과 %d · 실패 %d\n' "$PASS" "$FAIL"

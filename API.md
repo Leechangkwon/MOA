@@ -1472,3 +1472,10 @@ GET/POST/DELETE `/api/client/diagnostics`는 `client.diagnostics.write` 정책�
 GET `/admin/client-diagnostics` 및 GET/POST `/api/admin/client-diagnostics`는 관리자 audit.read와 재인증을 사용한다. 세션 쓰기는 CSRF를 요구한다. 정책은 retention_days1..30, daily/weekly_enabled(bool), daily_hour0..23, weekly_weekday1..7이다. 개별 기록은 자기 계정·설치만 지우고, 식별자 없는 기간별 집계는 최대30일 보관한다.
 
 POST `/api/programs/{id}/withdraw|restore`는 관리자 전용 일반 로그인·CSRF·비밀번호·새OTP와 `ack,expected_current_id,sha256`를 요구한다. 다른 파일 또는 현재판 변경409, 검증된 기존 프로그램 파일만 복원하며 파일/업무 자료를 삭제하지 않는다. 같은 버전에 다른 SHA의 신규 게시409이다.
+
+
+## 2026-11-19 웹 성능 개선의 API 호환성
+
+새 HTTP 경로·토큰 범위·DB 입력 계약은 없다. 자료실 POST /api/files의 FormData/CSRF/동일 계정 갱신은 유지하고 브라우저 XHR로 바이트 진행만 표시한다. 전송 100%와 서버 검사 승인을 구분하며 네트워크 결과 불명은 자동 재전송하지 않는다. 파일 목록의 실제 검사 상태를 확인한다.
+
+브라우저 콘솔의 명시적 MoaPerformanceDiagnostics.start/stop/reset/snapshot/download는 Promise를 반환하는 탭 내부 진단이며 서버 API가 아니다. 스냅샷은 숫자 집계만 포함하고 계정·URL·내용·이벤트 ID를 내보내지 않는다. interaction_duration_max_ms는 정식 INP가 아니다. 그림판 MoaWhiteboardDiagnostics.snapshot은 최근 고정 종류의 count/p95_ms이며 장면 API 갱신 시간은 실제 paint·분산 미리보기 지연과 다르다.

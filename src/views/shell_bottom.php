@@ -148,7 +148,7 @@ $shellChangelog = $shellChangelogFull ? Changelog::entries() : Changelog::headli
 
 <?php require __DIR__ . '/icon_templates.php'; ?>
 
-<script src="<?= Http::url('/assets/app.js') ?>?v=<?= $shellJsVersion ?>"></script>
+<script id="app-script" data-performance-version="<?= substr(hash_file('sha256', __DIR__ . '/../../public/assets/performance-diagnostics.js'), 0, 12) ?>" data-files-version="<?= substr(hash_file('sha256', __DIR__ . '/../../public/assets/files-page.js'), 0, 12) ?>" src="<?= Http::url('/assets/app.js') ?>?v=<?= $shellJsVersion ?>"></script>
 <?php if (isset($shellPwa) && $shellPwa === 'alerts'): ?>
 <!-- F-70 휴대폰 경보 화면의 동작 (public/assets/alerts-app.js) — app.js 뒤에 싣는다(그쪽이 내놓는 qarediMe·qarediHandleReauth 를 쓴다).
      `$shellPwa` 는 shell_top.php 가 허용 목록 한 값으로 좁힌 것이다. -->

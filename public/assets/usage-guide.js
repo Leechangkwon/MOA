@@ -422,8 +422,8 @@
     if(!origin) return;
     if(dialog) return;
     // 길잡이가 켜졌으면 셸의 「? 사용 안내」는 질문 카드부터(창 안 「? 이 창 사용 안내」 · 업무 홈 머리 「사용 방법」은 지금처럼 그 투어)
-    if(origin.closest('.usage-guide-launch') && (enabled() || saved === null)) {
-      load().then(() => { if (dialog) return; if (enabled()) ask(false); else start(saved?.status==='active', origin); }).catch(() => start(false, origin));
+    if(origin.closest('.usage-guide-launch') && (enabled() || saved === null || saved?.offer)) {
+      load().then(() => { if (dialog) return; if (enabled()) ask(Boolean(saved?.offer)); else if (saved?.offer) consent(); else start(saved?.status==='active', origin); }).catch(() => start(false, origin));
       return;
     }
     load().catch(()=>{}); start(saved?.status==='active', event.target);
@@ -1157,17 +1157,26 @@
     (list.querySelector('button') || actions.lastElementChild).focus();
   }
 
+  // 선택형 첫 안내는 고정 입구에서 제안한다. 사용자의 초점과 현재 작업을 가로막지 않는다.
+  function offerOnLaunch() {
+    const launch = root.querySelector('.usage-guide-launch');
+    if (!launch) return;
+    const label = launch.querySelector('span');
+    if (label) label.textContent = '사용 안내 시작';
+    launch.setAttribute('aria-label', '사용 안내 시작하기 (선택 사항)');
+  }
+
   load().then(async (s)=>{
     if (enabled()) {
       // 길잡이 — ① 주소 꼬리 ② 진행 중 이어 하기 ③ 첫 로그인 제안(질문 카드) ④ 옛 투어 이어 보기
       if (wanted !== null && allowedId(wanted)) { await startJourney(wanted); return; }
       if (await resumeOnLoad()) return;
       paintLaunch();
-      if(s.offer) { setTimeout(()=>{ if(!run && !openDialogs().length && !document.hidden && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')) ask(true); },700); return; }
+      if (s.offer) { offerOnLaunch(); return; }
       if(s.status==='active' && !openDialogs().length && (s.context===currentContext() || (s.context==='messenger' && $('messenger-window')))) start(true, null, s.context);
       return;
     }
-    if(s.offer) setTimeout(()=>{ if(!openDialogs().length && !document.hidden && !document.activeElement?.matches('input,textarea,[contenteditable="true"]')) consent(); },700);
+    if (s.offer) offerOnLaunch();
     else if(s.status==='active' && !openDialogs().length && (s.context===currentContext() || (s.context==='messenger' && $('messenger-window')))) start(true, null, s.context);
   }).catch(()=>{});
   window.addEventListener('resize', () => { if (run) { cancelAnimationFrame(jFrame); jFrame = requestAnimationFrame(place); } });

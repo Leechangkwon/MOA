@@ -41,9 +41,9 @@ require __DIR__ . '/../../views/shell_top.php';
     <header class="page-head">
       <div class="page-head__text">
         <!-- 제목·설명은 고른 공간에 따라 editor.js 가 textContent 로 바꾼다 (4-B). -->
-        <h1 class="page-head__title">내 문서</h1>
+        <h1 class="page-head__title" id="community-space-title">내 문서</h1>
         <!-- 디버깅 묶음 U3 — 손님(쓰기 자격 없음 — 「새 페이지」를 숨기는 것과 같은 값 Authz::canCommunityWrite)에게는 읽기 안내(editor.js GUEST_SPACE_SUB 와 같은 글자) -->
-        <p id="community-space-sub" class="page-head__sub"><?= $homeWriteHidden === '' ? '나만의 생각과 자료를 모으는 공간입니다. 자유롭게 페이지를 만들어 보세요.' : '손님 계정은 읽기만 합니다. 공유받은 페이지와 볼 수 있는 게시판 글을 읽을 수 있습니다.' ?></p>
+        <p id="community-space-sub" class="page-head__sub"><?= $homeWriteHidden === '' ? '메모·업무 방법·인수인계를 문서로 남기세요. 개인 문서는 비공개로 시작하고, 문서마다 공개 범위를 고를 수 있어요.' : '손님 계정은 읽기만 합니다. 공유받은 페이지와 볼 수 있는 게시판 글을 읽을 수 있습니다.' ?></p>
       </div>
       <div class="page-head__actions">
         <button type="button" class="btn btn--quiet" data-help-open>
@@ -113,7 +113,7 @@ require __DIR__ . '/../../views/shell_top.php';
          `GET /community/api/spaces` 가 준 것만 들어간다(화면이 공간 목록을 알고 있지 않다).
          공간이 하나뿐이면(팀이 없는 계정) 통째로 숨는다 — 고를 것이 없는 고르개는 군더더기다.
          `.toolbar select` 는 DESIGN 2.4 도구줄에 이미 있는 구성 요소다(새 클래스 0). -->
-    <div class="moa-documents-heading" id="moa-my-documents"><h2 id="community-space-title">내 문서</h2><p id="community-space-sub" class="moa-muted"><?= $homeWriteHidden === '' ? '메모·업무 방법·인수인계를 문서로 남기세요. 개인 문서는 비공개로 시작하고, 문서마다 공개 범위를 고를 수 있어요.' : '손님 계정은 읽기만 합니다. 공유받은 페이지와 볼 수 있는 게시판 글을 읽을 수 있습니다.' ?></p></div>
+    <div class="moa-documents-heading" id="moa-my-documents"><h2>문서 목록</h2></div>
     <div class="toolbar">
       <label id="community-space-label" class="muted" for="community-space" hidden>공간</label>
       <select id="community-space" hidden aria-label="공간 고르기"></select>

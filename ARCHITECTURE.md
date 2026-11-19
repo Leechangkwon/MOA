@@ -3353,3 +3353,14 @@ section의 option_labels는 고정 선택값→표시 이름 지도다. 이름 �
 ClientDiagnostics는 고정 프로토콜을 재검증한 뒤 새 client_diagnostic_events에 자기 계정/이벤트 UUID로 중복 없이 기록한다. 기존 업무·파일·AI 원문 저장소는 조회하지 않는다. 사용자/서비스별 잠금과 일별 상한으로 수신 비용을 제한한다. 관리자에는 기간/버전/코드/단계/오류 집계만 제공하고 관측되지 않은 실행은 완료율에서 제외한다. 새 client_diagnostic_policy와 client_diagnostic_rollups만 정책·기간 집계를 저장한다.
 
 기존 cron에서 client_diagnostics_rollup.php를 매시15분 호출한다. 정책 시각/요일과 기간 키·advisory lock으로 중복 생성하지 않으며 보관 기간이 지난 새 진단 표만 정리한다. 작업 출력은 상태/생성 종류만14일·1MB 회전한다. 재현 검사 이름은 고정 매핑이며 기록/AI 응답을 코드로 실행하지 않는다. 실제 배포는 검토한 소스·고정 회귀 gate·ZIP SHA·정상 재인증/OTP·백신 검사를 거친다. Programs의 이전판 복원은 코드 배포 선택이며 사용자 데이터 복원을 수행하지 않는다.
+
+
+## 2026-11-19 웹 초기 로딩과 로컬 성능 진단
+
+공통 classic app.js는 셸·인증·기존 검증 도우미를 유지하고 자료실 화면에서만 files-page.js를 불러온다. shell_bottom은 모듈의 내용 해시를 전달한다. 초기 동작은 하나의 Promise로 묶고 불러오는 동안의 첫 행동을 한 번 이어 준다. 부분 바인딩 후 오류는 재초기화 대신 새로 고침으로 복구한다. 업로드는 원래 서버 계약에 XHR 전송 진행만 더하며 403 갱신/계정 동일성 판정을 그대로 공유한다.
+
+커뮤니티 진입 editor.js→문서 화면 page.js→실제 편집 editor-runtime.js 순으로 필요할 때 불러온다. 편집기 지연 버퍼는 IME 조합 완료를 기다리고, 첫 텍스트·파일과 flush/focus/destroy를 기존 편집기에 전달한다. 읽기 의존 그래프에서 ProseMirror·editor-schema·table-editor를 제외한다. 정적·문자열 리터럴 동적 import 모두 community_asset_version.php의 같은 그룹 해시로 고정한다.
+
+performance-diagnostics.js는 명시적 시작 때만 로드한다. URL·본문·계정·상호작용 ID 없이 LCP·CLS session window·긴 작업·Event Timing 최대값·리소스 합계를 탭 메모리에만 둔다. stop/start 때 buffered replay를 중복 계산하지 않으며 세대가 지난 observer 콜백을 무시한다. 기존 PC 비서 진단 서버 API와는 별개이고 새 서버 수집 경로가 없다. 그림판도 최근 120개 고정 종류 시간 값만 보관한다.
+
+그림판은 요소 ID/version/nonce/삭제 stamp별 직렬화를 재사용하고 최신 미리보기를 묶어 보낸다. 수신 장면/커서는 requestAnimationFrame에서 갱신하고 durable 저장은 기존 API로 보낸다. 쓰기 중 새 로컬 변경, load/poll의 오래된 snapshot, 확정·되감기·판 전환의 늦은 응답은 세대/판/순번/dirty 검사로 배제한다. 숨긴 탭은 relay를 닫고 돌아오면 새 ticket을 받는다. 서버 권한·사슬·LWW 계약은 바뀌지 않는다.

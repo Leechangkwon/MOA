@@ -3363,3 +3363,8 @@ D2a 최신 main b6a6385 통합: 붙여넣기 기능/두 기록 유지, 생성 im
 | 2026-11-18 | 보정·학습 | 그림판 API 직접 열기만으로 작업 화면 진입을 검증할 수 없었다. 최상위 응답을 맞추고 실제 작업의 링크 표시 단언 추가, 관련 브라우저43/0 | work.js `data.whiteboard` · docs/work-items/meeting-whiteboard.md |
 
 | 2026-11-18 | 운영 | 기본 기능 v2.79.1/1cdd908 반영. 실제 HTTPS29/0·자산/health6/0, 기존104표/2원본/10설정 보존·로컬MCP회의5도구 설치·밤 회귀6종 대기. 성능 목표 미달/사용자 관문③/배경1차b는 미완료 | docs/work-items/meeting-whiteboard.md · deploy/production-state.json |
+
+
+### 2026-11-19 전체 성능·사용성 개선 묶음
+
+Google 현대 웹 가이드 252개 분류와 실제 HTTPS 기준 측정에 따라 초기 코드 분리, 문서·이야기 화면 안정성, 선택형 안내, 미디어, 그림판 갱신·경합 보호·전체 보기·DOM 목록, 업로드 바이트/서버 상태, IME와 오류 설명, 탭 내부 수치 진단을 통합한다. 기존 모바일 nowrap과 다른 작업 기록을 보존한다. 신규 GitHub Leechangkwon/MOA로 main 952커밋 이력 이전 완료. 최종 합친 판 수락/배포/실측 기록은 docs/work-items/modern-web-improvements.md. 현장 p75·실물 기기·분산 그림판 300ms 목표는 별도 미검증으로 유지한다.

@@ -48,5 +48,14 @@
       "sha256": "54179b18e4c549c12024b546a3453f29873816098e7e97aaa285c747bb454c95"
     }
   ],
-  "previous_source_commit": "93d924314e2ac2640b5e8f553cf01af7e02b26b9"
+  "previous_source_commit": "93d924314e2ac2640b5e8f553cf01af7e02b26b9",
+  "addenda": {
+    "date": "2026-11-19",
+    "scope": "Current repository and approved modernization addendum only; original capture remains historical, not a new full server snapshot",
+    "copies": {
+      "site-rules.md": "145e03b03525e62a3151f7cc08a7662c7f06d2718b0c7bb4dcd0a6e3c27c16b2",
+      "PRD.md": "0d04f5937918a201cad2ea4d9be3fb4394839cd990f1b6d7baa98e18ff7c3370",
+      "STAGES.md": "eabb1dd17e3c4b0153ed8b2d908bbd6a5dc809596029312cf3f6ca2286f8e6d3"
+    }
+  }
 }

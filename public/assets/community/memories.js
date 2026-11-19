@@ -155,15 +155,19 @@
       state.next = state.post ? null : data.next_offset;
       state.cursor = state.post ? null : data.next_cursor;
       if (!append) state.stats = data.stats || {};
-      writerElements(); profileLayout(state.stats); render();
+      writerElements(); profileLayout(state.stats); render(append);
       $('feed-status').hidden = true;
       if (!draft && state.me?.can_write) await recoverDraft();
     } catch (e) { if (e.name !== 'AbortError' && request === state.request) { $('feed-status').hidden = false; $('feed-status').textContent = errorText(e); $('load-more').hidden = true; } }
     finally { if (request === state.request) $('load-more').disabled = false; }
   }
-  function render() {
-    $('feed').classList.toggle('grid', state.grid);
-    $('feed').replaceChildren(...state.posts.map((post) => state.grid ? gridCard(post) : postCard(post)));
+  function render(append = false) {
+    const feed = $('feed');
+    feed.classList.toggle('grid', state.grid);
+    // 다음 쪽은 기존 카드·초점·측정된 intrinsic 크기를 유지하고 새 카드만 더한다.
+    const start = append ? feed.children.length : 0;
+    const cards = state.posts.slice(start).map((post, index) => state.grid ? gridCard(post, start + index === 0) : postCard(post, false, start + index === 0));
+    if (append) feed.append(...cards); else feed.replaceChildren(...cards);
     $('empty').hidden = state.posts.length !== 0;
     $('load-more').hidden = state.next == null && !state.cursor;
     $('list-view').classList.toggle('selected', !state.grid); $('grid-view').classList.toggle('selected', state.grid);
@@ -172,19 +176,19 @@
   function mediaElement(item, eager = false) {
     const video = item.mime.startsWith('video/');
     const n = el(video ? 'video' : 'img');
-    n.src = item.url;
-    if (video) { n.controls = true; n.playsInline = true; n.preload = 'metadata'; n.setAttribute('aria-label', item.filename || '여행 영상'); }
-    else { n.alt = item.filename || '여행 사진'; n.loading = eager ? 'eager' : 'lazy'; n.decoding = 'async'; }
+    if (video) { n.controls = true; n.playsInline = true; n.preload = eager ? 'metadata' : 'none'; n.setAttribute('aria-label', item.filename || '여행 영상'); }
+    else { n.alt = item.filename || '여행 사진'; n.loading = eager ? 'eager' : 'lazy'; n.decoding = 'async'; n.fetchPriority = eager ? 'high' : 'auto'; }
     n.addEventListener('error', () => { n.title = '미디어를 불러오지 못했어요. 새로 보기로 다시 시도해 주세요.'; });
+    n.src = item.url;
     return n;
   }
-  function previewGallery(post) {
+  function previewGallery(post, eager = false) {
     const gallery = el('div', 'post-cover'), track = el('div', 'post-media');
     gallery.dataset.previewGallery = ''; track.dataset.previewTrack = '';
     const slides = post.media.map((item, index) => {
       const slide = el('div', 'media-slide');
       slide.setAttribute('role', 'group'); slide.setAttribute('aria-label', `${index + 1} / ${post.media.length}`);
-      slide.append(mediaElement(item)); track.append(slide); return slide;
+      slide.append(mediaElement(item, eager && index === 0)); track.append(slide); return slide;
     });
     gallery.append(track);
     if (slides.length === 1) return gallery;
@@ -218,11 +222,16 @@
     });
     gallery.append(full, previous, next); sync(); return gallery;
   }
-  function gridCard(post) {
+  function keepFocusedCard(node) {
+    // 초점을 받은 카드는 계속 펼쳐 둔다. 초점이 떠날 때 추정 높이로 돌아가면 누르던 다음 단추가 움직일 수 있다.
+    node.addEventListener('focusin', () => { node.dataset.renderActive = ''; }, { once: true });
+    return node;
+  }
+  function gridCard(post, eager = false) {
     const n = button('', 'grid-tile' + (post.media.length ? '' : ' text-only'), () => openDetail(post));
     n.setAttribute('aria-label', (post.caption || post.location || '여행 기록').slice(0, 80) + ' 열기');
-    if (post.media[0]) { const m = mediaElement(post.media[0]); if (m.tagName === 'VIDEO') { m.controls = false; m.tabIndex = -1; } n.append(m); }
-    n.append(el('span', 'grid-caption', post.trip || post.location || post.caption)); return n;
+    if (post.media[0]) { const m = mediaElement(post.media[0], eager); if (m.tagName === 'VIDEO') { m.controls = false; m.tabIndex = -1; } n.append(m); }
+    n.append(el('span', 'grid-caption', post.trip || post.location || post.caption)); return keepFocusedCard(n);
   }
   const copyStory = (value) => value ? JSON.parse(JSON.stringify(value)) : null;
   function storyElement(story, items) {
@@ -270,7 +279,7 @@
     };
     storyEditor($('studio-story-editor'), studioStory, studioPost.media, update); update();
   }
-  function postCard(post, detailed = false) {
+  function postCard(post, detailed = false, eager = false) {
     const card = el('article', 'post' + (detailed ? ' post-detail' : ' post-preview'));
     if (!detailed) card.id = 'memory-' + post.id;
     const header = el('header', 'post-header'), name = post.display_name || post.username;
@@ -281,12 +290,12 @@
     const time = el('time', 'post-date', date(post.taken_on)); time.dateTime = post.taken_on;
     header.append(avatar, author, time); card.append(header);
     if (detailed && post.story) card.append(storyElement(post.story, post.media));
-    else if (!detailed && post.media.length) card.append(previewGallery(post));
+    else if (!detailed && post.media.length) card.append(previewGallery(post, eager));
     else if (post.media.length) {
       const gallery = el('div', 'post-media');
       gallery.setAttribute('aria-label', '사진과 영상, 옆으로 넘겨 보세요'); gallery.tabIndex = 0;
       post.media.forEach((item, index) => {
-        const slide = el('div', 'media-slide'); slide.append(mediaElement(item));
+        const slide = el('div', 'media-slide'); slide.append(mediaElement(item, index === 0));
         if (post.media.length > 1) slide.append(el('span', 'slide-count', `${index + 1} / ${post.media.length}`));
         gallery.append(slide);
       });
@@ -328,7 +337,7 @@
       body.append(owner);
     }
     if (thread) body.append(thread.section);
-    card.append(body); return card;
+    card.append(body); return detailed ? card : keepFocusedCard(card);
   }
   function openDetail(post) {
     detailOpener = document.activeElement;
@@ -744,5 +753,7 @@
   if (shared) surface.classList.add('shared-mode');
   const initialView = new URLSearchParams(location.search).get('view');
   if (['mine', 'shared', 'discover'].includes(initialView)) state.view = initialView === 'shared' ? 'feed' : initialView;
+  // URL에 이미 있는 화면 상태는 첫 API 응답을 기다리지 않고 그린다.
+  profileLayout();
   load();
 })();

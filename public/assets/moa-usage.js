@@ -12,7 +12,7 @@
     shortcut.addEventListener('click', () => {
       if (target.hidden || target.disabled) return;
       if (id === 'search-q' || id === 'moa-file-list') {
-        target.scrollIntoView({behavior:'smooth',block:'center'}); target.focus({preventScroll:true});
+        target.scrollIntoView({behavior:matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',block:'center'}); target.focus({preventScroll:true});
       } else {
         const menu = target.closest('details'); if (menu) menu.open = true;
         target.click(); if (menu) menu.open = false;

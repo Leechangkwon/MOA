@@ -339,7 +339,7 @@ expect "changelog.sh 문법" 0 "$(bash -n "$ROOT/tests/changelog.sh" 2>&1 >/dev/
 
 sub "app.js — innerHTML 계열 0 · 위임 하나"
 expect "initChangelogDialog 하나" 1 "$(grep -c '^function initChangelogDialog()' "$ROOT/public/assets/app.js")"
-expect "innerHTML 계열 0건" 0 "$(grep -c 'innerHTML\|outerHTML\|insertAdjacentHTML' "$ROOT/public/assets/app.js")"
+expect "innerHTML 계열 0건" 0 "$(cat "$ROOT/public/assets/app.js" "$ROOT/public/assets/files-page.js" | grep -c 'innerHTML\|outerHTML\|insertAdjacentHTML')"
 expect "바뀐 파일에 인라인 style 속성 0" 0 "$(grep -c 'style="' $(for f in $CHANGED_PHP; do echo "$ROOT/$f"; done) | awk -F: '{s+=$2} END {print s+0}')"
 
 sub "회귀 — tests/help_button.sh (모달 뼈대를 함께 쓴다)"

@@ -796,7 +796,7 @@
 }
 .community-threads .empty p:not(.eyebrow) {
   font-size:12px;
-  color:#91998b;
+  color:var(--ink);
   line-height:1.9;
   margin:14px 0 25px;
 }
@@ -1795,3 +1795,14 @@
 .community-threads .post-comments .comments-readonly { margin-top:8px; padding:8px 12px; font-size:13px; }
 .community-threads .post-comments .msg { margin-top:4px; font-size:13px; }
 @media(max-width:700px) { .community-threads .post-comments .comment-compose textarea, .community-threads .post-comments .comment-compose .primary { min-height:44px; } }
+
+/* DESIGN 2.40 — 비동기 쓰기 자격이 들어와도 머리/피드의 시작점은 같다. */
+.community-threads .threads-quick { min-height: 68px; }
+.community-threads .threads-quick > [data-messenger-open] { margin-left: auto; }
+.community-threads .threads-write > span:nth-child(2) { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (max-width: 700px) { .community-threads .threads-quick { min-height: 64px; } }
+/* 독립된 화면 밖 카드만 건너뛴다. 첫 네 카드와 초점을 가진 카드는 항상 그린다. */
+@supports (content-visibility: auto) {
+  .community-threads .feed:not(.grid) > .post:nth-child(n+5):not([data-render-active]):not(:focus-within) { content-visibility: auto; contain-intrinsic-block-size: auto 620px; }
+  .community-threads .feed.grid > .grid-tile:nth-child(n+13):not([data-render-active]):not(:focus-within) { content-visibility: auto; contain-intrinsic-block-size: auto 220px; }
+}

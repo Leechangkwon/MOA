@@ -1,0 +1,125 @@
+# Reviewed historical findings only; never ignore a path or a credential rule globally.
+# File integrity SHA256 pins; no credential value.
+d575fed6144ab98901d3cef4bfde90276d98ee8c:deploy/production-state.json:generic-api-key:565
+# File integrity SHA256 pins; no credential value.
+d575fed6144ab98901d3cef4bfde90276d98ee8c:deploy/production-state.json:generic-api-key:567
+# File integrity SHA256 pins; no credential value.
+d575fed6144ab98901d3cef4bfde90276d98ee8c:deploy/deployment.json:generic-api-key:464
+# File integrity SHA256 pins; no credential value.
+d575fed6144ab98901d3cef4bfde90276d98ee8c:deploy/deployment.json:generic-api-key:466
+# File integrity SHA256 pins; no credential value.
+d575fed6144ab98901d3cef4bfde90276d98ee8c:deploy/production-state.json:generic-api-key:837
+# Unmodified pinned upstream Excalidraw public Firebase client configuration; not a MOA credential; outbound endpoints blocked by CSP.
+943ca8df8f3f3ff8d32a6ee49a841b7dbd2e32e4:public/assets/community/vendor/excalidraw/chunks/chunk-GIK2URCW.js:gcp-api-key:1
+# File integrity SHA256 pins; no credential value.
+a15969be111dcf182058682590dddda043fea666:deploy/production-state.json:generic-api-key:57
+# File integrity SHA256 pins; no credential value.
+a15969be111dcf182058682590dddda043fea666:deploy/production-state.json:generic-api-key:230
+# File integrity SHA256 pins; no credential value.
+f3aaca4c9c3be20b61e3c9e69ff9244a5ee8cbfb:deploy/production-state.json:generic-api-key:69
+# File integrity SHA256 pins; no credential value.
+f3aaca4c9c3be20b61e3c9e69ff9244a5ee8cbfb:deploy/production-state.json:generic-api-key:359
+# File integrity SHA256 pins; no credential value.
+2f88565cd036996ee43b1c3ff72b84ea11b8b2aa:deploy/production-state.json:generic-api-key:70
+# File integrity SHA256 pins; no credential value.
+e17f6064507e22ca52fe9ad851c424a89ed64601:deploy/production-state.json:generic-api-key:122
+# File integrity SHA256 pins; no credential value.
+7b73d0228427ed9579df0f11552491381b076bc8:deploy/production-state.json:generic-api-key:52
+# File integrity SHA256 pins; no credential value.
+f38b592012128ada311545787ada06f98a0b703b:deploy/production-state.json:generic-api-key:103
+# File integrity SHA256 pins; no credential value.
+f38b592012128ada311545787ada06f98a0b703b:deploy/production-state.json:generic-api-key:241
+# File integrity SHA256 pins; no credential value.
+eea9f32e9d10d554c7ddd774bb63a7d901613452:deploy/production-state.json:generic-api-key:62
+# File integrity SHA256 pins; no credential value.
+eea9f32e9d10d554c7ddd774bb63a7d901613452:deploy/production-state.json:generic-api-key:200
+# File integrity SHA256 pins; no credential value.
+4d3e13097970d1864d14c96880671a27a25bb9bf:deploy/production-state.json:generic-api-key:132
+# File integrity SHA256 pins; no credential value.
+0a08129e9a171ba89002784bed9d86f1fd3233bc:deploy/production-state.json:generic-api-key:81
+# File integrity SHA256 pins; no credential value.
+564035eac5fd5935ee1e2fc55c12d3207abd51c2:deploy/production-state.json:generic-api-key:58
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-db-2026-09-29.sh:generic-api-key:82
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-db-2026-09-29.sh:generic-api-key:83
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-db-2026-09-29.sh:generic-api-key:85
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-db-2026-09-29.sh:generic-api-key:86
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:86
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:99
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:100
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:103
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:104
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:107
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:108
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:111
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:112
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:115
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:119
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:128
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:137
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:138
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:141
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:142
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:145
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:146
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:149
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:150
+# File integrity SHA256 pins; no credential value.
+d92a99f4166b105bf9b79c84ec5595621ca2de8b:review-scripts/apply-qf10-repo-2026-09-29.sh:generic-api-key:155
+# Synthetic MCP test token, never accepted by a real service.
+537f4af8d606d86df6776529dbd773ec4d64fecf:clients/mcp/tests/test_client.py:generic-api-key:26
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:62
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:79
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:81
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:116
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:123
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:135
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:137
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:142
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:147
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:148
+# File integrity SHA256 pins; no credential value.
+9655cc75c4e34a86ac3e617ccd5238320c890f30:review-scripts/apply-g0-repo-2026-09-28.sh:generic-api-key:149
+# File integrity SHA256 pins; no credential value.
+55978147598efafc419e9e8b55999f60b292275e:review-scripts/apply-uxr1-repo-2026-09-28.sh:generic-api-key:74
+# File integrity SHA256 pins; no credential value.
+55978147598efafc419e9e8b55999f60b292275e:review-scripts/apply-uxr1-repo-2026-09-28.sh:generic-api-key:104
+# Runtime PEM assembly expression; no literal private key bytes.
+cfc9078d59e27783cdb8bb6dec9320a1c037ed02:src/WebPush.php:private-key:168
+# Explicit FAKE values in log-redaction selftest fixture.
+7c0ec9c82d8773c19bf9e70d00604951eb5c663a:tests/lib/fixtures/redact-sample.txt:curl-auth-header:17
+# RFC6238 published selftest secret and expected vectors.
+51f3066e02468a0391396fc7b256b022f6fc19ff:public/assets/totp-generator.html:generic-api-key:167

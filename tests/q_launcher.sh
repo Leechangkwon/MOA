@@ -272,8 +272,8 @@ expect "옛 /assets/app.css Location" "/tbox/assets/app.css" "$(hdr Location "$W
 # ════════════════════════════════════════════════════════════════
 hr "Q:T-4 — 링크 접두 (정적 검사: app.js · 서버 코드)"
 
-expect "app.js 절대 경로 중 APP_BASE 로 감싸이지 않은 것 0건" "0" \
-  "$(grep -nE "['\"]/(api|login|reauth|wiki|admin|settings|files|s)(/|['\"])" "$ROOT/public/assets/app.js" \
+expect "app.js·files-page.js 절대 경로 중 APP_BASE 로 감싸이지 않은 것 0건" "0" \
+  "$(cat "$ROOT/public/assets/app.js" "$ROOT/public/assets/files-page.js" | grep -nE "['\"]/(api|login|reauth|wiki|admin|settings|files|s)(/|['\"])" \
      | grep -vc 'APP_BASE' | tr -d ' ')"
 expect "app.js 에 APP_BASE 정의 1곳" "1" "$(grep -c '^var APP_BASE =' "$ROOT/public/assets/app.js" | tr -d ' ')"
 # 커뮤니티 3단계 — 「커뮤니티 준비 중」 안내(src/community/routes.php)에도 「Qaredi 홈」 링크가

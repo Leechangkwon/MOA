@@ -368,7 +368,8 @@
         "wiki/tbox/guide-risks.json",
         "wiki/tbox/guide-what.json",
         "wiki/tbox/stage-02.json",
-        "wiki/tbox/stage-11.json"
+        "wiki/tbox/stage-11.json",
+        "public/assets/files-page.js"
       ],
       "requirements": [
         "T-64"
@@ -781,7 +782,8 @@
         "src/help/screens.php",
         "src/views/shell_top.php",
         "src/views/shell_bottom.php",
-        "public/assets/app.js"
+        "public/assets/app.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [
         "T-51"
@@ -1000,7 +1002,10 @@
         "src/community/handlers/pages_update.php",
         "src/community/handlers/space_me.php",
         "src/handlers/login.php",
-        "src/handlers/me.php"
+        "src/handlers/me.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-14",
@@ -1094,7 +1099,10 @@
         "src/community/handlers/pages_visibility.php",
         "src/community/handlers/spaces_list.php",
         "src/handlers/login.php",
-        "src/handlers/me.php"
+        "src/handlers/me.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-30",
@@ -1147,7 +1155,10 @@
         "src/community/handlers/version_restore.php",
         "src/community/handlers/versions_list.php",
         "src/handlers/login.php",
-        "src/handlers/me.php"
+        "src/handlers/me.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-38",
@@ -2303,7 +2314,10 @@
         "scripts/security_lint.sh",
         "scripts/community_asset_version.php",
         "src/handlers/login.php",
-        "src/handlers/reauth.php"
+        "src/handlers/reauth.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-200",
@@ -2336,7 +2350,10 @@
         "src/community/handlers/palette_css.php",
         "public/assets/community/palettes.js",
         "public/assets/community/editor.js",
-        "public/assets/community/doc-render.js"
+        "public/assets/community/doc-render.js",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-206",
@@ -2381,7 +2398,10 @@
         "scripts/community_asset_version.php",
         "scripts/lib/cli_bootstrap.php",
         "src/handlers/login.php",
-        "src/handlers/reauth.php"
+        "src/handlers/reauth.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-220",
@@ -2414,7 +2434,10 @@
         "public/assets/community/editor.js",
         "public/assets/community/editor-schema.js",
         "public/assets/community/doc-render.js",
-        "public/assets/community/community.css"
+        "public/assets/community/community.css",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-225",
@@ -2560,24 +2583,30 @@
     },
     {
       "id": "community.stale_modules",
-      "cmd": "bash tests/community/stale_modules.sh",
+      "cmd": "python3 tests/community/memories_harness.py --stale-cache --output /tmp/qaredi-stale-cache-results",
       "module": "community",
       "env": "temp-instance",
       "status": "required",
       "needs": [
-        "sudo",
         "browser"
       ],
       "covers": [
         "scripts/community_asset_version.php",
         "public/assets/community/editor.js",
-        "public/assets/community/doc-render.js"
+        "public/assets/community/doc-render.js",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "tests/community/memories_harness.py",
+        "tests/community/stale_cache_browser.py",
+        "tests/community/browser_stale_modules.py",
+        "public/assets/community/editor-schema.js"
       ],
       "requirements": [],
       "risks": [],
       "est_sec": 240,
       "writes_prod": false,
-      "notes": "핫픽스(UR-0001) 동적 회귀 = 「업그레이드 스모크」의 첫 판(PRD 13.7 항목 4). 임시 인스턴스: pg_dump tbox_re(읽기) | psql → 운영 클러스터의 임시 DB tbox_stalejs_test(파일 없는 파이프) · php -S 127.0.0.1:8096 · 검토 계정 claude_employee01. browser_stale_modules.py 가 playwright route 로 v2.18.0 부품 캐시를 흉내 내 A 고친 코드는 단추가 돈다 · B 대조군(옛 부품 그대로)은 먹통이 재현된다를 본다. 비밀은 파이썬 한 프로세스가 환경 변수로 받는다(명령 인자 0). 운영 8082 요청 0. 나가는 값 0·1·3(준비물)·4(인스턴스). est_sec 어림값."
+      "notes": "빈 합성 DB·전용 시험 계정의 memories_harness --stale-cache로 실행한다. 어댑터가 개발 Git v2.18.0의 공개 JS 네 파일만 임시 폴더에 추출하고 fixture 세션은 환경으로 전달한다. A 실제 편집·한글 저장/버전 PM 요청, B 현재 버전 URL에 옛 파일을 주입한 실제 편집 실패와 해당 모듈 import.catch missing-export 진단, C 첫 runtime 요청 중단 뒤 한글 보존·재요청·PM 복원·저장을 확인한다. 기존 stale_modules.sh의 운영 pg_dump 경로는 실행하지 않는다. 운영 레코드·저장소 복사 0."
     },
     {
       "id": "community.browser_stale_modules",
@@ -2590,13 +2619,19 @@
       ],
       "covers": [
         "public/assets/community/editor.js",
-        "public/assets/community/doc-render.js"
+        "public/assets/community/doc-render.js",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "tests/community/stale_cache_browser.py",
+        "tests/community/browser_stale_modules.py",
+        "public/assets/community/editor-schema.js"
       ],
       "requirements": [],
       "risks": [],
       "est_sec": 90,
       "writes_prod": false,
-      "notes": "부르는 셸: community.stale_modules. 단독 실행 불가(인자 SITE UA 와 SMOKE_E1·OLD_DIR·APP_VER 환경 변수를 부르는 셸이 넘긴다). 「지금 부품 버전이 붙지 않은 부품 주소」를 옛 파일로 답하는 route 로 7일 캐시를 흉내 낸다."
+      "notes": "community.stale_modules의 새 합성 fixture 어댑터 stale_cache_browser.py가 호출한다. 단독 실행 불가(SITE UA 인자, SMOKE_E1·OLD_DIR·APP_VER 환경 필요). A 정상 지연 편집/저장, B 현재 버전 URL의 v2.18.0 주입과 명시적 missing-export 음성대조, C 실제 첫 runtime abort 후 한글 복원 재시도를 확인한다. 비밀 값은 출력하지 않는다."
     },
     {
       "id": "community.qf4_draft_key",
@@ -2629,7 +2664,10 @@
         "src/community/handlers/pages_update.php",
         "src/community/handlers/pages_heartbeat.php",
         "src/community/handlers/comments_create.php",
-        "src/community/handlers/notifications_list.php"
+        "src/community/handlers/notifications_list.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -3399,7 +3437,8 @@
         "src/handlers/files_zip.php",
         "src/handlers/home.php",
         "src/help/screens.php",
-        "tests/browser/qf3c_zip.py"
+        "tests/browser/qf3c_zip.py",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [
@@ -3607,7 +3646,11 @@
         "src/handlers/settings_page.php",
         "src/views/launcher.php",
         "src/views/shell_top.php",
-        "tests/browser/dbg_u_ui.py"
+        "tests/browser/dbg_u_ui.py",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [
@@ -3635,7 +3678,11 @@
         "src/community/handlers/home_page.php",
         "src/community/handlers/page_view.php",
         "src/handlers/home.php",
-        "src/handlers/settings_page.php"
+        "src/handlers/settings_page.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [
@@ -3762,7 +3809,11 @@
         "src/help/community.php",
         "src/help/screens.php",
         "src/views/shell_top.php",
-        "tests/browser/dbg_u2_ui.py"
+        "tests/browser/dbg_u2_ui.py",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [
@@ -3792,7 +3843,11 @@
         "src/handlers/home.php",
         "src/handlers/org_page.php",
         "src/handlers/settings_page.php",
-        "src/handlers/users_page.php"
+        "src/handlers/users_page.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [
@@ -3850,7 +3905,10 @@
         "tests/lib/passkey_forge.py",
         "tests/lib/return_path_vectors.txt",
         "tests/passkey_api.py",
-        "tests/passkey_unit.php"
+        "tests/passkey_unit.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [
@@ -3932,7 +3990,10 @@
         "src/handlers/site_manifest.php",
         "src/views/launcher.php",
         "src/views/shell_top.php",
-        "tests/lib/return_path_vectors.txt"
+        "tests/lib/return_path_vectors.txt",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [
@@ -3993,7 +4054,10 @@
         "src/site/not_found_page.php",
         "src/views/shell_top.php",
         "tests/browser/dbg_u3_ui.py",
-        "tests/dbg_u_ui.sh"
+        "tests/dbg_u_ui.sh",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [
@@ -4025,7 +4089,10 @@
         "src/handlers/audit_page.php",
         "src/help/community.php",
         "src/site/not_found_page.php",
-        "src/views/shell_top.php"
+        "src/views/shell_top.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [
@@ -4454,7 +4521,10 @@
         "src/community/handlers/pages_get.php",
         "src/community/handlers/pages_export.php",
         "src/community/handlers/page_print.php",
-        "src/community/handlers/page_view.php"
+        "src/community/handlers/page_view.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-310",
@@ -4645,7 +4715,10 @@
         "src/community/handlers/automations_save.php",
         "src/community/handlers/automations_get.php",
         "src/community/handlers/automations_dry_run.php",
-        "src/community/handlers/automations_run.php"
+        "src/community/handlers/automations_run.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -4983,7 +5056,8 @@
         "src/handlers/admin_page.php",
         "src/community/handlers/pages_list.php",
         "src/community/handlers/home_page.php",
-        "src/community/handlers/today_page.php"
+        "src/community/handlers/today_page.php",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [],
@@ -5048,7 +5122,10 @@
         "tests/community/stage10_http.py",
         "tests/community/stage10_compat.py",
         "tests/community/browser_10.py",
-        "tests/community/export_router.php"
+        "tests/community/export_router.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "C:T-500",
@@ -5263,7 +5340,8 @@
         "public/assets/app.css",
         "public/assets/app.js",
         "src/handlers/home.php",
-        "src/views/shell_top.php"
+        "src/views/shell_top.php",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [
@@ -5409,7 +5487,11 @@
         "src/help/community.php",
         "src/help/screens.php",
         "src/views/shell_top.php",
-        "tests/browser/ux_r1_ui.py"
+        "tests/browser/ux_r1_ui.py",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [
         "Q:T-11",
@@ -5455,7 +5537,11 @@
         "src/community/handlers/board_pages_create.php",
         "src/help/community.php",
         "src/help/screens.php",
-        "src/views/shell_top.php"
+        "src/views/shell_top.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [
         "Q:T-11",
@@ -5761,7 +5847,10 @@
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
         "tests/community/export_router.php",
-        ".env.example"
+        ".env.example",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -5795,7 +5884,10 @@
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
         "tests/community/export_router.php",
-        ".env.example"
+        ".env.example",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -5845,7 +5937,10 @@
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
         "tests/community/export_router.php",
-        ".env.example"
+        ".env.example",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "Q:T-38",
@@ -5906,7 +6001,10 @@
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
         "tests/community/export_router.php",
-        ".env.example"
+        ".env.example",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "Q:T-41",
@@ -5956,7 +6054,10 @@
         "tests/community/qf16_templates_http.py",
         "scripts/security_lint.sh",
         "scripts/community_asset_version.php",
-        "tests/community/asset_version.sh"
+        "tests/community/asset_version.sh",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "Q:T-45",
@@ -6008,7 +6109,10 @@
         "tests/community/qf16_templates_http.py",
         "public/assets/app.js",
         "public/assets/community/doc-render.js",
-        "public/assets/community/database.js"
+        "public/assets/community/database.js",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [
         "Q:T-44",
@@ -6264,7 +6368,10 @@
         "tests/community/export_router.php",
         "tests/community/memory_ai_transport.php.fixture",
         "tests/community/stage13_ai_stub.php.fixture",
-        ".env.example"
+        ".env.example",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -6466,7 +6573,10 @@
         "tests/community/memories_harness.py",
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
-        "tests/community/export_router.php"
+        "tests/community/export_router.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [
@@ -6503,7 +6613,10 @@
         "tests/community/memories_harness.py",
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
-        "tests/community/export_router.php"
+        "tests/community/export_router.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -6599,7 +6712,10 @@
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
         "tests/community/export_router.php",
-        ".env.example"
+        ".env.example",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -6720,7 +6836,10 @@
         "tests/community/memories_harness.py",
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
-        "tests/community/export_router.php"
+        "tests/community/export_router.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
       ],
       "requirements": [],
       "risks": [],
@@ -6871,7 +6990,11 @@
         "tests/community/memories_harness.py",
         "tests/community/memories_http.py",
         "tests/community/memories_fixture.php",
-        "tests/community/export_router.php"
+        "tests/community/export_router.php",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "public/assets/files-page.js"
       ],
       "requirements": [],
       "risks": [],
@@ -7335,7 +7458,115 @@
       "risks": [],
       "est_sec": 180,
       "writes_prod": false,
-      "notes": "회의 그림판 1차 a: 실제 PHP/Postgres·Excalidraw/Chromium·동일 출처 WebSocket, 격리 합성 DB/검토 계정만 사용. Node/브라우저 필요. 운영 자료 복사·쓰기 0."
+      "notes": "회의 그림판 1차 a: 실제 PHP/Postgres·Excalidraw/Chromium·동일 출처 WebSocket, 격리 합성 DB/검토 계정만 사용. Node/브라우저 필요. 운영 자료 복사·쓰기 0. 2026-11-19 실제 엔진의 키보드 요소 목록·선택·전체 보기·저장 사건 불변·별도 연결/숫자 진단도 확인한다. 600초 부하 단언은 WHITEBOARD_TEST_LOAD_SECONDS=600으로 별도 명시하고300ms 미달을 숨기지 않는다."
+    },
+    {
+      "id": "community.editor_loading",
+      "cmd": "node tests/community/editor_loading.mjs",
+      "module": "community",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "public/assets/community/editor.js",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 5,
+      "writes_prod": false,
+      "notes": "지연 편집기의 첫 입력·IME·첨부·초점·파괴·실패 복구와 읽기 의존 그래프."
+    },
+    {
+      "id": "core.modern_web_client",
+      "cmd": "node tests/modern_web_client.mjs",
+      "module": "core",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "public/assets/app.js",
+        "public/assets/files-page.js",
+        "public/assets/performance-diagnostics.js",
+        "public/assets/messenger.js",
+        "src/views/shell_bottom.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 5,
+      "writes_prod": false,
+      "notes": "집중 DOM/XHR: 초기화 경합·검증 설명·업로드/CSRF/결과 불명·로컬 진단·IME."
+    },
+    {
+      "id": "community.whiteboard_client",
+      "cmd": "node tests/community/whiteboard_client.mjs",
+      "module": "community",
+      "env": "static",
+      "status": "required",
+      "needs": [],
+      "covers": [
+        "public/assets/community/whiteboard.js"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 5,
+      "writes_prod": false,
+      "notes": "장면 프레임 병합·LWW·dirty·늦은 응답·판/확정/되감기 경합. 실제 엔진은 별도 HTTP 수락."
+    },
+    {
+      "id": "community.ui_media_browser",
+      "cmd": "python3 tests/community/ui_media_browser.py",
+      "module": "community",
+      "env": "static",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "public/assets/app.css",
+        "public/assets/moa.css",
+        "public/assets/community/memories.css",
+        "public/assets/community/memories.js",
+        "public/assets/community/work.js",
+        "public/assets/community/doc-render.js",
+        "src/views/moa_usage.php",
+        "src/community/handlers/home_page.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 60,
+      "writes_prod": false,
+      "notes": "합성 HTTP에서 실제 배포 자산 DOM: 초기 배치·모든 테마 대비·그림판 진입·IME·사진·추가 페이지 DOM 보존. 실제 PHP/DB와 구분."
+    },
+    {
+      "id": "community.modern_web_browser",
+      "cmd": "python3 tests/community/memories_harness.py --modern-web --output /tmp/qaredi-modern-web-browser",
+      "module": "community",
+      "env": "temp-instance",
+      "status": "required",
+      "needs": [
+        "browser"
+      ],
+      "covers": [
+        "tests/community/memories_harness.py",
+        "tests/community/modern_web_browser.py",
+        "public/assets/app.js",
+        "public/assets/files-page.js",
+        "public/assets/performance-diagnostics.js",
+        "public/assets/community/editor.js",
+        "public/assets/community/page.js",
+        "public/assets/community/editor-runtime.js",
+        "public/assets/community/editor-loader.js",
+        "src/views/shell_bottom.php",
+        "src/handlers/home.php"
+      ],
+      "requirements": [],
+      "risks": [],
+      "est_sec": 120,
+      "writes_prod": false,
+      "notes": "격리 PHP/DB/Chromium: 7화면 초기 요청·지연 첫 한글 실제 저장·읽기 권한·첫 업로드/실제 바이트/단일 파일·숫자 진단·390/1280 화면."
     }
   ]
 }

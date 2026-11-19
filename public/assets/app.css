@@ -285,10 +285,10 @@ button.appbar__brand .icon { display: inline-flex; color: var(--muted); }
   justify-content: space-between;
   gap: 16px;
 }
-.page-head__text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.page-head__text { display: flex; flex: 1 1 0; flex-direction: column; gap: 4px; min-width: 0; }
 .page-head__title { font-size: 24px; font-weight: 600; letter-spacing: -.025em; line-height: 1.25; }
 .page-head__sub { margin: 0; color: var(--muted); font-size: 14px; }
-.page-head__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.page-head__actions { display: flex; flex: 0 0 auto; max-width: 100%; flex-wrap: wrap; align-items: center; gap: 8px; }
 /* DESIGN 2.9 (2026-09-25 보완) — 720px 미만은 제목이 한 줄을 다 쓰고 동작 줄은 아래로(오른쪽 정렬) */
 @media (max-width: 719.98px) {
   .page-head__text { flex: 1 1 100%; }
@@ -2818,7 +2818,8 @@ body[data-page-kind="task"] #task-full > .skeleton { padding-top: 8px; }
   /* 칸 줄 없이 두 줄 카드: 제목 / (색 네모 · 프로젝트 · 맡긴 표시) + 오른쪽 마감 */
   .task-list__head { display: none; }
   .task-row, .task-list--project .task-row { grid-template-columns: minmax(0, 1fr) auto; grid-auto-flow: row; row-gap: 2px; padding-top: 6px; padding-bottom: 6px; }
-  .task-row > .task-row__main { grid-column: 1; grid-row: 1; flex-wrap: wrap; }
+  /* 완료 원과 제목은 같은 줄에 두고, 긴 제목은 .task-row__title 의 말줄임으로 처리한다. */
+  .task-row > .task-row__main { grid-column: 1; grid-row: 1; flex-wrap: nowrap; }
   .task-row > .task-row__cell--meta { grid-column: 1; grid-row: 2; padding-left: 34px; }
   .task-row > .task-row__cell--due { grid-column: 2; grid-row: 1 / span 2; }
   .task-row > .task-row__cell--more { grid-column: 2; grid-row: 1 / span 2; }

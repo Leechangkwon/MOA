@@ -828,7 +828,7 @@ expect "바뀐 PHP php -l 실패" "0" "$nbad"
 ( cd "$ROOT" && bash scripts/security_lint.sh > "$WORK/lint.txt" 2>&1 ); rc=$?
 expect "보안 린트 종료 코드" "0" "$rc"
 [ "$rc" -eq 0 ] || tail -8 "$WORK/lint.txt" | sed 's/^/    /'
-expect "app.js — zip 창구 주소는 APP_BASE 로(Q:T-4)" "0" "$(grep -n "'/api/files/zip'" "$ROOT/public/assets/app.js" | grep -vc 'APP_BASE')"
+expect "files-page.js — zip 창구 주소는 APP_BASE 로(Q:T-4)" "0" "$(grep -n "'/api/files/zip'" "$ROOT/public/assets/files-page.js" | grep -vc 'APP_BASE')"
 
 # ════════════════════════════════════════════════════════════════
 if [ "${REGRESS:-0}" = "1" ]; then

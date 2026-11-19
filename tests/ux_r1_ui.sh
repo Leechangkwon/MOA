@@ -217,12 +217,12 @@ else
   expect "더한 JS 줄에 문자열 → HTML 자리(innerHTML·outerHTML·insertAdjacentHTML·document.write) 0" "0" \
     "$(git -C "$ROOT" diff "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- 'public/assets/*.js' 'public/assets/community/*.js' 2>/dev/null | grep '^+' | grep -v '^+++' | grep -cE 'innerHTML|outerHTML|insertAdjacentHTML|document\.write')"
   # 바뀐 파일은 화면뿐 — 뷰 셋과 자산. 창구(핸들러)·권한·저장·DB·배포·라우트는 0
-  ALLOWED='^(public/assets/(app\.css|app\.js|search\.js|community/(community\.css|editor\.js|database\.js|templates\.js|dashboard\.js|suggestions\.js))|src/views/shell_top\.php|src/community/handlers/(page_view|home_page)\.php|src/help/[a-z_]+\.php)$'
+  ALLOWED='^(public/assets/(app\.css|app\.js|files-page\.js|search\.js|community/(community\.css|editor\.js|page\.js|editor-runtime\.js|editor-loader\.js|database\.js|templates\.js|dashboard\.js|suggestions\.js))|src/views/shell_top\.php|src/community/handlers/(page_view|home_page)\.php|src/help/[a-z_]+\.php)$'
   OUTSIDE=$(git -C "$ROOT" diff --name-only "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- src public db deploy config 2>/dev/null | grep -vE "$ALLOWED")
   expect "바뀐 파일은 화면(뷰 셋 · 자산 · 도움말)뿐 — 창구·권한·저장·DB·배포·라우트 차이 0" "" "$OUTSIDE"
   CORE_FILES="src/Authz.php src/community/CommunityAuthz.php src/Auth.php src/Http.php src/Audit.php src/Db.php src/Upload.php src/Storage.php src/Passkey.php public/index.php src/community/routes.php src/community/handlers/pages_create.php src/community/handlers/board_pages_create.php src/community/handlers/pages_update.php src/handlers/login.php src/handlers/login_page.php"
   expect "판정·보안 핵심 · 저장 창구 · 로그인 파일 차이 0" "0" "$(git -C "$ROOT" diff "$BASE_REV" "${UXR1_DIFF_REV:-HEAD}" -- $CORE_FILES 2>/dev/null | wc -l)"
-  AJS="$ROOT/public/assets/app.js"; EJS="$ROOT/public/assets/community/editor.js"
+  AJS="$ROOT/public/assets/app.js"; FJS="$ROOT/public/assets/files-page.js"; EJS="$ROOT/public/assets/community/editor.js"
   expect "UX-11 세션 확인 도우미는 한 곳(app.js probeSession · window.qarediSessionProbe) · 편집기는 그것을 부른다" "1 1 1" \
     "$(grep -c '^function probeSession(' "$AJS") $(grep -c '^window.qarediSessionProbe = probeSession;$' "$AJS") $(grep -c "typeof window.qarediSessionProbe === 'function' ? window.qarediSessionProbe : null" "$EJS")"
   expect "UX-11 일괄 작업은 그 길을 끈다(sessionRetry:false — 옮기기·즐겨찾기·지우기·되살리기 둘)" "5" "$(grep -c "send: (item) => api(.*{ sessionRetry: false })," "$EJS")"
@@ -230,7 +230,7 @@ else
     "$(grep -c "^var BACKGROUND_HEADER = 'X-Qaredi-Background';$" "$AJS") $(grep -c 'init.headers\[BACKGROUND_HEADER\] = BACKGROUND_VALUE;' "$AJS") $(grep -c "return probe(meUsername, sent.token, { background: !!(opts && opts.background === true) })" "$EJS")"
   expect "UX-11 편집기는 그 요청이 보낸 토큰으로 견준다(apiSend 가 돌려줌 · 지금 토큰과 다르면 확인 없이 한 번 다시)" "1 1" \
     "$(grep -c "readJson(response).then((data) => ({ status: response.status, data: data, token: token }))" "$EJS") $(grep -c "if (sent.token !== csrfToken) { return again(); }" "$EJS")"
-  expect "UX-11 파일 화면의 일괄 요청(bulkFetch)은 전과 같은 fetch(「이어서 하기」 흐름 그대로)" "1" "$(grep -A12 '  function bulkFetch(method, url, payload) {' "$AJS" | grep -c '    return fetch(url, options);')"
+  expect "UX-11 파일 화면의 일괄 요청(bulkFetch)은 전과 같은 fetch(「이어서 하기」 흐름 그대로)" "1" "$(grep -A12 '  function bulkFetch(method, url, payload) {' "$FJS" | grep -c '    return fetch(url, options);')"
   expect "UX-9 자동 제출은 로그인 화면 한 곳(form.requestSubmit 하나 · 다른 코드 칸 0)" "1" "$(grep -c 'form\.requestSubmit(' "$AJS")"
   expect "UX-1 기본 제목 표 = 서버 글자(「제목 없는 페이지」 · 「제목 없는 데이터베이스」 · 「제목 없는 글」)" "1 1 1" \
     "$(grep -c "'제목 없는 데이터베이스' : (\$tpl !== null ? (string) \$tpl\['title'\] : '제목 없는 페이지')" "$ROOT/src/community/handlers/pages_create.php") $(grep -c "^\$title = '제목 없는 글';" "$ROOT/src/community/handlers/board_pages_create.php") $(grep -c "^const DEFAULT_TITLES = \['제목 없는 페이지', '제목 없는 데이터베이스', '제목 없는 글'\];$" "$EJS")"

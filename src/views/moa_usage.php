@@ -3,10 +3,14 @@ declare(strict_types=1);
 $moaIsCommunity = ($moaGuide ?? '') === 'community';
 $moaMayWrite = Authz::canCommunityWrite($user);
 ?>
-<section class="moa-purpose" aria-labelledby="moa-purpose-title">
+<details class="moa-purpose" aria-labelledby="moa-purpose-title">
+  <summary class="moa-purpose-heading">
+    <span id="moa-purpose-title"><?= $moaIsCommunity ? '문서와 업무 시작 안내' : '자료실 시작 안내' ?></span>
+    <span class="muted">사용 방법</span>
+  </summary>
   <div class="moa-purpose-heading">
     <span class="moa-purpose-mark moa-module-mark--<?= $moaIsCommunity ? 'community' : 'tbox' ?>"><?php /* Q:F-12 — 「내 문서」(업무 앱) 안내는 업무 아이콘 */ $moaIcon=$moaIsCommunity?'work':'library'; require __DIR__.'/moa_icon.php'; ?></span>
-    <div><p class="moa-kicker"><?= $moaIsCommunity ? '함께 이야기하고, 함께 기록해요' : '필요한 자료를, 필요할 때 바로' ?></p><h2 id="moa-purpose-title"><?= $moaIsCommunity ? '여기서 무엇을 해 볼까요?' : '우리 팀의 파일을 한곳에.' ?></h2></div>
+    <div><p class="moa-kicker"><?= $moaIsCommunity ? '함께 이야기하고, 함께 기록해요' : '필요한 자료를, 필요할 때 바로' ?></p><h2><?= $moaIsCommunity ? '여기서 무엇을 해 볼까요?' : '우리 팀의 파일을 한곳에.' ?></h2></div>
   </div>
   <div class="moa-purpose-grid">
   <?php if ($moaIsCommunity): ?>
@@ -28,4 +32,4 @@ $moaMayWrite = Authz::canCommunityWrite($user);
     <p class="moa-usage-tip"><?= $moaIsCommunity ? '문서는 한 장의 메모부터 시작해도 좋아요. 표·할 일·파일 링크가 필요해질 때 블록을 더하세요.' : '파일 자체는 자료실에, 파일에 대한 설명·질문·논의는 업무 문서에 모으면 함께 찾기 쉬워요.' ?></p>
     <a href="<?= $moaIsCommunity ? Http::url('/') : Http::communityUrl('/') ?>"><?= $moaIsCommunity ? '파일을 보관할 자료실로 가기' : '설명과 논의를 남길 업무로 가기' ?> ↗</a>
   </details>
-</section>
+</details>

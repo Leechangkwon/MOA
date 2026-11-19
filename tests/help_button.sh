@@ -145,7 +145,7 @@ sub "셸 · 스크립트 쪽"
 expect "shell_bottom 에 help-dialog 1개" 1 "$(grep -c '^<dialog id="help-dialog"' "$ROOT/src/views/shell_bottom.php")"
 expect "아이콘 템플릿 tpl-icon-help" 1 "$(grep -c 'id="tpl-icon-help"' "$ROOT/src/views/shell_bottom.php")"
 expect "app.js 위임 하나 (initHelpDialog)" 1 "$(grep -c '^function initHelpDialog()' "$ROOT/public/assets/app.js")"
-expect "app.js 에 innerHTML 계열 0" 0 "$(grep -c 'innerHTML\|outerHTML\|insertAdjacentHTML' "$ROOT/public/assets/app.js")"
+expect "app.js·files-page.js 에 innerHTML 계열 0" 0 "$(cat "$ROOT/public/assets/app.js" "$ROOT/public/assets/files-page.js" | grep -c 'innerHTML\|outerHTML\|insertAdjacentHTML')"
 expect "바뀐 파일에 인라인 style 속성 0" 0 "$(grep -c 'style="' $(for f in $CHANGED_PHP; do echo "$ROOT/$f"; done) | awk -F: '{s+=$2} END {print s+0}')"
 
 # ─────────────────────────────────────────────────────────────

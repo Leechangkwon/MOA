@@ -251,7 +251,7 @@ PYTHONPYCACHEPREFIX="$PYC" python3 -m py_compile "$ROOT/tests/lib/contrast.py" "
 # 허용 목록(지시서 2.5 + 메인 결정 2026-09-27 22:1x — 반영 스크립트는 복제본 review-scripts/) 밖의 파일 0
 ALLOW="DESIGN.md db/migrations/2026-10-08_users_high_contrast.sql db/schema.sql public/index.php src/Auth.php src/Audit.php
 src/handlers/me_settings.php src/handlers/me.php src/handlers/settings_page.php src/help/screens.php src/views/shell_top.php src/views/launcher.php
-public/assets/app.css public/assets/community/community.css public/assets/app.js docs/design-guide.html
+public/assets/app.css public/assets/community/community.css public/assets/app.js public/assets/files-page.js docs/design-guide.html
 tests/lib/contrast.py tests/browser/hc_screens.py tests/community/stage7d3.sh tests/catalog.json
 SECURITY.md STAGES.md README.md wiki/community/stage-7-d.json
 review-scripts/apply-7d3-db-2026-09-27.sh review-scripts/apply-7d3-repo-2026-09-27.sh review-scripts/pins-7d3-repo.sh

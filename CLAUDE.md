@@ -2,7 +2,7 @@
 
 > 2026-10-03 Git 전용 클라우드 작업: `AGENTS.md`·`docs/CLOUD-HANDOFF.md`를 먼저 읽는다. 부모 문서가 없는 clone에서는 `docs/server-context/`의 공통·커뮤니티 문서를 사용한다. 클라우드 기능 브랜치 → 서버 검증·main 통합 → 배포 기록 방식은 이번 휴가 인계 규칙이다. Git push를 운영 배포로 보고하지 않는다.
 
-이 폴더는 **Qaredi 사이트의 t-box 모듈**(사내 파일 공유 재구축, 완성·운영 중)이자 Qaredi 의 **웹 앱 본체**다(런처 `/`·`/tbox/…` 라우터·공통 셸이 여기 있다). 원격 저장소 `T-Box_Re`.
+이 폴더는 **Qaredi 사이트의 t-box 모듈**(사내 파일 공유 재구축, 완성·운영 중)이자 Qaredi 의 **웹 앱 본체**다(런처 `/`·`/tbox/…` 라우터·공통 셸이 여기 있다). 원격 저장소 `Leechangkwon/MOA`(2026-11-19 사용자 지정).
 **사이트 공통 지침은 상위 폴더 `../CLAUDE.md`** 다 — 판단 기준·역할 분담·지시서 형식·검토 규칙·구현 규칙·커밋·기록 의무 전부 그쪽이 원문이고, 이 파일은 t-box 에만 있는 것만 적는다. 두 파일이 충돌하면 상위가 우선이고, 충돌을 발견하면 먼저 알린다.
 구조(사용자 결정 2026-09-22): `/var/www/qaredi/` = 공통 지침·공통 기획 · `tbox-v2/` = 이 폴더 · `community/` = 커뮤니티 기획안(코드는 다음 단계, 이 앱 안 `src/community/` 에 격리해서 들어온다).
 
@@ -30,3 +30,8 @@
 - **주소**: t-box 안의 절대 경로는 서버 `Http::url('/…')`, JS `APP_BASE + '/…'` 로만 만든다(`TBOX_BASE = '/tbox'`, `../docs/launcher/ARCHITECTURE.md` 3장). 옛 주소는 308.
 - **발행**: `scripts/release.sh <major|minor|patch> "제목" "변경…"` — 사이트 하나의 번호(`VERSION`·`CHANGELOG.json`), 지금 v2.x. 문장은 사용자 말로.
 - (이력) 3단계는 의도적으로 「권한 검사 없는」 상태로 커밋했다 — 4단계 전후 비교가 과제의 핵심이었다. 서버·운영 경로는 `/var/lib/tbox-v2`·`/etc/tbox-v2`·`/var/log/tbox-v2`(저장소 폴더 이동과 무관).
+
+
+## 2026년 11월 19일 저장소 이전
+
+현재 기본 원격은 `git@github.com:Leechangkwon/MOA.git`이며 HTTPS 주소는 `https://github.com/Leechangkwon/MOA.git`이다. 이전 Git2 원격은 로컬에서 `legacy-git2`로 보존한다. 옛 문서의 Git2 전용 전달 지시보다 이번 사용자 결정이 우선한다. 기존 main 이력은 보존하고 강제 push하지 않는다. 자세한 이전·검사 기록은 docs/work-items/modern-web-improvements.md를 따른다.

@@ -1,8 +1,10 @@
-# T-Box_Re — 사내 파일 공유 서비스 t-box 재구축
+# MOA — 업무와 자료실과 이야기
 
-> **현재 운영·클라우드 작업 기준 (2026-10-03):** Qaredi v2.45.0 운영 중입니다. 아래 초기 실습 소개보다 최신 상태는 [클라우드 인계](docs/CLOUD-HANDOFF.md), [배포 기록](deploy/production-state.json), [AI 작업 지침](AGENTS.md)을 먼저 확인하세요. Git push와 서버 배포는 별도이며 `python3 scripts/work_status.py`로 마지막 배포 기록과 현재 작업본을 비교할 수 있습니다.
+> **현재 작업 기준 (2026-11-19):** 이 저장소는 Qaredi/모아 웹 앱 본체입니다. 기본 원격은 [Leechangkwon/MOA](https://github.com/Leechangkwon/MOA)이며 기존 main 이력을 보존합니다. 최신 상태는 [클라우드 인계](docs/CLOUD-HANDOFF.md), [배포 기록](deploy/production-state.json), [AI 작업 지침](AGENTS.md)을 확인하세요. Git push와 서버 배포는 별도이며 `python3 scripts/work_status.py`로 마지막 배포 기록과 현재 작업본을 비교할 수 있습니다.
 
-교육용으로 일부러 취약하게 만든 t-box(해킹 실습 대상)를, **실습에서 뚫린 5가지 취약점이 없는 형태**로 처음부터 다시 만드는 과제 저장소입니다.
+업무·프로젝트·블록 문서·회의 그림판, 권한 기반 파일 공유, 사진·영상 이야기와 메신저를 하나의 로그인으로 제공합니다. [전체 웹 개선 기록](docs/work-items/modern-web-improvements.md)에 성능 평가·수락 검사·배포 결과를 정리합니다.
+
+아래는 교육용 t-box를 재구축하며 세운 초기 설계와 실습 기록입니다. 현재 기능 범위와 검증 상태는 위의 최신 기록을 기준으로 확인합니다.
 
 | 항목 | 내용 |
 |---|---|

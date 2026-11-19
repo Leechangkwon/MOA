@@ -1,9 +1,9 @@
-import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=4a50ab9739e5';
-import { renderDoc } from './doc-render.js?v=4a50ab9739e5';
-import { createMentionInput } from './mention-input.js?v=4a50ab9739e5';
-import { personText } from './cafe.js?v=4a50ab9739e5';
-import { optionLabel } from './db-option-label.js?v=4a50ab9739e5';
-import { repeatDialog } from './automations.js?v=4a50ab9739e5';
+import { drawCalendar, drawLegend, rangeFor } from './calendar.js?v=a9fddd18fefd';
+import { renderDoc } from './doc-render.js?v=a9fddd18fefd';
+import { createMentionInput } from './mention-input.js?v=a9fddd18fefd';
+import { personText } from './cafe.js?v=a9fddd18fefd';
+import { optionLabel } from './db-option-label.js?v=a9fddd18fefd';
+import { repeatDialog } from './automations.js?v=a9fddd18fefd';
 /*
  * public/assets/community/work.js — 업무 화면(사이트 Q:F-12 · 조각 D): 업무 홈 · 내 작업 · 프로젝트(작업 목록 + 오른쪽 작업 상세 칸 ·
  * 프로젝트 머리 · 상태) · 포트폴리오 · 「새로 만들기」(작업 · 프로젝트) · 사이드바 포트폴리오 묶음.
@@ -260,6 +260,7 @@ export function createWork(deps) {
     }
     const a = el('a', 'task-row__title', (item.icon ? item.icon + ' ' : '') + item.title);
     a.href = opts.href ? opts.href(item) : pageUrl(item.id);
+    a.title = item.title;
     if (opts.onOpen) {
       a.addEventListener('click', (e) => {
         if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) { return; }
@@ -385,7 +386,9 @@ export function createWork(deps) {
     line.appendChild(src);
     // 제목 + 보조 글(「○○ 님이 맡김」 · briefing summary) — 한 줄 줄임. 설명 미리보기는 없다(창구가 주지 않는다)
     const main = el('span', 'task-row__main');
-    main.appendChild(el('span', 'task-row__title', (item.icon ? item.icon + ' ' : '') + item.title));
+    const title = el('span', 'task-row__title', (item.icon ? item.icon + ' ' : '') + item.title);
+    title.title = item.title;
+    main.appendChild(title);
     const sub = item.assigned_by ? item.assigned_by + ' 님이 맡김' : item.summary;
     if (sub) { main.appendChild(el('span', 'task-row__aux', sub)); }
     line.appendChild(main);
@@ -510,7 +513,7 @@ export function createWork(deps) {
         if (next) { next.focus(); }
         return;
       }
-      if (e.key !== 'Escape' || e.isComposing || e.defaultPrevented || !pane.current()) { return; }
+      if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229 || e.defaultPrevented || !pane.current()) { return; }
       if (document.querySelector('details[open].menu') || document.querySelector('dialog[open]')
         || t.closest('input, textarea, select, [contenteditable="true"], .editor-toolbar, [role="separator"]')) { return; }
       const id = pane.current();
@@ -540,8 +543,9 @@ export function createWork(deps) {
     host.appendChild(line);
     let busy = false;
     input.addEventListener('keydown', (e) => {
+      if (e.isComposing || e.keyCode === 229) { return; }
       if (e.key === 'Escape') { e.preventDefault(); line.remove(); onEnd(false); return; }
-      if (e.key !== 'Enter' || e.isComposing || busy) { return; }
+      if (e.key !== 'Enter' || busy) { return; }
       e.preventDefault();
       const title = input.value.trim();
       if (title === '') { line.remove(); onEnd(false); return; }
@@ -851,6 +855,15 @@ export function createWork(deps) {
         });
         head.appendChild(doneBtn);
       }
+      // Q:F-17 / DESIGN 2.40 — 기존 서버 요약이 허용한 진입을 머리에서 바로 찾는다.
+      const wb = data.whiteboard;
+      if (wb && (wb.exists || wb.can_create)) {
+        const link = el('a', 'btn btn--quiet btn--small', wb.exists ? '회의 그림판' : '그림판 만들기');
+        link.href = wb.url;
+        link.setAttribute('data-task-whiteboard', '');
+        link.setAttribute('aria-label', wb.exists ? '회의 그림판 열기 · 판 ' + wb.version_no : '회의 그림판 만들기');
+        head.appendChild(link);
+      }
       const tools = el('span', 'task-pane__tools');
       const copy = iconButton('link', '링크 복사');
       copy.addEventListener('click', () => {
@@ -982,7 +995,8 @@ export function createWork(deps) {
             }).catch(() => { input.replaceWith(title); say(msg, genericError); });
           };
           input.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); end(true); }
+            if (e.isComposing || e.keyCode === 229) { return; }
+            if (e.key === 'Enter') { e.preventDefault(); end(true); }
             if (e.key === 'Escape') { e.preventDefault(); end(false); }
           });
           input.addEventListener('blur', () => end(true));
@@ -1223,7 +1237,7 @@ export function createWork(deps) {
           startDocEdit();
         });
         docBox.addEventListener('keydown', (e) => {
-          if (e.key !== 'Enter' || e.isComposing || e.target !== docBox || !docBox.classList.contains('task-pane__doc--editable')) { return; }
+          if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229 || e.target !== docBox || !docBox.classList.contains('task-pane__doc--editable')) { return; }
           e.preventDefault();
           startDocEdit();
         });
@@ -1231,15 +1245,10 @@ export function createWork(deps) {
       paneEl.appendChild(docSec);
 
       // Q:F-17: the server supplies availability and the action URL for project tasks only.
-      if (data.whiteboard) {
-        const wb = data.whiteboard;
+      if (wb && !wb.exists && !wb.can_create) {
         const section = el('section', 'task-pane__section');
         section.appendChild(el('h3', 'task-pane__label', '회의 그림판'));
-        if (wb.exists || wb.can_create) {
-          const link = el('a', 'btn btn--quiet btn--small', wb.exists ? '회의 그림판 열기 · 판 ' + wb.version_no : '회의 그림판 만들기');
-          link.href = wb.url;
-          section.appendChild(link);
-        } else { section.appendChild(el('p', 'muted', '아직 회의 그림판이 없어요.')); }
+        section.appendChild(el('p', 'muted', '아직 회의 그림판이 없어요.'));
         paneEl.appendChild(section);
       }
 
@@ -1288,7 +1297,8 @@ export function createWork(deps) {
           }).catch(() => { back(byKey); say(msg, genericError); });
         };
         input.addEventListener('keydown', (e) => {
-          if (e.key === 'Enter' && !e.isComposing) { e.preventDefault(); end(true, true); }
+          if (e.isComposing || e.keyCode === 229) { return; }
+          if (e.key === 'Enter') { e.preventDefault(); end(true, true); }
           if (e.key === 'Escape') { e.preventDefault(); end(false, true); }
         });
         input.addEventListener('blur', () => end(true, false));
@@ -1318,6 +1328,7 @@ export function createWork(deps) {
           } else {
             head = el('span', 'task-row__title', label);
           }
+          head.title = item.title;
           const link = row.querySelector('a.task-row__title');
           if (link) { link.replaceWith(head); }
           const go = el('a', 'btn btn--icon btn--plain');
@@ -1608,7 +1619,7 @@ export function createWork(deps) {
         }).catch(() => {});
       };
       q.addEventListener('input', () => { window.clearTimeout(timer); timer = window.setTimeout(search, 200); });
-      q.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); window.clearTimeout(timer); search(); } });
+      q.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); window.clearTimeout(timer); search(); } });
       // 열자마자 후보(U1-a) — 빈 검색어로 곧바로 부른다
       box.addEventListener('toggle', () => {
         if (!box.open) { return; }
@@ -2615,8 +2626,9 @@ export function createWork(deps) {
           host.appendChild(line);
           input.focus();
           input.addEventListener('keydown', (e) => {
+            if (e.isComposing || e.keyCode === 229) { return; }
             if (e.key === 'Escape') { line.remove(); tail.hidden = false; return; }
-            if (e.key !== 'Enter' || e.isComposing) { return; }
+            if (e.key !== 'Enter') { return; }
             e.preventDefault();
             const name = input.value.trim();
             if (name === '') { line.remove(); tail.hidden = false; return; }

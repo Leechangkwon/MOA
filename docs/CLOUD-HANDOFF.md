@@ -1,3 +1,5 @@
+> 2026-11-19 사용자 지정: 기본 원격을 GitHub `Leechangkwon/MOA`로 이전했다. 기존 main 이력 952커밋을 보존하여 전송했고 Git2는 legacy-git2로 남겼다. 전체 기능 개선은 cloud/whole-site-improvements에서 진행 중이며, 이 문서 아래의 Git2·과거 운영 기록보다 실제 현재 배포 기록과 이번 사용자 지시를 우선한다.
+
 > 2026-10-23 20:03: 사용자 Codex의 OAuth code 교환·활성 access1·세 범위 승인 성공 확인. 실제 callback50539이며43173 전달 검증과 구분한다. Qaredi 새 실제 Codex는 여전히 moa/notLoggedIn/tools0이므로 인증을 시작했던 Codex의 업무 목록/원문 조회는 대기. 사용자 자격 공유·재인증·문서 수정0. docs/work-items/moa-oauth-browser-return-20261023.md 후속 기록.
 
 > 2026-10-23 후속: Windows 승인 후 localhost 연결 거부는 실제 listener가 Qaredi Codex에 있어 발생했다. 사용자 code 미교환/토큰0 확인. Qaredi Codex 계정 설정만 callback43173로 고정·비공개 백업/기존 바이트·권한 보존, 새 실제 프로세스에서 정확한 callback 확인. Windows PowerShell SSH loopback 전달·기존 프로세스 설정 재로딩·새 사용자 인증/문서 읽기는 대기. 기존 장기 Codex 종료/웹 배포/DB·계정·본문 변경0. docs/work-items/moa-oauth-browser-return-20261023.md 및 docs/chatgpt-remote-mcp.md.
@@ -76,13 +78,13 @@
 
 > 2026-10-04 최신 운영: 회원 경험 PR #3의 v2.47.0 `d75a5d5` 배포 완료. OTP/패스키 선택, 커뮤니티 둘러보기/가이드, 팔로우/공개 범위/발견, 여행 계획/MCP 여행 도구, 이야기 요약/상세가 반영됐다. 공통 교차 회귀162·운영HTTPS70 통과, 기존 데이터/권한/저장 원본1018파일 보존. 최신 상태는 `deploy/production-state.json`, 상세는 `docs/work-items/community-member-experience.md`를 따른다. 아래 v2.46.0 표와 미구현 범위는 2026-10-03 당시 기록이다. 실제 기기·Windows 일반 설치물과 이 채팅 MCP 연결은 여전히 별도다.
 
-**Git2가 코드 전달 창구다. 서버에 접속하지 못하는 동안은 개발·검증·push까지 진행하고, 배포 대기 상태를 남긴다. 서버는 마지막 검증 버전으로 계속 운영한다.** 자동 pull/배포는 구성되어 있지 않다. main의 최신 커밋과 실제 배포 커밋은 서로 다른 개념이다.
+**GitHub Leechangkwon/MOA가 현재 코드 전달 창구다. 서버에 접속하지 못하는 동안은 개발·검증·push까지 진행하고, 배포 대기 상태를 남긴다. 서버는 마지막 검증 버전으로 계속 운영한다.** 자동 pull/배포는 구성되어 있지 않다. main의 최신 커밋과 실제 배포 커밋은 서로 다른 개념이다.
 
 ## 지금 확인한 기준
 
 | 항목 | 확인 결과 |
 |---|---|
-| 웹 저장소 | `https://git2.tla.so/changkwon/T-Box_Re` |
+| 웹 저장소 | `https://github.com/Leechangkwon/MOA` (이전 Git2는 legacy-git2) |
 | 정리 시작 시 서버와 origin/main | `dd9611ac7f9e83a7ab707e96029cfd4b63d1dd49`, 일치·미커밋 변경 없음 |
 | 운영 기능 버전 | v2.46.0, 발행 커밋 `56a4ae177865e3bbce44f67856f87553c8d36b53`. 최종 검증 커밋은 배포 기록 참조 |
 | 배포 판정 기록 | `deploy/production-state.json` — 서버 검증 후에만 갱신 |
@@ -111,7 +113,7 @@ git switch -c cloud/photo-editor
 
 다음 세션에는 아래 문장을 붙이면 된다:
 
-> T-Box_Re의 AGENTS.md, docs/CLOUD-HANDOFF.md, deploy/production-state.json을 먼저 읽어. origin/main 기준을 확인하고 cloud/<작업명>에서 이어 작업해. 서버에 접속할 수 없으면 합성 데이터로 가능한 검증까지 하고 Git2에 push한 뒤, 서버 검증·배포 대기라고 기록해. 운영 키·DB·사진은 저장소에 넣지 마. 기존 사용자 데이터와 다른 작업 변경을 보존해.
+> MOA의 AGENTS.md, docs/CLOUD-HANDOFF.md, deploy/production-state.json을 먼저 읽어. origin/main 기준을 확인하고 cloud/<작업명>에서 이어 작업해. 서버에 접속할 수 없으면 합성 데이터로 가능한 검증까지 하고 GitHub에 push한 뒤, 서버 검증·배포 대기라고 기록해. 운영 키·DB·사진은 저장소에 넣지 마. 기존 사용자 데이터와 다른 작업 변경을 보존해.
 
 ## Git으로 전달되지 않던 문서
 

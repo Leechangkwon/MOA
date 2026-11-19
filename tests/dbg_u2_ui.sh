@@ -209,9 +209,9 @@ else
   # files_fetch.php 의 거부 문장(「직접 내려받아 …」)은 다른 묶음(보안)이 같은 시각 고치는 창구 파일이라 이 묶음 밖 — 구현 기록 1장 「보고만」
   expect "「다운로드로 확인」「내려받」 화면 문장 0 (files_fetch.php 거부 문장 제외 — 보고만)" "0" "$(old_words "다운로드로 확인|내려받|내려 받" "src/handlers/files_fetch.php:")"
   expect "등급 고르개 글자에 영어 값 0 (「internal — 사내 전체」 꼴)" "0" \
-    "$(grep -cE "'(public|internal|team|admin-only) — " "$ROOT/public/assets/app.js")"
+    "$(cat "$ROOT/public/assets/app.js" "$ROOT/public/assets/files-page.js" | grep -cE "'(public|internal|team|admin-only) — ")"
   expect "역할 고르개 글자에 영어 병기 0 (「직원 (Employee)」 꼴)" "0" \
-    "$(grep -cE "ROLE_LABELS\[v\] \+ ' \(' \+ v" "$ROOT/public/assets/app.js")"
+    "$(cat "$ROOT/public/assets/app.js" "$ROOT/public/assets/files-page.js" | grep -cE "ROLE_LABELS\[v\] \+ ' \(' \+ v")"
   expect "창 바닥 「그만두기」 0 (창을 닫는 단추는 「닫기」)" "0" \
     "$(grep -rnE 'data-[a-z-]*-close>그만두기<' "$ROOT/src/community/handlers" "$ROOT/src/handlers" | wc -l)"
   CALLS=$(grep -rnE 'window\.(prompt|confirm)\(' "$ROOT/public/assets" --include=*.js | grep -vE '^[^:]+:[0-9]+:\s*(\*|//|/\*)' | wc -l)

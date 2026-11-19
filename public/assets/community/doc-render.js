@@ -219,6 +219,14 @@ function renderEmbed(block, id, ctx) {
  * **편집기 그림 부품만** 넘긴다 · 읽기 화면 · 다른 사람에게는 없다). 검사 중 그림에 사본이 있으면 상자 대신 **그림 자체**(같은 figure · 같은 폭 클래스)
  * + 왼쪽 위 `.badge` 「검사 중 · 나만 보여요」. 서버 사본은 검사 전에 주소로 쓰지 않는다. 감염(`infected`)은 받기 카드 대신 「올릴 수 없는 파일이에요」 카드.
  */
+// 문서 맨 앞 두 블록의 첫 그림만 LCP 후보로 취급한다. 크기 메타데이터는 현재 응답에 없으므로 추정하지 않는다.
+const LEAD_IMAGE = Symbol('lead-image');
+function prepareImage(img, block, ctx) {
+  const lead = Boolean(ctx && ctx[LEAD_IMAGE] === block);
+  img.setAttribute('decoding', 'async');
+  img.setAttribute('loading', lead ? 'eager' : 'lazy');
+  if (lead) img.setAttribute('fetchpriority', 'high');
+}
 const ATT_PREVIEW_PREFIX = /^data:image\/(png|jpeg|gif);base64,/;
 const ATT_PENDING_MINE = '검사 중 · 나만 보여요';
 const ATT_INFECTED = '올릴 수 없는 파일이에요';
@@ -263,6 +271,7 @@ function renderAttachmentBlock(block, id, ctx) {
       img.className = 'doc-image__img';
       img.setAttribute('src', preview);
       img.setAttribute('alt', name);
+      img.setAttribute('decoding', 'async');
       const mark = document.createElement('span');
       mark.className = 'badge';
       mark.textContent = ATT_PENDING_MINE;
@@ -320,9 +329,9 @@ function renderAttachmentBlock(block, id, ctx) {
     if (id) { fig.id = 'block-' + id; }
     const img = document.createElement('img');
     img.className = 'doc-image__img';
-    img.setAttribute('src', href + '/raw');
     img.setAttribute('alt', name);
-    img.setAttribute('loading', 'lazy');
+    prepareImage(img, block, ctx);
+    img.setAttribute('src', href + '/raw');
     fig.appendChild(img);
     addCaption(fig, 'figcaption', 'doc-image__caption');
     return fig;
@@ -389,9 +398,9 @@ export function renderFileBlock(block, id, ctx) {
     if (id) { fig.id = 'block-' + id; }
     const img = document.createElement('img');
     img.className = 'doc-image__img';
-    img.setAttribute('src', tbox + '/api/files/' + ref + '/preview/raw');
     img.setAttribute('alt', name);
-    img.setAttribute('loading', 'lazy');
+    prepareImage(img, block, ctx);
+    img.setAttribute('src', tbox + '/api/files/' + ref + '/preview/raw');
     fig.appendChild(img);
     if (hasCap) {
       const cap = document.createElement('figcaption');
@@ -909,7 +918,8 @@ export function renderDoc(doc, ctx) {
   const root = document.createElement('div');
   root.className = 'doc';
   const blocks = doc && Array.isArray(doc.blocks) ? doc.blocks : [];
-  root.appendChild(renderBlocks(blocks, blocks, ctx || {}));
+  const renderContext = { ...(ctx || {}), [LEAD_IMAGE]: blocks.slice(0, 2).find((block) => block && block.type === 'image') };
+  root.appendChild(renderBlocks(blocks, blocks, renderContext));
   frag.appendChild(root);
   return frag;
 }

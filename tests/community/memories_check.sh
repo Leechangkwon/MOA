@@ -3,9 +3,9 @@
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 node --check public/assets/community/memories.js
-node --check public/assets/community/editor.js
+for path in public/assets/community/editor.js public/assets/community/page.js public/assets/community/editor-runtime.js public/assets/community/editor-loader.js; do node --check "$path"; done
 node --check public/assets/messenger.js
-node --check public/assets/app.js
+for path in public/assets/app.js public/assets/files-page.js; do node --check "$path"; done
 bash scripts/security_lint.sh
 if ! command -v php >/dev/null 2>&1; then
   printf 'UNVERIFIED: PHP is not installed. PHP syntax, backend unit, render, asset-version and wiki checks cannot run.\n' >&2
