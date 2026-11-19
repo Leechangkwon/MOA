@@ -1,0 +1,2692 @@
+{
+  "rows": [
+    {
+      "name": "documents",
+      "mode": "desktop",
+      "repeat": 1,
+      "cls_session_max": 0.4235410292681525,
+      "entries": [
+        {
+          "at": 870.5,
+          "value": 0.0022387142405790443,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 969.09375,
+                "y": 56,
+                "w": 290.90625,
+                "h": 36
+              },
+              "current": {
+                "x": 920.09375,
+                "y": 56,
+                "w": 339.90625,
+                "h": 36
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "shell-tools__me"
+              },
+              "previous": {
+                "x": 1031.53125,
+                "y": 8,
+                "w": 228.46875,
+                "h": 44
+              },
+              "current": {
+                "x": 1015.53125,
+                "y": 8,
+                "w": 244.46875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SELECT",
+                "id": "community-verify",
+                "cls": ""
+              },
+              "previous": {
+                "x": 766,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              },
+              "current": {
+                "x": 750,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "SELECT",
+                "id": "community-due",
+                "cls": ""
+              },
+              "previous": {
+                "x": 915,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              },
+              "current": {
+                "x": 899,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "messenger-open",
+                "cls": "btn btn--quiet shell-tools__messenger"
+              },
+              "previous": {
+                "x": 858.53125,
+                "y": 6,
+                "w": 85,
+                "h": 50
+              },
+              "current": {
+                "x": 820.53125,
+                "y": 6,
+                "w": 107,
+                "h": 50
+              }
+            }
+          ]
+        },
+        {
+          "at": 1082.0999999046326,
+          "value": 0.0012891572840073528,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-documents-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 348,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 414,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 382,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 34
+              }
+            }
+          ]
+        },
+        {
+          "at": 1311.7999999523163,
+          "value": 0.0013855712890625002,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 551,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "moa-board-doors",
+                "cls": "moa-board-doors"
+              },
+              "previous": {
+                "x": 307,
+                "y": 457.0625,
+                "w": 138.265625,
+                "h": 19.5
+              },
+              "current": {
+                "x": 307,
+                "y": 448.0625,
+                "w": 169.9375,
+                "h": 28.5
+              }
+            }
+          ]
+        },
+        {
+          "at": 1443,
+          "value": 0.41356803481158083,
+          "sources": [
+            {
+              "node": {
+                "tag": "SECTION",
+                "id": "",
+                "cls": "moa-purpose"
+              },
+              "previous": {
+                "x": 260,
+                "y": 174,
+                "w": 1000,
+                "h": 404.5625
+              },
+              "current": {
+                "x": 260,
+                "y": 226,
+                "w": 1000,
+                "h": 404.5625
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "moa-my-documents",
+                "cls": "moa-documents-heading"
+              },
+              "previous": {
+                "x": 260,
+                "y": 680.5625,
+                "w": 1000,
+                "h": 77.09375
+              },
+              "current": {
+                "x": 260,
+                "y": 732.5625,
+                "w": 1000,
+                "h": 77.09375
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "toolbar"
+              },
+              "previous": {
+                "x": 257,
+                "y": 795.65625,
+                "w": 1006,
+                "h": 50
+              },
+              "current": {
+                "x": 257,
+                "y": 847.65625,
+                "w": 1003,
+                "h": 2.34375
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 920.09375,
+                "y": 56,
+                "w": 339.90625,
+                "h": 36
+              },
+              "current": {
+                "x": 260,
+                "y": 127,
+                "w": 339.90625,
+                "h": 36
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 1045.546875,
+                "y": 54,
+                "w": 106,
+                "h": 42
+              },
+              "current": {
+                "x": 385.453125,
+                "y": 125,
+                "w": 106,
+                "h": 42
+              }
+            }
+          ]
+        },
+        {
+          "at": 1555.4000000953674,
+          "value": 0.005059551642922794,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-boards-group",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 103
+              },
+              "current": {
+                "x": 18,
+                "y": 507,
+                "w": 203,
+                "h": 103
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-teams-group",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 348,
+                "w": 203,
+                "h": 66
+              },
+              "current": {
+                "x": 18,
+                "y": 407,
+                "w": 203,
+                "h": 66
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "userchip"
+              },
+              "previous": {
+                "x": 18,
+                "y": 761.03125,
+                "w": 203,
+                "h": 64.96875
+              },
+              "current": {
+                "x": 18,
+                "y": 771.1875,
+                "w": 203,
+                "h": 64.96875
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-documents-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 414,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 473,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 551,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 610,
+                "w": 203,
+                "h": 34
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "documents",
+      "mode": "desktop",
+      "repeat": 2,
+      "cls_session_max": 0.4235410292681525,
+      "entries": [
+        {
+          "at": 1035.3000001907349,
+          "value": 0.0022387142405790443,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 969.09375,
+                "y": 56,
+                "w": 290.90625,
+                "h": 36
+              },
+              "current": {
+                "x": 920.09375,
+                "y": 56,
+                "w": 339.90625,
+                "h": 36
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "shell-tools__me"
+              },
+              "previous": {
+                "x": 1031.53125,
+                "y": 8,
+                "w": 228.46875,
+                "h": 44
+              },
+              "current": {
+                "x": 1015.53125,
+                "y": 8,
+                "w": 244.46875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SELECT",
+                "id": "community-verify",
+                "cls": ""
+              },
+              "previous": {
+                "x": 766,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              },
+              "current": {
+                "x": 750,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "SELECT",
+                "id": "community-due",
+                "cls": ""
+              },
+              "previous": {
+                "x": 915,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              },
+              "current": {
+                "x": 899,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "messenger-open",
+                "cls": "btn btn--quiet shell-tools__messenger"
+              },
+              "previous": {
+                "x": 858.53125,
+                "y": 6,
+                "w": 85,
+                "h": 50
+              },
+              "current": {
+                "x": 820.53125,
+                "y": 6,
+                "w": 107,
+                "h": 50
+              }
+            }
+          ]
+        },
+        {
+          "at": 1248.8000001907349,
+          "value": 0.0012891572840073528,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-documents-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 348,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 414,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 382,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 34
+              }
+            }
+          ]
+        },
+        {
+          "at": 1432.1000001430511,
+          "value": 0.0013855712890625002,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 551,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "moa-board-doors",
+                "cls": "moa-board-doors"
+              },
+              "previous": {
+                "x": 307,
+                "y": 457.0625,
+                "w": 138.265625,
+                "h": 19.5
+              },
+              "current": {
+                "x": 307,
+                "y": 448.0625,
+                "w": 169.9375,
+                "h": 28.5
+              }
+            }
+          ]
+        },
+        {
+          "at": 1596.8000001907349,
+          "value": 0.41356803481158083,
+          "sources": [
+            {
+              "node": {
+                "tag": "SECTION",
+                "id": "",
+                "cls": "moa-purpose"
+              },
+              "previous": {
+                "x": 260,
+                "y": 174,
+                "w": 1000,
+                "h": 404.5625
+              },
+              "current": {
+                "x": 260,
+                "y": 226,
+                "w": 1000,
+                "h": 404.5625
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "moa-my-documents",
+                "cls": "moa-documents-heading"
+              },
+              "previous": {
+                "x": 260,
+                "y": 680.5625,
+                "w": 1000,
+                "h": 77.09375
+              },
+              "current": {
+                "x": 260,
+                "y": 732.5625,
+                "w": 1000,
+                "h": 77.09375
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "toolbar"
+              },
+              "previous": {
+                "x": 257,
+                "y": 795.65625,
+                "w": 1006,
+                "h": 50
+              },
+              "current": {
+                "x": 257,
+                "y": 847.65625,
+                "w": 1003,
+                "h": 2.34375
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 920.09375,
+                "y": 56,
+                "w": 339.90625,
+                "h": 36
+              },
+              "current": {
+                "x": 260,
+                "y": 127,
+                "w": 339.90625,
+                "h": 36
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 1045.546875,
+                "y": 54,
+                "w": 106,
+                "h": 42
+              },
+              "current": {
+                "x": 385.453125,
+                "y": 125,
+                "w": 106,
+                "h": 42
+              }
+            }
+          ]
+        },
+        {
+          "at": 1697,
+          "value": 0.005059551642922794,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-boards-group",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 103
+              },
+              "current": {
+                "x": 18,
+                "y": 507,
+                "w": 203,
+                "h": 103
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-teams-group",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 348,
+                "w": 203,
+                "h": 66
+              },
+              "current": {
+                "x": 18,
+                "y": 407,
+                "w": 203,
+                "h": 66
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "userchip"
+              },
+              "previous": {
+                "x": 18,
+                "y": 761.03125,
+                "w": 203,
+                "h": 64.96875
+              },
+              "current": {
+                "x": 18,
+                "y": 771.1875,
+                "w": 203,
+                "h": 64.96875
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-documents-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 414,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 473,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 551,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 610,
+                "w": 203,
+                "h": 34
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "documents",
+      "mode": "desktop",
+      "repeat": 3,
+      "cls_session_max": 0.4235410292681525,
+      "entries": [
+        {
+          "at": 1081.7000000476837,
+          "value": 0.0022387142405790443,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 969.09375,
+                "y": 56,
+                "w": 290.90625,
+                "h": 36
+              },
+              "current": {
+                "x": 920.09375,
+                "y": 56,
+                "w": 339.90625,
+                "h": 36
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "shell-tools__me"
+              },
+              "previous": {
+                "x": 1031.53125,
+                "y": 8,
+                "w": 228.46875,
+                "h": 44
+              },
+              "current": {
+                "x": 1015.53125,
+                "y": 8,
+                "w": 244.46875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SELECT",
+                "id": "community-verify",
+                "cls": ""
+              },
+              "previous": {
+                "x": 766,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              },
+              "current": {
+                "x": 750,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "SELECT",
+                "id": "community-due",
+                "cls": ""
+              },
+              "previous": {
+                "x": 915,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              },
+              "current": {
+                "x": 899,
+                "y": 795.65625,
+                "w": 113,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "messenger-open",
+                "cls": "btn btn--quiet shell-tools__messenger"
+              },
+              "previous": {
+                "x": 858.53125,
+                "y": 6,
+                "w": 85,
+                "h": 50
+              },
+              "current": {
+                "x": 820.53125,
+                "y": 6,
+                "w": 107,
+                "h": 50
+              }
+            }
+          ]
+        },
+        {
+          "at": 1296.7000000476837,
+          "value": 0.0012891572840073528,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-documents-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 348,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 414,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 382,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 34
+              }
+            }
+          ]
+        },
+        {
+          "at": 1543.4000000953674,
+          "value": 0.0013855712890625002,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 551,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "moa-board-doors",
+                "cls": "moa-board-doors"
+              },
+              "previous": {
+                "x": 307,
+                "y": 457.0625,
+                "w": 138.265625,
+                "h": 19.5
+              },
+              "current": {
+                "x": 307,
+                "y": 448.0625,
+                "w": 169.9375,
+                "h": 28.5
+              }
+            }
+          ]
+        },
+        {
+          "at": 1668.4000000953674,
+          "value": 0.41356803481158083,
+          "sources": [
+            {
+              "node": {
+                "tag": "SECTION",
+                "id": "",
+                "cls": "moa-purpose"
+              },
+              "previous": {
+                "x": 260,
+                "y": 174,
+                "w": 1000,
+                "h": 404.5625
+              },
+              "current": {
+                "x": 260,
+                "y": 226,
+                "w": 1000,
+                "h": 404.5625
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "moa-my-documents",
+                "cls": "moa-documents-heading"
+              },
+              "previous": {
+                "x": 260,
+                "y": 680.5625,
+                "w": 1000,
+                "h": 77.09375
+              },
+              "current": {
+                "x": 260,
+                "y": 732.5625,
+                "w": 1000,
+                "h": 77.09375
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "toolbar"
+              },
+              "previous": {
+                "x": 257,
+                "y": 795.65625,
+                "w": 1006,
+                "h": 50
+              },
+              "current": {
+                "x": 257,
+                "y": 847.65625,
+                "w": 1003,
+                "h": 2.34375
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 920.09375,
+                "y": 56,
+                "w": 339.90625,
+                "h": 36
+              },
+              "current": {
+                "x": 260,
+                "y": 127,
+                "w": 339.90625,
+                "h": 36
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 1045.546875,
+                "y": 54,
+                "w": 106,
+                "h": 42
+              },
+              "current": {
+                "x": 385.453125,
+                "y": 125,
+                "w": 106,
+                "h": 42
+              }
+            }
+          ]
+        },
+        {
+          "at": 1737.7999999523163,
+          "value": 0.005059551642922794,
+          "sources": [
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-boards-group",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 448,
+                "w": 203,
+                "h": 103
+              },
+              "current": {
+                "x": 18,
+                "y": 507,
+                "w": 203,
+                "h": 103
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-teams-group",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 348,
+                "w": 203,
+                "h": 66
+              },
+              "current": {
+                "x": 18,
+                "y": 407,
+                "w": 203,
+                "h": 66
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "userchip"
+              },
+              "previous": {
+                "x": 18,
+                "y": 761.03125,
+                "w": 203,
+                "h": 64.96875
+              },
+              "current": {
+                "x": 18,
+                "y": 771.1875,
+                "w": 203,
+                "h": 64.96875
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-documents-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 414,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 473,
+                "w": 203,
+                "h": 34
+              }
+            },
+            {
+              "node": {
+                "tag": "DETAILS",
+                "id": "nav-community-more-box",
+                "cls": ""
+              },
+              "previous": {
+                "x": 18,
+                "y": 551,
+                "w": 203,
+                "h": 34
+              },
+              "current": {
+                "x": 18,
+                "y": 610,
+                "w": 203,
+                "h": 34
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "memories",
+      "mode": "desktop",
+      "repeat": 1,
+      "cls_session_max": 0.1397200934914982,
+      "entries": [
+        {
+          "at": 729.7000000476837,
+          "value": 0.0008387537339154411,
+          "sources": [
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "shell-tools__me"
+              },
+              "previous": {
+                "x": 1031.53125,
+                "y": 8,
+                "w": 228.46875,
+                "h": 44
+              },
+              "current": {
+                "x": 1015.53125,
+                "y": 8,
+                "w": 244.46875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "messenger-open",
+                "cls": "btn btn--quiet shell-tools__messenger"
+              },
+              "previous": {
+                "x": 858.53125,
+                "y": 6,
+                "w": 85,
+                "h": 50
+              },
+              "current": {
+                "x": 820.53125,
+                "y": 6,
+                "w": 107,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 948.53125,
+                "y": 8,
+                "w": 75,
+                "h": 44
+              },
+              "current": {
+                "x": 932.53125,
+                "y": 8,
+                "w": 75,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 34,
+                "y": 204.5,
+                "w": 120.90625,
+                "h": 21
+              },
+              "current": {
+                "x": 50,
+                "y": 204.5,
+                "w": 120.90625,
+                "h": 21
+              }
+            },
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 34,
+                "y": 134.5,
+                "w": 88.453125,
+                "h": 21
+              },
+              "current": {
+                "x": 52,
+                "y": 134.5,
+                "w": 88.453125,
+                "h": 21
+              }
+            }
+          ]
+        },
+        {
+          "at": 783.7999999523163,
+          "value": 0.13888133975758274,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "main-columns"
+              },
+              "previous": {
+                "x": 420,
+                "y": 318.421875,
+                "w": 680,
+                "h": 174.796875
+              },
+              "current": {
+                "x": 420,
+                "y": 340.984375,
+                "w": 680,
+                "h": 441.484375
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "",
+                "cls": "secondary"
+              },
+              "previous": {
+                "x": 420,
+                "y": 246.984375,
+                "w": 81,
+                "h": 45.4375
+              },
+              "current": {
+                "x": 1019,
+                "y": 258.265625,
+                "w": 81,
+                "h": 45.4375
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "memories",
+      "mode": "desktop",
+      "repeat": 2,
+      "cls_session_max": 0.1397200934914982,
+      "entries": [
+        {
+          "at": 522.5,
+          "value": 0.0008387537339154411,
+          "sources": [
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "shell-tools__me"
+              },
+              "previous": {
+                "x": 1031.53125,
+                "y": 8,
+                "w": 228.46875,
+                "h": 44
+              },
+              "current": {
+                "x": 1015.53125,
+                "y": 8,
+                "w": 244.46875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "messenger-open",
+                "cls": "btn btn--quiet shell-tools__messenger"
+              },
+              "previous": {
+                "x": 858.53125,
+                "y": 6,
+                "w": 85,
+                "h": 50
+              },
+              "current": {
+                "x": 820.53125,
+                "y": 6,
+                "w": 107,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 948.53125,
+                "y": 8,
+                "w": 75,
+                "h": 44
+              },
+              "current": {
+                "x": 932.53125,
+                "y": 8,
+                "w": 75,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 34,
+                "y": 204.5,
+                "w": 120.90625,
+                "h": 21
+              },
+              "current": {
+                "x": 50,
+                "y": 204.5,
+                "w": 120.90625,
+                "h": 21
+              }
+            },
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 34,
+                "y": 134.5,
+                "w": 88.453125,
+                "h": 21
+              },
+              "current": {
+                "x": 52,
+                "y": 134.5,
+                "w": 88.453125,
+                "h": 21
+              }
+            }
+          ]
+        },
+        {
+          "at": 629.1000001430511,
+          "value": 0.13888133975758274,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "main-columns"
+              },
+              "previous": {
+                "x": 420,
+                "y": 318.421875,
+                "w": 680,
+                "h": 174.796875
+              },
+              "current": {
+                "x": 420,
+                "y": 340.984375,
+                "w": 680,
+                "h": 441.484375
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "",
+                "cls": "secondary"
+              },
+              "previous": {
+                "x": 420,
+                "y": 246.984375,
+                "w": 81,
+                "h": 45.4375
+              },
+              "current": {
+                "x": 1019,
+                "y": 258.265625,
+                "w": 81,
+                "h": 45.4375
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "memories",
+      "mode": "desktop",
+      "repeat": 3,
+      "cls_session_max": 0.1397200934914982,
+      "entries": [
+        {
+          "at": 676.6999998092651,
+          "value": 0.0008387537339154411,
+          "sources": [
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "shell-tools__me"
+              },
+              "previous": {
+                "x": 1031.53125,
+                "y": 8,
+                "w": 228.46875,
+                "h": 44
+              },
+              "current": {
+                "x": 1015.53125,
+                "y": 8,
+                "w": 244.46875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "messenger-open",
+                "cls": "btn btn--quiet shell-tools__messenger"
+              },
+              "previous": {
+                "x": 858.53125,
+                "y": 6,
+                "w": 85,
+                "h": 50
+              },
+              "current": {
+                "x": 820.53125,
+                "y": 6,
+                "w": 107,
+                "h": 50
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 948.53125,
+                "y": 8,
+                "w": 75,
+                "h": 44
+              },
+              "current": {
+                "x": 932.53125,
+                "y": 8,
+                "w": 75,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 34,
+                "y": 204.5,
+                "w": 120.90625,
+                "h": 21
+              },
+              "current": {
+                "x": 50,
+                "y": 204.5,
+                "w": 120.90625,
+                "h": 21
+              }
+            },
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 34,
+                "y": 134.5,
+                "w": 88.453125,
+                "h": 21
+              },
+              "current": {
+                "x": 52,
+                "y": 134.5,
+                "w": 88.453125,
+                "h": 21
+              }
+            }
+          ]
+        },
+        {
+          "at": 752.1999998092651,
+          "value": 0.13888133975758274,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "main-columns"
+              },
+              "previous": {
+                "x": 420,
+                "y": 318.421875,
+                "w": 680,
+                "h": 174.796875
+              },
+              "current": {
+                "x": 420,
+                "y": 340.984375,
+                "w": 680,
+                "h": 441.484375
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "",
+                "cls": "secondary"
+              },
+              "previous": {
+                "x": 420,
+                "y": 246.984375,
+                "w": 81,
+                "h": 45.4375
+              },
+              "current": {
+                "x": 1019,
+                "y": 258.265625,
+                "w": 81,
+                "h": 45.4375
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "documents",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "cls_session_max": 0.021826987149250802,
+      "entries": [
+        {
+          "at": 5239.5,
+          "value": 0.0016822801570448747,
+          "sources": [
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 220.546875,
+                "y": 162,
+                "w": 68,
+                "h": 44
+              },
+              "current": {
+                "x": 189.546875,
+                "y": 162,
+                "w": 84,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 54,
+                "y": 3,
+                "w": 80.875,
+                "h": 44
+              },
+              "current": {
+                "x": 49.078125,
+                "y": 3,
+                "w": 96.875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 216.546875,
+                "y": 166,
+                "w": 76,
+                "h": 38
+              },
+              "current": {
+                "x": 185.546875,
+                "y": 166,
+                "w": 92,
+                "h": 38
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 296.546875,
+                "y": 162,
+                "w": 72.453125,
+                "h": 44
+              },
+              "current": {
+                "x": 281.546875,
+                "y": 162,
+                "w": 87.453125,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 175.546875,
+                "y": 162,
+                "w": 44,
+                "h": 44
+              },
+              "current": {
+                "x": 144.546875,
+                "y": 162,
+                "w": 44,
+                "h": 44
+              }
+            }
+          ]
+        },
+        {
+          "at": 5985.900000095367,
+          "value": 0.003173783158509468,
+          "sources": [
+            {
+              "node": {
+                "tag": "ARTICLE",
+                "id": "",
+                "cls": "moa-purpose-card"
+              },
+              "previous": {
+                "x": 39,
+                "y": 528.875,
+                "w": 312,
+                "h": 179.375
+              },
+              "current": {
+                "x": 39,
+                "y": 537.875,
+                "w": 312,
+                "h": 179.375
+              }
+            },
+            {
+              "node": {
+                "tag": "ARTICLE",
+                "id": "",
+                "cls": "moa-purpose-card"
+              },
+              "previous": {
+                "x": 39,
+                "y": 718.25,
+                "w": 312,
+                "h": 125.75
+              },
+              "current": {
+                "x": 39,
+                "y": 727.25,
+                "w": 312,
+                "h": 116.75
+              }
+            }
+          ]
+        },
+        {
+          "at": 6240,
+          "value": 0.016970923833696458,
+          "sources": [
+            {
+              "node": {
+                "tag": "SECTION",
+                "id": "",
+                "cls": "moa-purpose"
+              },
+              "previous": {
+                "x": 20,
+                "y": 263,
+                "w": 350,
+                "h": 581
+              },
+              "current": {
+                "x": 20,
+                "y": 284,
+                "w": 350,
+                "h": 560
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 20,
+                "y": 168,
+                "w": 350,
+                "h": 32
+              },
+              "current": {
+                "x": 20,
+                "y": 189,
+                "w": 350,
+                "h": 32
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 281.546875,
+                "y": 162,
+                "w": 87.453125,
+                "h": 44
+              },
+              "current": {
+                "x": 281.546875,
+                "y": 183,
+                "w": 87.453125,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 189.546875,
+                "y": 162,
+                "w": 84,
+                "h": 44
+              },
+              "current": {
+                "x": 189.546875,
+                "y": 183,
+                "w": 84,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 185.546875,
+                "y": 166,
+                "w": 92,
+                "h": 38
+              },
+              "current": {
+                "x": 185.546875,
+                "y": 187,
+                "w": 92,
+                "h": 38
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "documents",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "cls_session_max": 0.021826987149250802,
+      "entries": [
+        {
+          "at": 5034.5,
+          "value": 0.0016822801570448747,
+          "sources": [
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 220.546875,
+                "y": 162,
+                "w": 68,
+                "h": 44
+              },
+              "current": {
+                "x": 189.546875,
+                "y": 162,
+                "w": 84,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 54,
+                "y": 3,
+                "w": 80.875,
+                "h": 44
+              },
+              "current": {
+                "x": 49.078125,
+                "y": 3,
+                "w": 96.875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 216.546875,
+                "y": 166,
+                "w": 76,
+                "h": 38
+              },
+              "current": {
+                "x": 185.546875,
+                "y": 166,
+                "w": 92,
+                "h": 38
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 296.546875,
+                "y": 162,
+                "w": 72.453125,
+                "h": 44
+              },
+              "current": {
+                "x": 281.546875,
+                "y": 162,
+                "w": 87.453125,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 175.546875,
+                "y": 162,
+                "w": 44,
+                "h": 44
+              },
+              "current": {
+                "x": 144.546875,
+                "y": 162,
+                "w": 44,
+                "h": 44
+              }
+            }
+          ]
+        },
+        {
+          "at": 5743.700000047684,
+          "value": 0.003173783158509468,
+          "sources": [
+            {
+              "node": {
+                "tag": "ARTICLE",
+                "id": "",
+                "cls": "moa-purpose-card"
+              },
+              "previous": {
+                "x": 39,
+                "y": 528.875,
+                "w": 312,
+                "h": 179.375
+              },
+              "current": {
+                "x": 39,
+                "y": 537.875,
+                "w": 312,
+                "h": 179.375
+              }
+            },
+            {
+              "node": {
+                "tag": "ARTICLE",
+                "id": "",
+                "cls": "moa-purpose-card"
+              },
+              "previous": {
+                "x": 39,
+                "y": 718.25,
+                "w": 312,
+                "h": 125.75
+              },
+              "current": {
+                "x": 39,
+                "y": 727.25,
+                "w": 312,
+                "h": 116.75
+              }
+            }
+          ]
+        },
+        {
+          "at": 5992.5,
+          "value": 0.016970923833696458,
+          "sources": [
+            {
+              "node": {
+                "tag": "SECTION",
+                "id": "",
+                "cls": "moa-purpose"
+              },
+              "previous": {
+                "x": 20,
+                "y": 263,
+                "w": 350,
+                "h": 581
+              },
+              "current": {
+                "x": 20,
+                "y": 284,
+                "w": 350,
+                "h": 560
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 20,
+                "y": 168,
+                "w": 350,
+                "h": 32
+              },
+              "current": {
+                "x": 20,
+                "y": 189,
+                "w": 350,
+                "h": 32
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 281.546875,
+                "y": 162,
+                "w": 87.453125,
+                "h": 44
+              },
+              "current": {
+                "x": 281.546875,
+                "y": 183,
+                "w": 87.453125,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 189.546875,
+                "y": 162,
+                "w": 84,
+                "h": 44
+              },
+              "current": {
+                "x": 189.546875,
+                "y": 183,
+                "w": 84,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 185.546875,
+                "y": 166,
+                "w": 92,
+                "h": 38
+              },
+              "current": {
+                "x": 185.546875,
+                "y": 187,
+                "w": 92,
+                "h": 38
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "documents",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "cls_session_max": 0.021826987149250802,
+      "entries": [
+        {
+          "at": 4994.799999952316,
+          "value": 0.0016822801570448747,
+          "sources": [
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 220.546875,
+                "y": 162,
+                "w": 68,
+                "h": 44
+              },
+              "current": {
+                "x": 189.546875,
+                "y": 162,
+                "w": 84,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 54,
+                "y": 3,
+                "w": 80.875,
+                "h": 44
+              },
+              "current": {
+                "x": 49.078125,
+                "y": 3,
+                "w": 96.875,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 216.546875,
+                "y": 166,
+                "w": 76,
+                "h": 38
+              },
+              "current": {
+                "x": 185.546875,
+                "y": 166,
+                "w": 92,
+                "h": 38
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 296.546875,
+                "y": 162,
+                "w": 72.453125,
+                "h": 44
+              },
+              "current": {
+                "x": 281.546875,
+                "y": 162,
+                "w": 87.453125,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 175.546875,
+                "y": 162,
+                "w": 44,
+                "h": 44
+              },
+              "current": {
+                "x": 144.546875,
+                "y": 162,
+                "w": 44,
+                "h": 44
+              }
+            }
+          ]
+        },
+        {
+          "at": 5821.900000095367,
+          "value": 0.003173783158509468,
+          "sources": [
+            {
+              "node": {
+                "tag": "ARTICLE",
+                "id": "",
+                "cls": "moa-purpose-card"
+              },
+              "previous": {
+                "x": 39,
+                "y": 528.875,
+                "w": 312,
+                "h": 179.375
+              },
+              "current": {
+                "x": 39,
+                "y": 537.875,
+                "w": 312,
+                "h": 179.375
+              }
+            },
+            {
+              "node": {
+                "tag": "ARTICLE",
+                "id": "",
+                "cls": "moa-purpose-card"
+              },
+              "previous": {
+                "x": 39,
+                "y": 718.25,
+                "w": 312,
+                "h": 125.75
+              },
+              "current": {
+                "x": 39,
+                "y": 727.25,
+                "w": 312,
+                "h": 116.75
+              }
+            }
+          ]
+        },
+        {
+          "at": 6043.900000095367,
+          "value": 0.016970923833696458,
+          "sources": [
+            {
+              "node": {
+                "tag": "SECTION",
+                "id": "",
+                "cls": "moa-purpose"
+              },
+              "previous": {
+                "x": 20,
+                "y": 263,
+                "w": 350,
+                "h": 581
+              },
+              "current": {
+                "x": 20,
+                "y": 284,
+                "w": 350,
+                "h": 560
+              }
+            },
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "page-head__actions"
+              },
+              "previous": {
+                "x": 20,
+                "y": 168,
+                "w": 350,
+                "h": 32
+              },
+              "current": {
+                "x": 20,
+                "y": 189,
+                "w": 350,
+                "h": 32
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 281.546875,
+                "y": 162,
+                "w": 87.453125,
+                "h": 44
+              },
+              "current": {
+                "x": 281.546875,
+                "y": 183,
+                "w": 87.453125,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "::before",
+                "id": "",
+                "cls": ""
+              },
+              "previous": {
+                "x": 189.546875,
+                "y": 162,
+                "w": 84,
+                "h": 44
+              },
+              "current": {
+                "x": 189.546875,
+                "y": 183,
+                "w": 84,
+                "h": 44
+              }
+            },
+            {
+              "node": {
+                "tag": "SUMMARY",
+                "id": "",
+                "cls": "btn btn--quiet"
+              },
+              "previous": {
+                "x": 185.546875,
+                "y": 166,
+                "w": 92,
+                "h": 38
+              },
+              "current": {
+                "x": 185.546875,
+                "y": 187,
+                "w": 92,
+                "h": 38
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "memories",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "cls_session_max": 0.16809936710938483,
+      "entries": [
+        {
+          "at": 2834.399999856949,
+          "value": 6.335241392854655e-05,
+          "sources": [
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": "appbar__page"
+              },
+              "previous": {
+                "x": 158.875,
+                "y": 15.25,
+                "w": 39,
+                "h": 19.5
+              },
+              "current": {
+                "x": 174.875,
+                "y": 15.25,
+                "w": 39,
+                "h": 19.5
+              }
+            }
+          ]
+        },
+        {
+          "at": 3008.2999999523163,
+          "value": 0.1680360146954563,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "main-columns"
+              },
+              "previous": {
+                "x": 20,
+                "y": 369.3125,
+                "w": 350,
+                "h": 214.9375
+              },
+              "current": {
+                "x": 20,
+                "y": 389.46875,
+                "w": 350,
+                "h": 454.53125
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "",
+                "cls": "secondary"
+              },
+              "previous": {
+                "x": 20,
+                "y": 297.875,
+                "w": 81,
+                "h": 45.4375
+              },
+              "current": {
+                "x": 289,
+                "y": 307.953125,
+                "w": 81,
+                "h": 45.4375
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "memories",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "cls_session_max": 0.16809936710938483,
+      "entries": [
+        {
+          "at": 2740.9000000953674,
+          "value": 6.335241392854655e-05,
+          "sources": [
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": "appbar__page"
+              },
+              "previous": {
+                "x": 158.875,
+                "y": 15.25,
+                "w": 39,
+                "h": 19.5
+              },
+              "current": {
+                "x": 174.875,
+                "y": 15.25,
+                "w": 39,
+                "h": 19.5
+              }
+            }
+          ]
+        },
+        {
+          "at": 2842.5,
+          "value": 0.1680360146954563,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "main-columns"
+              },
+              "previous": {
+                "x": 20,
+                "y": 369.3125,
+                "w": 350,
+                "h": 214.9375
+              },
+              "current": {
+                "x": 20,
+                "y": 389.46875,
+                "w": 350,
+                "h": 454.53125
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "",
+                "cls": "secondary"
+              },
+              "previous": {
+                "x": 20,
+                "y": 297.875,
+                "w": 81,
+                "h": 45.4375
+              },
+              "current": {
+                "x": 289,
+                "y": 307.953125,
+                "w": 81,
+                "h": 45.4375
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    },
+    {
+      "name": "memories",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "cls_session_max": 0.16809936710938483,
+      "entries": [
+        {
+          "at": 2790.5,
+          "value": 6.335241392854655e-05,
+          "sources": [
+            {
+              "node": {
+                "tag": "SPAN",
+                "id": "",
+                "cls": "appbar__page"
+              },
+              "previous": {
+                "x": 158.875,
+                "y": 15.25,
+                "w": 39,
+                "h": 19.5
+              },
+              "current": {
+                "x": 174.875,
+                "y": 15.25,
+                "w": 39,
+                "h": 19.5
+              }
+            }
+          ]
+        },
+        {
+          "at": 2896.5999999046326,
+          "value": 0.1680360146954563,
+          "sources": [
+            {
+              "node": {
+                "tag": "DIV",
+                "id": "",
+                "cls": "main-columns"
+              },
+              "previous": {
+                "x": 20,
+                "y": 369.3125,
+                "w": 350,
+                "h": 214.9375
+              },
+              "current": {
+                "x": 20,
+                "y": 389.46875,
+                "w": 350,
+                "h": 454.53125
+              }
+            },
+            {
+              "node": {
+                "tag": "BUTTON",
+                "id": "",
+                "cls": "secondary"
+              },
+              "previous": {
+                "x": 20,
+                "y": 297.875,
+                "w": 81,
+                "h": 45.4375
+              },
+              "current": {
+                "x": 289,
+                "y": 307.953125,
+                "w": 81,
+                "h": 45.4375
+              }
+            }
+          ]
+        }
+      ],
+      "first_run_modal": false
+    }
+  ],
+  "axe_details": [
+    {
+      "id": "color-contrast",
+      "nodes": [
+        {
+          "target": [
+            "#empty-copy"
+          ],
+          "failureSummary": "Fix any of the following:\n  Element has insufficient color contrast of 2.42 (foreground color: #91998b, background color: #e2eaf3, font size: 9.0pt (12px), font weight: normal). Expected contrast ratio of 4.5:1",
+          "colors": [
+            {
+              "fgColor": "#91998b",
+              "bgColor": "#e2eaf3",
+              "contrastRatio": 2.42,
+              "fontSize": "9.0pt (12px)",
+              "fontWeight": "normal",
+              "messageKey": null,
+              "expectedContrastRatio": "4.5:1",
+              "shadowColor": null,
+              "colorParse": null
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "method": "Maximum CLS session window; gap <1s and duration <5s; excludes hadRecentInput; observation7s after DOMContentLoaded"
+}

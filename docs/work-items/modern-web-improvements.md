@@ -1,6 +1,6 @@
 # 전체 웹 성능·사용성 개선과 MOA 저장소 이전
 
-- 상태: 개발 중, 최종 통합 검증 진행
+- 상태: v2.80.0 운영 반영·실제 HTTPS·원본 보존 검증 완료. 300ms 성능 목표 미달과 밤 회귀는 별도 유지
 - 작업 브랜치: `cloud/whole-site-improvements`
 - 기준 main 커밋: `d575fed6144a` (v2.79.1, 기존 운영 모바일 nowrap 수정 보존)
 - 담당 환경: 서버의 별도 작업본 `/home/changkwon/moa-modernization-20261119`
@@ -46,3 +46,11 @@
 통합 기능 수락 통과, 성능 목표300ms 미달 유지. 백업 checksum·전체 복호화·archive 구조2/2 확인. Git 이력 이전 완료는 운영 반영 완료를 뜻하지 않는다. 검증한 발행 커밋·버전·백업·실제 확인·잔여 항목은 운영 확인 후 기록한다.
 
 - 캐시 최종: 첫 runtime 요청 실패에서 retry query를 붙이는 entry 재요청으로 보정. 첫 보정 실제25/0, 오류 문구 소거 후 최종26/0, 집중 단위14/0. app 그룹 `a9fddd18fefd`·PM `5823578fa61a`의 의존 모듈 identity를 보존한다. 정적 의존 모듈 자체의 module-map 실패 복구까지 보장하지 않는다. 자산 검사는 최종61/0. 독립 검토의 optional-call P2는 동일 재현에서 write/check가 모두 거부됨을 확인해 해소했다. 검토 원문 editor-retry-independent-review.md.
+
+### 검증한 운영 반영
+
+발행 2.80.0 / `95322a1cb5686ea8e08594b864ec5ca36a839ccd`, 기능 `067aa200943c7d74d41f3f0369cbdfb77e20bb59`. 원격·원본 드리프트 확인과 별도 복제본 FF 모의 적용 후 main을 FF했고 기존 PHP FPM을 한 번 reload했다. 새 migration/운영 패키지/중계기 설정 변경은 없다. 실제 HTTPS 34/0, 6화면36회 조회와 별도 CLS12회, 원래 109 업무 테이블·3 저장 파일·11 설정 파일 변경/누락0. 기존 모바일 nowrap 및 다른 작업 메모·미추적 문서도 보존했다. 원문은 비공개 production/{actual-ui-results,preservation-result,main-integration,integration-simulation,full-decrypt}.json, 공개 비교는 docs/reports/2026-11-19/README.md.
+
+밤 회귀: 기존22시 대기열에 36개 선택. 새 자동화는 추가하지 않았다. 선택: `core.security_lint`, `core.wiki_check`, `community.asset_version`, `community.stale_modules`, `core.prod_guard`, `community.lib_contrast`, `tbox.messenger_http`, `community.qf12_server_http`, `community.qf12_u4_http`, `community.qf12_u4_browser`, `community.qf12_u5_browser`, `community.qf12_shell_browser`, `community.qf12_work_browser`, `community.qf16_templates_http`, `community.qf16_templates_browser`, `tbox.messenger_store_browser`, `tbox.messenger_window_browser`, `community.qf13h_privacy_browser`, `community.cafe_c2_browser`, `community.cafe_c4_browser`, `community.home_h1_browser`, `community.qf12_w1_browser`, `tbox.invite_request_browser`, `community.cafe_h3_browser`, `community.home_h4_browser`, `community.story_s1_browser`, `community.brand_words_browser`, `community.home_front_browser`, `community.guide_journey_unit`, `community.guide_journeys_http`, `community.guide_journey_browser`, `community.editor_loading`, `core.modern_web_client`, `community.whiteboard_client`, `community.ui_media_browser`, `community.modern_web_browser`. 옛 운영 DB 복사/준비 없는 브라우저·고정 단계 범위 검사, 중복 command, 이미 한 번 수행한10분 부하는 제외했다. 제외 목록과 이유는 비공개 production/nightly-selection.json. 이전 기준판부터 다른 source 기대값/옛 parser 실패는 test-extraction-compat.md에 남겼으며 단언을 완화하지 않았다.
+
+추가 제외 근거: community.cafe_c1_http, community.memory_ai_http, community.qf12_floor_http, community.qf12_u3_attach_http, community.qf12_w1_http, tbox.invite_request_http, tbox.qf13_retention_http는 실제 서버 handler/schema 변경이 없고 새 harness 플래그의 covers만 겹친다. UI/로더/IME/미디어·변경된 화면과 정상 계약 확인에 닿는36개를 최종 선택했다.

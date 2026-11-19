@@ -401,3 +401,8 @@
 ### 2026-11-19 전체 성능 개선과 저장소 이전
 
 사용자 승인 전체 개선 묶음을 별도 작업본에서 구현·독립 검토·통합 검증 중. 신규 GitHub Leechangkwon/MOA로 기존 main 이력 952커밋 이전 완료. 기존 다른 작업 기록과 모바일 nowrap 보존. 상세 수락·배포·실측 결과는 tbox-v2/docs/work-items/modern-web-improvements.md에 기록한다.
+
+## 2026-11-19 운영 검증 후속
+
+
+v2.80.0 `95322a1cb568` 운영 반영. 실제 HTTPS34/0·정적 파일 SHA23/0, 6화면36회·CLS12회. 업무 홈807→493KiB, 문서PC CLS0.4235→0.0559·이야기모바일0.1681→0.0001. 원래109업무표·3원본·11설정 변경/누락0, 기존모바일수정·다른작업메모보존. 새 DB/운영패키지/설정0, 기존FPM reload1. 그림판 p95 1195ms/목표300ms 미달·일부 LCP 증가·실물/대규모미디어 미검증·36종 밤회귀 대기. 근거 tbox-v2/docs/reports/2026-11-19/README.md·docs/work-items/modern-web-improvements.md.

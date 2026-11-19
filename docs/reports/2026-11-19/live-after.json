@@ -1,0 +1,5508 @@
+{
+  "conditions": {
+    "date": "2026-11-19",
+    "source": "actual HTTPS reserved QA read-only navigation",
+    "cold_cache": true,
+    "mobile": "390x844, latency150ms, down1.6Mbps, up750Kbps, CPU4x",
+    "same_host_browser_and_server": true,
+    "samples_per_page_per_profile": 3,
+    "field_data": false,
+    "writes": "only QA login/logout and normal read side effects"
+  },
+  "rows": [
+    {
+      "lcp": 640,
+      "cls": 0.012472365076401655,
+      "longTasks": [
+        165
+      ],
+      "events": [],
+      "ttfb": 169.09999990463257,
+      "dcl": 618.3999998569489,
+      "load": 628.2999999523163,
+      "transfer": 277124,
+      "decoded": 967699,
+      "requests": 20,
+      "dom": 734,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "dashboard-canvas.js",
+          "decoded": 30947,
+          "transfer": 9618
+        },
+        {
+          "name": "home-dashboard.js",
+          "decoded": 27507,
+          "transfer": 10115
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "dashboard-widgets.js",
+          "decoded": 16155,
+          "transfer": 5985
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa.js",
+          "decoded": 5100,
+          "transfer": 2782
+        }
+      ],
+      "img": [
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "home",
+      "mode": "desktop",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5,
+      "browser": "151.0.7922.34"
+    },
+    {
+      "lcp": 448,
+      "cls": 0.012472365076401655,
+      "longTasks": [
+        84
+      ],
+      "events": [],
+      "ttfb": 82.60000014305115,
+      "dcl": 398.90000009536743,
+      "load": 400.90000009536743,
+      "transfer": 277124,
+      "decoded": 967699,
+      "requests": 20,
+      "dom": 734,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "dashboard-canvas.js",
+          "decoded": 30947,
+          "transfer": 9618
+        },
+        {
+          "name": "home-dashboard.js",
+          "decoded": 27507,
+          "transfer": 10115
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "dashboard-widgets.js",
+          "decoded": 16155,
+          "transfer": 5985
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa.js",
+          "decoded": 5100,
+          "transfer": 2782
+        }
+      ],
+      "img": [
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "home",
+      "mode": "desktop",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 396,
+      "cls": 0.012472365076401655,
+      "longTasks": [
+        69,
+        64
+      ],
+      "events": [],
+      "ttfb": 76.90000009536743,
+      "dcl": 437.30000019073486,
+      "load": 439.7000000476837,
+      "transfer": 277124,
+      "decoded": 967699,
+      "requests": 20,
+      "dom": 734,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "dashboard-canvas.js",
+          "decoded": 30947,
+          "transfer": 9618
+        },
+        {
+          "name": "home-dashboard.js",
+          "decoded": 27507,
+          "transfer": 10115
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "dashboard-widgets.js",
+          "decoded": 16155,
+          "transfer": 5985
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa.js",
+          "decoded": 5100,
+          "transfer": 2782
+        }
+      ],
+      "img": [
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "home",
+      "mode": "desktop",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 1004,
+      "cls": 0.016319098977481617,
+      "longTasks": [
+        51,
+        243,
+        132
+      ],
+      "events": [],
+      "ttfb": 285.30000019073486,
+      "dcl": 1044.5,
+      "load": 1052.4000000953674,
+      "transfer": 504688,
+      "decoded": 1733787,
+      "requests": 47,
+      "dom": 1779,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "work",
+      "mode": "desktop",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5,
+      "browser": "151.0.7922.34"
+    },
+    {
+      "lcp": 648,
+      "cls": 0.016319098977481617,
+      "longTasks": [
+        192,
+        131
+      ],
+      "events": [],
+      "ttfb": 122.29999995231628,
+      "dcl": 674.2999999523163,
+      "load": 682.5,
+      "transfer": 504688,
+      "decoded": 1733787,
+      "requests": 47,
+      "dom": 1779,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "work",
+      "mode": "desktop",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 780,
+      "cls": 0.01850558588364545,
+      "longTasks": [
+        146,
+        139
+      ],
+      "events": [],
+      "ttfb": 156.29999995231628,
+      "dcl": 783.2999999523163,
+      "load": 789.0999999046326,
+      "transfer": 504688,
+      "decoded": 1733787,
+      "requests": 47,
+      "dom": 1779,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "work",
+      "mode": "desktop",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 744,
+      "cls": 0.008336982996323529,
+      "longTasks": [
+        72,
+        148,
+        154
+      ],
+      "events": [],
+      "ttfb": 148,
+      "dcl": 777.5,
+      "load": 784.2000000476837,
+      "transfer": 505320,
+      "decoded": 1736129,
+      "requests": 47,
+      "dom": 1804,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "tasks",
+      "mode": "desktop",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5,
+      "browser": "151.0.7922.34"
+    },
+    {
+      "lcp": 460,
+      "cls": 0.008336982996323529,
+      "longTasks": [
+        122,
+        91
+      ],
+      "events": [],
+      "ttfb": 83.19999980926514,
+      "dcl": 505.39999985694885,
+      "load": 510.59999990463257,
+      "transfer": 505320,
+      "decoded": 1736129,
+      "requests": 47,
+      "dom": 1804,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "tasks",
+      "mode": "desktop",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 696,
+      "cls": 0.008336982996323529,
+      "longTasks": [
+        110,
+        126
+      ],
+      "events": [],
+      "ttfb": 156.89999985694885,
+      "dcl": 781.5999999046326,
+      "load": 791.0999999046326,
+      "transfer": 505320,
+      "decoded": 1736129,
+      "requests": 47,
+      "dom": 1804,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "tasks",
+      "mode": "desktop",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 808,
+      "cls": 0.055892047478170954,
+      "longTasks": [
+        51,
+        209,
+        62
+      ],
+      "events": [],
+      "ttfb": 162.5,
+      "dcl": 843.7999999523163,
+      "load": 851.8999998569489,
+      "transfer": 520170,
+      "decoded": 1778348,
+      "requests": 52,
+      "dom": 2194,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "documents",
+      "mode": "desktop",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5,
+      "browser": "151.0.7922.34"
+    },
+    {
+      "lcp": 592,
+      "cls": 0.055892047478170954,
+      "longTasks": [
+        145,
+        141
+      ],
+      "events": [],
+      "ttfb": 110.5,
+      "dcl": 640.0999999046326,
+      "load": 651.3999998569489,
+      "transfer": 520170,
+      "decoded": 1778348,
+      "requests": 52,
+      "dom": 2194,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "documents",
+      "mode": "desktop",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 768,
+      "cls": 0.055892047478170954,
+      "longTasks": [
+        62,
+        51,
+        123
+      ],
+      "events": [],
+      "ttfb": 136.70000004768372,
+      "dcl": 814,
+      "load": 829.2999999523163,
+      "transfer": 520170,
+      "decoded": 1778348,
+      "requests": 52,
+      "dom": 2194,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "documents",
+      "mode": "desktop",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 760,
+      "cls": 0.0008393267463235293,
+      "longTasks": [
+        63,
+        152,
+        61,
+        75
+      ],
+      "events": [],
+      "ttfb": 216.5,
+      "dcl": 868,
+      "load": 873.4000000953674,
+      "transfer": 358571,
+      "decoded": 1290005,
+      "requests": 23,
+      "dom": 1947,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "memories.js",
+          "decoded": 70724,
+          "transfer": 21238
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "travel-plans.js",
+          "decoded": 18961,
+          "transfer": 6281
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "memories",
+      "mode": "desktop",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5,
+      "browser": "151.0.7922.34"
+    },
+    {
+      "lcp": 492,
+      "cls": 0.0008393267463235293,
+      "longTasks": [
+        96
+      ],
+      "events": [],
+      "ttfb": 97.10000014305115,
+      "dcl": 525.4000000953674,
+      "load": 526.9000000953674,
+      "transfer": 358571,
+      "decoded": 1290005,
+      "requests": 23,
+      "dom": 1947,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "memories.js",
+          "decoded": 70724,
+          "transfer": 21238
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "travel-plans.js",
+          "decoded": 18961,
+          "transfer": 6281
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "memories",
+      "mode": "desktop",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 640,
+      "cls": 0.0008393267463235293,
+      "longTasks": [
+        99
+      ],
+      "events": [],
+      "ttfb": 129.60000014305115,
+      "dcl": 709.4000000953674,
+      "load": 714.6000001430511,
+      "transfer": 358571,
+      "decoded": 1290005,
+      "requests": 23,
+      "dom": 1947,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "memories.js",
+          "decoded": 70724,
+          "transfer": 21238
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "travel-plans.js",
+          "decoded": 18961,
+          "transfer": 6281
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "memories",
+      "mode": "desktop",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 592,
+      "cls": 0.013895871330710019,
+      "longTasks": [
+        57
+      ],
+      "events": [],
+      "ttfb": 107.60000014305115,
+      "dcl": 571.7999999523163,
+      "load": 594.1000001430511,
+      "transfer": 364502,
+      "decoded": 1334909,
+      "requests": 23,
+      "dom": 2420,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "files-page.js",
+          "decoded": 208220,
+          "transfer": 53564
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "files",
+      "mode": "desktop",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5,
+      "browser": "151.0.7922.34"
+    },
+    {
+      "lcp": 480,
+      "cls": 0.013895871330710019,
+      "longTasks": [
+        178,
+        50
+      ],
+      "events": [],
+      "ttfb": 55,
+      "dcl": 464.2000000476837,
+      "load": 481.89999985694885,
+      "transfer": 364502,
+      "decoded": 1334909,
+      "requests": 23,
+      "dom": 2420,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "files-page.js",
+          "decoded": 208220,
+          "transfer": 53564
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "files",
+      "mode": "desktop",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 568,
+      "cls": 0.015045737591911763,
+      "longTasks": [
+        148
+      ],
+      "events": [],
+      "ttfb": 76.59999990463257,
+      "dcl": 613.2000000476837,
+      "load": 617.5,
+      "transfer": 364502,
+      "decoded": 1334909,
+      "requests": 23,
+      "dom": 2420,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "files-page.js",
+          "decoded": 208220,
+          "transfer": 53564
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "files",
+      "mode": "desktop",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 2.5
+    },
+    {
+      "lcp": 1968,
+      "cls": 0.08138276830179247,
+      "longTasks": [
+        236,
+        75,
+        61
+      ],
+      "events": [],
+      "ttfb": 170,
+      "dcl": 1968.2999999523163,
+      "load": 1974.2000000476837,
+      "transfer": 277124,
+      "decoded": 967699,
+      "requests": 20,
+      "dom": 734,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "dashboard-canvas.js",
+          "decoded": 30947,
+          "transfer": 9618
+        },
+        {
+          "name": "home-dashboard.js",
+          "decoded": 27507,
+          "transfer": 10115
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "dashboard-widgets.js",
+          "decoded": 16155,
+          "transfer": 5985
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa.js",
+          "decoded": 5100,
+          "transfer": 2782
+        }
+      ],
+      "img": [
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "home",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2076,
+      "cls": 0.08138276830179247,
+      "longTasks": [
+        336,
+        56,
+        70
+      ],
+      "events": [],
+      "ttfb": 82.40000009536743,
+      "dcl": 2189,
+      "load": 2190.4000000953674,
+      "transfer": 277124,
+      "decoded": 967699,
+      "requests": 20,
+      "dom": 734,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "dashboard-canvas.js",
+          "decoded": 30947,
+          "transfer": 9618
+        },
+        {
+          "name": "home-dashboard.js",
+          "decoded": 27507,
+          "transfer": 10115
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "dashboard-widgets.js",
+          "decoded": 16155,
+          "transfer": 5985
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa.js",
+          "decoded": 5100,
+          "transfer": 2782
+        }
+      ],
+      "img": [
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "home",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 1896,
+      "cls": 0.08138276830179247,
+      "longTasks": [
+        312,
+        92,
+        94,
+        139
+      ],
+      "events": [],
+      "ttfb": 47.60000014305115,
+      "dcl": 2054,
+      "load": 2070.2999999523163,
+      "transfer": 277124,
+      "decoded": 967699,
+      "requests": 20,
+      "dom": 734,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "dashboard-canvas.js",
+          "decoded": 30947,
+          "transfer": 9618
+        },
+        {
+          "name": "home-dashboard.js",
+          "decoded": 27507,
+          "transfer": 10115
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "dashboard-widgets.js",
+          "decoded": 16155,
+          "transfer": 5985
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa.js",
+          "decoded": 5100,
+          "transfer": 2782
+        }
+      ],
+      "img": [
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "lazy",
+          "width": 600,
+          "naturalWidth": 0,
+          "hasDimensions": true
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "home",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2216,
+      "cls": 0.017166880769029193,
+      "longTasks": [
+        265,
+        92,
+        370
+      ],
+      "events": [],
+      "ttfb": 187.19999980926514,
+      "dcl": 3471.199999809265,
+      "load": 3494.7999999523163,
+      "transfer": 504688,
+      "decoded": 1733787,
+      "requests": 47,
+      "dom": 1779,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "work",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2232,
+      "cls": 0.017166880769029193,
+      "longTasks": [
+        225,
+        53,
+        143,
+        464
+      ],
+      "events": [],
+      "ttfb": 103.29999995231628,
+      "dcl": 3622.899999856949,
+      "load": 3658,
+      "transfer": 504688,
+      "decoded": 1733787,
+      "requests": 47,
+      "dom": 1779,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "work",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2428,
+      "cls": 0.017166880769029193,
+      "longTasks": [
+        335,
+        299
+      ],
+      "events": [],
+      "ttfb": 194,
+      "dcl": 3554,
+      "load": 3565,
+      "transfer": 504688,
+      "decoded": 1733787,
+      "requests": 47,
+      "dom": 1779,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "work",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2304,
+      "cls": 0.0006293486392765384,
+      "longTasks": [
+        314,
+        139,
+        414
+      ],
+      "events": [],
+      "ttfb": 147.59999990463257,
+      "dcl": 3698.7999999523163,
+      "load": 3738.399999856949,
+      "transfer": 505320,
+      "decoded": 1736129,
+      "requests": 47,
+      "dom": 1804,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "tasks",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2112,
+      "cls": 0.0006293486392765384,
+      "longTasks": [
+        210,
+        373
+      ],
+      "events": [],
+      "ttfb": 139.59999990463257,
+      "dcl": 3291.4000000953674,
+      "load": 3300.2999999523163,
+      "transfer": 505320,
+      "decoded": 1736129,
+      "requests": 47,
+      "dom": 1804,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "tasks",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2156,
+      "cls": 0.0006293486392765384,
+      "longTasks": [
+        226,
+        60,
+        91,
+        518
+      ],
+      "events": [],
+      "ttfb": 136.80000019073486,
+      "dcl": 3607,
+      "load": 3631.800000190735,
+      "transfer": 505320,
+      "decoded": 1736129,
+      "requests": 47,
+      "dom": 1804,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "tasks",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2460,
+      "cls": 0.055848248507330736,
+      "longTasks": [
+        424,
+        50,
+        88,
+        303
+      ],
+      "events": [],
+      "ttfb": 130.29999995231628,
+      "dcl": 3830.899999856949,
+      "load": 3857,
+      "transfer": 520170,
+      "decoded": 1778348,
+      "requests": 52,
+      "dom": 2194,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "documents",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2232,
+      "cls": 0.055848248507330736,
+      "longTasks": [
+        256,
+        72,
+        275
+      ],
+      "events": [],
+      "ttfb": 164.59999990463257,
+      "dcl": 3539.2999999523163,
+      "load": 3553.7000000476837,
+      "transfer": 520170,
+      "decoded": 1778348,
+      "requests": 52,
+      "dom": 2194,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "documents",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2228,
+      "cls": 0.055848248507330736,
+      "longTasks": [
+        242,
+        73,
+        182
+      ],
+      "events": [],
+      "ttfb": 141.09999990463257,
+      "dcl": 3350.699999809265,
+      "load": 3363.699999809265,
+      "transfer": 520170,
+      "decoded": 1778348,
+      "requests": 52,
+      "dom": 2194,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "editor.js",
+          "decoded": 191822,
+          "transfer": 55708
+        },
+        {
+          "name": "work.js",
+          "decoded": 167177,
+          "transfer": 46456
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "doc-render.js",
+          "decoded": 42187,
+          "transfer": 11912
+        },
+        {
+          "name": "cafe.js",
+          "decoded": 37035,
+          "transfer": 10811
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "automations.js",
+          "decoded": 21285,
+          "transfer": 7459
+        },
+        {
+          "name": "templates.js",
+          "decoded": 20670,
+          "transfer": 6784
+        },
+        {
+          "name": "integrations.js",
+          "decoded": 17386,
+          "transfer": 6262
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "mention-input.js",
+          "decoded": 16312,
+          "transfer": 6415
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "calendar.js",
+          "decoded": 13456,
+          "transfer": 5727
+        },
+        {
+          "name": "palettes.js",
+          "decoded": 12910,
+          "transfer": 4760
+        },
+        {
+          "name": "ai.js",
+          "decoded": 12320,
+          "transfer": 4915
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "suggestions.js",
+          "decoded": 10716,
+          "transfer": 4207
+        },
+        {
+          "name": "procedures.js",
+          "decoded": 7037,
+          "transfer": 2824
+        },
+        {
+          "name": "editor-loader.js",
+          "decoded": 5918,
+          "transfer": 2414
+        },
+        {
+          "name": "embeds.js",
+          "decoded": 5866,
+          "transfer": 2482
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "popular.js",
+          "decoded": 3712,
+          "transfer": 1897
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        },
+        {
+          "name": "db-option-label.js",
+          "decoded": 339,
+          "transfer": 639
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "documents",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2068,
+      "cls": 6.335241392854655e-05,
+      "longTasks": [
+        88,
+        236,
+        130,
+        87,
+        52
+      ],
+      "events": [],
+      "ttfb": 128.70000004768372,
+      "dcl": 2425.5,
+      "load": 2437.4000000953674,
+      "transfer": 358571,
+      "decoded": 1290005,
+      "requests": 23,
+      "dom": 1947,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "memories.js",
+          "decoded": 70724,
+          "transfer": 21238
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "travel-plans.js",
+          "decoded": 18961,
+          "transfer": 6281
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "memories",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2152,
+      "cls": 6.335241392854655e-05,
+      "longTasks": [
+        245,
+        101,
+        170,
+        138
+      ],
+      "events": [],
+      "ttfb": 140.40000009536743,
+      "dcl": 2532.800000190735,
+      "load": 2558.300000190735,
+      "transfer": 358571,
+      "decoded": 1290005,
+      "requests": 23,
+      "dom": 1947,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "memories.js",
+          "decoded": 70724,
+          "transfer": 21238
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "travel-plans.js",
+          "decoded": 18961,
+          "transfer": 6281
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "memories",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 2176,
+      "cls": 6.335241392854655e-05,
+      "longTasks": [
+        79,
+        229,
+        123,
+        103,
+        60
+      ],
+      "events": [],
+      "ttfb": 84.79999995231628,
+      "dcl": 2576.5,
+      "load": 2592.7999999523163,
+      "transfer": 358571,
+      "decoded": 1290005,
+      "requests": 23,
+      "dom": 1947,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "memories.js",
+          "decoded": 70724,
+          "transfer": 21238
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "travel-plans.js",
+          "decoded": 18961,
+          "transfer": 6281
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "memories",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 1980,
+      "cls": 0.11847111866936605,
+      "longTasks": [
+        52,
+        396,
+        71,
+        56,
+        104
+      ],
+      "events": [],
+      "ttfb": 81,
+      "dcl": 2260.7000000476837,
+      "load": 2276.600000143051,
+      "transfer": 364502,
+      "decoded": 1334909,
+      "requests": 23,
+      "dom": 2420,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "files-page.js",
+          "decoded": 208220,
+          "transfer": 53564
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "files",
+      "mode": "mobile4g",
+      "repeat": 1,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 1900,
+      "cls": 0.14253819678116464,
+      "longTasks": [
+        54,
+        304,
+        141,
+        69,
+        62
+      ],
+      "events": [],
+      "ttfb": 61.09999990463257,
+      "dcl": 2177.9000000953674,
+      "load": 2208.2999999523163,
+      "transfer": 364502,
+      "decoded": 1334909,
+      "requests": 23,
+      "dom": 2420,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "files-page.js",
+          "decoded": 208220,
+          "transfer": 53564
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "files",
+      "mode": "mobile4g",
+      "repeat": 2,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    },
+    {
+      "lcp": 1840,
+      "cls": 0.1388969942933153,
+      "longTasks": [
+        288,
+        58
+      ],
+      "events": [],
+      "ttfb": 80.60000014305115,
+      "dcl": 2140.5,
+      "load": 2143.9000000953674,
+      "transfer": 364502,
+      "decoded": 1334909,
+      "requests": 23,
+      "dom": 2420,
+      "overflow": false,
+      "js": [
+        {
+          "name": "app.js",
+          "decoded": 345405,
+          "transfer": 94313
+        },
+        {
+          "name": "files-page.js",
+          "decoded": 208220,
+          "transfer": 53564
+        },
+        {
+          "name": "usage-guide.js",
+          "decoded": 90388,
+          "transfer": 28354
+        },
+        {
+          "name": "messenger.js",
+          "decoded": 79006,
+          "transfer": 25129
+        },
+        {
+          "name": "passkey.js",
+          "decoded": 31128,
+          "transfer": 9226
+        },
+        {
+          "name": "member-assist.js",
+          "decoded": 26178,
+          "transfer": 7726
+        },
+        {
+          "name": "search.js",
+          "decoded": 17233,
+          "transfer": 6750
+        },
+        {
+          "name": "drafts.js",
+          "decoded": 15220,
+          "transfer": 6144
+        },
+        {
+          "name": "member-ai.js",
+          "decoded": 11760,
+          "transfer": 4435
+        },
+        {
+          "name": "design.js",
+          "decoded": 5385,
+          "transfer": 2269
+        },
+        {
+          "name": "moa-usage.js",
+          "decoded": 2166,
+          "transfer": 1374
+        }
+      ],
+      "img": [
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        },
+        {
+          "loading": "auto",
+          "width": 0,
+          "naturalWidth": 0,
+          "hasDimensions": false
+        }
+      ],
+      "name": "files",
+      "mode": "mobile4g",
+      "repeat": 3,
+      "status": 200,
+      "errors": [],
+      "window_seconds": 4.5
+    }
+  ],
+  "headers": [
+    {
+      "page": "home",
+      "asset": "/tbox/assets/app.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2c66c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "home",
+      "asset": "/tbox/assets/design.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-8ebc\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "home",
+      "asset": "/tbox/assets/moa.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-1515c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "home",
+      "asset": "/tbox/assets/design.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-1509\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "home",
+      "asset": "/tbox/assets/moa.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6adcdcda-13ec\"",
+      "last-modified": "Sat, 24 Oct 2026 16:29:14 GMT"
+    },
+    {
+      "page": "home",
+      "asset": "/tbox/assets/dashboard-canvas.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acb7252-25de\"",
+      "last-modified": "Sun, 11 Oct 2026 11:26:10 GMT"
+    },
+    {
+      "page": "home",
+      "asset": "/tbox/assets/dashboard-canvas.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acb7e9d-78e3\"",
+      "last-modified": "Sun, 11 Oct 2026 12:18:37 GMT"
+    },
+    {
+      "page": "home",
+      "asset": "/tbox/assets/dashboard-widgets.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acebc8e-2619\"",
+      "last-modified": "Tue, 13 Oct 2026 23:19:42 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/app.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2c66c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/community/community.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ad19bf9-1346e\"",
+      "last-modified": "Fri, 16 Oct 2026 03:37:29 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/community/editor.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2ed4e\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/search.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6adc8acc-4351\"",
+      "last-modified": "Sat, 24 Oct 2026 10:39:08 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/passkey.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ac17ac9-7998\"",
+      "last-modified": "Sat, 03 Oct 2026 21:59:37 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/design.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-8ebc\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/moa.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-1515c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "work",
+      "asset": "/tbox/assets/design.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-1509\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/app.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2c66c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/community/community.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ad19bf9-1346e\"",
+      "last-modified": "Fri, 16 Oct 2026 03:37:29 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/community/editor.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2ed4e\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/search.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6adc8acc-4351\"",
+      "last-modified": "Sat, 24 Oct 2026 10:39:08 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/passkey.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ac17ac9-7998\"",
+      "last-modified": "Sat, 03 Oct 2026 21:59:37 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/design.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-8ebc\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/moa.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-1515c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "tasks",
+      "asset": "/tbox/assets/design.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-1509\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/app.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2c66c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/community/community.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ad19bf9-1346e\"",
+      "last-modified": "Fri, 16 Oct 2026 03:37:29 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/community/editor.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2ed4e\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/search.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6adc8acc-4351\"",
+      "last-modified": "Sat, 24 Oct 2026 10:39:08 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/moa-usage.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-876\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/passkey.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ac17ac9-7998\"",
+      "last-modified": "Sat, 03 Oct 2026 21:59:37 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/design.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-8ebc\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "documents",
+      "asset": "/tbox/assets/moa.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-1515c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/app.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2c66c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/community/community.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ad19bf9-1346e\"",
+      "last-modified": "Fri, 16 Oct 2026 03:37:29 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/community/memories.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-b8b4\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/community/travel-plans.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ac17ac9-753\"",
+      "last-modified": "Sat, 03 Oct 2026 21:59:37 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/search.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6adc8acc-4351\"",
+      "last-modified": "Sat, 24 Oct 2026 10:39:08 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/passkey.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ac17ac9-7998\"",
+      "last-modified": "Sat, 03 Oct 2026 21:59:37 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/design.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-8ebc\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "memories",
+      "asset": "/tbox/assets/moa.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-1515c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/app.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-2c66c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/search.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6adc8acc-4351\"",
+      "last-modified": "Sat, 24 Oct 2026 10:39:08 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/moa-usage.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-876\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/passkey.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6ac17ac9-7998\"",
+      "last-modified": "Sat, 03 Oct 2026 21:59:37 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/design.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-8ebc\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/moa.css",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-1515c\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/design.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6acf2d64-1509\"",
+      "last-modified": "Wed, 14 Oct 2026 07:21:08 GMT"
+    },
+    {
+      "page": "files",
+      "asset": "/tbox/assets/app.js",
+      "status": 200,
+      "cache-control": "max-age=31536000",
+      "content-encoding": "gzip",
+      "vary": "Accept-Encoding",
+      "etag": "W/\"6afe6ab3-5453d\"",
+      "last-modified": "Thu, 19 Nov 2026 03:19:15 GMT"
+    }
+  ],
+  "axe": [
+    {
+      "name": "home",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "nodes": 2
+        }
+      ]
+    },
+    {
+      "name": "work",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "nodes": 20
+        }
+      ]
+    },
+    {
+      "name": "tasks",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "nodes": 20
+        }
+      ]
+    },
+    {
+      "name": "documents",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "color-contrast",
+          "nodes": 24
+        }
+      ]
+    },
+    {
+      "name": "memories",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "aria-prohibited-attr",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "nodes": 10
+        }
+      ]
+    },
+    {
+      "name": "files",
+      "violations": [],
+      "incomplete": [
+        {
+          "id": "aria-prohibited-attr",
+          "nodes": 1
+        },
+        {
+          "id": "color-contrast",
+          "nodes": 16
+        }
+      ]
+    }
+  ]
+}

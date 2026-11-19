@@ -55,7 +55,13 @@
     "copies": {
       "site-rules.md": "145e03b03525e62a3151f7cc08a7662c7f06d2718b0c7bb4dcd0a6e3c27c16b2",
       "PRD.md": "0d04f5937918a201cad2ea4d9be3fb4394839cd990f1b6d7baa98e18ff7c3370",
-      "STAGES.md": "eabb1dd17e3c4b0153ed8b2d908bbd6a5dc809596029312cf3f6ca2286f8e6d3"
+      "STAGES.md": "8fe177565a077ef0b666e4ccb172ce719fea14ceda55797cfc77a8516421cf4b"
+    },
+    "verified_deployment": {
+      "at": "2026-11-19",
+      "scope": "own deployment-result addendum only; original snapshot capture hashes retained",
+      "runtime_commit": "95322a1cb5686ea8e08594b864ec5ca36a839ccd",
+      "STAGES_copy_sha256": "8fe177565a077ef0b666e4ccb172ce719fea14ceda55797cfc77a8516421cf4b"
     }
   }
 }

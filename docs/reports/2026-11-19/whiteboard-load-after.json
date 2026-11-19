@@ -1,0 +1,20 @@
+{
+  "seconds": 608.05,
+  "release_load": true,
+  "browser_contexts": 6,
+  "review_identities": 2,
+  "strokes": 282,
+  "preview_samples": 3821,
+  "preview_p95_ms": 1195,
+  "http_samples": 2662,
+  "http_p95_ms": 532.2000000476837,
+  "element_age_p95_ms": 1189,
+  "preview_measure": "sender timestamp to receiver two animation frames; same host clock",
+  "relay_peak_rss_bytes": 71012352,
+  "fixture_php_workers": 8,
+  "php_sapi": "fpm-fcgi",
+  "php_opcache": true,
+  "php_max_active_workers": 7,
+  "php_max_listen_queue": 0,
+  "php_max_children_reached": 0
+}

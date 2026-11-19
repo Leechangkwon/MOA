@@ -156,3 +156,7 @@ php scripts/wiki_check.php
 2026-10-12 규모A 운영완료: v2.60.2 4e71c9d8dfa06fd74ce39efb62edbf01e7720006. docs/work-items/scale-a.md 및 production-state 참조. B/C 미시작, C는별도세션검토승인전배포금지.
 
 2026-10-12 규모 B 운영 완료: v2.62.0 `cd114a085e6e21a35cc400bc4aebaf7bfbfaddbe`, 실제 HTTPS40/0·92업무표/959원본/ownerACL 보존·조회수 불일치0. 상세 docs/work-items/scale-b.md. C는 아직 미착수이며 다른 세션 독립 검토 승인 전 배포 금지.
+
+## 2026-11-19 전체 웹 개선 반영
+
+v2.80.0 발행 `95322a1cb5686ea8e08594b864ec5ca36a839ccd`의 실제 HTTPS·원본 보존 검증 완료. 현재 기본 원격은 GitHub MOA다. 실험값·전후 화면은 docs/reports/2026-11-19/README.md, 남은300ms 목표/밤 회귀/물리 기기 항목은 docs/work-items/modern-web-improvements.md. 이전 날짜의 발행·동기화 상태는 당시 기록이다.
